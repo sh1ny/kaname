@@ -1,0 +1,58 @@
+# Specwright 0.34.0. Owner-approved setup; decisions always return to the owner.
+decision_making: all
+finish: pr
+main_branch: main
+vcs: git
+commit_granularity: group
+
+github:
+  login: KintsugiBot
+  review_request:
+    body: ""
+    login: ""
+    after_fixes: false
+
+# Claude plans; OMP implements and launches Claude for cross-model review.
+# Use the Claude CLI's configured model and thinking defaults.
+review:
+  cross_model: true
+  order: [claude]
+  timeout: 20m
+  max_diff_kb: 1280
+  preship: true
+
+# Paths reserve locations only; setup creates no planning documents.
+project:
+  decision_making: all
+  strategy: openspec/strategy.md
+  architecture: openspec/architecture.md
+  roadmap: openspec/roadmap.md
+  adr_dir: docs/adr
+
+pr:
+  validate: "mise run spec:validate"
+  max_fix_rounds: 2
+  after_limit: ask
+  react: true
+  poll_interval: 5m
+  review_after_archive: false
+  reviewers: {}
+  settle: 5m
+  request_as: KintsugiBot
+  merge: user
+  # Agent-only options retained from the reference; inactive with merge: user.
+  merge_method: merge
+  delete_branch: true
+
+cheap_tier:
+  enabled: false
+
+# Release support is inactive until the owner enables it.
+release:
+  enabled: false
+  auto: false
+  github_release: true
+  tag: "v{version}"
+  version_files:
+    VERSION: '^(\d+\.\d+\.\d+)$'
+# No packs or external planning store.
