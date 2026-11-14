@@ -8,7 +8,7 @@ These instructions apply to Claude Code and OMP. Claude plans; OMP implements an
 
 - Primary development and tests run in WSL Ubuntu on the Linux filesystem. A separate Windows clone is only for building/running the Windows desktop app; it receives commits through GitHub. Never edit or synchronize that clone from WSL tooling.
 - `mise.toml` pins Flutter 3.47.9 (Dart 3.13.7), Node 24 and OpenSpec 1.16.0. Run `mise install`, then always `mise exec -- <command>` or `mise run <task>`. Check `mise exec -- which <tool>` is a Linux path: WSL's inherited PATH can silently select Windows tools.
-- Current tasks: `mise run spec:validate` (all, strict) and `mise run spec:list`. Application tasks and package-local `serverpod_cli` are added in M0, not globally installed.
+- Tasks: `mise run resolve` (workspace `pub get`), then `mise run check` (workspace, purity, analyze, format:check, test, notices:check; stops at the first failure). Also `analyze`, `format:check`, `test`, `notices` (regenerate THIRD_PARTY_NOTICES after any dependency change), `build:web`, `spec:validate` (all, strict) and `spec:list`; `mise tasks` lists them. Package-local `serverpod_cli` arrives with `serverpod-skeleton`, never globally installed.
 - `.mcp.json` and `.omp/mcp.json` configure Dart (`dart mcp-server --enable cli --enable flutter_app_lifecycle`) and Context7 (`npx -y @upstash/context7-mcp`) through mise. Claude enables and allow-lists only these two servers in `.claude/settings.json`. Never commit an API key.
 - Prefer Dart MCP for analysis, formatting, tests and package operations when available; otherwise run the equivalent through mise.
 - Use `find-docs` and Context7 for current library/API/CLI documentation, not recalled API signatures.

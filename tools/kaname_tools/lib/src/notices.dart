@@ -393,29 +393,29 @@ final class NoticesGenerator {
     final entries = _fileSystem.list(root)
       ..sort((a, b) => a.name.compareTo(b.name));
     for (final candidate in _licenceNames) {
-      for (final FsEntry(:name, :kind) in entries) {
+      for (final FsEntry(name: file, :kind) in entries) {
         if (kind == FsEntryKind.directory ||
-            name.toLowerCase() != candidate.toLowerCase()) {
+            file.toLowerCase() != candidate.toLowerCase()) {
           continue;
         }
         final String raw;
         try {
-          raw = _fileSystem.readAsString(p.posix.join(root, name));
+          raw = _fileSystem.readAsString(p.posix.join(root, file));
         } on FileSystemException catch (e) {
           throw _NoticesError(
-            'package $name $version: licence file $name cannot be read: '
+            'package $name $version: licence file $file cannot be read: '
             '${e.message}',
           );
         } on FormatException catch (e) {
           throw _NoticesError(
-            'package $name $version: licence file $name is not UTF-8: '
+            'package $name $version: licence file $file is not UTF-8: '
             '${e.message}',
           );
         }
         final text = normaliseLicence(raw);
         if (text.isEmpty) {
           throw _NoticesError(
-            'package $name $version: licence file $name is empty',
+            'package $name $version: licence file $file is empty',
           );
         }
         return text;

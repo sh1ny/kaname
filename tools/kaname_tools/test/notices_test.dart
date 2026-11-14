@@ -157,18 +157,43 @@ void main() {
   test(
     'missing licence fails with package and version, file untouched',
     () async {
-      fs.deleteFile('vendor/yaml/LICENSE');
+      // Keep the package directory present, so the check reaches the
+      // licence lookup rather than the missing-directory branch.
+      fs
+        ..deleteFile('vendor/yaml/LICENSE')
+        ..writeFile('vendor/yaml/README.md', 'yaml');
       final before = fs.readAsString('THIRD_PARTY_NOTICES');
       final files = fs.filePaths;
 
       final result = await runTool(fs, ['notices', '--write']);
 
       expect(result.code, 1);
-      expect(result.err, allOf(contains('yaml'), contains('3.1.3')));
+      expect(
+        result.err,
+        allOf(
+          contains('package yaml 3.1.3'),
+          contains('no licence file'),
+          isNot(contains('mise run resolve')),
+        ),
+      );
       expect(fs.readAsString('THIRD_PARTY_NOTICES'), before);
       expect(fs.filePaths, files, reason: 'no temp file may be left behind');
     },
   );
+
+  test('empty licence file fails naming the package', () async {
+    fs.writeFile('vendor/yaml/LICENSE', '  \n');
+    final before = fs.readAsString('THIRD_PARTY_NOTICES');
+
+    final result = await runTool(fs, ['notices', '--write']);
+
+    expect(result.code, 1);
+    expect(
+      result.err,
+      allOf(contains('package yaml 3.1.3'), contains('licence file LICENSE')),
+    );
+    expect(fs.readAsString('THIRD_PARTY_NOTICES'), before);
+  });
 
   test(
     'missing package config fails with resolve hint, file untouched',
