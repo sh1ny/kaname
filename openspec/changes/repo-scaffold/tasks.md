@@ -20,16 +20,16 @@
 | workspace-layout → Analysis and formatting are clean | An unformatted file | n/a (mechanical: `dart format --set-exit-if-changed` behaviour on a planted file) → evidence/check-task.md | task 6.2 | red |
 | workspace-layout → One task runs every local check | All checks pass | n/a (mechanical: `mise run check` exit 0) → evidence/check-task.md | task 6.2 | red |
 | workspace-layout → One task runs every local check | One check fails | n/a (mechanical: `mise run check` non-zero with a planted failure) → evidence/check-task.md | task 6.2 | red |
-| contribution-policy → CONTRIBUTING states the no-copy rule | Rule present | tools/kaname_tools/test/policy_docs_test.dart | CONTRIBUTING has the no-copy section | red |
-| contribution-policy → CONTRIBUTING states the no-copy rule | A contribution with copied code | tools/kaname_tools/test/policy_docs_test.dart | CONTRIBUTING declines copied code and the PR template has the no-copy item | red |
-| contribution-policy → CONTRIBUTING states the EULA boundary | Boundary present | tools/kaname_tools/test/policy_docs_test.dart | CONTRIBUTING lists allowed and forbidden integrations | red |
-| contribution-policy → CONTRIBUTING states the EULA boundary | A feature outside the boundary | tools/kaname_tools/test/policy_docs_test.dart | CONTRIBUTING rejects out-of-boundary features regardless of default | red |
-| contribution-policy → Every commit is signed off under the DCO | Signed commit | tools/kaname_tools/test/policy_docs_test.dart | CONTRIBUTING requires DCO sign-off and shows git commit -s | red |
+| contribution-policy → CONTRIBUTING states the no-copy rule | Rule present | tools/kaname_tools/test/policy_docs_test.dart | CONTRIBUTING has the no-copy section | green |
+| contribution-policy → CONTRIBUTING states the no-copy rule | A contribution with copied code | tools/kaname_tools/test/policy_docs_test.dart | CONTRIBUTING declines copied code and the PR template has the no-copy item | green |
+| contribution-policy → CONTRIBUTING states the EULA boundary | Boundary present | tools/kaname_tools/test/policy_docs_test.dart | CONTRIBUTING lists allowed and forbidden integrations | green |
+| contribution-policy → CONTRIBUTING states the EULA boundary | A feature outside the boundary | tools/kaname_tools/test/policy_docs_test.dart | CONTRIBUTING rejects out-of-boundary features regardless of default | green |
+| contribution-policy → Every commit is signed off under the DCO | Signed commit | tools/kaname_tools/test/policy_docs_test.dart | CONTRIBUTING requires DCO sign-off and shows git commit -s | green |
 | contribution-policy → Every commit is signed off under the DCO | Agent-made commit | n/a (mechanical: trailer order of this change's commits from `git log main..HEAD`) → evidence/commit-trailers.md | task 6.5 | red |
-| contribution-policy → Every commit is signed off under the DCO | Unsigned commit | tools/kaname_tools/test/policy_docs_test.dart | CONTRIBUTING explains amending with sign-off and makes no CI claim | red |
-| contribution-policy → Pull requests carry a provenance checklist | New pull request | tools/kaname_tools/test/policy_docs_test.dart | PR template has the three check items | red |
-| contribution-policy → Pull requests carry a provenance checklist | Template missing | tools/kaname_tools/test/workspace_test.dart | missing required file fails with its path | red |
-| contribution-policy → Vulnerabilities are reported privately | Reporter finds the channel | tools/kaname_tools/test/policy_docs_test.dart | SECURITY names private reporting, links advisories, no email | red |
+| contribution-policy → Every commit is signed off under the DCO | Unsigned commit | tools/kaname_tools/test/policy_docs_test.dart | CONTRIBUTING explains amending with sign-off and makes no CI claim | green |
+| contribution-policy → Pull requests carry a provenance checklist | New pull request | tools/kaname_tools/test/policy_docs_test.dart | PR template has the three check items | green |
+| contribution-policy → Pull requests carry a provenance checklist | Template missing | tools/kaname_tools/test/workspace_test.dart | missing required file fails with its path | green |
+| contribution-policy → Vulnerabilities are reported privately | Reporter finds the channel | tools/kaname_tools/test/policy_docs_test.dart | SECURITY names private reporting, links advisories, no email | green |
 | contribution-policy → Vulnerabilities are reported privately | Private reporting not enabled | user task 6.7 | — | user |
 | third-party-notices → Vendored assets are listed by hand | Current vendored assets listed | tools/kaname_tools/test/notices_repo_test.dart | repository notices cover every vendored source | green |
 | third-party-notices → Vendored assets are listed by hand | A vendored source without an entry | tools/kaname_tools/test/notices_test.dart | check names a missing source or licence file | green |
@@ -71,9 +71,9 @@ Skills for every implementer and reviewer packet: `dart-use-pattern-matching`, `
 
 ## 5. Contribution policy documents
 
-- [ ] 5.1 Write failing tests in `tools/kaname_tools/test/policy_docs_test.dart` for the contribution-policy rows mapped to it (no-copy section; copied code declined and the PR template's no-copy item; EULA allowed and forbidden lists; out-of-boundary features rejected regardless of default; DCO 1.1 with `git commit -s`; amend with sign-off and no CI claim yet; PR template's three items; SECURITY's private reporting, advisory link, no email, no supported versions before 0.1). Verify they fail because the files do not exist.
-- [ ] 5.2 Write `CONTRIBUTING.md` (no-copy rule per ADR 0002; EULA boundary; DCO 1.1 text or link, `git commit -s`, amending unsigned commits, unsigned PRs not merged, with an automated check arriving in `ci-matrix`; toolchain through mise and `mise run check`; branch and PR flow), `SECURITY.md` (S4) and `.github/pull_request_template.md` (S7). Verify the 5.1 tests and the workspace required-files test pass, and flip their rows green.
-- [ ] 5.3 Update README.md's Development section: the workspace layout, `mise run resolve` and `mise run check`, links to CONTRIBUTING and SECURITY, and the status line. Verify by review.
+- [x] 5.1 Write failing tests in `tools/kaname_tools/test/policy_docs_test.dart` for the contribution-policy rows mapped to it (no-copy section; copied code declined and the PR template's no-copy item; EULA allowed and forbidden lists; out-of-boundary features rejected regardless of default; DCO 1.1 with `git commit -s`; amend with sign-off and no CI claim yet; PR template's three items; SECURITY's private reporting, advisory link, no email, no supported versions before 0.1). Verify they fail because the files do not exist.
+- [x] 5.2 Write `CONTRIBUTING.md` (no-copy rule per ADR 0002; EULA boundary; DCO 1.1 text or link, `git commit -s`, amending unsigned commits, unsigned PRs not merged, with an automated check arriving in `ci-matrix`; toolchain through mise and `mise run check`; branch and PR flow), `SECURITY.md` (S4) and `.github/pull_request_template.md` (S7). Verify the 5.1 tests and the workspace required-files test pass, and flip their rows green.
+- [x] 5.3 Update README.md's Development section: the workspace layout, `mise run resolve` and `mise run check`, links to CONTRIBUTING and SECURITY, and the status line. Verify by review.
 
 ## 6. Tasks and integration
 
