@@ -37,7 +37,7 @@ A mise task SHALL regenerate a delimited dependency section of `THIRD_PARTY_NOTI
 - **THEN** it exits non-zero with a message to run the resolve task first, and leaves the file unchanged
 
 ### Requirement: A stale dependency section is detectable
-The notices task SHALL have a check mode that writes nothing and fails when the dependency section differs from what the current lockfile would generate, or when a vendored source is missing from the hand-written sections. Running it in CI belongs to `ci-matrix`.
+The notices task SHALL have a check mode that writes nothing and fails when the dependency section differs from what the current lockfile would generate, or when a vendored source is missing from the hand-written sections. Running it in CI belongs to `ci-matrix`, as do the licence-compatibility check and the DCO sign-off check; until then they are deliberately not enforced automatically.
 
 #### Scenario: Up to date
 - **WHEN** the check mode runs right after the notices task
