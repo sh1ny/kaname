@@ -64,9 +64,11 @@ final class NoticesFailed extends NoticesWriteResult {
 /// and leading and trailing blank lines are removed. Nothing else changes.
 ///
 /// **C5:** Packages taken from the Flutter SDK (`source: sdk`) are referenced,
-/// not copied. Their index line carries the reference `flutter-sdk`, which
-/// points to the Flutter SDK's own LICENSE file, because that file is large and
-/// the lockfile has no per-package licence for them.
+/// not copied. Their index line carries the reference `flutter-sdk`, whose
+/// note names the Flutter SDK's root `LICENSE` (Flutter itself) and
+/// `bin/cache/pkg/sky_engine/LICENSE` (the engine and its bundled third-party
+/// components), because `sky_engine`'s LICENSE, which aggregates the engine's
+/// third-party notices, is very large.
 ///
 /// The notices file is replaced atomically: the new content goes to a
 /// temporary file in the same directory, which is then renamed over the
@@ -92,8 +94,10 @@ final class NoticesGenerator {
 
   /// The text under the [flutterSdkRef] heading.
   static const String flutterSdkNote =
-      'Packages from the Flutter SDK are not copied here. Their licence is '
-      'the LICENSE file at the root of the Flutter SDK.';
+      'Packages from the Flutter SDK are not copied here. Their licences are '
+      'in two files of the Flutter SDK: LICENSE at its root (Flutter itself) '
+      'and bin/cache/pkg/sky_engine/LICENSE (the engine and its bundled '
+      'third-party components).';
 
   static const String _lockPath = 'pubspec.lock';
   static const String _packageConfigPath = '.dart_tool/package_config.json';

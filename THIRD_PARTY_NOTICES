@@ -156,7 +156,7 @@ webkit_inspection_protocol 1.2.1 hosted L21
 yaml 3.1.4 hosted L22
 
 ----- flutter-sdk -----
-Packages from the Flutter SDK are not copied here. Their licence is the LICENSE file at the root of the Flutter SDK.
+Packages from the Flutter SDK are not copied here. Their licences are in two files of the Flutter SDK: LICENSE at its root (Flutter itself) and bin/cache/pkg/sky_engine/LICENSE (the engine and its bundled third-party components).
 
 ----- L1 -----
 Copyright 2019, the Dart project authors.

@@ -21,3 +21,75 @@ run = "openspec validate --all --strict"
 [tasks."spec:list"]
 description = "List OpenSpec changes"
 run = "openspec list"
+
+# Workspace tasks. Every entry is one portable command (no shell syntax), so
+# the same tasks run on the Windows CI runner.
+
+[tasks.resolve]
+description = "Resolve the pub workspace into the root pubspec.lock"
+run = "flutter pub get"
+
+[tasks.analyze]
+description = "Analyse every workspace member; infos are fatal"
+run = "dart analyze --fatal-infos"
+
+[tasks."format:check"]
+description = "Fail if any Dart file in a workspace member is unformatted"
+# The member directories come from `kaname_tools workspace --format-dirs`, so
+# the check follows the workspace list and never touches .claude/ or brand/.
+run = "dart format --output=none --set-exit-if-changed {{ exec(command='mise exec -- dart run kaname_tools workspace --format-dirs') | split(pat='\n') | join(sep=' ') }}"
+
+[tasks."test:core"]
+description = "Run the kaname_core tests"
+dir = "packages/kaname_core"
+run = "dart test"
+
+[tasks."test:tools"]
+description = "Run the kaname_tools tests"
+dir = "tools/kaname_tools"
+run = "dart test"
+
+[tasks."test:app"]
+description = "Run the app's widget tests"
+dir = "app"
+run = "flutter test"
+
+[tasks.test]
+description = "Run every workspace member's tests"
+run = [
+  { task = "test:core" },
+  { task = "test:tools" },
+  { task = "test:app" },
+]
+
+[tasks.workspace]
+description = "Check workspace membership, package placement and naming, and required files"
+run = "dart run kaname_tools workspace"
+
+[tasks.purity]
+description = "Check that packages under packages/ and tools/ stay pure Dart"
+run = "dart run kaname_tools purity"
+
+[tasks.notices]
+description = "Regenerate the pub dependency section of THIRD_PARTY_NOTICES"
+run = "dart run kaname_tools notices --write"
+
+[tasks."notices:check"]
+description = "Fail if THIRD_PARTY_NOTICES is stale or misses a vendored source"
+run = "dart run kaname_tools notices --check"
+
+[tasks."build:web"]
+description = "Build the app for the web (release)"
+dir = "app"
+run = "flutter build web --release"
+
+[tasks.check]
+description = "Run every local check (resolve first); stops at the first failure"
+run = [
+  { task = "workspace" },
+  { task = "purity" },
+  { task = "analyze" },
+  { task = "format:check" },
+  { task = "test" },
+  { task = "notices:check" },
+]
