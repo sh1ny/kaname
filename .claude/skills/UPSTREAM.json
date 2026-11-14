@@ -1,0 +1,147 @@
+{
+  "fetched": "2026-11-14",
+  "note": "Vendored copies for Claude and OMP. Refresh from recorded upstream repositories and retain their licences.",
+  "sources": [
+    {
+      "repository": "https://github.com/sh1ny/specwright",
+      "commit": "a4ce3958d5e95e04501879619577d564c7994234",
+      "version": "0.34.0",
+      "license": "LICENSE.specwright",
+      "license_id": "MIT",
+      "path": "skills",
+      "skills": ["specwright-branch", "specwright-commit", "specwright-debug", "specwright-finish", "specwright-pr", "specwright-release", "specwright-review", "specwright-roadmap"],
+      "note": "Skills and schema are unmodified; harness agent headers apply the owner-approved #140, #170 and find-to-glob fixes documented in AGENTS.md."
+    },
+    {
+      "repository": "https://github.com/Fission-AI/OpenSpec",
+      "version": "1.16.0",
+      "license": "LICENSE.openspec",
+      "license_id": "MIT",
+      "skills": ["openspec-apply-change", "openspec-archive-change", "openspec-bulk-archive-change", "openspec-continue-change", "openspec-explore", "openspec-ff-change", "openspec-new-change", "openspec-onboard", "openspec-propose", "openspec-sync-specs", "openspec-update-change", "openspec-verify-change"],
+      "note": "Existing generated OpenSpec skills and commands retained for Claude and OMP."
+    },
+    {
+      "repository": "https://github.com/dart-lang/skills",
+      "commit": "fa691671fda391ea1d1f8c7ae61bddc03348ec85",
+      "license": "LICENSE.dart",
+      "skills": [
+        "dart-add-unit-test",
+        "dart-build-cli-app",
+        "dart-collect-coverage",
+        "dart-fix-runtime-errors",
+        "dart-generate-test-mocks",
+        "dart-migrate-to-checks-package",
+        "dart-resolve-package-conflicts",
+        "dart-run-static-analysis",
+        "dart-setup-ffi-assets",
+        "dart-use-doc-examples",
+        "dart-use-ffigen",
+        "dart-use-path-package",
+        "dart-use-pattern-matching",
+        "dart-use-primary-constructors",
+        "dart-write-documentation"
+      ],
+      "path": "skills"
+    },
+    {
+      "repository": "https://github.com/flutter/agent-plugins",
+      "commit": "e5a88d2be19cbf7ba1ef974375e5846492aca2ac",
+      "license": "LICENSE.flutter",
+      "skills": [
+        "flutter-add-integration-test",
+        "flutter-add-widget-preview",
+        "flutter-add-widget-test",
+        "flutter-apply-architecture-best-practices",
+        "flutter-build-responsive-layout",
+        "flutter-fix-layout-issues",
+        "flutter-implement-json-serialization",
+        "flutter-setup-declarative-routing",
+        "flutter-setup-localization",
+        "flutter-use-http-package"
+      ],
+      "path": "skills",
+      "note": "The repository also mirrors all Dart skills. The dart-lang/skills copies are canonical; two mirrors differ (dart-migrate-to-checks-package and dart-use-doc-examples)."
+    },
+    {
+      "repository": "https://github.com/serverpod/serverpod",
+      "commit": "d69332c112d6a5ab3388464ea721a230984a34b3",
+      "license": "LICENSE.serverpod",
+      "skills": [
+        "serverpod-auth",
+        "serverpod-caching",
+        "serverpod-configuration",
+        "serverpod-database",
+        "serverpod-deployment",
+        "serverpod-endpoints",
+        "serverpod-file-uploads",
+        "serverpod-flutter-frontend",
+        "serverpod-health-checks",
+        "serverpod-logging",
+        "serverpod-migrations",
+        "serverpod-models",
+        "serverpod-modules",
+        "serverpod-overview",
+        "serverpod-scheduling",
+        "serverpod-server-events",
+        "serverpod-sessions",
+        "serverpod-streams",
+        "serverpod-testing",
+        "serverpod-upgrading",
+        "serverpod-webserver"
+      ],
+      "path": "packages/serverpod/skills",
+      "version": "4.1.1",
+      "repository_license": "LICENSE.serverpod-root",
+      "license_id": "SSPL-1.0",
+      "note": "Unmodified package skills are a separate third-party aggregate under SSPL, not AGPL. The root BSD-3-Clause licence is retained for Serverpod copyright attribution. Owner approved redistribution with both notices."
+    },
+    {
+      "repository": "https://github.com/mattpocock/skills",
+      "commit": "5863806dd4e15c63174bee4e7515a4256792ecfa",
+      "license": "LICENSE.mattpocock",
+      "skills": [
+        "codebase-design",
+        "domain-modeling",
+        "improve-codebase-architecture"
+      ],
+      "path": "skills/engineering"
+    },
+    {
+      "repository": "https://github.com/cursor/plugins",
+      "commit": "3dbd22ff12742fb28c9700b9760baa29ed41dc13",
+      "license": "LICENSE.unslop",
+      "skills": [
+        "unslop"
+      ],
+      "path": "pstack/skills/unslop"
+    },
+    {
+      "repository": "https://github.com/pbakaus/impeccable",
+      "commit": "acb4cfe14470b1fdf51e855431af618d936b7db8",
+      "license": "LICENSE.impeccable",
+      "skills": [
+        "impeccable"
+      ],
+      "path": ".claude/skills/impeccable",
+      "version": "4.9.1"
+    },
+    {
+      "repository": "https://github.com/cathrynlavery/diagram-design",
+      "commit": "f6db0decea96de66b901331a0f79a8d4b147ebae",
+      "license": "LICENSE.diagram-design",
+      "skills": [
+        "diagram-design"
+      ],
+      "path": "skills/diagram-design"
+    },
+    {
+      "repository": "https://github.com/upstash/context7",
+      "commit": "5c4a4b43cd5010f5678c6fceac3dd16865112e67",
+      "license": "LICENSE.find-docs",
+      "skills": [
+        "find-docs"
+      ],
+      "path": "skills/find-docs"
+    }
+  ]
+}

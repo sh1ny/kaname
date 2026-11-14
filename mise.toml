@@ -1,0 +1,23 @@
+# Toolchain for Kaname. Always use mise (`mise run <task>` or
+# `mise exec -- <cmd>`), never a Dart/Flutter from the inherited PATH.
+# Flutter 3.47.9 bundles Dart 3.13.7. Serverpod 4.1 needs
+# Flutter >= 3.44.4 / Dart >= 3.12.2. Its CLI becomes a package-local
+# development dependency in M0, not a global mise tool.
+# OpenSpec 1.16.0 is Specwright's exact pin.
+
+[tools]
+flutter = "3.47.9"
+node = "24"
+"npm:@fission-ai/openspec" = "1.16.0"
+
+[env]
+# Keep Specwright's verified native binary local and out of version control.
+SPECWRIGHT_HOME = "{{config_root}}/.specwright-local"
+
+[tasks."spec:validate"]
+description = "Validate every OpenSpec spec and change"
+run = "openspec validate --all --strict"
+
+[tasks."spec:list"]
+description = "List OpenSpec changes"
+run = "openspec list"

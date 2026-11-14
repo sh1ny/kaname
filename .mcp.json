@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "dart": {
+      "type": "stdio",
+      "command": "mise",
+      "args": ["exec", "--", "dart", "mcp-server", "--enable", "cli", "--enable", "flutter_app_lifecycle"]
+    },
+    "context7": {
+      "type": "stdio",
+      "command": "mise",
+      "args": ["exec", "--", "npx", "-y", "@upstash/context7-mcp"]
+    }
+  }
+}

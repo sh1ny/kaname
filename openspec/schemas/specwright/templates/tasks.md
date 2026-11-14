@@ -1,0 +1,22 @@
+# Tasks
+
+## Test map
+
+<!-- Every #### Scenario in the change's specs. New or changed behavior starts red; apply flips it green. An unchanged scenario carried in a MODIFIED requirement with a passing test starts green. Untestable scenarios map to a mechanical check marked n/a with a reason. -->
+
+| Requirement | Scenario | Test file | Test name | State |
+|---|---|---|---|---|
+| <!-- capability → requirement --> | <!-- scenario --> | <!-- path --> | <!-- name --> | red |
+
+<!-- A design assumption that work depends on gets a verify task before the first task that relies on it: `- [ ] 1.1 Verify A1: <what to read or run to settle it>`. -->
+
+## 1. <!-- Task Group Name -->
+
+- [ ] 1.1 <!-- Write failing test for <scenario> and verify it fails for the right reason -->
+- [ ] 1.2 <!-- Implement <behavior>; verify <test> passes and flip its row green -->
+
+## 2. <!-- Task Group Name -->
+
+- [ ] 2.1 <!-- Task description and how to verify it -->
+
+<!-- Markers right after the id, lowercase. A check only the user can make: `- [ ] 2.2 [user] What the user checks`; only the user ticks it. Evidence to capture: `- [ ] 2.3 [evidence] What to capture → evidence/<file>`; one path under the change folder, ticked only when the file is present, non-empty and committed with the task. -->
