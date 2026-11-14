@@ -37,6 +37,9 @@ run = "dart analyze --fatal-infos"
 description = "Fail if any Dart file in a workspace member is unformatted"
 # The member directories come from `kaname_tools workspace --format-dirs`, so
 # the check follows the workspace list and never touches .claude/ or brand/.
+# The list is pasted into the command line, so the tool refuses any member path
+# other than `app` or `<package folder>/kaname_<name>` (lower-case letters,
+# digits and `_`); then the task fails before running anything.
 run = "dart format --output=none --set-exit-if-changed {{ exec(command='mise exec -- dart run kaname_tools workspace --format-dirs') | split(pat='\n') | join(sep=' ') }}"
 
 [tasks."test:core"]

@@ -55,8 +55,11 @@ List<String> workspaceMemberDirectories(FileSystem fileSystem) {
 /// `packages/`, `server/` and `tools/`, that the package is listed in the
 /// root `workspace:` and declares `resolution: workspace`, that it sits at the
 /// right depth, carries the `kaname_` prefix and, outside the app, lives in a
-/// directory named after the package. It also verifies that the required
-/// top-level files exist.
+/// directory named after the package; the app's package is `kaname_app`. It
+/// also verifies that every listed member is one of those packages: a member
+/// outside the package folders, or one without a pubspec, would otherwise
+/// skip every check here and in `purity`. Finally it verifies that the
+/// required top-level files exist.
 ///
 /// Discovery never follows symbolic links and skips generated trees
 /// (`build/`, `.dart_tool/`, `flutter/ephemeral/`, `.symlinks/`,
@@ -94,13 +97,17 @@ final class WorkspaceCheck {
 
   static const _namePrefix = 'kaname_';
 
+  /// The package name of the app in `app/`.
+  static const String appPackageName = 'kaname_app';
+
   /// Runs the check and returns every package found and every problem.
   CheckReport run() {
     final problems = <String>[];
     final packages = <WorkspacePackage>[];
 
     final Set<String>? members = _loadMembers(problems);
-    for (final directory in _discover()..sort()) {
+    final discovered = _discover()..sort();
+    for (final directory in discovered) {
       final path = '$directory/pubspec.yaml';
       final Pubspec pubspec;
       try {
@@ -119,6 +126,17 @@ final class WorkspaceCheck {
       problems.addAll(_namingProblems(directory, pubspec.name));
       if (problems.length == before) {
         packages.add(WorkspacePackage(pubspec.name, directory));
+      }
+    }
+
+    for (final member in (members ?? const <String>{}).toList()..sort()) {
+      if (!packageRoots.contains(p.posix.split(member).first)) {
+        problems.add(
+          '$member: misplaced workspace member (rule: members live under '
+          '${packageRoots.map((root) => '$root/').join(', ')})',
+        );
+      } else if (!discovered.contains(member)) {
+        problems.add('$member: workspace member has no pubspec.yaml');
       }
     }
 
@@ -168,6 +186,9 @@ final class WorkspaceCheck {
     final isApp = directory == 'app';
     final segments = p.posix.split(directory);
     return [
+      if (isApp && name != appPackageName)
+        '$directory: package "$name" must be named $appPackageName '
+            '(rule: the app is app/ ($appPackageName))',
       if (!isApp && segments.length != 2)
         '$directory/pubspec.yaml: misplaced pubspec '
             '(rule: packages live at <${segments.first}>/<package name>/)',
@@ -184,7 +205,11 @@ final class WorkspaceCheck {
 /// The `workspace` command: membership, placement, naming and required files.
 ///
 /// With `--format-dirs` it prints only the workspace member directories, one
-/// per line, for the format check.
+/// per line, for the format check. The mise task pastes that output into a
+/// shell command line, so it refuses (exit 1, nothing printed) any member
+/// path other than `app` or `<package folder>/kaname_<name>` in lower-case
+/// letters, digits and `_`: a listed path such as `packages/x; rm -rf ~`
+/// would otherwise run as a command.
 final class WorkspaceCommand extends Command<int> {
   /// Creates the command over [_fileSystem], writing to [_output].
   WorkspaceCommand(this._fileSystem, this._output) {
@@ -200,6 +225,12 @@ final class WorkspaceCommand extends Command<int> {
   final FileSystem _fileSystem;
   final CliOutput _output;
 
+  /// Member paths the format check accepts: nothing a shell would read as
+  /// anything but a word.
+  static final _formatDirPattern = RegExp(
+    r'^(app|(app_packages|packages|server|tools)/kaname_[a-z0-9_]+)$',
+  );
+
   @override
   String get name => 'workspace';
 
@@ -211,15 +242,31 @@ final class WorkspaceCommand extends Command<int> {
   @override
   int run() {
     if (argResults!.flag('format-dirs')) {
+      final List<String> directories;
       try {
-        for (final directory in workspaceMemberDirectories(_fileSystem)) {
-          _output.out.writeln(directory);
-        }
-        return exitSuccess;
+        directories = workspaceMemberDirectories(_fileSystem);
       } on PubspecException catch (e) {
         _output.err.writeln(e);
         return exitCheckFailed;
       }
+      final unsafe = [
+        for (final directory in directories)
+          if (!_formatDirPattern.hasMatch(directory)) directory,
+      ];
+      if (unsafe.isNotEmpty) {
+        for (final directory in unsafe) {
+          _output.err.writeln(
+            '"$directory": not a plain package path; the format check takes '
+            'only app or <package folder>/kaname_<name> (lower-case letters, '
+            'digits and _)',
+          );
+        }
+        return exitCheckFailed;
+      }
+      for (final directory in directories) {
+        _output.out.writeln(directory);
+      }
+      return exitSuccess;
     }
     final report = WorkspaceCheck(_fileSystem).run();
     if (!report.ok) {

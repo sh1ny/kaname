@@ -7,6 +7,7 @@ import 'package:yaml/yaml.dart';
 
 import 'cli.dart';
 import 'file_system.dart';
+import 'package_config.dart';
 
 /// The outcome of [NoticesGenerator.write].
 sealed class NoticesWriteResult {
@@ -100,7 +101,7 @@ final class NoticesGenerator {
       'third-party components).';
 
   static const String _lockPath = 'pubspec.lock';
-  static const String _packageConfigPath = '.dart_tool/package_config.json';
+  static const String _packageConfigPath = packageConfigPath;
   static const String _upstreamPath = '.claude/skills/UPSTREAM.json';
   static const String _skillsDirectory = '.claude/skills';
   static const String _fontsDirectory = 'brand/fonts';
@@ -331,56 +332,12 @@ final class NoticesGenerator {
   }
 
   /// Maps each package name to the directory holding its files.
-  ///
-  /// A root URI in the package config is either absolute (`file:///...`) or
-  /// relative to the `.dart_tool` directory that holds the config.
   Map<String, String> _packageRoots() {
-    final Object? document;
     try {
-      document = jsonDecode(_fileSystem.readAsString(_packageConfigPath));
-    } on FormatException catch (e) {
-      throw _NoticesError(
-        '$_packageConfigPath is not valid JSON: ${e.message}',
-      );
-    } on FileSystemException catch (e) {
-      throw _NoticesError('$_packageConfigPath cannot be read: ${e.message}');
+      return readPackageRoots(_fileSystem);
+    } on PackageConfigException catch (e) {
+      throw _NoticesError(e.message);
     }
-    if (document case {'packages': final List<Object?> packages}) {
-      final roots = <String, String>{};
-      for (final entry in packages) {
-        if (entry case {
-          'name': final String name,
-          'rootUri': final String rootUri,
-        }) {
-          roots[name] = _rootPath(rootUri);
-        } else {
-          throw _NoticesError(
-            '$_packageConfigPath: entry without name and rootUri: $entry',
-          );
-        }
-      }
-      return roots;
-    }
-    throw const _NoticesError('$_packageConfigPath has no packages list');
-  }
-
-  String _rootPath(String rootUri) {
-    final uri = Uri.parse(rootUri);
-    if (!uri.hasScheme) {
-      final relative = p.posix.normalize(
-        p.posix.join('.dart_tool', Uri.decodeComponent(uri.path)),
-      );
-      return relative == '.' ? '' : relative;
-    }
-    if (uri.scheme != 'file') {
-      throw _NoticesError(
-        '$_packageConfigPath: unsupported root URI "$rootUri"',
-      );
-    }
-    final path = uri.toFilePath(windows: false);
-    return path.length > 1 && path.endsWith('/')
-        ? path.substring(0, path.length - 1)
-        : path;
   }
 
   String _licenceText(String name, String version, String? root) {

@@ -124,6 +124,73 @@ workspace:
     );
   });
 
+  test('listed member outside the package folders or without a pubspec '
+      'fails', () async {
+    fs
+      ..writeFile('misc/helpers/pubspec.yaml', pubspecSource('kaname_helpers'))
+      ..writeFile('pubspec.yaml', '''
+name: kaname_workspace
+workspace:
+  - app
+  - packages/kaname_core
+  - tools/kaname_tools
+  - misc/helpers
+  - packages/kaname_ghost
+''');
+
+    final result = await runTool(fs, ['workspace']);
+
+    expect(result.code, 1);
+    final lines = result.err.trim().split('\n');
+    expect(
+      lines,
+      contains(
+        allOf(contains('misc/helpers'), contains('misplaced workspace member')),
+      ),
+    );
+    expect(
+      lines,
+      contains(
+        allOf(contains('packages/kaname_ghost'), contains('no pubspec.yaml')),
+      ),
+    );
+  });
+
+  test('app package not named kaname_app fails', () async {
+    fs.writeFile('app/pubspec.yaml', pubspecSource('kaname_client'));
+
+    final result = await runTool(fs, ['workspace']);
+
+    expect(result.code, 1);
+    expect(
+      result.err,
+      allOf(
+        contains('app'),
+        contains('"kaname_client"'),
+        contains('kaname_app'),
+      ),
+    );
+  });
+
+  test('format directories refuse a member path that is not a plain '
+      'package path', () async {
+    for (final member in ['packages/kaname_x; touch pwned', 'misc/helpers']) {
+      fs.writeFile(
+        'pubspec.yaml',
+        'name: kaname_workspace\n'
+            'workspace:\n'
+            '  - app\n'
+            '  - "$member"\n',
+      );
+
+      final result = await runTool(fs, ['workspace', '--format-dirs']);
+
+      expect(result.code, 1, reason: member);
+      expect(result.out, isEmpty, reason: member);
+      expect(result.err, contains(member));
+    }
+  });
+
   test('format directories are workspace members only', () async {
     fs
       ..writeFile('.claude/skills/x/pubspec.yaml', pubspecSource('skill'))

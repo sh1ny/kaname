@@ -3,6 +3,7 @@ import 'package:path/path.dart' as p;
 
 import 'cli.dart';
 import 'file_system.dart';
+import 'package_config.dart';
 import 'pubspec.dart';
 import 'workspace.dart';
 
@@ -14,6 +15,15 @@ import 'workspace.dart';
 /// taken from the Flutter SDK (`sdk: flutter`), or on a package whose name
 /// starts with `serverpod`; or when a `.dart` file under it imports or
 /// exports `package:flutter/`, `dart:ui` or `package:serverpod`.
+///
+/// A member also fails when any package it depends on brings in such a
+/// package, however deep in the tree: a hosted `go_router` needs Flutter just
+/// as much as `flutter` itself does. The tree is read from the resolved
+/// [packageConfigPath] and each package's pubspec, following only the
+/// `dependencies` of each dependency (their own dev dependencies are not
+/// part of what they bring). A member with dependencies therefore needs a
+/// resolved workspace; without one the check fails and asks for
+/// `mise run resolve`.
 ///
 /// There is no exemption list (decision C4). A package that needs Flutter
 /// belongs in `app_packages/`, which this check does not cover. An allowlist
@@ -37,6 +47,7 @@ final class PurityCheck {
 
   /// Runs the check; [CheckReport.packages] lists the pure members.
   CheckReport run() {
+    final roots = _LazyPackageRoots(_fileSystem);
     final List<String> members;
     try {
       members = workspaceMemberDirectories(_fileSystem);
@@ -57,6 +68,7 @@ final class PurityCheck {
       }
       final found = [
         ..._dependencyProblems(directory, pubspec),
+        ..._transitiveProblems(directory, pubspec, roots),
         ..._importProblems(directory),
       ];
       if (found.isEmpty) {
@@ -69,12 +81,73 @@ final class PurityCheck {
   }
 
   List<String> _dependencyProblems(String directory, Pubspec pubspec) => [
-    for (final Dependency(:name, :section, :sdk) in pubspec.dependencies)
-      if (name == 'flutter' || sdk == 'flutter' || name.startsWith('serverpod'))
-        '$directory: package "${pubspec.name}" depends on "$name" in '
-            '${section.key}, which is not allowed in a pure-Dart package '
-            '(rule: packages/ and tools/ stay pure Dart)',
+    for (final dependency in pubspec.dependencies)
+      if (_isForbiddenDependency(dependency))
+        '$directory: package "${pubspec.name}" depends on '
+            '"${dependency.name}" in ${dependency.section.key}, which is not '
+            'allowed in a pure-Dart package $_rule',
   ];
+
+  /// Walks the dependency tree below [pubspec] breadth-first and reports
+  /// every forbidden package it reaches, with the chain that brings it in.
+  List<String> _transitiveProblems(
+    String directory,
+    Pubspec pubspec,
+    _LazyPackageRoots roots,
+  ) {
+    final problems = <String>{};
+    final seen = <String>{};
+    final queue = <(String, List<String>)>[
+      for (final dependency in pubspec.dependencies)
+        if (!_isForbiddenDependency(dependency))
+          (dependency.name, [dependency.name]),
+    ];
+    for (var i = 0; i < queue.length; i++) {
+      final (name, chain) = queue[i];
+      if (!seen.add(name)) continue;
+      final Pubspec dependencyPubspec;
+      try {
+        final root = roots.of(name);
+        if (root == null) {
+          problems.add(
+            '$directory: dependency "$name" is not in $packageConfigPath; '
+            'run `mise run resolve` first',
+          );
+          continue;
+        }
+        dependencyPubspec = Pubspec.load(
+          _fileSystem,
+          p.posix.join(root, 'pubspec.yaml'),
+        );
+      } on PackageConfigException catch (e) {
+        problems.add('$directory: cannot read its dependencies: $e');
+        break;
+      } on PubspecException catch (e) {
+        problems.add('$directory: cannot read dependency "$name": $e');
+        continue;
+      }
+      for (final dependency in dependencyPubspec.dependencies) {
+        if (dependency.section != DependencySection.dependencies) continue;
+        if (_isForbiddenDependency(dependency)) {
+          problems.add(
+            '$directory: package "${pubspec.name}" depends on '
+            '"${dependency.name}" through ${chain.join(' -> ')}, which is '
+            'not allowed in a pure-Dart package $_rule',
+          );
+        } else {
+          queue.add((dependency.name, [...chain, dependency.name]));
+        }
+      }
+    }
+    return problems.toList();
+  }
+
+  static const _rule = '(rule: packages/ and tools/ stay pure Dart)';
+
+  static bool _isForbiddenDependency(Dependency dependency) =>
+      dependency.name == 'flutter' ||
+      dependency.sdk == 'flutter' ||
+      dependency.name.startsWith('serverpod');
 
   List<String> _importProblems(String directory) {
     final problems = <String>[];
@@ -100,13 +173,38 @@ final class PurityCheck {
     for (final match in _directive.allMatches(_fileSystem.readAsString(path)))
       if (_isForbidden(match[2]!))
         '$path: ${match[1]} of "${match[2]}" is not allowed in a pure-Dart '
-            'package (rule: packages/ and tools/ stay pure Dart)',
+            'package $_rule',
   ];
 
   static bool _isForbidden(String uri) =>
       uri == 'dart:ui' ||
       uri.startsWith('package:flutter/') ||
       uri.startsWith('package:serverpod');
+}
+
+/// The package config, read on first use and at most once.
+///
+/// Members without dependencies never need it, so the check runs on an
+/// unresolved checkout until a member gains one.
+final class _LazyPackageRoots {
+  _LazyPackageRoots(this._fileSystem);
+
+  final FileSystem _fileSystem;
+  Map<String, String>? _roots;
+
+  /// The directory of package [name], or `null` when the config does not
+  /// list it. Throws a [PackageConfigException] when the config is missing
+  /// or invalid.
+  String? of(String name) {
+    final roots = _roots ??= switch (_fileSystem.kindOf(packageConfigPath)) {
+      FsEntryKind.file => readPackageRoots(_fileSystem),
+      _ => throw const PackageConfigException(
+        '$packageConfigPath not found: the workspace is not resolved; '
+        'run `mise run resolve` first',
+      ),
+    };
+    return roots[name];
+  }
 }
 
 /// The `purity` command: reports each pure package or every violation.
