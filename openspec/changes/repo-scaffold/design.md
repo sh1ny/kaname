@@ -208,7 +208,7 @@ flowchart TD
 
 - **Lockfile changed, notices not regenerated:** `--check` fails and names the packages; `ci-matrix` runs it in CI. Until then, the `check` task runs it locally.
 - **Resolve not run on a fresh clone:** `notices` and the tasks that need `.dart_tool` exit with a message to run the resolve task first.
-- **New package added without a workspace entry:** `pub get` ignores it; the `workspace` check finds every `pubspec.yaml` under the package folders and fails on unlisted ones.
+- **New package added without a workspace entry:** `pub get` ignores it; the `workspace` check finds every `pubspec.yaml` under the package folders per D2's discovery rule (no symlinks followed; build, `.dart_tool`, ephemeral and plugin-symlink folders skipped) and fails on unlisted ones.
 - **Two developers regenerate notices on different lockfiles:** the merge conflicts in the generated section; regenerate after merging the lockfile.
 
 ## Mechanism Ledger (FULL)
