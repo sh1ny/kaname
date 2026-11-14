@@ -55,13 +55,22 @@ then force-push your branch (`git push --force-with-lease`). Pull requests with 
 
 ## Toolchain
 
-Development happens on Linux (WSL on Windows is the primary setup). Install [mise](https://mise.jdx.dev/) and let it provide the pinned Flutter, Dart and Node versions; never use a Flutter or Dart from elsewhere on your `PATH`.
+Development happens on Linux (WSL on Windows is the primary setup). Install [mise](https://mise.jdx.dev/) 2026.11.1 or newer (`mise.toml` sets this `min_version`, the oldest mise that reads the committed `mise.lock`) and let it provide the pinned Flutter, Dart, Java (Temurin 17) and Node versions; never use a Flutter, Dart or JDK from elsewhere on your `PATH`. A local Android build also needs an Android SDK, which mise does not install; CI uses the one on its Ubuntu runner.
 
 ```sh
 mise install          # install the pinned toolchain
 mise run resolve      # resolve the pub workspace (one root pubspec.lock)
 mise run check        # analysis, format, tests, workspace, purity and notices checks
 ```
+
+`mise.lock` records the checksum of every tool download for Linux, Windows and macOS, and CI installs only what it records. If you change a pin in `mise.toml`, regenerate the lockfile and the dependency-graph sidecars under `.mise/locks/` in the same commit:
+
+```sh
+mise lock --platform linux-x64,windows-x64,macos-arm64
+mise install --force npm:@fission-ai/openspec   # once per npm: tool, to record its provenance pin
+```
+
+Commit `mise.toml`, `mise.lock` and `.mise/locks/` together.
 
 Run `mise run check` before you push. If you change dependencies, run `mise run notices` to regenerate the dependency section of `THIRD_PARTY_NOTICES` and commit the result.
 

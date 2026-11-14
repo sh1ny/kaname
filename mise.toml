@@ -3,10 +3,16 @@
 # Flutter 3.47.9 bundles Dart 3.13.7. Serverpod 4.1 needs
 # Flutter >= 3.44.4 / Dart >= 3.12.2. Its CLI becomes a package-local
 # development dependency in M0, not a global mise tool.
-# OpenSpec 1.16.0 is Specwright's exact pin.
+# OpenSpec 1.16.0 is Specwright's exact pin. Java 17 (Temurin) builds
+# Android. mise.lock records checksums for every tool; a pin change
+# regenerates it (see CONTRIBUTING, Toolchain).
+
+# The oldest mise that reads lockfile format 4, which mise.lock uses.
+min_version = "2026.11.1"
 
 [tools]
 flutter = "3.47.9"
+java = "temurin-17"
 node = "24"
 "npm:@fission-ai/openspec" = "1.16.0"
 
