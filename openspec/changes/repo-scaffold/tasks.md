@@ -44,8 +44,8 @@ Skills for every implementer and reviewer packet: `dart-use-pattern-matching`, `
 
 ## 1. Preconditions and commit rules
 
-- [ ] 1.1 [evidence] Verify A3: in a scratch directory outside the repository, add `serverpod_cli` 4.1.x as a dev dependency of a throwaway package, run its `create` for a probe project through mise, and record the CLI version, whether each generated pubspec declares `resolution: workspace` and has a root `workspace:` list, then delete the scratch directory. A negative result goes to the owner before this task is ticked → evidence/serverpod-scaffold.md
-- [ ] 1.2 Update AGENTS.md's Git section (D8): every commit carries the owner's `Signed-off-by` line, written explicitly in the final trailer block after any `Specwright-*` trailers and before the single `Co-authored-by` trailer, never through `git commit -s`; replace the "no product code" status line. Verify with `grep -n "Signed-off-by" AGENTS.md`, and this group's commit carries the line.
+- [x] 1.1 [evidence] Verify A3: in a scratch directory outside the repository, add `serverpod_cli` 4.1.x as a dev dependency of a throwaway package, run its `create` for a probe project through mise, and record the CLI version, whether each generated pubspec declares `resolution: workspace` and has a root `workspace:` list, then delete the scratch directory. A negative result goes to the owner before this task is ticked → evidence/serverpod-scaffold.md
+- [x] 1.2 Update AGENTS.md's Git section (D8): every commit carries the owner's `Signed-off-by` line, written explicitly in the final trailer block after any `Specwright-*` trailers and before the single `Co-authored-by` trailer, never through `git commit -s`; replace the "no product code" status line. Verify with `grep -n "Signed-off-by" AGENTS.md`, and this group's commit carries the line.
 
 ## 2. Workspace, app and core package
 

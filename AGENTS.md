@@ -1,6 +1,6 @@
 # Kaname: agent instructions
 
-Kaname (要, "linchpin") is an open-source EVE Online corporation/alliance suite: one Flutter app for web, desktop and mobile, backed by Serverpod 4.1, with a personal console for every pilot. Licence: AGPL-3.0, except separately licensed vendored assets. Status: planning; no product code, roadmap or specs were created by tooling setup.
+Kaname (要, "linchpin") is an open-source EVE Online corporation/alliance suite: one Flutter app for web, desktop and mobile, backed by Serverpod 4.1, with a personal console for every pilot. Licence: AGPL-3.0, except separately licensed vendored assets. Status: M0 (walking skeleton). The root pub workspace holds `app/` (placeholder screen), `packages/kaname_core/` and `tools/kaname_tools/`; strategy, architecture and roadmap are in `openspec/`. No product features yet.
 
 These instructions apply to Claude Code and OMP. Claude plans; OMP implements and launches Claude for cross-model review. This project does not install Codex skills or agents.
 
@@ -58,6 +58,6 @@ These rules also apply to delegated agents. Before planning specs/design/tasks o
 ## Git and GitHub
 
 - Use Git, never jj. `main` is protected: branch, push and open a PR; never force-push or bypass protections. Owner merges; **do not merge automatically**, even when reviewers approve.
-- Commits explicitly set both author and committer to `Nikolay Bochev <309868+sh1ny@users.noreply.github.com>`. End the message after a blank line with exactly one `Co-authored-by: KintsugiBot <296966193+KintsugiBot@users.noreply.github.com>` trailer. Preserve other contributors' trailers.
+- Commits explicitly set both author and committer to `Nikolay Bochev <309868+sh1ny@users.noreply.github.com>`. End the message after a blank line with one final trailer block: any `Specwright-*` trailers, then the owner's `Signed-off-by: Nikolay Bochev <309868+sh1ny@users.noreply.github.com>` line (Developer Certificate of Origin, see CONTRIBUTING.md), then exactly one `Co-authored-by: KintsugiBot <296966193+KintsugiBot@users.noreply.github.com>` trailer. Write the `Signed-off-by` line explicitly in the message file; never use `git commit -s`, which appends it after `Co-authored-by`. KintsugiBot never signs off. Preserve other contributors' trailers.
 - Every authenticated `gh` operation and `git push` uses KintsugiBot's process-scoped credential: in one disposable shell unset `GH_TOKEN` and `GITHUB_TOKEN`, privately capture `gh auth token --hostname github.com --user KintsugiBot`, export as `GH_TOKEN`, require `gh api --hostname github.com user --jq .login` equals `KintsugiBot`, then act in that process. For pushes, use gh's credential helper in that fenced process. Never print/store credentials or run `gh auth switch`.
 - Codex reviews are requested with `@codex review`, posted as `sh1ny` through the same fenced credential pattern (Specwright posts it on ship). Review feedback: react +1 when accepted or -1 when rejected; explain with the quoted finding, fix commit and verification or evidence for rejection. Resolve only after reaction/reply are verified visible; leave waiting findings unresolved.
