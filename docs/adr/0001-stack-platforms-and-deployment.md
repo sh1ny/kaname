@@ -19,7 +19,7 @@ Kaname is a server plus one client on six platforms, built and maintained mostly
 ## Consequences
 - Domain logic that runs on the server, in the app and in the solo engine is pure Dart (ADR 0003).
 - Workers and loops need no cross-instance coordination in 1.0 (ADR 0009).
-- Windows desktop builds need a Windows machine. CI covers the other targets (roadmap M0).
+- CI builds every target, Windows included, on Linux, Windows and macOS runners (roadmap M0, R21). Local Windows desktop builds and runs need the separate Windows machine.
 - **Rejected:**
   - A separate backend language with a generated client: it would split the domain code and lose the shared solo engine.
   - Optional Redis: the budget state and the bus would each need a second design.
