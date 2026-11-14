@@ -8,9 +8,9 @@ commit_granularity: group
 github:
   login: KintsugiBot
   review_request:
-    body: ""
-    login: ""
-    after_fixes: false
+    body: "@codex review"
+    login: sh1ny
+    after_fixes: true
 
 # Claude plans; OMP implements and launches Claude for cross-model review.
 # Use the Claude CLI's configured model and thinking defaults.
@@ -38,7 +38,7 @@ pr:
   review_after_archive: false
   reviewers: {}
   settle: 5m
-  request_as: KintsugiBot
+  request_as: sh1ny
   merge: user
   # Agent-only options retained from the reference; inactive with merge: user.
   merge_method: merge
