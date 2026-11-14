@@ -1,6 +1,6 @@
 # Kaname: agent instructions
 
-Kaname (要, "linchpin") is an open-source EVE Online corporation/alliance suite: one Flutter app for web, desktop and mobile, backed by Serverpod 4.1, with a personal console for every pilot. Licence: AGPL-3.0, except separately licensed vendored assets. Status: planning; no product code, roadmap or specs were created by tooling setup.
+Kaname (要, "linchpin") is an open-source EVE Online corporation/alliance suite: one Flutter app for web, desktop and mobile, backed by Serverpod 4.1, with a personal console for every pilot. Licence: AGPL-3.0, except separately licensed vendored assets. Status: M0 (walking skeleton). The root pub workspace holds `app/` (placeholder screen), `packages/kaname_core/` and `tools/kaname_tools/`; strategy, architecture and roadmap are in `openspec/`. No product features yet.
 
 These instructions apply to Claude Code and OMP. Claude plans; OMP implements and launches Claude for cross-model review. This project does not install Codex skills or agents.
 
@@ -8,7 +8,7 @@ These instructions apply to Claude Code and OMP. Claude plans; OMP implements an
 
 - Primary development and tests run in WSL Ubuntu on the Linux filesystem. A separate Windows clone is only for building/running the Windows desktop app; it receives commits through GitHub. Never edit or synchronize that clone from WSL tooling.
 - `mise.toml` pins Flutter 3.47.9 (Dart 3.13.7), Node 24 and OpenSpec 1.16.0. Run `mise install`, then always `mise exec -- <command>` or `mise run <task>`. Check `mise exec -- which <tool>` is a Linux path: WSL's inherited PATH can silently select Windows tools.
-- Current tasks: `mise run spec:validate` (all, strict) and `mise run spec:list`. Application tasks and package-local `serverpod_cli` are added in M0, not globally installed.
+- Tasks: `mise run resolve` (workspace `pub get`), then `mise run check` (workspace, purity, analyze, format:check, test, notices:check; stops at the first failure). Also `analyze`, `format:check`, `test`, `notices` (regenerate THIRD_PARTY_NOTICES after any dependency change), `build:web`, `spec:validate` (all, strict) and `spec:list`; `mise tasks` lists them. Package-local `serverpod_cli` arrives with `serverpod-skeleton`, never globally installed.
 - `.mcp.json` and `.omp/mcp.json` configure Dart (`dart mcp-server --enable cli --enable flutter_app_lifecycle`) and Context7 (`npx -y @upstash/context7-mcp`) through mise. Claude enables and allow-lists only these two servers in `.claude/settings.json`. Never commit an API key.
 - Prefer Dart MCP for analysis, formatting, tests and package operations when available; otherwise run the equivalent through mise.
 - Use `find-docs` and Context7 for current library/API/CLI documentation, not recalled API signatures.
@@ -58,6 +58,6 @@ These rules also apply to delegated agents. Before planning specs/design/tasks o
 ## Git and GitHub
 
 - Use Git, never jj. `main` is protected: branch, push and open a PR; never force-push or bypass protections. Owner merges; **do not merge automatically**, even when reviewers approve.
-- Commits explicitly set both author and committer to `Nikolay Bochev <309868+sh1ny@users.noreply.github.com>`. End the message after a blank line with exactly one `Co-authored-by: KintsugiBot <296966193+KintsugiBot@users.noreply.github.com>` trailer. Preserve other contributors' trailers.
+- Commits explicitly set both author and committer to `Nikolay Bochev <309868+sh1ny@users.noreply.github.com>`. End the message after a blank line with one final trailer block: any `Specwright-*` trailers, then the owner's `Signed-off-by: Nikolay Bochev <309868+sh1ny@users.noreply.github.com>` line (Developer Certificate of Origin, see CONTRIBUTING.md), then exactly one `Co-authored-by: KintsugiBot <296966193+KintsugiBot@users.noreply.github.com>` trailer. Write the `Signed-off-by` line explicitly in the message file; never use `git commit -s`, which appends it after `Co-authored-by`. KintsugiBot never signs off. Preserve other contributors' trailers.
 - Every authenticated `gh` operation and `git push` uses KintsugiBot's process-scoped credential: in one disposable shell unset `GH_TOKEN` and `GITHUB_TOKEN`, privately capture `gh auth token --hostname github.com --user KintsugiBot`, export as `GH_TOKEN`, require `gh api --hostname github.com user --jq .login` equals `KintsugiBot`, then act in that process. For pushes, use gh's credential helper in that fenced process. Never print/store credentials or run `gh auth switch`.
 - Codex reviews are requested with `@codex review`, posted as `sh1ny` through the same fenced credential pattern (Specwright posts it on ship). Review feedback: react +1 when accepted or -1 when rejected; explain with the quoted finding, fix commit and verification or evidence for rejection. Resolve only after reaction/reply are verified visible; leave waiting findings unresolved.

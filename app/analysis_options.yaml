@@ -1,0 +1,15 @@
+# The app adds flutter_lints on top of the shared root options (design D1).
+include:
+  - ../analysis_options.yaml
+  - package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    # Generated platform projects.
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**

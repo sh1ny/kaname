@@ -1,0 +1,14 @@
+name: kaname_workspace
+description: Root pub workspace for Kaname. Not a package of its own.
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+workspace:
+  - app
+  - packages/kaname_core
+  - tools/kaname_tools
+
+dev_dependencies:
+  lints: ^6.0.0
