@@ -1,0 +1,687 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:args/command_runner.dart';
+import 'package:path/path.dart' as p;
+import 'package:yaml/yaml.dart';
+
+import 'cli.dart';
+import 'file_system.dart';
+
+/// The outcome of [NoticesGenerator.write].
+sealed class NoticesWriteResult {
+  const NoticesWriteResult();
+}
+
+/// The notices file was rewritten; [packages] packages are listed.
+final class NoticesUpdated extends NoticesWriteResult {
+  /// Creates a result for a rewrite listing [packages] packages.
+  const NoticesUpdated(this.packages);
+
+  /// How many locked packages the generated section lists.
+  final int packages;
+}
+
+/// The generated section was already current; nothing was written.
+final class NoticesUnchanged extends NoticesWriteResult {
+  /// Creates the result.
+  const NoticesUnchanged();
+}
+
+/// Nothing was written because of [problems].
+final class NoticesFailed extends NoticesWriteResult {
+  /// Creates a failure carrying every problem found.
+  const NoticesFailed(this.problems);
+
+  /// What went wrong, each entry naming what it concerns.
+  final List<String> problems;
+}
+
+/// Generates and checks the dependency section of `THIRD_PARTY_NOTICES`.
+///
+/// The file has two kinds of text. Hand-written sections (bundled fonts and
+/// vendored skill sources) come first and are never rewritten. The generated
+/// section lies between two fixed marker lines, [beginMarker] and
+/// [endMarker] (decision C3), so a later CI staleness check can read it.
+///
+/// The generated section has one index line per package in the root
+/// `pubspec.lock`, dev-only packages included (design D3), sorted by name:
+///
+/// ```text
+/// name version source licence-ref
+/// ```
+///
+/// Each distinct licence text then appears once under a heading
+/// `----- L1 -----`, `----- L2 -----` and so on, numbered in order of first
+/// use in the sorted index. The licence of a package is the first of
+/// `LICENSE`, `LICENSE.md`, `LICENSE.txt` and `COPYING` (compared without
+/// regard to case; ties broken by name) in the package directory that
+/// `.dart_tool/package_config.json` names.
+///
+/// Licence text is normalised before it is compared and written: a leading
+/// byte-order mark is dropped, `CRLF` and lone `CR` become `LF`, trailing
+/// whitespace is stripped from every line (as [String.trimRight] defines it),
+/// and leading and trailing blank lines are removed. Nothing else changes.
+///
+/// **C5:** Packages taken from the Flutter SDK (`source: sdk`) are referenced,
+/// not copied. Their index line carries the reference `flutter-sdk`, which
+/// points to the Flutter SDK's own LICENSE file, because that file is large and
+/// the lockfile has no per-package licence for them.
+///
+/// The notices file is replaced atomically: the new content goes to a
+/// temporary file in the same directory, which is then renamed over the
+/// original, so an interrupted run leaves the old file whole.
+final class NoticesGenerator {
+  /// Creates a generator over [_fileSystem].
+  const NoticesGenerator(this._fileSystem);
+
+  final FileSystem _fileSystem;
+
+  /// The notices file, relative to the repository root.
+  static const String noticesPath = 'THIRD_PARTY_NOTICES';
+
+  /// The line that opens the generated section.
+  static const String beginMarker =
+      '===== BEGIN GENERATED: pub dependencies (mise run notices) =====';
+
+  /// The line that closes the generated section.
+  static const String endMarker = '===== END GENERATED: pub dependencies =====';
+
+  /// The licence reference of packages taken from the Flutter SDK.
+  static const String flutterSdkRef = 'flutter-sdk';
+
+  /// The text under the [flutterSdkRef] heading.
+  static const String flutterSdkNote =
+      'Packages from the Flutter SDK are not copied here. Their licence is '
+      'the LICENSE file at the root of the Flutter SDK.';
+
+  static const String _lockPath = 'pubspec.lock';
+  static const String _packageConfigPath = '.dart_tool/package_config.json';
+  static const String _upstreamPath = '.claude/skills/UPSTREAM.json';
+  static const String _skillsDirectory = '.claude/skills';
+  static const String _fontsDirectory = 'brand/fonts';
+  static const String _resolveHint = 'run `mise run resolve` first';
+  static const List<String> _licenceNames = [
+    'LICENSE',
+    'LICENSE.md',
+    'LICENSE.txt',
+    'COPYING',
+  ];
+
+  static final _indexLine = RegExp(r'^(\S+) (\S+) (\S+) (L\d+|flutter-sdk)$');
+
+  /// Rewrites the generated section from the lockfile.
+  ///
+  /// Text outside the markers is kept byte for byte. Leaves the file
+  /// untouched and returns [NoticesFailed] when the markers are missing,
+  /// duplicated or out of order, when the workspace is not resolved, or when
+  /// a package has no licence file.
+  NoticesWriteResult write() {
+    try {
+      final content = _readNotices();
+      final split = _split(content);
+      final generated = _generate();
+      final updated = '${split.prefix}${generated.region}${split.suffix}';
+      if (updated == content) return const NoticesUnchanged();
+      _replaceAtomically(updated);
+      return NoticesUpdated(generated.packages.length);
+    } on _NoticesError catch (e) {
+      return NoticesFailed([e.message]);
+    }
+  }
+
+  /// Checks the notices file without writing anything.
+  ///
+  /// Returns every problem found, empty when the file is current. The
+  /// generated section must equal what the lockfile would produce now, and
+  /// the hand-written text must cover every vendored source (see
+  /// [vendoredCoverageProblems]).
+  List<String> check() {
+    final String content;
+    final _Split split;
+    try {
+      content = _readNotices();
+      split = _split(content);
+    } on _NoticesError catch (e) {
+      return [e.message];
+    }
+    final problems = <String>[];
+    try {
+      final generated = _generate();
+      if (split.region != generated.region) {
+        problems.addAll(_stalenessProblems(split.region, generated.packages));
+      }
+    } on _NoticesError catch (e) {
+      problems.add(e.message);
+    }
+    try {
+      problems.addAll(_coverageProblems(split));
+    } on _NoticesError catch (e) {
+      problems.add(e.message);
+    }
+    return problems;
+  }
+
+  /// Lists the vendored sources the hand-written text does not mention.
+  ///
+  /// The vendored sources are every entry of `.claude/skills/UPSTREAM.json`
+  /// and every `brand/fonts/OFL-*.txt` file. Each source needs its repository
+  /// URL, and each recorded licence file its path, in the text outside the
+  /// generated markers. A name counts only as a whole token: a mention of
+  /// `LICENSE.serverpod-root` does not cover `LICENSE.serverpod`. Returns
+  /// every gap, or a problem if the notices file or the sources cannot be
+  /// read.
+  List<String> vendoredCoverageProblems() {
+    try {
+      return _coverageProblems(_split(_readNotices()));
+    } on _NoticesError catch (e) {
+      return [e.message];
+    }
+  }
+
+  // --- reading and splitting the notices file ---
+
+  String _readNotices() {
+    if (_fileSystem.kindOf(noticesPath) != FsEntryKind.file) {
+      throw const _NoticesError('$noticesPath not found');
+    }
+    try {
+      return _fileSystem.readAsString(noticesPath);
+    } on FileSystemException catch (e) {
+      throw _NoticesError('$noticesPath cannot be read: ${e.message}');
+    }
+  }
+
+  _Split _split(String content) {
+    final begins = <int>[];
+    final ends = <int>[];
+    var start = 0;
+    while (start <= content.length) {
+      final newline = content.indexOf('\n', start);
+      final stop = newline < 0 ? content.length : newline;
+      final line = content.substring(start, stop);
+      if (line == beginMarker) begins.add(start);
+      if (line == endMarker) ends.add(start);
+      if (newline < 0) break;
+      start = newline + 1;
+    }
+    switch ((begins.length, ends.length)) {
+      case (1, 1):
+        break;
+      case (0, _):
+        throw const _NoticesError('$noticesPath: BEGIN marker line is missing');
+      case (_, 0):
+        throw const _NoticesError('$noticesPath: END marker line is missing');
+      case (final b, final e):
+        throw _NoticesError(
+          '$noticesPath: expected one BEGIN and one END marker line, found '
+          '$b and $e',
+        );
+    }
+    if (begins.single > ends.single) {
+      throw const _NoticesError(
+        '$noticesPath: END marker line comes before the BEGIN marker line',
+      );
+    }
+    final regionEnd = ends.single + endMarker.length;
+    return _Split(
+      prefix: content.substring(0, begins.single),
+      region: content.substring(begins.single, regionEnd),
+      suffix: content.substring(regionEnd),
+    );
+  }
+
+  void _replaceAtomically(String content) {
+    const temporary = '$noticesPath.tmp';
+    try {
+      _fileSystem.writeAsString(temporary, content);
+      _fileSystem.rename(temporary, noticesPath);
+    } on FileSystemException catch (e) {
+      throw _NoticesError('$noticesPath cannot be written: ${e.message}');
+    } finally {
+      if (_fileSystem.kindOf(temporary) != null) {
+        try {
+          _fileSystem.delete(temporary);
+        } on FileSystemException {
+          // Nothing more can be done; the notices file itself is intact.
+        }
+      }
+    }
+  }
+
+  // --- the generated section ---
+
+  _Generated _generate() {
+    if (_fileSystem.kindOf(_packageConfigPath) != FsEntryKind.file) {
+      throw const _NoticesError(
+        '$_packageConfigPath not found: the workspace is not resolved; '
+        '$_resolveHint',
+      );
+    }
+    final roots = _packageRoots();
+    final packages = _lockedPackages()
+      ..sort((a, b) => a.name.compareTo(b.name));
+
+    final ids = <String, String>{};
+    final refs = <String>[];
+    for (final LockedPackage(:name, :version, :source) in packages) {
+      if (source == 'sdk') {
+        refs.add(flutterSdkRef);
+        continue;
+      }
+      final text = _licenceText(name, version, roots[name]);
+      refs.add(ids.putIfAbsent(text, () => 'L${ids.length + 1}'));
+    }
+
+    final sections = <List<String>>[
+      if (packages.isNotEmpty)
+        [
+          for (var i = 0; i < packages.length; i++)
+            '${packages[i].name} ${packages[i].version} '
+                '${packages[i].source} ${refs[i]}',
+        ],
+      if (refs.contains(flutterSdkRef))
+        ['----- $flutterSdkRef -----', flutterSdkNote],
+      for (final MapEntry(key: text, value: id) in ids.entries)
+        ['----- $id -----', ...text.split('\n')],
+    ];
+    final lines = [
+      beginMarker,
+      for (var i = 0; i < sections.length; i++) ...[
+        if (i > 0) '',
+        ...sections[i],
+      ],
+      endMarker,
+    ];
+    return _Generated(lines.join('\n'), packages);
+  }
+
+  List<LockedPackage> _lockedPackages() {
+    if (_fileSystem.kindOf(_lockPath) != FsEntryKind.file) {
+      throw const _NoticesError('$_lockPath not found; $_resolveHint');
+    }
+    final Object? document;
+    try {
+      document = loadYaml(_fileSystem.readAsString(_lockPath));
+    } on YamlException catch (e) {
+      throw _NoticesError('$_lockPath is not valid YAML: ${e.message}');
+    } on FileSystemException catch (e) {
+      throw _NoticesError('$_lockPath cannot be read: ${e.message}');
+    }
+    if (document case {'packages': final Map<Object?, Object?> packages}) {
+      return [
+        for (final MapEntry(:key, :value) in packages.entries)
+          switch ((key, value)) {
+            (
+              final String name,
+              {'source': final String source, 'version': final String version},
+            ) =>
+              LockedPackage(name, version, source),
+            _ => throw _NoticesError(
+              '$_lockPath: package "$key" has no string source and version',
+            ),
+          },
+      ];
+    }
+    throw const _NoticesError('$_lockPath has no packages: map');
+  }
+
+  /// Maps each package name to the directory holding its files.
+  ///
+  /// A root URI in the package config is either absolute (`file:///...`) or
+  /// relative to the `.dart_tool` directory that holds the config.
+  Map<String, String> _packageRoots() {
+    final Object? document;
+    try {
+      document = jsonDecode(_fileSystem.readAsString(_packageConfigPath));
+    } on FormatException catch (e) {
+      throw _NoticesError(
+        '$_packageConfigPath is not valid JSON: ${e.message}',
+      );
+    } on FileSystemException catch (e) {
+      throw _NoticesError('$_packageConfigPath cannot be read: ${e.message}');
+    }
+    if (document case {'packages': final List<Object?> packages}) {
+      final roots = <String, String>{};
+      for (final entry in packages) {
+        if (entry case {
+          'name': final String name,
+          'rootUri': final String rootUri,
+        }) {
+          roots[name] = _rootPath(rootUri);
+        } else {
+          throw _NoticesError(
+            '$_packageConfigPath: entry without name and rootUri: $entry',
+          );
+        }
+      }
+      return roots;
+    }
+    throw const _NoticesError('$_packageConfigPath has no packages list');
+  }
+
+  String _rootPath(String rootUri) {
+    final uri = Uri.parse(rootUri);
+    if (!uri.hasScheme) {
+      final relative = p.posix.normalize(
+        p.posix.join('.dart_tool', Uri.decodeComponent(uri.path)),
+      );
+      return relative == '.' ? '' : relative;
+    }
+    if (uri.scheme != 'file') {
+      throw _NoticesError(
+        '$_packageConfigPath: unsupported root URI "$rootUri"',
+      );
+    }
+    final path = uri.toFilePath(windows: false);
+    return path.length > 1 && path.endsWith('/')
+        ? path.substring(0, path.length - 1)
+        : path;
+  }
+
+  String _licenceText(String name, String version, String? root) {
+    if (root == null || _fileSystem.kindOf(root) != FsEntryKind.directory) {
+      throw _NoticesError(
+        'package $name $version: its directory is not in '
+        '$_packageConfigPath or does not exist; $_resolveHint',
+      );
+    }
+    final entries = _fileSystem.list(root)
+      ..sort((a, b) => a.name.compareTo(b.name));
+    for (final candidate in _licenceNames) {
+      for (final FsEntry(:name, :kind) in entries) {
+        if (kind == FsEntryKind.directory ||
+            name.toLowerCase() != candidate.toLowerCase()) {
+          continue;
+        }
+        final String raw;
+        try {
+          raw = _fileSystem.readAsString(p.posix.join(root, name));
+        } on FileSystemException catch (e) {
+          throw _NoticesError(
+            'package $name $version: licence file $name cannot be read: '
+            '${e.message}',
+          );
+        } on FormatException catch (e) {
+          throw _NoticesError(
+            'package $name $version: licence file $name is not UTF-8: '
+            '${e.message}',
+          );
+        }
+        final text = normaliseLicence(raw);
+        if (text.isEmpty) {
+          throw _NoticesError(
+            'package $name $version: licence file $name is empty',
+          );
+        }
+        return text;
+      }
+    }
+    throw _NoticesError(
+      'package $name $version: no licence file '
+      '(${_licenceNames.join(', ')}) in its package directory',
+    );
+  }
+
+  /// Normalises licence [raw] text as the class documentation describes.
+  static String normaliseLicence(String raw) {
+    final withoutBom = raw.startsWith('﻿') ? raw.substring(1) : raw;
+    final lines = [
+      for (final line
+          in withoutBom
+              .replaceAll('\r\n', '\n')
+              .replaceAll('\r', '\n')
+              .split('\n'))
+        line.trimRight(),
+    ];
+    while (lines.isNotEmpty && lines.first.isEmpty) {
+      lines.removeAt(0);
+    }
+    while (lines.isNotEmpty && lines.last.isEmpty) {
+      lines.removeLast();
+    }
+    return lines.join('\n');
+  }
+
+  // --- staleness ---
+
+  List<String> _stalenessProblems(
+    String currentRegion,
+    List<LockedPackage> expected,
+  ) {
+    final current = <String, String>{};
+    for (final line in currentRegion.split('\n').skip(1)) {
+      if (line.startsWith('----- ')) break;
+      if (_indexLine.firstMatch(line) case final match?) {
+        current[match[1]!] = match[2]!;
+      }
+    }
+    final wanted = {for (final p in expected) p.name: p.version};
+    final problems = <String>[
+      for (final MapEntry(:key, :value) in wanted.entries)
+        if (current[key] case null)
+          '$noticesPath: package $key $value is in $_lockPath but missing '
+              'from the dependency section',
+      for (final MapEntry(:key, :value) in current.entries)
+        if (!wanted.containsKey(key))
+          '$noticesPath: package $key $value is in the dependency section '
+              'but not in $_lockPath (extra)',
+      for (final MapEntry(:key, :value) in wanted.entries)
+        if (current[key] case final String old when old != value)
+          '$noticesPath: package $key is at $old in the dependency section '
+              'but $value in $_lockPath (changed)',
+    ];
+    if (problems.isEmpty) {
+      problems.add(
+        '$noticesPath: the dependency section is stale (licence text or '
+        'layout differs from what $_lockPath generates)',
+      );
+    }
+    return problems;
+  }
+
+  // --- vendored source coverage ---
+
+  List<String> _coverageProblems(_Split split) {
+    final handWritten = '${split.prefix}\n${split.suffix}';
+    final problems = <String>[];
+    final seen = <String>{};
+    void require(String token, String owner, String what) {
+      if (seen.add(token) && !_mentions(handWritten, token)) {
+        problems.add(
+          '$noticesPath: $owner: $what "$token" is not listed in the '
+          'hand-written sections',
+        );
+      }
+    }
+
+    for (final VendoredSource(:repository, :licenceFiles)
+        in _vendoredSources()) {
+      require(repository, repository, 'repository URL');
+      for (final file in licenceFiles) {
+        require('$_skillsDirectory/$file', repository, 'licence file');
+      }
+    }
+    for (final font in _fontLicences()) {
+      require('$_fontsDirectory/$font', 'bundled font', 'licence file');
+    }
+    return problems;
+  }
+
+  /// Whether [text] contains [token] as a whole token.
+  ///
+  /// The token must not continue into a longer file name or URL: the
+  /// character before it is not a name character or `/`, and what follows it
+  /// is not a name character, nor a `.` or `/` that starts another name
+  /// segment. A sentence-ending `.` is allowed.
+  static bool _mentions(String text, String token) => RegExp(
+    '(?<![A-Za-z0-9_\\-./])${RegExp.escape(token)}'
+    r'(?![A-Za-z0-9_\-]|[./][A-Za-z0-9_\-])',
+  ).hasMatch(text);
+
+  List<VendoredSource> _vendoredSources() {
+    if (_fileSystem.kindOf(_upstreamPath) != FsEntryKind.file) {
+      throw const _NoticesError('$_upstreamPath not found');
+    }
+    final Object? document;
+    try {
+      document = jsonDecode(_fileSystem.readAsString(_upstreamPath));
+    } on FormatException catch (e) {
+      throw _NoticesError('$_upstreamPath is not valid JSON: ${e.message}');
+    }
+    if (document case {'sources': final List<Object?> sources}) {
+      return [
+        for (final source in sources)
+          switch (source) {
+            final Map<Object?, Object?> entry &&
+                {
+                  'repository': final String repository,
+                  'license': final String licence,
+                } =>
+              VendoredSource(repository, [
+                licence,
+                if (entry['repository_license'] case final String root) root,
+              ]),
+            _ => throw _NoticesError(
+              '$_upstreamPath: source without repository and license: $source',
+            ),
+          },
+      ];
+    }
+    throw const _NoticesError('$_upstreamPath has no sources list');
+  }
+
+  List<String> _fontLicences() {
+    if (_fileSystem.kindOf(_fontsDirectory) != FsEntryKind.directory) {
+      return const [];
+    }
+    return [
+      for (final FsEntry(:name, :kind) in _fileSystem.list(_fontsDirectory))
+        if (kind == FsEntryKind.file &&
+            name.startsWith('OFL-') &&
+            name.endsWith('.txt'))
+          name,
+    ]..sort();
+  }
+}
+
+/// A package from the root `pubspec.lock`.
+final class LockedPackage {
+  /// Creates a locked package.
+  const LockedPackage(this.name, this.version, this.source);
+
+  /// The package name.
+  final String name;
+
+  /// The locked version.
+  final String version;
+
+  /// The lockfile source: `hosted`, `sdk`, `git` or `path`.
+  final String source;
+}
+
+/// A vendored third-party source recorded in `UPSTREAM.json`.
+final class VendoredSource {
+  /// Creates a source with its repository URL and licence file names.
+  const VendoredSource(this.repository, this.licenceFiles);
+
+  /// The upstream repository URL.
+  final String repository;
+
+  /// File names, under `.claude/skills/`, of every recorded licence text.
+  final List<String> licenceFiles;
+}
+
+final class _Split {
+  const _Split({
+    required this.prefix,
+    required this.region,
+    required this.suffix,
+  });
+
+  /// Everything before the BEGIN marker line.
+  final String prefix;
+
+  /// From the BEGIN marker line to the end of the END marker line.
+  final String region;
+
+  /// Everything after the END marker line.
+  final String suffix;
+}
+
+final class _Generated {
+  const _Generated(this.region, this.packages);
+
+  final String region;
+  final List<LockedPackage> packages;
+}
+
+final class _NoticesError implements Exception {
+  const _NoticesError(this.message);
+
+  final String message;
+}
+
+/// The `notices` command: writes or checks `THIRD_PARTY_NOTICES`.
+final class NoticesCommand extends Command<int> {
+  /// Creates the command over [_fileSystem], writing to [_output].
+  NoticesCommand(this._fileSystem, this._output) {
+    argParser
+      ..addFlag(
+        'write',
+        negatable: false,
+        help: 'Regenerate the dependency section from pubspec.lock.',
+      )
+      ..addFlag(
+        'check',
+        negatable: false,
+        help:
+            'Fail if the dependency section is stale or a vendored source '
+            'is not listed. Writes nothing.',
+      );
+  }
+
+  final FileSystem _fileSystem;
+  final CliOutput _output;
+
+  @override
+  String get name => 'notices';
+
+  @override
+  String get description =>
+      'Generate (--write) or check (--check) THIRD_PARTY_NOTICES.';
+
+  @override
+  int run() {
+    final results = argResults!;
+    if (results.flag('write') == results.flag('check')) {
+      usageException('Pass exactly one of --write or --check.');
+    }
+    final generator = NoticesGenerator(_fileSystem);
+    if (results.flag('check')) {
+      final problems = generator.check();
+      for (final problem in problems) {
+        _output.err.writeln(problem);
+      }
+      if (problems.isNotEmpty) return exitCheckFailed;
+      _output.out.writeln('${NoticesGenerator.noticesPath} is up to date');
+      return exitSuccess;
+    }
+    switch (generator.write()) {
+      case NoticesUpdated(:final packages):
+        _output.out.writeln(
+          '${NoticesGenerator.noticesPath} updated: $packages packages',
+        );
+      case NoticesUnchanged():
+        _output.out.writeln(
+          '${NoticesGenerator.noticesPath} is already up to date',
+        );
+      case NoticesFailed(:final problems):
+        for (final problem in problems) {
+          _output.err.writeln(problem);
+        }
+        return exitCheckFailed;
+    }
+    return exitSuccess;
+  }
+}

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:args/command_runner.dart';
 
 import 'file_system.dart';
+import 'notices.dart';
 import 'purity.dart';
 import 'real_file_system.dart';
 import 'workspace.dart';
@@ -37,7 +38,8 @@ final class CliOutput {
 CommandRunner<int> buildRunner(FileSystem fileSystem, CliOutput output) =>
     _Runner(output)
       ..addCommand(WorkspaceCommand(fileSystem, output))
-      ..addCommand(PurityCommand(fileSystem, output));
+      ..addCommand(PurityCommand(fileSystem, output))
+      ..addCommand(NoticesCommand(fileSystem, output));
 
 /// Runs `kaname_tools` with [args] and returns the process exit status.
 ///

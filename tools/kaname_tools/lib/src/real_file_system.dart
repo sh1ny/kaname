@@ -36,8 +36,11 @@ final class RealFileSystem implements FileSystem {
   /// The absolute path of the repository root.
   final String root;
 
-  String _absolute(String path) =>
-      path.isEmpty ? root : p.joinAll([root, ...p.posix.split(path)]);
+  String _absolute(String path) => switch (path) {
+    '' => root,
+    _ when path.startsWith('/') => Uri(scheme: 'file', path: path).toFilePath(),
+    _ => p.joinAll([root, ...p.posix.split(path)]),
+  };
 
   @override
   FsEntryKind? kindOf(String path) =>
@@ -60,4 +63,15 @@ final class RealFileSystem implements FileSystem {
 
   @override
   String readAsString(String path) => File(_absolute(path)).readAsStringSync();
+
+  @override
+  void writeAsString(String path, String content) =>
+      File(_absolute(path)).writeAsStringSync(content);
+
+  @override
+  void rename(String from, String to) =>
+      File(_absolute(from)).renameSync(_absolute(to));
+
+  @override
+  void delete(String path) => File(_absolute(path)).deleteSync();
 }

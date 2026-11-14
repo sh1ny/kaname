@@ -13,6 +13,12 @@ final class InMemoryFileSystem implements FileSystem {
   final Map<String, String> _files = {};
   final Map<String, String> _links = {};
 
+  /// How many times [writeAsString] and [rename] changed the file system.
+  int writeCount = 0;
+
+  /// Every file path, sorted.
+  List<String> get filePaths => _files.keys.toList()..sort();
+
   /// Creates or replaces the file at [path] with [content].
   void writeFile(String path, [String content = '']) => _files[path] = content;
 
@@ -69,4 +75,26 @@ final class InMemoryFileSystem implements FileSystem {
   @override
   String readAsString(String path) =>
       _files[_resolve(path)] ?? (throw FileSystemException('no file', path));
+
+  @override
+  void writeAsString(String path, String content) {
+    writeCount++;
+    _files[_resolve(path)] = content;
+  }
+
+  @override
+  void rename(String from, String to) {
+    writeCount++;
+    final content =
+        _files.remove(_resolve(from)) ??
+        (throw FileSystemException('no file', from));
+    _files[_resolve(to)] = content;
+  }
+
+  @override
+  void delete(String path) {
+    if (_files.remove(_resolve(path)) == null) {
+      throw FileSystemException('no file', path);
+    }
+  }
 }

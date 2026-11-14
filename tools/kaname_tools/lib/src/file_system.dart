@@ -22,11 +22,13 @@ final class FsEntry {
   final FsEntryKind kind;
 }
 
-/// Read-only view of the repository, injected into every check.
+/// View of the repository, injected into every check.
 ///
-/// All paths are relative to the repository root and use `/` as separator.
-/// The empty string names the root itself. Implementations never follow
-/// symbolic links when describing an entry, so the checks can skip them.
+/// Paths are relative to the repository root and use `/` as separator. The
+/// empty string names the root itself. A path that starts with `/` is
+/// absolute and names something outside the repository, such as a package in
+/// the pub cache. Implementations never follow symbolic links when describing
+/// an entry, so the checks can skip them.
 abstract interface class FileSystem {
   /// Describes the entry at [path], or returns `null` when nothing exists
   /// there.
@@ -39,4 +41,19 @@ abstract interface class FileSystem {
   ///
   /// Throws a `FileSystemException` when the file cannot be read.
   String readAsString(String path);
+
+  /// Writes [content] as UTF-8 text to the file at [path], replacing it.
+  ///
+  /// Throws a `FileSystemException` when the file cannot be written.
+  void writeAsString(String path, String content);
+
+  /// Renames the file [from] to [to], replacing any file already at [to].
+  ///
+  /// Throws a `FileSystemException` when the rename fails.
+  void rename(String from, String to);
+
+  /// Deletes the file at [path].
+  ///
+  /// Throws a `FileSystemException` when the file cannot be deleted.
+  void delete(String path);
 }
