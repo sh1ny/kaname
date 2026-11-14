@@ -84,7 +84,7 @@ Skills for every implementer and reviewer packet: `dart-use-pattern-matching`, `
 - [x] 6.5 [evidence] Record the trailer block of every commit on this branch from group 1's commit on (`git log --format='%H%n%(trailers)' main..HEAD`): the owner's `Signed-off-by` line comes before the single `Co-authored-by` trailer in each → evidence/commit-trailers.md
 - [x] 6.6 Verify C1, C2, C3 and C6 are at their spec destinations: the requirements named in design.md's Carried constraints exist with that text in `specs/workspace-layout/spec.md` and `specs/third-party-notices/spec.md` (archive copies them into the main specs). Also confirm the Flow & State Gaps line on unlisted packages matches D2's discovery rule (reviewer suggestion S4); a fix there is a design amendment under the drift rule.
 - [x] 6.8 Apply design review round 2 M1: change `NoticesGenerator.flutterSdkNote` in `tools/kaname_tools/lib/src/notices.dart` to name both the Flutter SDK's root `LICENSE` and `bin/cache/pkg/sky_engine/LICENSE`, update the C5 doc comment to the amended rationale, update the expected note in `notices_test.dart` first (see it fail), then run `mise exec -- dart run kaname_tools notices --write` and confirm `notices --check` and the tools tests pass.
-- [ ] 6.7 [user] Enable GitHub private vulnerability reporting on `sh1ny/kaname` (Settings → Code security → Private vulnerability reporting) and confirm the "Report a vulnerability" button shows on the Security tab.
+- [x] 6.7 [user] Enable GitHub private vulnerability reporting on `sh1ny/kaname` (Settings → Code security → Private vulnerability reporting) and confirm the "Report a vulnerability" button shows on the Security tab.
 
 ## Workflow follow-up
 
