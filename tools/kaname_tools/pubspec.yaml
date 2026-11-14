@@ -1,0 +1,18 @@
+name: kaname_tools
+description: Repository checks for Kaname, run in CI and locally (workspace layout, package purity, notices).
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+executables:
+  kaname_tools:
+
+dependencies:
+  args: ^2.7.0
+  path: ^1.9.1
+  yaml: ^3.1.3
+
+dev_dependencies:
+  test: ^1.26.0

@@ -8,6 +8,7 @@ environment:
 workspace:
   - app
   - packages/kaname_core
+  - tools/kaname_tools
 
 dev_dependencies:
   lints: ^6.0.0
