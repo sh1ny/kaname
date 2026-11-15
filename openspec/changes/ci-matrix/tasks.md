@@ -28,7 +28,7 @@
 | continuous-integration → CI checks DCO sign-off on pull requests | Bot identity outside a Dependabot pull request | tools/kaname_tools/test/signoff_test.dart | Dependabot identity in a person's pull request is checked and fails unsigned | green |
 | continuous-integration → CI checks DCO sign-off on pull requests | Push to main | tools/kaname_tools/test/ci_workflow_test.dart | signoff job runs only on pull_request with full history and the PR author | green |
 | contribution-policy → Every commit is signed off under the DCO | Signed commit | tools/kaname_tools/test/policy_docs_test.dart | CONTRIBUTING requires DCO sign-off and shows git commit -s | green |
-| contribution-policy → Every commit is signed off under the DCO | Agent-made commit | n/a (mechanical: this change's PR commits pass the `signoff` job, and their trailer order is captured) → evidence/commit-trailers.md | task 6.3 | red |
+| contribution-policy → Every commit is signed off under the DCO | Agent-made commit | n/a (mechanical: this change's PR commits pass the `signoff` job, and their trailer order is captured) → evidence/commit-trailers.md | task 6.3 | green |
 | contribution-policy → Every commit is signed off under the DCO | Unsigned commit | tools/kaname_tools/test/policy_docs_test.dart | CONTRIBUTING explains amending with sign-off and describes the CI check and its one exemption | green |
 | contribution-policy → Every commit is signed off under the DCO | Sign-off checked locally | tools/kaname_tools/test/signoff_test.dart | the command reports the same result for the same base and head as CI | green |
 | contribution-policy → Every commit is signed off under the DCO | No base given | tools/kaname_tools/test/signoff_test.dart | missing --base exits non-zero naming the option and CONTRIBUTING | green |
@@ -104,9 +104,9 @@
 
 ## 6. Integration on the pull request
 
-- [ ] 6.1 Push the branch and open the PR (ship). The workflow runs every job on the PR.
-- [ ] 6.2 [evidence] Capture this change's PR run: every job's name, runner and conclusion (all `success`), the iOS job's unsigned build, and the uploaded `sbom-cyclonedx` artifact, taken from `gh run view --json jobs` through the fenced KintsugiBot credential → evidence/ci-run.md
-- [ ] 6.3 [evidence] Capture the trailer block of each commit on this branch (`git log main..HEAD --format=%H%n%(trailers)`), showing the owner's `Signed-off-by` before the single `Co-authored-by`, and the `signoff` job's passing output → evidence/commit-trailers.md
+- [x] 6.1 Push the branch and open the PR (ship). The workflow runs every job on the PR.
+- [x] 6.2 [evidence] Capture this change's PR run: every job's name, runner and conclusion (all `success`), the iOS job's unsigned build, and the uploaded `sbom-cyclonedx` artifact, taken from `gh run view --json jobs` through the fenced KintsugiBot credential → evidence/ci-run.md
+- [x] 6.3 [evidence] Capture the trailer block of each commit on this branch (`git log main..HEAD --format=%H%n%(trailers)`), showing the owner's `Signed-off-by` before the single `Co-authored-by`, and the `signoff` job's passing output → evidence/commit-trailers.md
 - [ ] 6.4 [user] In main's branch protection, mark `check (linux)`, `check (windows)`, `check (macos)`, the six `build (…)` jobs, `spec`, `licences` and `signoff` as required status checks, then confirm by ticking this task.
 
 ## Workflow follow-up
