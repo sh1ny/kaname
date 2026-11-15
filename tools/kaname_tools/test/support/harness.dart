@@ -6,15 +6,19 @@ import 'in_memory_file_system.dart';
 typedef CliResult = ({int code, String out, String err});
 
 /// Runs `kaname_tools` with [args] over [fileSystem] and captures its output.
+///
+/// Commands that read the git history use [gitLog].
 Future<CliResult> runTool(
   InMemoryFileSystem fileSystem,
-  List<String> args,
-) async {
+  List<String> args, {
+  GitLog? gitLog,
+}) async {
   final out = StringBuffer();
   final err = StringBuffer();
   final code = await runCli(
     args,
     fileSystem: fileSystem,
+    gitLog: gitLog,
     output: CliOutput(out: out, err: err),
   );
   return (code: code, out: out.toString(), err: err.toString());
@@ -63,6 +67,7 @@ InMemoryFileSystem validRepository() => InMemoryFileSystem()
   ..writeFile('tools/kaname_tools/lib/kaname_tools.dart', '// tools\n')
   ..writeFile('LICENSE')
   ..writeFile('THIRD_PARTY_NOTICES')
+  ..writeFile('licence-policy.yaml')
   ..writeFile('CONTRIBUTING.md')
   ..writeFile('SECURITY.md')
   ..writeFile('.github/pull_request_template.md');

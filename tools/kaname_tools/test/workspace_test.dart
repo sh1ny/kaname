@@ -215,4 +215,16 @@ workspace:
     expect(result.err, contains('SECURITY.md'));
     expect(result.err, isNot(contains('LICENSE')));
   });
+
+  test('missing licence policy fails with its path', () async {
+    fs.deleteFile('licence-policy.yaml');
+
+    final result = await runTool(fs, ['workspace']);
+
+    expect(result.code, 1);
+    expect(
+      result.err,
+      contains('licence-policy.yaml: required file is missing'),
+    );
+  });
 }

@@ -1,0 +1,179 @@
+# Continuous integration for Kaname: the local checks on three OSes, builds of
+# all six app targets, OpenSpec validation, the licence check with its SBOM,
+# and the DCO sign-off check.
+#
+# Rules this file keeps (change them only through a reviewed change):
+#
+# - Third-party actions are pinned by full SHA, with a `# vX.Y.Z` comment.
+#   Dependabot bumps them (.github/dependabot.yml).
+# - The workflow token is `contents: read`, and no job raises it.
+#   `pull_request_target` is never used, so fork code never runs with a write
+#   token or secrets.
+# - The job names (`check (linux|windows|macos)`, `build (<target>)`, `spec`,
+#   `licences`, `signoff`) are the required status checks on `main`. They never
+#   include a runner label, so a runner bump does not rename a check. Renaming
+#   one needs the owner to update branch protection.
+# - No Flutter, Dart, Java, Node or OpenSpec version appears here. mise installs
+#   them from mise.toml and mise.lock in locked mode (the mise action does so
+#   when mise.lock exists); a pin change edits mise.toml and regenerates
+#   mise.lock together.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check (${{ matrix.family }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {family: linux, os: ubuntu-24.04}
+          - {family: windows, os: windows-2025}
+          - {family: macos, os: macos-15}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+        with:
+          version: 2026.11.8
+          cache: true
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # Pub's default cache location on Linux and macOS, then on Windows.
+          path: |
+            ~/.pub-cache
+            ~\AppData\Local\Pub\Cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
+      - run: mise run resolve
+      - run: mise run check
+
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {target: web, os: ubuntu-24.04, command: flutter build web --release}
+          - {target: linux, os: ubuntu-24.04, command: flutter build linux --release}
+          - {target: android, os: ubuntu-24.04, command: flutter build apk --release}
+          - {target: windows, os: windows-2025, command: flutter build windows --release}
+          - {target: macos, os: macos-15, command: flutter build macos --release}
+          - {target: ios, os: macos-15, command: flutter build ios --release --no-codesign}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+        with:
+          version: 2026.11.8
+          cache: true
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # Pub's default cache location on Linux and macOS, then on Windows.
+          path: |
+            ~/.pub-cache
+            ~\AppData\Local\Pub\Cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
+      - name: Install the Linux desktop toolchain
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libstdc++-12-dev
+      - run: mise run resolve
+      - run: mise exec -- ${{ matrix.command }}
+        working-directory: app
+
+  spec:
+    name: spec
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+        with:
+          version: 2026.11.8
+          cache: true
+      - run: mise run spec:validate
+
+  licences:
+    name: licences
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+        with:
+          version: 2026.11.8
+          cache: true
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # Pub's default cache location on Linux and macOS, then on Windows.
+          path: |
+            ~/.pub-cache
+            ~\AppData\Local\Pub\Cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
+      - run: mise run resolve
+      - run: mise run licences
+      - run: mise run sbom
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-cyclonedx
+          path: build/sbom/kaname.cdx.json
+          retention-days: 90
+          if-no-files-found: error
+
+  signoff:
+    name: signoff
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+        with:
+          version: 2026.11.8
+          cache: true
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # Pub's default cache location on Linux and macOS, then on Windows.
+          path: |
+            ~/.pub-cache
+            ~\AppData\Local\Pub\Cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
+      - run: mise run resolve
+      - name: Check DCO sign-off
+        # Event values reach the shell through env, never inline in the script.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: mise run signoff -- --base "$BASE_SHA" --head "$HEAD_SHA" --pr-author "$PR_AUTHOR"

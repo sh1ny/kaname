@@ -83,6 +83,7 @@ final class WorkspaceCheck {
   static const List<String> requiredFiles = [
     'LICENSE',
     'THIRD_PARTY_NOTICES',
+    'licence-policy.yaml',
     'CONTRIBUTING.md',
     'SECURITY.md',
     '.github/pull_request_template.md',

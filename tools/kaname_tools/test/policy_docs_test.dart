@@ -103,8 +103,8 @@ void main() {
     );
   });
 
-  test('CONTRIBUTING explains amending with sign-off and makes no CI '
-      'claim', () {
+  test('CONTRIBUTING explains amending with sign-off and describes the CI '
+      'check and its one exemption', () {
     final section = _section(
       _read('CONTRIBUTING.md'),
       'Developer Certificate of Origin',
@@ -115,8 +115,18 @@ void main() {
         'git commit --amend --signoff --no-edit',
         'git rebase --signoff',
         'are not merged',
-        'no automated sign-off check yet',
+        'CI checks',
+        '`signoff` check',
+        'mise run signoff -- --base <upstream remote>/main',
+        'only exemption',
+        'dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>',
+        'pull request opened by `dependabot[bot]`',
       ]),
+    );
+    expect(
+      section.toLowerCase(),
+      isNot(contains('no automated sign-off check')),
+      reason: 'CI now checks sign-off',
     );
   });
 

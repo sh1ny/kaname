@@ -3,10 +3,16 @@
 # Flutter 3.47.9 bundles Dart 3.13.7. Serverpod 4.1 needs
 # Flutter >= 3.44.4 / Dart >= 3.12.2. Its CLI becomes a package-local
 # development dependency in M0, not a global mise tool.
-# OpenSpec 1.16.0 is Specwright's exact pin.
+# OpenSpec 1.16.0 is Specwright's exact pin. Java 17 (Temurin) builds
+# Android. mise.lock records checksums for every tool; a pin change
+# regenerates it (see CONTRIBUTING, Toolchain).
+
+# The oldest mise that reads lockfile format 4, which mise.lock uses.
+min_version = "2026.11.1"
 
 [tools]
 flutter = "3.47.9"
+java = "temurin-17"
 node = "24"
 "npm:@fission-ai/openspec" = "1.16.0"
 
@@ -81,6 +87,20 @@ run = "dart run kaname_tools notices --write"
 description = "Fail if THIRD_PARTY_NOTICES is stale or misses a vendored source"
 run = "dart run kaname_tools notices --check"
 
+[tasks.licences]
+description = "Check that every locked package's licence is allowed by licence-policy.yaml"
+run = "dart run kaname_tools licences --check"
+
+[tasks.signoff]
+description = "Check DCO sign-off on a branch: mise run signoff -- --base <upstream remote>/main"
+# mise appends the arguments after `--` to the command, so --base, --head and
+# --pr-author reach kaname_tools. There is no default base (CONTRIBUTING).
+run = "dart run kaname_tools signoff"
+
+[tasks.sbom]
+description = "Write the CycloneDX SBOM of pubspec.lock to build/sbom/kaname.cdx.json"
+run = "dart run kaname_tools sbom --output build/sbom/kaname.cdx.json"
+
 [tasks."build:web"]
 description = "Build the app for the web (release)"
 dir = "app"
@@ -95,4 +115,5 @@ run = [
   { task = "format:check" },
   { task = "test" },
   { task = "notices:check" },
+  { task = "licences" },
 ]
