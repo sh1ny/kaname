@@ -1,0 +1,9 @@
+# Keeps the SHA-pinned actions in .github/workflows current. Only the
+# github-actions ecosystem is enabled; the toolchain is pinned in mise.toml and
+# mise.lock, and a person bumps it.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
