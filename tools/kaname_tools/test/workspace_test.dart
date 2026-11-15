@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:kaname_tools/kaname_tools.dart';
 import 'package:test/test.dart';
 
 import 'support/harness.dart';
@@ -62,7 +65,28 @@ void main() {
     expect(result.code, 0);
   });
 
-  test('current layout reports app, core and tools and passes', () async {
+  test('current layout reports app, core, tools, server and client and '
+      'passes', () async {
+    fs
+      ..writeFile(
+        'server/kaname_server/pubspec.yaml',
+        pubspecSource('kaname_server'),
+      )
+      ..writeFile(
+        'server/kaname_client/pubspec.yaml',
+        pubspecSource('kaname_client'),
+      )
+      ..writeFile(
+        'pubspec.yaml',
+        'name: kaname_workspace\n'
+            'workspace:\n'
+            '  - app\n'
+            '  - packages/kaname_core\n'
+            '  - server/kaname_client\n'
+            '  - server/kaname_server\n'
+            '  - tools/kaname_tools\n',
+      );
+
     final result = await runTool(fs, ['workspace']);
 
     expect(result.err, isEmpty);
@@ -73,6 +97,8 @@ void main() {
         'kaname_app at app/',
         'kaname_core at packages/kaname_core/',
         'kaname_tools at tools/kaname_tools/',
+        'kaname_server at server/kaname_server/',
+        'kaname_client at server/kaname_client/',
       ]),
     );
   });
@@ -88,6 +114,15 @@ void main() {
         'packages/group/kaname_deep/pubspec.yaml',
         pubspecSource('kaname_deep'),
       )
+      ..writeFile('server/api/pubspec.yaml', pubspecSource('api'))
+      ..writeFile(
+        'server/kaname_gateway/pubspec.yaml',
+        pubspecSource('kaname_edge'),
+      )
+      ..writeFile(
+        'server/group/kaname_deep/pubspec.yaml',
+        pubspecSource('kaname_deep'),
+      )
       ..writeFile('pubspec.yaml', '''
 name: kaname_workspace
 workspace:
@@ -97,6 +132,9 @@ workspace:
   - packages/helpers
   - app_packages/kaname_widgets
   - packages/group/kaname_deep
+  - server/api
+  - server/kaname_gateway
+  - server/group/kaname_deep
 ''');
 
     final result = await runTool(fs, ['workspace']);
@@ -121,6 +159,26 @@ workspace:
     expect(
       result.err,
       allOf(contains('packages/group/kaname_deep'), contains('misplaced')),
+    );
+    expect(
+      result.err,
+      allOf(
+        contains('server/api'),
+        contains('"api"'),
+        contains('kaname_ prefix'),
+      ),
+    );
+    expect(
+      result.err,
+      allOf(
+        contains('server/kaname_gateway'),
+        contains('directory name'),
+        contains('"kaname_edge"'),
+      ),
+    );
+    expect(
+      result.err,
+      allOf(contains('server/group/kaname_deep'), contains('misplaced')),
     );
   });
 
@@ -226,5 +284,34 @@ workspace:
       result.err,
       contains('licence-policy.yaml: required file is missing'),
     );
+  });
+
+  test('root workspace lists kaname_server and kaname_client and the lockfile '
+      'holds serverpod_cli as a dev dependency', () {
+    final repository = RealFileSystem.locate(Directory.current.path);
+    expect(repository, isNotNull, reason: 'no workspace root above the cwd');
+
+    expect(
+      workspaceMemberDirectories(repository!),
+      containsAll(['server/kaname_server', 'server/kaname_client']),
+    );
+    // A workspace lockfile marks only the root's own dependencies as direct,
+    // so the dev dependency is read from the server pubspec and the lockfile
+    // must hold the resolved package.
+    final server = Pubspec.load(
+      repository,
+      'server/kaname_server/pubspec.yaml',
+    );
+    expect(
+      server.dependencies.where(
+        (dependency) =>
+            dependency.name == 'serverpod_cli' &&
+            dependency.section == DependencySection.devDependencies,
+      ),
+      hasLength(1),
+    );
+    expect([
+      for (final package in readLockedPackages(repository)) package.name,
+    ], contains('serverpod_cli'));
   });
 }

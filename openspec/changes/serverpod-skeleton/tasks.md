@@ -6,7 +6,7 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 
 | Requirement | Scenario | Test file | Test name | State |
 |---|---|---|---|---|
-| server-runtime → The server and its client are workspace packages | Server packages resolve with the workspace | T/workspace_test.dart | root workspace lists kaname_server and kaname_client, the server pubspec holds serverpod_cli as a dev dependency and the lockfile holds it (a workspace lockfile marks it transitive); evidence: task 1.4 (`dart run serverpod_cli version` through mise) | red |
+| server-runtime → The server and its client are workspace packages | Server packages resolve with the workspace | T/workspace_test.dart | root workspace lists kaname_server and kaname_client, the server pubspec holds serverpod_cli as a dev dependency and the lockfile holds it (a workspace lockfile marks it transitive); evidence: task 1.4 (`dart run serverpod_cli version` through mise) | green |
 | server-runtime → The server and its client are workspace packages | Generated client out of date | n/a (mechanical: `mise run server:drift` regenerates, formats and runs `git diff --exit-code`, which names the differing files) → evidence/drift-check.md | task 2.5 | red |
 | server-runtime → Redis is enabled in every server run mode | Run-mode configuration | S/unit/run_mode_config_test.dart | every run mode enables Redis with a host and port | red |
 | server-runtime → Redis is enabled in every server run mode | Redis unreachable at start | S/integration/probes_test.dart | redis unreachable at start: readyz 503 and the log names redis | red |
@@ -51,20 +51,20 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 | workspace-layout → Analysis and formatting are clean | Files outside the workspace members | T/workspace_test.dart | format directories are workspace members only (re-run) | green |
 | workspace-layout → Analysis and formatting are clean | An unformatted file | n/a (mechanical: `dart format --set-exit-if-changed` on a planted file) → evidence/check-task.md | task 8.1 | green |
 | workspace-layout → Analysis and formatting are clean | Generated code | T/analysis_options_test.dart | analysis excludes exactly the generated server and client paths; plus evidence/check-task.md: an unformatted generated file fails format:check | red |
-| workspace-layout → Packages follow the placement and naming rule | Current packages comply | T/workspace_test.dart | current layout reports app, core, tools, server and client and passes | red |
-| workspace-layout → Packages follow the placement and naming rule | A misplaced or misnamed package | T/workspace_test.dart | missing prefix or directory mismatch fails with rule (extended to `server/`) | red |
+| workspace-layout → Packages follow the placement and naming rule | Current packages comply | T/workspace_test.dart | current layout reports app, core, tools, server and client and passes | green |
+| workspace-layout → Packages follow the placement and naming rule | A misplaced or misnamed package | T/workspace_test.dart | missing prefix or directory mismatch fails with rule (extended to `server/`) | green |
 | workspace-layout → One task runs every local check | All checks pass | n/a (mechanical: `mise run check` exit 0; its log shows no server test ran and the server packages analysed) → evidence/check-task.md | task 8.1 | red |
 | workspace-layout → One task runs every local check | One check fails | n/a (mechanical: `mise run check` non-zero with a planted failure) → evidence/check-task.md | task 8.1 | green |
 | workspace-layout → One task runs every local check | Server tests run on their own | n/a (mechanical: `mise run test:server` exit 0, then non-zero naming a planted failing test) → evidence/server-tests.md | task 3.6 | red |
 
 ## 1. Server packages in the workspace
 
-- [ ] 1.1 Verify A7 and A1: add `server/kaname_server` (from the pinned Serverpod 4.1 CLI's `create`, run through `mise exec -- dart run` from a temporary package, not a global install) and `server/kaname_client` as root workspace members with `serverpod_cli` as a server dev dependency; `mise run resolve` must succeed with the Flutter-pinned `flutter_test` versions. A resolve conflict stops the change and goes to the owner.
-- [ ] 1.2 Verify A9: record where the pinned CLI writes generated code in both packages; if it differs from `lib/src/generated/` and `lib/src/protocol/`, use the real paths in 2.2 and note them in design.md under the drift rule.
-- [ ] 1.3 Strip the scaffold to Serverpod core (S6): remove auth/IdP modules, example endpoints and models, the scaffold's Flutter app and its own Compose file; keep `config/` and `migrations/`. Verify `mise exec -- dart analyze server/` reports no issues.
-- [ ] 1.4 [evidence] Capture the scaffold record: CLI version, the `create` output paths, the resolve result, and `mise exec -C server/kaname_server -- dart run serverpod_cli version` → evidence/scaffold.md
-- [ ] 1.5 Write failing tests in `T/workspace_test.dart`: "current layout reports app, core, tools, server and client and passes" and the misnamed-package test extended to `server/`, plus the resolve test row; update `tools/kaname_tools/lib/src/workspace.dart` so `server/` packages are recognised; verify they pass and flip the rows green. Re-run "format directories are workspace members only".
-- [ ] 1.6 Regenerate THIRD_PARTY_NOTICES (`mise run notices`) and make `mise run licences` pass for the new pub dependencies; any exception goes to task 1.7.
+- [x] 1.1 Verify A7 and A1: add `server/kaname_server` (from the pinned Serverpod 4.1 CLI's `create`, run through `mise exec -- dart run` from a temporary package, not a global install) and `server/kaname_client` as root workspace members with `serverpod_cli` as a server dev dependency; `mise run resolve` must succeed with the Flutter-pinned `flutter_test` versions. A resolve conflict stops the change and goes to the owner.
+- [x] 1.2 Verify A9: record where the pinned CLI writes generated code in both packages; if it differs from `lib/src/generated/` and `lib/src/protocol/`, use the real paths in 2.2 and note them in design.md under the drift rule.
+- [x] 1.3 Strip the scaffold to Serverpod core (S6): remove auth/IdP modules, example endpoints and models, the scaffold's Flutter app and its own Compose file; keep `config/` and `migrations/`. Verify `mise exec -- dart analyze server/` reports no issues.
+- [x] 1.4 [evidence] Capture the scaffold record: CLI version, the `create` output paths, the resolve result, and `mise exec -C server/kaname_server -- dart run serverpod_cli version` → evidence/scaffold.md
+- [x] 1.5 Write failing tests in `T/workspace_test.dart`: "current layout reports app, core, tools, server and client and passes" and the misnamed-package test extended to `server/`, plus the resolve test row; update `tools/kaname_tools/lib/src/workspace.dart` so `server/` packages are recognised; verify they pass and flip the rows green. Re-run "format directories are workspace members only".
+- [x] 1.6 Regenerate THIRD_PARTY_NOTICES (`mise run notices`) and make `mise run licences` pass for the new pub dependencies; any exception goes to task 1.7.
 - [ ] 1.7 [user] Approve or reject each licence exception the agent proposes from task 1.6, with a date, or confirm that none were needed. The agent writes approved entries, and `mise run licences` passes.
 
 ## 2. Analysis, formatting and the drift check
