@@ -1,0 +1,29 @@
+# Build context for deploy/server.Dockerfile (Docker reads this file instead of
+# a root .dockerignore, and ignores .gitignore). Deny everything, then admit
+# only what the image build copies.
+**
+
+!mise.toml
+!mise.lock
+!pubspec.yaml
+!pubspec.lock
+
+# Workspace members: pubspecs only, to resolve the whole workspace.
+!app/pubspec.yaml
+!packages/kaname_core/pubspec.yaml
+!tools/kaname_tools/pubspec.yaml
+
+# The server packages' sources.
+!server/kaname_client/pubspec.yaml
+!server/kaname_client/lib/**
+!server/kaname_server/pubspec.yaml
+!server/kaname_server/bin/**
+!server/kaname_server/lib/**
+!server/kaname_server/config/**
+!server/kaname_server/migrations/**
+
+# Never in the image, whatever the allow-list above admits: secrets, local
+# environment files and Serverpod's generated state.
+**/config/passwords*.yaml
+**/.env*
+**/.serverpod/

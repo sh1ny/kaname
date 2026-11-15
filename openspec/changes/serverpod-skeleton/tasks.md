@@ -96,9 +96,9 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 
 ## 5. Server image
 
-- [ ] 5.1 Write failing `T/dockerfile_test.dart`: no Dockerfile states a Flutter or Dart version; the build stage installs through mise in locked mode with checksum-verified mise 2026.11.8; `pub get --enforce-lockfile`; runtime is slim Debian with curl, non-root; `deploy/server.Dockerfile.dockerignore` denies by default and never admits `passwords.yaml` or `.env`.
-- [ ] 5.2 Verify A6, then write `deploy/server.Dockerfile` per D5 (`platform: linux/amd64`, `dart build cli`) and its dockerignore; verify the test passes and `docker build` succeeds on Linux; flip the structure row's part green.
-- [ ] 5.3 Write C5 at its destination: confirm the `server-runtime` delta's "The server image takes its toolchain from mise" requirement states that no Dockerfile states a toolchain version.
+- [x] 5.1 Write failing `T/dockerfile_test.dart`: no Dockerfile states a Flutter or Dart version; the build stage installs through mise in locked mode with checksum-verified mise 2026.11.8; `pub get --enforce-lockfile`; runtime is slim Debian with curl, non-root; `deploy/server.Dockerfile.dockerignore` denies by default and never admits `passwords.yaml` or `.env`.
+- [x] 5.2 Verify A6, then write `deploy/server.Dockerfile` per D5 (`platform: linux/amd64`, `dart build cli`) and its dockerignore; verify the test passes and `docker build` succeeds on Linux; flip the structure row's part green.
+- [x] 5.3 Write C5 at its destination: confirm the `server-runtime` delta's "The server image takes its toolchain from mise" requirement states that no Dockerfile states a toolchain version.
 
 ## 6. Compose stack and Caddy
 
@@ -107,7 +107,7 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 - [ ] 6.3 Verify A2: the generated client called with `http://localhost/api/` reaches the endpoint path under the prefix. If it does not, stop and take D2 back to the owner.
 - [ ] 6.4 Write failing `C/stack/stack_test.dart` and `C/stack/image_test.dart` (tag `stack`) for every stack row in the test map; add `mise run stack:up`, `stack:test` and `stack:down` (down removes volumes). Run them against the stack on Linux; verify they pass; flip rows green.
 - [ ] 6.5 Write failing `T/policy_docs_test.dart` case for the deploy README's support statement; verify it passes; flip the row green.
-- [ ] 6.6 Write C6 as part of the doc comment on `LicencesCommand` in `tools/kaname_tools/lib/src/licences.dart`: container image licences (Postgres, Redis, Caddy, Debian) are outside the pub licence check and the SBOM.
+- [ ] 6.6 Write C6 as part of the doc comment on `LicencesCommand` in `tools/kaname_tools/lib/src/licences.dart`, as design.md states it: container image licences (Postgres, Redis, Caddy, Debian) and the native libraries that pub build hooks bundle into the server image (libsqlite3; libsqlite3_connection_pool with the Rust lru crate and std) are outside the pub licence check, the generated notices and the SBOM, and a change that publishes the image must add their notices first.
 - [ ] 6.7 Write C1, C2, C3 and C7 at their destinations: confirm the named requirements in `specs/server-runtime/spec.md` and `specs/self-host-stack/spec.md` hold that text (archive copies them into the main specs).
 
 ## 7. CI jobs and the MCP entry
