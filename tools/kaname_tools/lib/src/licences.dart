@@ -230,6 +230,9 @@ LicenceCheckResult checkLicences(FileSystem fileSystem) =>
       },
     };
 
+/// Why an exception never applies to a licence read failure.
+const _readFailureNote = 'cannot cover a package whose licence was not read';
+
 LicenceCheckResult _evaluate(
   List<ClassifiedPackage> packages,
   LicencePolicy policy,
@@ -255,10 +258,7 @@ LicenceCheckResult _evaluate(
       if (licence
           case NoLicenceFile(:final message) ||
               UnreadableLicence(:final message)) {
-        problems.add(
-          '$message; ${exception.label} cannot cover a package whose licence '
-          'was not read',
-        );
+        problems.add('$message; ${exception.label} $_readFailureNote');
       } else if (allowedId != null) {
         problems.add(
           '$licencePolicyPath: ${exception.label} is not needed: $name is '

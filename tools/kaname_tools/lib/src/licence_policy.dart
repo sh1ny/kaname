@@ -161,6 +161,9 @@ Set<String> _readAllowed(Object? value, List<String> problems) {
   return allowed;
 }
 
+/// What an exception's `licence` may hold.
+const _licenceValueRule = 'must be an SPDX id the check knows or unrecognised';
+
 List<LicenceException> _readExceptions(Object? value, List<String> problems) {
   switch (value) {
     case null:
@@ -204,8 +207,8 @@ List<LicenceException> _readExceptions(Object? value, List<String> problems) {
         licence != unrecognisedLicenceName &&
         licenceTemplateFor(licence) == null) {
       problems.add(
-        '$licencePolicyPath: $name: "licence" must be an SPDX id the check '
-        'knows or unrecognised, found "$licence"',
+        '$licencePolicyPath: $name: "licence" $_licenceValueRule, '
+        'found "$licence"',
       );
     }
     final approved = fields['approved'];
