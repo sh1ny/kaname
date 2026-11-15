@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Every commit is signed off under the DCO
-`CONTRIBUTING.md` SHALL require a `Signed-off-by: Name <email>` line matching the commit author on every commit, under the Developer Certificate of Origin 1.1, and SHALL include or link the certificate's text. Agent instructions SHALL require owner and agent-made commits to write it explicitly in the final trailer block, before the `Co-authored-by` trailer. CONTRIBUTING SHALL state that CI checks the sign-off of every pull request commit, and that the only exemption is Dependabot's own commits in pull requests Dependabot opened.
+`CONTRIBUTING.md` SHALL require, under the Developer Certificate of Origin 1.1, a `Signed-off-by: Name <email>` line matching the author on every commit, and SHALL include or link its text. Agent instructions SHALL require owner and agent-made commits to write it explicitly in the final trailer block, before the `Co-authored-by` trailer. CONTRIBUTING SHALL state that CI checks every pull request commit's sign-off, exempting only Dependabot's own commits in pull requests it opened.
 
 #### Scenario: Signed commit
 - **WHEN** a contributor commits with `git commit -s`
