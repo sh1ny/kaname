@@ -45,11 +45,30 @@ void main() {
 
   test('deploy env example is tracked with placeholders and deploy .env is '
       'ignored', () {
-    // `deploy/.env.example` does not exist until the compose stack (group 6),
-    // so only the ignore rules can be checked now: the example must not be
-    // ignored (it is committed) while `deploy/.env` is.
+    // The example is committed, so it must not be ignored, and it holds
+    // placeholders only: every value starts with `change-me`.
     final root = _root();
     expect(_isIgnored(root, 'deploy/.env'), isTrue);
+    final example = File('$root/deploy/.env.example');
+    expect(example.existsSync(), isTrue, reason: 'deploy/.env.example exists');
+    final values = <String, String>{};
+    for (final line in example.readAsLinesSync()) {
+      if (line.trim().isEmpty || line.trim().startsWith('#')) continue;
+      switch (line.split('=')) {
+        case [final name, ...final value]:
+          values[name] = value.join('=');
+        default:
+          fail('not a NAME=value line: $line');
+      }
+    }
+    expect(values.keys, {
+      'POSTGRES_PASSWORD',
+      'REDIS_PASSWORD',
+      'SERVERPOD_SERVICE_SECRET',
+    });
+    for (final MapEntry(:key, :value) in values.entries) {
+      expect(value, startsWith('change-me'), reason: '$key is a placeholder');
+    }
     expect(
       _isIgnored(root, 'deploy/.env.example'),
       isFalse,

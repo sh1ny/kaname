@@ -1,0 +1,121 @@
+# Kaname self-host stack (design D1, D2, D9, D12). From this directory:
+#
+#   cp .env.example .env     # then replace every placeholder
+#   mise run build:web       # Caddy serves app/build/web
+#   docker compose up
+#
+# Or from the repository root: `mise run stack:up`.
+#
+# Start order: postgres and redis become healthy, then the one-shot `migrate`
+# step applies the migrations and exits, then `server` starts, then `caddy`.
+# Only caddy publishes a port, on the loopback address, over plain HTTP.
+name: kaname
+
+# The server image, built from the repository root by deploy/server.Dockerfile
+# (Flutter and Dart come from mise.toml and mise.lock only). Flutter's Linux
+# archive is x64 only, so the image is linux/amd64, under emulation on arm64.
+x-server-build: &server-build
+  context: ..
+  dockerfile: deploy/server.Dockerfile
+  platforms:
+    - linux/amd64
+
+# Every secret is required: Compose stops and names the variable when one is
+# missing or empty. `SERVERPOD_PASSWORD_*` is how Serverpod reads its passwords
+# from the environment, so no passwords.yaml is mounted.
+x-server-environment: &server-environment
+  SERVERPOD_PASSWORD_database: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+  SERVERPOD_PASSWORD_redis: ${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env}
+  SERVERPOD_PASSWORD_serviceSecret: ${SERVERPOD_SERVICE_SECRET:?set SERVERPOD_SERVICE_SECRET in deploy/.env}
+
+services:
+  postgres:
+    # Official Postgres 16, pinned by digest (design D3).
+    image: postgres:16@sha256:dd2bf3ce2dc83a81674cf7f217fcfd8a5009a4b325dda5b843bfee82a06cff6f
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kaname
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username postgres --dbname kaname"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    # Official Redis 8, pinned by digest (design D3).
+    image: redis:8@sha256:1f88291b4c57bdf249f02eb085a8669889b2d2954e91d4de5118a5da6b78dd53
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env}
+      # Authenticates redis-cli inside the container, for the healthcheck.
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env}
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$$REDIS_PASSWORD"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # One-shot step: applies the committed migrations and exits. It exits 1 on a
+  # database that holds a migration this server does not know, and then
+  # `server` never starts (design D1, doc comment on `main` in bin/main.dart).
+  migrate:
+    image: kaname-server:stack
+    build: *server-build
+    platform: linux/amd64
+    restart: "no"
+    command: ["--mode", "production", "--role", "maintenance", "--apply-migrations"]
+    environment: *server-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  server:
+    image: kaname-server:stack
+    build: *server-build
+    platform: linux/amd64
+    restart: unless-stopped
+    command: ["--mode", "production"]
+    environment: *server-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+
+  caddy:
+    # Official Caddy 2, pinned by digest (design D3).
+    image: caddy:2@sha256:4e2425f6009577e7c651010f16679c28f7d12df3e7b1914f941a7a3370746b3c
+    restart: unless-stopped
+    # The only published port, on the loopback address only (design D12).
+    ports:
+      - "127.0.0.1:80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # The web build from `mise run build:web`.
+      - ../app/build/web:/srv:ro
+    depends_on:
+      server:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:

@@ -1,0 +1,32 @@
+# Caddy for the local self-host stack (design D2, D12, S3): plain HTTP on :80,
+# published on 127.0.0.1 only by compose.yaml. No TLS until a deployment guide.
+{
+	auto_https off
+	admin off
+}
+
+:80 {
+	# The API lives under /api/ on the web app's origin, with the prefix
+	# removed before the server sees it. It never falls back to index.html:
+	# an unknown path is the server's own not-found.
+	handle_path /api/* {
+		reverse_proxy server:8080
+	}
+	# The bare prefix is also the API's, never the web app's.
+	handle /api {
+		respond "Not Found" 404
+	}
+
+	# Health probes pass through unchanged.
+	@probes path /livez /readyz
+	handle @probes {
+		reverse_proxy server:8080
+	}
+
+	# Everything else is the web build, with the single-page-app fallback.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

@@ -158,4 +158,21 @@ void main() {
       reason: 'SECURITY.md must not publish an email address',
     );
   });
+
+  test('deploy README states linux/amd64 container support and native '
+      'Windows and macOS servers unsupported', () {
+    final section = _section(_read('deploy/README.md'), 'Supported platforms');
+    expect(
+      section,
+      _mentionsAll([
+        '`linux/amd64` container',
+        'Windows and macOS',
+        'Linux container runtime',
+        'arm64',
+        'emulation',
+        'natively on Windows or macOS',
+        'unsupported',
+      ]),
+    );
+  });
 }

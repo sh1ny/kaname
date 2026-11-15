@@ -159,6 +159,29 @@ description = "Run the kaname_client tests without the stack tag"
 dir = "server/kaname_client"
 run = "dart test --exclude-tags stack"
 
+[tasks."stack:up"]
+description = "Build the web app, then build and start the self-host stack in deploy/ and wait until it is healthy; needs deploy/.env"
+# Caddy serves app/build/web, so the web build comes first. Copy
+# deploy/.env.example to deploy/.env and fill it in before the first run.
+run = [
+  { task = "build:web" },
+  "docker compose --file deploy/compose.yaml up --detach --wait --build",
+]
+
+[tasks."stack:test"]
+description = "Run the stack tests (tag `stack`) against the running stack and build the image from scratch; needs Docker"
+# One file at a time: the tests stop and start the stack and build images.
+# `stack:up` first (the CI `stack` job does). Not part of `check` or `test:server`.
+dir = "server/kaname_client"
+run = "dart test --tags stack --concurrency=1"
+
+[tasks."stack:down"]
+description = "Stop the self-host stack and delete its data volumes"
+# Compose evaluates the required secrets even for `down`, so a checkout without
+# deploy/.env still stops the stack; the values are never used.
+env = { POSTGRES_PASSWORD = "unused", REDIS_PASSWORD = "unused", SERVERPOD_SERVICE_SECRET = "unused" }
+run = "docker compose --file deploy/compose.yaml down --volumes --remove-orphans"
+
 [tasks.check]
 description = "Run every local check (resolve first); stops at the first failure"
 run = [

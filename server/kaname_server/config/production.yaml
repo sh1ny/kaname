@@ -1,14 +1,15 @@
 # Production run mode. The defaults suit the Compose stack in deploy/: the
-# database and Redis are the `postgres` and `redis` services (design D9).
+# database and Redis are the `postgres` and `redis` services (design D9), and
+# the public address is the stack's plain http://localhost (design S3).
 # Secrets come from the environment (SERVERPOD_PASSWORD_*), never from this
 # file. Insights and the web server are off (design D8).
 
 # Configuration for the main API server.
 apiServer:
   port: 8080
-  publicHost: api.examplepod.com
-  publicPort: 443
-  publicScheme: https
+  publicHost: localhost
+  publicPort: 80
+  publicScheme: http
 
 # External PostgreSQL 16 or later.
 database:
