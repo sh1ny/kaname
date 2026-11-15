@@ -21,10 +21,10 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 | server-runtime → Insights and persistent session logs run only in development | Calls in the stack | C/stack/stack_test.dart (tag `stack`) | health calls write no session log row and no insights port listens | green |
 | server-runtime → A fresh clone can start the server locally | Fresh clone | S/unit/setup_test.dart | setup on a fresh tree writes passwords.yaml and a derived dev env with one redis password; evidence: task 3.6 (fresh clone, setup, `test:server`) | green |
 | server-runtime → A fresh clone can start the server locally | Existing secrets | S/unit/setup_test.dart | setup leaves existing passwords unchanged | green |
-| server-runtime → Agents reach the server through the Serverpod MCP entry | Entry starts | T/mcp_config_test.dart | claude and omp configs hold the serverpod entry through mise and claude enables and allow-lists it; evidence: task 7.3 → evidence/mcp-entry.md | red |
-| server-runtime → Agents reach the server through the Serverpod MCP entry | Server not running | n/a (mechanical: the bridge's own error, observed by calling a tool with no runner) → evidence/mcp-entry.md | task 7.3 | red |
+| server-runtime → Agents reach the server through the Serverpod MCP entry | Entry starts | T/mcp_config_test.dart | claude and omp configs hold the serverpod entry through mise and claude enables and allow-lists it; evidence: task 7.3 → evidence/mcp-entry.md | green |
+| server-runtime → Agents reach the server through the Serverpod MCP entry | Server not running | n/a (mechanical: the bridge's own error, observed by calling a tool with no runner) → evidence/mcp-entry.md | task 7.3 | green |
 | server-runtime → The server is supported only as a Linux container | Supported platform stated | T/policy_docs_test.dart | deploy README states linux/amd64 container support and native Windows and macOS servers unsupported | green |
-| server-runtime → The server is supported only as a Linux container | Server tests on a non-Linux runner | T/ci_workflow_test.dart | server tests run only in the linux server job; check never runs test:server | red |
+| server-runtime → The server is supported only as a Linux container | Server tests on a non-Linux runner | T/ci_workflow_test.dart | server tests run only in the linux server job; check never runs test:server | green |
 | server-health → The health endpoint returns a typed answer | All dependencies up | S/integration/health_endpoint_test.dart | all dependencies up | green |
 | server-health → The health endpoint returns a typed answer | Redis down | S/integration/health_endpoint_test.dart | redis down: postgres up, redis down, no host or error text | green |
 | server-health → The health endpoint returns a typed answer | Postgres down | S/integration/health_endpoint_test.dart | postgres down: answer within 10 seconds with postgres down | green |
@@ -41,11 +41,11 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 | self-host-stack → Stack secrets are never committed | Example file only | T/gitignore_test.dart | deploy env example is tracked with placeholders and deploy .env is ignored | green |
 | self-host-stack → Stack secrets are never committed | Missing secret | T/compose_config_test.dart | every secret uses the required-variable form; plus C/stack/stack_test.dart (tag `stack`): compose up with an empty secret stops naming the variable | green |
 | continuous-integration → CI runs the server tests on Linux | Server tests pass | T/ci_workflow_test.dart | server job on linux runs server:setup, starts dev redis, runs server:drift and test:server; evidence: task 8.2 | red |
-| continuous-integration → CI runs the server tests on Linux | Redis container missing | T/ci_workflow_test.dart | server job waits for redis healthy in a named step before tests | red |
-| continuous-integration → CI runs the server tests on Linux | Generated client stale | T/ci_workflow_test.dart | server job runs server:drift; drift behaviour → evidence/drift-check.md | red |
-| continuous-integration → CI runs the server tests on Linux | A server test fails | T/ci_workflow_test.dart | server job is separate from check and check jobs keep fail-fast off | red |
+| continuous-integration → CI runs the server tests on Linux | Redis container missing | T/ci_workflow_test.dart | server job waits for redis healthy in a named step before tests | green |
+| continuous-integration → CI runs the server tests on Linux | Generated client stale | T/ci_workflow_test.dart | server job runs server:drift; drift behaviour → evidence/drift-check.md | green |
+| continuous-integration → CI runs the server tests on Linux | A server test fails | T/ci_workflow_test.dart | server job is separate from check and check jobs keep fail-fast off | green |
 | continuous-integration → CI checks the self-host stack on Linux | Stack healthy | T/ci_workflow_test.dart | stack job on linux generates placeholder secrets, builds web, runs stack:test; evidence: task 8.2 | red |
-| continuous-integration → CI checks the self-host stack on Linux | Stack never becomes ready | T/ci_workflow_test.dart | stack job prints every service log on failure and always runs compose down with volumes | red |
+| continuous-integration → CI checks the self-host stack on Linux | Stack never becomes ready | T/ci_workflow_test.dart | stack job prints every service log on failure and always runs compose down with volumes | green |
 | workspace-layout → Analysis and formatting are clean | Clean workspace | n/a (mechanical: `mise run check` exit 0 with the server packages present) → evidence/check-task.md | task 8.1 | red |
 | workspace-layout → Analysis and formatting are clean | An analysis info | n/a (mechanical: a planted `info` in hand-written server code makes `mise run analyze` exit non-zero) → evidence/check-task.md | task 8.1 | red |
 | workspace-layout → Analysis and formatting are clean | Files outside the workspace members | T/workspace_test.dart | format directories are workspace members only (re-run) | green |
@@ -112,9 +112,9 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 
 ## 7. CI jobs and the MCP entry
 
-- [ ] 7.1 Write failing `T/ci_workflow_test.dart` cases for the `server` and `stack` jobs (Linux only; setup, dev Redis health wait in a named step, `server:drift`, `test:server`; stack with placeholder secrets, host web build, `stack:test`, logs of every service on failure, `docker compose down -v` always) and update the existing timeout, pinning and resolve tests for the new jobs. Add both jobs to `.github/workflows/ci.yml` and the header's check-name rules; verify the tests pass; flip rows green.
-- [ ] 7.2 Verify A10, then write failing `T/mcp_config_test.dart`; add the Serverpod entry (`mise exec -C server/kaname_server -- dart run serverpod_cli mcp-server --server-dir .`) to `.mcp.json` and `.omp/mcp.json`, enable and allow-list it in `.claude/settings.json`, and remove the M0 TODO from AGENTS.md. Verify the test passes; flip the row green.
-- [ ] 7.3 [evidence] Start the MCP entry from the repository root: record the bridge naming `server/kaname_server`, then a tool call with no runner returning its "the server is not running" error → evidence/mcp-entry.md
+- [x] 7.1 Write failing `T/ci_workflow_test.dart` cases for the `server` and `stack` jobs (Linux only; setup, dev Redis health wait in a named step, `server:drift`, `test:server`; stack with placeholder secrets, host web build, `stack:test`, logs of every service on failure, `docker compose down -v` always) and update the existing timeout, pinning and resolve tests for the new jobs. Add both jobs to `.github/workflows/ci.yml` and the header's check-name rules; verify the tests pass; flip rows green.
+- [x] 7.2 Verify A10, then write failing `T/mcp_config_test.dart`; add the Serverpod entry (`mise exec -C server/kaname_server -- dart run serverpod_cli mcp-server --server-dir .`) to `.mcp.json` and `.omp/mcp.json`, enable and allow-list it in `.claude/settings.json`, and remove the M0 TODO from AGENTS.md. Verify the test passes; flip the row green.
+- [x] 7.3 [evidence] Start the MCP entry from the repository root: record the bridge naming `server/kaname_server`, then a tool call with no runner returning its "the server is not running" error → evidence/mcp-entry.md
 
 ## 8. Integration on the pull request
 

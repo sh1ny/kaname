@@ -1,6 +1,6 @@
 {
-  "enabledMcpjsonServers": ["dart", "context7"],
+  "enabledMcpjsonServers": ["dart", "context7", "serverpod"],
   "permissions": {
-    "allow": ["mcp__dart__*", "mcp__context7__*"]
+    "allow": ["mcp__dart__*", "mcp__context7__*", "mcp__serverpod__*"]
   }
 }

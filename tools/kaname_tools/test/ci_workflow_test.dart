@@ -374,7 +374,17 @@ void main() {
         'first', () {
       // `dart run kaname_tools` in an unresolved workspace makes dart's own
       // pub resolve it, which fails on the Flutter app package.
-      const toolTasks = ['check', 'licences', 'sbom', 'signoff'];
+      const toolTasks = [
+        'check',
+        'licences',
+        'sbom',
+        'signoff',
+        'server:setup',
+        'server:drift',
+        'test:server',
+        'stack:up',
+        'stack:test',
+      ];
       for (final MapEntry(key: id, value: job) in jobs.entries) {
         final runs = [
           for (final step in job.steps)
@@ -396,10 +406,13 @@ void main() {
       }
     });
 
-    test('job timeouts are check 30, build 45, others 10 minutes', () {
+    test('job timeouts are check 30, build 45, server 20, stack 45, others '
+        '10 minutes', () {
       final expected = {
         'check': 30,
         'build': 45,
+        'server': 20,
+        'stack': 45,
         'spec': 10,
         'licences': 10,
         'signoff': 10,
@@ -471,6 +484,140 @@ void main() {
       expect(header, contains('pull_request_target'));
       expect(header, contains('required status checks'));
       expect(header, contains('runner label'));
+      // The check-name rules list every job, including the Linux-only two.
+      expect(header, contains('`server`'));
+      expect(header, contains('`stack`'));
+    });
+  });
+
+  group('server job', () {
+    test('runs on linux only, separate from check', () {
+      final server = job('server');
+      expect(server.map.containsKey('strategy'), isFalse);
+      expect(server.runnerFor({}), 'ubuntu-24.04');
+      expect(server.map['name'] ?? 'server', 'server');
+      expect(server.map.containsKey('needs'), isFalse);
+    });
+
+    test('sets up secrets, starts and awaits the dev Redis, then drift and '
+        'tests', () {
+      final server = job('server');
+      final setup = server.runIndex('mise run server:setup');
+      final drift = server.runIndex('mise run server:drift');
+      final tests = server.runIndex('mise run test:server');
+      expect(server.runIndex('mise run resolve'), isNonNegative);
+      expect(server.runIndex('mise run resolve'), lessThan(setup));
+      final redis = server.steps.indexWhere(
+        (s) =>
+            ((s['name'] as String?) ?? '').contains('Redis') &&
+            ((s['run'] as String?) ?? '').contains('docker compose'),
+      );
+      expect(redis, isNonNegative, reason: 'no named Redis step');
+      final step = server.steps[redis];
+      expect(step['working-directory'], 'server/kaname_server');
+      // Compose waits for the healthcheck, so the step fails if Redis never
+      // becomes healthy.
+      expect(step['run'], contains('up'));
+      expect(step['run'], contains('--wait'));
+      expect(setup, isNonNegative);
+      expect(redis, greaterThan(setup));
+      expect(drift, greaterThan(redis));
+      expect(tests, greaterThan(drift));
+    });
+
+    test('no step forces a later step past a failure', () {
+      for (final step in job('server').steps) {
+        expect('${step['continue-on-error'] ?? ''}', isNot('true'));
+      }
+    });
+
+    test('check never runs the server tests and keeps fail-fast off', () {
+      final check = job('check');
+      expect(check.strategy['fail-fast'], isFalse);
+      for (final run in check.runs) {
+        expect(run, isNot(contains('test:server')));
+        expect(run, isNot(contains('server:drift')));
+      }
+      for (final MapEntry(key: id, value: other) in jobs.entries) {
+        if (id == 'server') continue;
+        for (final run in other.runs) {
+          expect(run, isNot(contains('test:server')), reason: id);
+        }
+      }
+    });
+  });
+
+  group('stack job', () {
+    test('runs on linux only', () {
+      final stack = job('stack');
+      expect(stack.map.containsKey('strategy'), isFalse);
+      expect(stack.runnerFor({}), 'ubuntu-24.04');
+      expect(stack.map['name'] ?? 'stack', 'stack');
+    });
+
+    test('generates placeholder secrets at run time, then builds the web app '
+        'and runs the stack tests', () {
+      final stack = job('stack');
+      final secrets = stack.steps.indexWhere(
+        (s) =>
+            ((s['name'] as String?) ?? '').toLowerCase().contains('secret') &&
+            ((s['run'] as String?) ?? '').contains('deploy/.env'),
+      );
+      expect(secrets, isNonNegative, reason: 'no secrets step');
+      final script = stack.steps[secrets]['run'] as String;
+      for (final name in [
+        'POSTGRES_PASSWORD',
+        'REDIS_PASSWORD',
+        'SERVERPOD_SERVICE_SECRET',
+      ]) {
+        expect(script, contains(name));
+      }
+      // Generated here, never committed or copied from the example.
+      expect(script, contains('openssl rand'));
+      expect(script, isNot(contains('change-me')));
+      final up = stack.runIndex('mise run stack:up');
+      final test = stack.runIndex('mise run stack:test');
+      expect(secrets, lessThan(up));
+      expect(test, greaterThan(up));
+      expect(stack.runIndex('mise run resolve'), lessThan(up));
+      // stack:up builds the web app on the host before it starts Compose.
+      final mise = _readRepoFile('mise.toml');
+      final stackUp = RegExp(r'\[tasks\."stack:up"\][\s\S]*?\n\n')
+          .firstMatch(mise)
+          ?.group(0);
+      expect(stackUp, isNotNull);
+      expect(stackUp, contains('task = "build:web"'));
+      expect(
+        stackUp!.indexOf('build:web'),
+        lessThan(stackUp.indexOf('docker compose')),
+      );
+    });
+
+    test('prints every service log on failure and always removes the stack '
+        'and its volumes', () {
+      final stack = job('stack');
+      final test = stack.runIndex('mise run stack:test');
+      final logs = stack.steps.indexWhere(
+        (s) =>
+            ((s['run'] as String?) ?? '').contains('compose') &&
+            ((s['run'] as String?) ?? '').contains(' logs'),
+      );
+      final down = stack.steps.indexWhere(
+        (s) => ((s['run'] as String?) ?? '').contains(' down'),
+      );
+      expect(logs, greaterThan(test));
+      expect(down, greaterThan(logs));
+      expect(stack.steps[logs]['if'], 'failure()');
+      expect(stack.steps[down]['if'], 'always()');
+      final logRun = stack.steps[logs]['run'] as String;
+      expect(logRun, contains('deploy/compose.yaml'));
+      // No service filter: every service's log is printed.
+      expect(logRun, isNot(matches(RegExp(r'logs\b.*\b(server|postgres)\b'))));
+      final downRun = stack.steps[down]['run'] as String;
+      expect(downRun, contains('deploy/compose.yaml'));
+      expect(downRun, matches(RegExp(r'down\b.*(\s-v\b|--volumes)')));
+      // Compose is the last step: nothing after it can leave the stack up.
+      expect(down, stack.steps.length - 1);
     });
   });
 

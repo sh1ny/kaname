@@ -1,6 +1,7 @@
 # Continuous integration for Kaname: the local checks on three OSes, builds of
-# all six app targets, OpenSpec validation, the licence check with its SBOM,
-# and the DCO sign-off check.
+# all six app targets, the server tests and the self-host stack check (Linux
+# only), OpenSpec validation, the licence check with its SBOM, and the DCO
+# sign-off check.
 #
 # Rules this file keeps (change them only through a reviewed change):
 #
@@ -9,8 +10,9 @@
 # - The workflow token is `contents: read`, and no job raises it.
 #   `pull_request_target` is never used, so fork code never runs with a write
 #   token or secrets.
-# - The job names (`check (linux|windows|macos)`, `build (<target>)`, `spec`,
-#   `licences`, `signoff`) are the required status checks on `main`. They never
+# - The job names (`check (linux|windows|macos)`, `build (<target>)`, `server`,
+#   `stack`, `spec`, `licences`, `signoff`) are the required status checks on
+#   `main`. They never
 #   include a runner label, so a runner bump does not rename a check. Renaming
 #   one needs the owner to update branch protection.
 # - No Flutter, Dart, Java, Node or OpenSpec version appears here. mise installs
@@ -102,6 +104,83 @@ jobs:
       - run: mise run resolve
       - run: mise exec -- ${{ matrix.command }}
         working-directory: app
+
+  server:
+    name: server
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+        with:
+          version: 2026.11.8
+          cache: true
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # Pub's default cache location on Linux and macOS, then on Windows.
+          path: |
+            ~/.pub-cache
+            ~\AppData\Local\Pub\Cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
+      - run: mise run resolve
+      - name: Create the development and test secrets
+        run: mise run server:setup
+      - name: Start the development Redis and wait until it is healthy
+        # `--wait` returns once the healthcheck passes and fails the step when
+        # it never does, so the tests never run against a missing Redis.
+        working-directory: server/kaname_server
+        run: |
+          docker compose up --detach --wait || {
+            docker compose logs --no-color redis
+            exit 1
+          }
+      - name: Check the generated code is current
+        run: mise run server:drift
+      - name: Run the server tests
+        run: mise run test:server
+
+  stack:
+    name: stack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@d5574b52816a478f9d4e6529a3f6ff17a8a36785 # v5.2.8
+        with:
+          version: 2026.11.8
+          cache: true
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # Pub's default cache location on Linux and macOS, then on Windows.
+          path: |
+            ~/.pub-cache
+            ~\AppData\Local\Pub\Cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
+      - run: mise run resolve
+      - name: Generate placeholder secrets
+        # Random values made here and never committed; deploy/.env is ignored.
+        run: |
+          {
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)"
+            echo "REDIS_PASSWORD=$(openssl rand -hex 24)"
+            echo "SERVERPOD_SERVICE_SECRET=$(openssl rand -hex 24)"
+          } > deploy/.env
+      - name: Build the web app and start the stack
+        run: mise run stack:up
+      - name: Run the stack tests
+        run: mise run stack:test
+      - name: Print the logs of every service
+        if: failure()
+        run: docker compose --file deploy/compose.yaml logs --no-color --timestamps
+      - name: Stop the stack and delete its volumes
+        if: always()
+        run: docker compose --file deploy/compose.yaml down -v --remove-orphans
 
   spec:
     name: spec
