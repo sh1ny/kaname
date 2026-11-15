@@ -44,7 +44,8 @@ String _readRepoFile(String relative) {
   return file.readAsStringSync();
 }
 
-/// Every Dockerfile in the repository, as paths relative to the root.
+/// Every Dockerfile in the repository, as `/`-separated paths relative to the
+/// root on every platform.
 List<String> _dockerfiles() {
   final root = _root();
   final found = <String>[];
@@ -56,7 +57,9 @@ List<String> _dockerfiles() {
       } else if (entity is File &&
           name.contains('Dockerfile') &&
           !name.endsWith('.dockerignore')) {
-        found.add(p.relative(entity.path, from: root));
+        found.add(
+          p.posix.joinAll(p.split(p.relative(entity.path, from: root))),
+        );
       }
     }
   }
