@@ -36,10 +36,7 @@ class Protocol extends _isc.SerializationManager
       _isc.ProtocolDeserialization.readClassName(data);
 
   @override
-  T deserialize<T>(
-    dynamic data, [
-    Type? t,
-  ]) {
+  T deserialize<T>(dynamic data, [Type? t]) {
     t ??= T;
     final rawDataClassName = _isc.ProtocolDeserialization.readClassName(data);
     final dataClassName = rawDataClassName;

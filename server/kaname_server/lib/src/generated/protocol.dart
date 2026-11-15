@@ -42,10 +42,7 @@ class Protocol extends _is.DatabaseSerializationManager
       _is.ProtocolDeserialization.readClassName(data);
 
   @override
-  T deserialize<T>(
-    dynamic data, [
-    Type? t,
-  ]) {
+  T deserialize<T>(dynamic data, [Type? t]) {
     t ??= T;
     final rawDataClassName = _is.ProtocolDeserialization.readClassName(data);
     final dataClassName = rawDataClassName;

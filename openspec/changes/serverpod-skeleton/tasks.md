@@ -7,7 +7,7 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 | Requirement | Scenario | Test file | Test name | State |
 |---|---|---|---|---|
 | server-runtime → The server and its client are workspace packages | Server packages resolve with the workspace | T/workspace_test.dart | root workspace lists kaname_server and kaname_client, the server pubspec holds serverpod_cli as a dev dependency and the lockfile holds it (a workspace lockfile marks it transitive); evidence: task 1.4 (`dart run serverpod_cli version` through mise) | green |
-| server-runtime → The server and its client are workspace packages | Generated client out of date | n/a (mechanical: `mise run server:drift` regenerates, formats and runs `git diff --exit-code`, which names the differing files) → evidence/drift-check.md | task 2.5 | red |
+| server-runtime → The server and its client are workspace packages | Generated client out of date | n/a (mechanical: `mise run server:drift` regenerates, formats and runs `git diff --exit-code`, which names the differing files) → evidence/drift-check.md | task 2.5 | green |
 | server-runtime → Redis is enabled in every server run mode | Run-mode configuration | S/unit/run_mode_config_test.dart | every run mode enables Redis with a host and port | red |
 | server-runtime → Redis is enabled in every server run mode | Redis unreachable at start | S/integration/probes_test.dart | redis unreachable at start: readyz 503 and the log names redis | red |
 | server-runtime → Each run mode uses its defined Postgres | Test run needs no external database | S/integration/health_endpoint_test.dart | all dependencies up (runs on embedded Postgres; CI installs no Postgres) | red |
@@ -50,7 +50,7 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 | workspace-layout → Analysis and formatting are clean | An analysis info | n/a (mechanical: a planted `info` in hand-written server code makes `mise run analyze` exit non-zero) → evidence/check-task.md | task 8.1 | red |
 | workspace-layout → Analysis and formatting are clean | Files outside the workspace members | T/workspace_test.dart | format directories are workspace members only (re-run) | green |
 | workspace-layout → Analysis and formatting are clean | An unformatted file | n/a (mechanical: `dart format --set-exit-if-changed` on a planted file) → evidence/check-task.md | task 8.1 | green |
-| workspace-layout → Analysis and formatting are clean | Generated code | T/analysis_options_test.dart | analysis excludes exactly the generated server and client paths; plus evidence/check-task.md: an unformatted generated file fails format:check | red |
+| workspace-layout → Analysis and formatting are clean | Generated code | T/analysis_options_test.dart | analysis excludes exactly the generated server and client paths; plus evidence/check-task.md: an unformatted generated file fails format:check | green |
 | workspace-layout → Packages follow the placement and naming rule | Current packages comply | T/workspace_test.dart | current layout reports app, core, tools, server and client and passes | green |
 | workspace-layout → Packages follow the placement and naming rule | A misplaced or misnamed package | T/workspace_test.dart | missing prefix or directory mismatch fails with rule (extended to `server/`) | green |
 | workspace-layout → One task runs every local check | All checks pass | n/a (mechanical: `mise run check` exit 0; its log shows no server test ran and the server packages analysed) → evidence/check-task.md | task 8.1 | red |
@@ -69,11 +69,11 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 
 ## 2. Analysis, formatting and the drift check
 
-- [ ] 2.1 Write failing `T/analysis_options_test.dart` ("analysis excludes exactly the generated server and client paths").
-- [ ] 2.2 Exclude the generated paths in `analysis_options.yaml` (D7, C9); keep them in `format:check`. Verify the test passes and `mise run analyze` and `mise run format:check` exit 0; flip the row green.
-- [ ] 2.3 Write C9 at its destination: confirm the `workspace-layout` delta's "Analysis and formatting are clean" requirement states that generated code is excluded from analysis but format-checked.
-- [ ] 2.4 Add `mise run server:drift` (generate, `dart format`, `git diff --exit-code` over the generated paths). Verify it exits 0 on the clean tree.
-- [ ] 2.5 [evidence] Change an endpoint signature without regenerating, run `mise run server:drift`, capture the non-zero exit and the named files, then revert → evidence/drift-check.md
+- [x] 2.1 Write failing `T/analysis_options_test.dart` ("analysis excludes exactly the generated server and client paths").
+- [x] 2.2 Exclude the generated paths in `analysis_options.yaml` (D7, C9); keep them in `format:check`. Verify the test passes and `mise run analyze` and `mise run format:check` exit 0; flip the row green.
+- [x] 2.3 Write C9 at its destination: confirm the `workspace-layout` delta's "Analysis and formatting are clean" requirement states that generated code is excluded from analysis but format-checked.
+- [x] 2.4 Add `mise run server:drift` (generate, `dart format`, `git diff --exit-code` over the generated paths). Verify it exits 0 on the clean tree.
+- [x] 2.5 [evidence] Change an endpoint signature without regenerating, run `mise run server:drift`, capture the non-zero exit and the named files, then revert → evidence/drift-check.md
 
 ## 3. Run-mode configuration, secrets and server tests
 

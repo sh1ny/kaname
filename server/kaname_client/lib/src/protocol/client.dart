@@ -21,12 +21,7 @@ class Client extends _isc.ServerpodClientShared {
     dynamic securityContext,
     Duration? streamingConnectionTimeout,
     Duration? connectionTimeout,
-    Function(
-      _isc.MethodCallContext,
-      Object,
-      StackTrace,
-    )?
-    onFailedCall,
+    Function(_isc.MethodCallContext, Object, StackTrace)? onFailedCall,
     Function(_isc.MethodCallContext)? onSucceededCall,
     bool? disconnectStreamsOnLostInternetConnection,
     _i85jenna.Client? httpClientOverride,

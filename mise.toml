@@ -106,6 +106,28 @@ description = "Build the app for the web (release)"
 dir = "app"
 run = "flutter build web --release"
 
+[tasks."server:generate"]
+description = "Run the package-local Serverpod code generation for the server and its client"
+dir = "server/kaname_server"
+run = "dart run serverpod_cli generate"
+
+[tasks."server:drift"]
+description = "Fail if the committed Serverpod generated code differs from a fresh generation"
+# Regenerates, puts the generated paths in formatter output form, then lists
+# every difference from the index (the commit, on a clean checkout).
+# `git add --intent-to-add` makes files that generation newly created visible
+# to `git diff` (it ignores untracked files). It records only an empty index
+# entry: commit the regenerated files, or remove the entries with
+# `git reset -- <paths>`. The paths: server/kaname_server/lib/src/generated,
+# the generated test tools file (server_test_tools_path) and
+# server/kaname_client/lib/src/protocol.
+run = [
+  { task = "server:generate" },
+  "dart format server/kaname_server/lib/src/generated server/kaname_server/test/integration/test_tools/serverpod_test_tools.dart server/kaname_client/lib/src/protocol",
+  "git add --intent-to-add -- server/kaname_server/lib/src/generated server/kaname_server/test/integration/test_tools/serverpod_test_tools.dart server/kaname_client/lib/src/protocol",
+  "git diff --exit-code --stat=200 -- server/kaname_server/lib/src/generated server/kaname_server/test/integration/test_tools/serverpod_test_tools.dart server/kaname_client/lib/src/protocol",
+]
+
 [tasks.check]
 description = "Run every local check (resolve first); stops at the first failure"
 run = [
