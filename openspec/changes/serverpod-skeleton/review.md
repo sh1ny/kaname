@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- **Round:** 4
-- **Prior round:** Round 3 re-check (commit dfac727) returned APPROVE_WITH_CHANGES with R3-1 and R3-2 applied and `CHANGES_APPLIED: yes`, leaving Suggestions S-6 to S-11 open (S-2 to S-5 unchanged from round 2).
-- **Run:** amendment re-check of commit ae70576 (design.md D7 and A9 only), after drift found during apply group 2. This is not a full re-review. In scope: whether D7 and A9 now match the tracked code and the group 2 working tree, whether any stale `server:generated` remains, whether C9 and the workspace-layout delta still agree with D7, and whether the intent-to-add side effect needs a Failure/State note.
+- **Round:** 5
+- **Prior round:** Round 4 re-check of commit ae70576 (D7 and A9) returned APPROVE_WITH_CHANGES. The round 3 Required Changes R3-1 and R3-2 stayed applied. Suggestions S-12 to S-15 were added, and S-6 to S-11 and round 2's S-2 to S-5 were carried forward.
+- **Run:** amendment re-check of commit 3005672 (design.md D5 build stage and its `Chosen by` line, task 5.2 wording), after drift found during apply group 5. This is not a full re-review. In scope: whether `dart build cli` contradicts the `server-runtime` requirement "The server image takes its toolchain from mise" and its scenarios, C5, the State, Failure and Resource sections, or the licence and notices story now that the image bundles native libraries.
 - **Reviewer:** fresh-context subagent (Claude Code, specwright-reviewer design-review mode)
-- **Reviewed:** `git show ae70576`; openspec/changes/serverpod-skeleton/{proposal.md, design.md (D7 :96-102, summary row :169, A9 :187, C8/C9 :199-200, State & Ownership :243-253, Failure & Visibility :255-266, Flow & State Gaps :278-283), review.md (round 3), tasks.md (test map :10, :43, :45; groups 1-2 :60-76; :91, :115), specs/workspace-layout/spec.md}; server/kaname_server/config/generator.yaml (tracked, HEAD and work tree identical); evidence/scaffold.md:50-56 (tracked). Uncommitted group 2 work-tree files, read as evidence of intent only: server/kaname_server/analysis_options.yaml, server/kaname_client/analysis_options.yaml, analysis_options.yaml (root, unchanged), the `server:generate`/`server:drift` tasks and `analyze`/`format:check` tasks in mise.toml, tools/kaname_tools/test/analysis_options_test.dart, evidence/drift-check.md. Repository-wide grep for `server:generated`, `server:drift`, `intent-to-add` and the generated paths. Project skills loaded: dart-run-static-analysis and serverpod-overview (both loaded). No referenced stores.
+- **Reviewed:** `git show 3005672`; openspec/changes/serverpod-skeleton/{proposal.md (:26, :42, :45), design.md (full; D5 :70-86, C5/C6 :196-197, State :243-253, Failure :255-266, Resource Bounds :268-276, Mechanism Ledger :285-297, Risks :299-304), review.md (round 4), tasks.md (test map :17-19, group 5 :97-103), specs/server-runtime/spec.md (:53-66)}. Tracked: pubspec.lock:883-898 (sqlite3 3.9.1, sqlite3_connection_pool 0.2.17, both transitive), THIRD_PARTY_NOTICES (lines 205-206 and a grep for `lru`, `rust`, `public domain`), server/kaname_client/pubspec.yaml and app/pubspec.yaml at HEAD, tools/kaname_tools/lib/src/licences.dart:1-11 (ci-matrix C5 doc comment), docs/adr/0002 (:16), openspec/specs/third-party-notices/spec.md:1-25, the archived ci-matrix design and proposal (native-dependency gap). Uncommitted group 5 work, read as evidence of intent only: deploy/server.Dockerfile, deploy/server.Dockerfile.dockerignore, tools/kaname_tools/test/dockerfile_test.dart, and the work-tree tasks.md diff (5.1-5.3 ticked). Pub cache, read as package evidence: sqlite3-3.9.1/{hook/build.dart, lib/src/hook/compile/description.dart, lib/src/hook/asset_hashes.dart, LICENSE}, sqlite3_connection_pool-0.2.17/{hook/build.dart, Cargo.toml, Cargo.lock, LICENSE, lib/src/precompiled/}, serverpod_database-4.1.2/pubspec.yaml, sqlite_async-0.14.5/pubspec.yaml. `mise exec -- dart build cli --help` (Dart 3.13.7). Project skills loaded: serverpod-deployment and serverpod-overview (both loaded). No referenced stores.
 
 ## Findings
 
@@ -14,15 +14,15 @@
 
 | Item | Status | Evidence |
 |---|---|---|
-| Task name `server:drift` | Consistent | design.md:98 names `mise run server:drift`. It matches tasks.md:10, :43, :45, :75, :76, :91 and :115, and the work-tree mise.toml task `[tasks."server:drift"]`. |
-| No stale `server:generated` | None remains | A grep over the tracked and work-tree Markdown, TOML, YAML and Dart files finds no `server:generated`. The summary row (design.md:169) names no task, so it needed no edit. |
-| Generated test tools path | Supported | generator.yaml:4 sets `server_test_tools_path: test/integration/test_tools`, and the tracked file `server/kaname_server/test/integration/test_tools/serverpod_test_tools.dart` exists. evidence/scaffold.md:53-54 records it as generated. The work-tree server `analysis_options.yaml` excludes exactly that file, and the new test derives the file from generator.yaml rather than hard-coding it. |
-| Excludes in each package's own options, which include the root | Matches the work tree | Both server packages' `analysis_options.yaml` now `include: ../../analysis_options.yaml` and add only their generated excludes. The scaffold's `recommended.yaml`-only include and its `formatter: trailing_commas: preserve` are gone, so the shared strict modes required by the workspace-layout delta ("The shared analysis options SHALL enable strict casts, strict inference and strict raw types") now govern the server packages. The test asserts both the include and the exact exclude set. These files are uncommitted (group 2). |
-| Intent-to-add step | Matches the work tree; works | The work-tree task runs generate, then `dart format`, then `git add --intent-to-add`, then `git diff --exit-code --stat` over the three generated locations. evidence/drift-check.md (uncommitted) shows that a new model and endpoint make the check exit 1, and that it names the two newly created `probe.dart` files. Without the intent-to-add step, `git diff` would have ignored those files. |
-| Format check still covers generated code | Holds | `format:check` (mise.toml:42-49) formats every workspace member directory, and the analysis excludes do not affect `dart format`. |
-| A9 marked checked | Supported | tasks.md:63 (1.2) is ticked, and scaffold.md:50-56 records the paths that A9 now states. |
-| C9 and the workspace-layout delta | Still agree with D7 | C9 (design.md:199) says generated paths are excluded from analysis but format-checked, and its destination is the delta's "Analysis and formatting are clean". The delta says generated code is excluded from analysis and that every Dart file, "generated code included", is in formatter output form. The test tools file is generated, so it falls under both. The "Generated code" scenario is worded per server package, so it covers that file too. No edit is needed. |
-| Scope of the amendment | Confined | ae70576 changes only design.md:98 and :187. It does not touch the proposal, the specs or any other decision. |
+| Hooks premise: Serverpod pulls in packages with build hooks | Supported | pubspec.lock:883-898 locks `sqlite3` 3.9.1 and `sqlite3_connection_pool` 0.2.17 as transitive. `serverpod_database` 4.1.2's pubspec depends on `sqlite3: ^3.3.1`, and `sqlite_async` 0.14.5 depends on `sqlite3_connection_pool`. Both locked packages ship `hook/build.dart`. The claim that `dart compile exe` refuses hooks was not re-run here; the commit message records it as observed in group 5 (see S-17). |
+| Output layout and entrypoint | Matches the tool | `dart build cli --help` (Dart 3.13.7) documents `<output>/bundle/bin/<executable>` and `bundle/lib/<dynamic libraries>`. The work-tree Dockerfile builds with `--output /out`, copies `/out/bundle/` to `/app` and uses `ENTRYPOINT ["./bin/main"]`, as D5 says. `config/` and `migrations/` sit beside it, and the working directory is `/app`. |
+| Spec: Flutter and Dart only through mise, no version in a Dockerfile (C5) | Still holds | The compiler is still the mise-installed Dart (`mise exec -- dart build cli`), and the Dockerfile prints `mise exec -- dart --version` first, so the build log can show it ("Image matches the pinned toolchain"). The file states no Flutter or Dart version. Its only version is `MISE_VERSION`, which the spec does not restrict, and which the test ties to CI's pin. The work-tree test's five version patterns match none of the Dockerfile's instruction lines. |
+| Spec: resolve exactly as `pubspec.lock` holds | Still holds, with a new build-time fetch | `dart build cli` adds one input outside pub: by default the sqlite3 hook downloads a precompiled `libsqlite3` from `github.com/simolus3/sqlite3.dart` releases (`description.dart` around :296-353). It checks the download against a SHA-256 table in the package itself (`asset_hashes.dart`, check at `description.dart` around :207-227). That package is pinned by sha256 in pubspec.lock, so the bytes stay pinned through the lockfile. `sqlite3_connection_pool` copies a prebuilt `.so` from its own `lib/src/precompiled/` (no fetch, no compiler). No contradiction. The new network dependency is noted under S-18. |
+| Spec: "No secrets in the image", "Lockfile out of date" | Unaffected | The dockerignore and `flutter pub get --enforce-lockfile` are unchanged by the amendment. The bundle directory adds no context path. |
+| State & Ownership, Resource Bounds | Unaffected | The bundled libraries are build outputs with no state. No queue or bound changes. |
+| Failure & Visibility | Unaffected in kind | A failed hook download fails `docker build`, just like a failed mise or Flutter download, which already have no table row. The build stage already needed GitHub for mise. See S-18. |
+| Scope of the amendment | Confined | 3005672 changes only design.md:73 and :86 and tasks.md:100. The proposal, the specs and the other decisions are untouched. The `Chosen by` line records the owner's approval. |
+| Licence and notices story | Gap not carried | See M-2 below. |
 
 ### Critical (blocking)
 
@@ -30,18 +30,34 @@ None.
 
 ### Moderate
 
-None.
+- **M-2 (native code bundled by build hooks is outside every carried licence gap).** Since `dart build cli`, the server image ships two native libraries, and their contents come from more than the pub packages that THIRD_PARTY_NOTICES lists.
+  - `libsqlite3.so` is a precompiled SQLite build downloaded by the hook. SQLite is public domain, so it carries no notice obligation.
+  - `libsqlite3_connection_pool.so` is a Rust `cdylib` (`sqlite3_connection_pool-0.2.17/Cargo.toml`). It statically links the `lru` 0.16.3 crate (`Cargo.lock`), which is MIT-licensed, and the Rust standard library, which is MIT OR Apache-2.0.
+
+  THIRD_PARTY_NOTICES lists only the pub packages `sqlite3` and `sqlite3_connection_pool` (both MIT, lines 205-206) and has no entry for `lru`, Rust std or SQLite. The SBOM is built from pubspec.lock alone. Neither existing gap names this kind of code:
+  - C6 (design.md:197) covers only container base images (Postgres, Redis, Caddy, Debian).
+  - ci-matrix's C5 (licences.dart:6-11) covers "Gradle, CocoaPods or SwiftPM packages, and the Flutter engine's bundled components".
+
+  ADR 0002:16 says "`THIRD_PARTY_NOTICES` lists every bundled dependency". The third-party-notices spec's purpose is to name "every bundled third-party asset".
+
+  In M0 nothing is distributed: self-hosters build the image locally, and the app does not depend on sqlite3. HEAD's `kaname_client` depends only on `serverpod_client`, and `app` does not depend on `kaname_client`. So the licences are compatible, and nothing needs a notice yet. But the gap is unrecorded. A later change could publish the server image (the "later deployment guide" in D12), or add a client dependency that brings a hook package into the distributed apps. Either change would then ship MIT and Apache-2.0 code without its notices, and neither the licence check nor C6 would say so.
+
+  This is a deliberate-gap carried constraint that the design does not list, so it is Moderate. Fix it with R5-1.
 
 ### Suggestions
 
-- **S-12 (intent-to-add leaves index entries; no Failure/State note).** When a local `server:drift` run fails because generation created new files, those files stay in the developer's index as intent-to-add entries. Consequences: `git status` lists them as tracked new files, `git commit -a` now commits them, and deleting the files afterwards leaves index entries that need `git reset -- <paths>`. evidence/drift-check.md's revert needed "the index reset" for this reason. In CI the checkout is disposable, so nothing is affected, and the usual fix for drift (commit the regenerated files) uses up the entries. So this does not block. The only record of the cleanup is the comment in the uncommitted mise.toml. Consider one line in D7, or a "drift check fails locally" row in Failure & Visibility (design.md:255-266): "newly generated files stay as intent-to-add entries; commit them, or `git reset -- <generated paths>` to undo". Alternatively, the task could reset those entries itself before it exits.
-- **S-13 (drift scope is the test tools directory, D7 names the file).** D7 and the analysis exclude name `test/integration/test_tools/serverpod_test_tools.dart`. The work-tree task instead runs `dart format`, `git add --intent-to-add` and `git diff` over the whole `test/integration/test_tools` directory. If someone later adds a hand-written helper there, the task would reformat it. While the helper is untracked, the task would also add it to the index as intent-to-add and fail drift locally. Narrow the task to the file, or have D7 say "directory", so that the design and the task agree.
-- **S-14 (tasks 2.2 and 2.4 wording lags D7).** tasks.md:73 says to exclude the generated paths "in `analysis_options.yaml`", which reads as the root file. D7 now places them in each server package's file. tasks.md:75 lists "generate, `dart format`, `git diff --exit-code`" without the intent-to-add step. The test and the work tree already follow D7, so this is a wording fix to make when the tasks are ticked.
-- **S-15 (the comment says "commit", the command compares with the index).** `git diff` compares the work tree with the index, not with HEAD. The work-tree mise.toml comment ("lists every difference from the commit") and the drift-check evidence describe the comparison against the commit. In CI the two are the same. Locally, staged regenerated files would pass. D7 itself only says `git diff --exit-code`, which is accurate. Correct the comment when the task is committed. Separately, the work-tree mise.toml was edited during this review (`--stat` became `--stat=200`). The evidence quotes `--stat`, so align the two before group 2 is committed.
+- **S-16 (D5's runtime-stage bullet lags the build-stage bullet).** design.md:74 still says the runtime stage "holds the executable, `config/` and `migrations/`". The build-stage bullet (design.md:73) and the work-tree Dockerfile also put the `bundle/lib/` native libraries there. Add "and its `lib/` native libraries" to :74 so the two bullets agree. The work-tree test does not check that the runtime stage copies `bundle/lib`. For a Postgres-only server, sqlite3 is probably never loaded at run time, so omitting the libraries would probably go unnoticed rather than fail. That is a reason to state it in the design rather than rely on a failure.
+- **S-17 (the "`dart compile exe` refuses hooks" claim has neither a citation nor a checked assumption).** The dependency chain is verifiable from tracked pubspec.lock:883-898. The tool behaviour that motivates the amendment exists only in the commit message. Record it as a checked assumption (for example, "A11: checked in task 5.2, `dart compile exe` exits with the build-hooks error"), or cite the evidence of the group 5 run, so that a later Dart upgrade can re-test it.
+- **S-18 (build-time network fetch from the sqlite3 hook).** `docker build` now also fetches `libsqlite3` from the sqlite3.dart GitHub releases. The fetch is hash-verified against the locked package, so integrity holds. An offline builder, or one with only a proxy, now fails at `dart build cli`, not only at the mise and Flutter downloads, and the hook's own error message explains this. For example, add a line to the Risks list, or to the deploy README in group 6.
+- **S-19 (A6 still reads "Not checked inside a container yet").** The work-tree tasks.md ticks 5.2 ("Verify A6 ... `docker build` succeeds on Linux"). When group 5 is committed, mark A6 (design.md:184) checked with what the build showed, as was done for A9 and A10.
+- **S-12 (carried forward unchanged from round 4).** Local `server:drift` failures leave intent-to-add index entries, and the design has no Failure/State note about them.
+- **S-13 (carried forward unchanged from round 4).** The drift task's scope is the test tools directory, but D7 names only the file.
+- **S-14 (carried forward unchanged from round 4).** The wording of tasks 2.2 and 2.4 lags D7.
+- **S-15 (carried forward unchanged from round 4).** The mise.toml comment says "commit" where `git diff` compares with the index. The evidence and the task's `--stat` form should also be aligned.
 - **S-11 (carried forward unchanged from round 3).** The `serverpod` exception's reason in licence-policy.yaml should cite "ADR 0002; design D13".
-- **S-8 (carried forward unchanged from round 3).** The SBOM records no licence for a package excepted as `unrecognised`. Teaching the check `SSPL-1.0` is an owner decision.
-- **S-9 (carried forward unchanged from round 3).** A7 (design.md:185) should be marked checked once task 1.1 is committed. Task 1.1 is now ticked, and A7 still reads "Not checked".
-- **S-10 (carried forward unchanged from round 3).** The THEN at specs/server-runtime/spec.md:14 cannot be asserted literally. Reword it when the spec is next edited.
+- **S-8 (carried forward unchanged from round 3).** The SBOM records no licence for a package excepted as `unrecognised`.
+- **S-9 (carried forward unchanged from round 3).** A7 (design.md:185) should be marked checked, because task 1.1 is ticked.
+- **S-10 (carried forward unchanged from round 3).** The THEN at specs/server-runtime/spec.md:14 cannot be asserted literally.
 - **S-6 (carried forward unchanged from round 2).** The WHEN of the scenario "An analysis info" should say "hand-written code".
 - **S-7 (carried forward unchanged from round 2).** C9 is still listed before C8 (design.md:199-200).
 
@@ -49,20 +65,20 @@ Round 2 Suggestions S-2 to S-5 remain as they were.
 
 ## Verdict
 
-Commit ae70576 brings D7 and A9 in line with the tracked generator configuration and with the group 2 work tree. The task is `server:drift` everywhere and no `server:generated` remains. The generated test tools file is listed, analysed by neither package and still format-checked. The excludes live in each server package's options file, which now includes the root strict options. C9 and the workspace-layout delta still agree with D7. The intent-to-add side effect is local, documented only in an uncommitted comment, and harmless in CI, so it is a Suggestion (S-12) rather than a Required Change. No Critical or Moderate finding is open. The Required Changes of round 3 stay applied.
+Commit 3005672 replaces `dart compile exe` with `dart build cli`, and it is consistent with the `server-runtime` requirement "The server image takes its toolchain from mise" and its three scenarios, and with C5. The compiler is still the mise-installed Dart, no Dockerfile states a toolchain version, and the one new build input (the hook-downloaded `libsqlite3`) is hash-pinned through the locked sqlite3 package. The State, Failure and Resource sections need no new row. The amendment does open one gap in the licence story: the image now bundles native code (SQLite, plus Rust `lru` and std inside `libsqlite3_connection_pool`) that neither THIRD_PARTY_NOTICES, the SBOM, C6 nor ci-matrix's C5 covers (M-2). This harms nothing in M0, because nothing is distributed, but a future change that publishes the image or brings a hook package into the apps would not be warned. One Required Change records the gap. The round 3 Required Changes stay applied.
 
 VERDICT: APPROVE_WITH_CHANGES
 
 ## Required Changes
 
-1. **R3-1 (C-1).** Applied under the owner's option (b) (dfac727). Unaffected by ae70576.
-2. **R3-2 (M-1).** Applied (design.md:201, C10). Unaffected by ae70576.
+1. **R3-1 (C-1).** Applied under the owner's option (b) (dfac727). Unaffected by 3005672.
+2. **R3-2 (M-1).** Applied (design.md:201, C10). Unaffected by 3005672.
+3. **R5-1 (M-2).** In design.md:197, extend C6 and keep its single destination. Replace the entry's first sentence with: "Container image licences (Postgres, Redis, Caddy, Debian), and the native libraries that pub build hooks bundle into the server image (`libsqlite3`, SQLite, public domain; `libsqlite3_connection_pool`, which statically links the Rust `lru` crate and Rust std, MIT/Apache-2.0), are outside the pub licence check, THIRD_PARTY_NOTICES' generated section and the SBOM; the server image is built locally and not redistributed, so a change that publishes it, or that brings a hook package into a distributed app, must add their notices first." Keep `Kind: deliberate gap. Destination: doc comment: tools/kaname_tools/lib/src/licences.dart LicencesCommand`. This edits a carried constraint only and reverses no `Chosen by: user` decision.
 
-ae70576 adds no Required Change.
-
-CHANGES_APPLIED: yes
+CHANGES_APPLIED: no
 
 ## Rebuttals
 
 - C-1: fixed in dfac727 (ADR 0002 amended in place, option (b), owner decision). Accepted by reviewer.
 - M-1: fixed in dfac727 (C10 added). Accepted by reviewer.
+- M-2: open (R5-1).
