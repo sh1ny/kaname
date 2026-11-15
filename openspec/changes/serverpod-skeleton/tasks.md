@@ -97,7 +97,7 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 ## 5. Server image
 
 - [ ] 5.1 Write failing `T/dockerfile_test.dart`: no Dockerfile states a Flutter or Dart version; the build stage installs through mise in locked mode with checksum-verified mise 2026.11.8; `pub get --enforce-lockfile`; runtime is slim Debian with curl, non-root; `deploy/server.Dockerfile.dockerignore` denies by default and never admits `passwords.yaml` or `.env`.
-- [ ] 5.2 Verify A6, then write `deploy/server.Dockerfile` per D5 (`platform: linux/amd64`, `dart compile exe`) and its dockerignore; verify the test passes and `docker build` succeeds on Linux; flip the structure row's part green.
+- [ ] 5.2 Verify A6, then write `deploy/server.Dockerfile` per D5 (`platform: linux/amd64`, `dart build cli`) and its dockerignore; verify the test passes and `docker build` succeeds on Linux; flip the structure row's part green.
 - [ ] 5.3 Write C5 at its destination: confirm the `server-runtime` delta's "The server image takes its toolchain from mise" requirement states that no Dockerfile states a toolchain version.
 
 ## 6. Compose stack and Caddy

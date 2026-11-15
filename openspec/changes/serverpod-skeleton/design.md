@@ -70,7 +70,7 @@ TIER: FULL
 ### D5: Server image built with mise; web build from the host
 
 - **Choice:** `deploy/server.Dockerfile` is multi-stage.
-  - **Build stage:** a Debian image pinned by digest installs mise at the same version CI pins (`.github/workflows/ci.yml`, `version: 2026.11.8`), with its checksum verified. It copies `mise.toml`, `mise.lock` and the workspace pubspecs and runs `mise install flutter` in locked mode. It then runs `flutter pub get --enforce-lockfile` at the root, so the image resolves exactly `pubspec.lock`, and AOT-compiles `server/kaname_server/bin/main.dart` with `mise exec -- dart compile exe`.
+  - **Build stage:** a Debian image pinned by digest installs mise at the same version CI pins (`.github/workflows/ci.yml`, `version: 2026.11.8`), with its checksum verified. It copies `mise.toml`, `mise.lock` and the workspace pubspecs and runs `mise install flutter` in locked mode. It then runs `flutter pub get --enforce-lockfile` at the root, so the image resolves exactly `pubspec.lock`, and AOT-compiles `server/kaname_server/bin/main.dart` with `mise exec -- dart build cli`. `dart compile exe` refuses packages with build hooks, and Serverpod depends on `sqlite3`, which has them; `dart build cli` writes the executable to `bundle/bin/` and its native libraries (`libsqlite3`, `libsqlite3_connection_pool`) to `bundle/lib/`, and the runtime stage copies both (entrypoint `./bin/main`).
   - **Runtime stage:** a slim Debian image pinned by digest, with `curl` installed for the Compose healthcheck. It runs as a non-root user and holds the executable, `config/` and `migrations/`.
   - **No version in the file:** the Dockerfile states no Flutter or Dart version; the toolchain comes only from `mise.toml` and `mise.lock`.
   - **Platform:** `server` and `migrate` set `platform: linux/amd64`, because Flutter's official Linux archive, the one `mise.lock` pins, is x64 only (Dart itself has arm64). arm64 hosts build and run the image under emulation. Native arm64 images are not committed to; they would need the server resolved without the Flutter app.
@@ -83,7 +83,7 @@ TIER: FULL
   - A compiled Dart probe for the healthcheck instead of curl (owner's choice: curl).
 - **Reversal cost:** low
 - **Important:** yes, binds future changes (container images take their toolchain only from mise)
-- **Chosen by:** user (round 1 fix; supersedes the earlier plain-Dart-image choice; amd64 platform pin, round 2)
+- **Chosen by:** user (round 1 fix; supersedes the earlier plain-Dart-image choice; amd64 platform pin, round 2; `dart build cli` instead of `dart compile exe`, apply group 5, 2026-11-15)
 
 ### D6: Development Redis from the server package's Compose file
 
