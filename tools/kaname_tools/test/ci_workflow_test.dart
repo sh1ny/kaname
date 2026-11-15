@@ -370,6 +370,32 @@ void main() {
       );
     });
 
+    test('every job that runs a kaname_tools task resolves the workspace '
+        'first', () {
+      // `dart run kaname_tools` in an unresolved workspace makes dart's own
+      // pub resolve it, which fails on the Flutter app package.
+      const toolTasks = ['check', 'licences', 'sbom', 'signoff'];
+      for (final MapEntry(key: id, value: job) in jobs.entries) {
+        final runs = [
+          for (final step in job.steps)
+            if (step['run'] case final String run) run,
+        ];
+        final firstTool = runs.indexWhere(
+          (run) => toolTasks.any((task) => run.contains('mise run $task')),
+        );
+        if (firstTool == -1) continue;
+        final resolve = runs.indexWhere(
+          (run) => run.contains('mise run resolve'),
+        );
+        expect(resolve, isNot(-1), reason: '$id never runs mise run resolve');
+        expect(
+          resolve,
+          lessThan(firstTool),
+          reason: '$id runs a kaname_tools task before mise run resolve',
+        );
+      }
+    });
+
     test('job timeouts are check 30, build 45, others 10 minutes', () {
       final expected = {
         'check': 30,
