@@ -87,6 +87,10 @@ run = "dart run kaname_tools notices --write"
 description = "Fail if THIRD_PARTY_NOTICES is stale or misses a vendored source"
 run = "dart run kaname_tools notices --check"
 
+[tasks.licences]
+description = "Check that every locked package's licence is allowed by licence-policy.yaml"
+run = "dart run kaname_tools licences --check"
+
 [tasks."build:web"]
 description = "Build the app for the web (release)"
 dir = "app"
@@ -101,4 +105,5 @@ run = [
   { task = "format:check" },
   { task = "test" },
   { task = "notices:check" },
+  { task = "licences" },
 ]

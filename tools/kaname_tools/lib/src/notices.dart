@@ -2,12 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:args/command_runner.dart';
-import 'package:path/path.dart' as p;
-import 'package:yaml/yaml.dart';
 
 import 'cli.dart';
 import 'file_system.dart';
-import 'package_config.dart';
+import 'locked_packages.dart';
 
 /// The outcome of [NoticesGenerator.write].
 sealed class NoticesWriteResult {
@@ -100,18 +98,9 @@ final class NoticesGenerator {
       'and bin/cache/pkg/sky_engine/LICENSE (the engine and its bundled '
       'third-party components).';
 
-  static const String _lockPath = 'pubspec.lock';
-  static const String _packageConfigPath = packageConfigPath;
   static const String _upstreamPath = '.claude/skills/UPSTREAM.json';
   static const String _skillsDirectory = '.claude/skills';
   static const String _fontsDirectory = 'brand/fonts';
-  static const String _resolveHint = 'run `mise run resolve` first';
-  static const List<String> _licenceNames = [
-    'LICENSE',
-    'LICENSE.md',
-    'LICENSE.txt',
-    'COPYING',
-  ];
 
   static final _indexLine = RegExp(r'^(\S+) (\S+) (\S+) (L\d+|flutter-sdk)$');
 
@@ -257,14 +246,16 @@ final class NoticesGenerator {
   // --- the generated section ---
 
   _Generated _generate() {
-    if (_fileSystem.kindOf(_packageConfigPath) != FsEntryKind.file) {
-      throw const _NoticesError(
-        '$_packageConfigPath not found: the workspace is not resolved; '
-        '$_resolveHint',
-      );
+    try {
+      return _generateFromLock();
+    } on WorkspaceReadException catch (e) {
+      throw _NoticesError(e.message);
     }
-    final roots = _packageRoots();
-    final packages = _lockedPackages()
+  }
+
+  _Generated _generateFromLock() {
+    final roots = readResolvedPackageRoots(_fileSystem);
+    final packages = readLockedPackages(_fileSystem)
       ..sort((a, b) => a.name.compareTo(b.name));
 
     final ids = <String, String>{};
@@ -274,7 +265,7 @@ final class NoticesGenerator {
         refs.add(flutterSdkRef);
         continue;
       }
-      final text = _licenceText(name, version, roots[name]);
+      final text = readLicenceText(_fileSystem, name, version, roots[name]);
       refs.add(ids.putIfAbsent(text, () => 'L${ids.length + 1}'));
     }
 
@@ -301,109 +292,6 @@ final class NoticesGenerator {
     return _Generated(lines.join('\n'), packages);
   }
 
-  List<LockedPackage> _lockedPackages() {
-    if (_fileSystem.kindOf(_lockPath) != FsEntryKind.file) {
-      throw const _NoticesError('$_lockPath not found; $_resolveHint');
-    }
-    final Object? document;
-    try {
-      document = loadYaml(_fileSystem.readAsString(_lockPath));
-    } on YamlException catch (e) {
-      throw _NoticesError('$_lockPath is not valid YAML: ${e.message}');
-    } on FileSystemException catch (e) {
-      throw _NoticesError('$_lockPath cannot be read: ${e.message}');
-    }
-    if (document case {'packages': final Map<Object?, Object?> packages}) {
-      return [
-        for (final MapEntry(:key, :value) in packages.entries)
-          switch ((key, value)) {
-            (
-              final String name,
-              {'source': final String source, 'version': final String version},
-            ) =>
-              LockedPackage(name, version, source),
-            _ => throw _NoticesError(
-              '$_lockPath: package "$key" has no string source and version',
-            ),
-          },
-      ];
-    }
-    throw const _NoticesError('$_lockPath has no packages: map');
-  }
-
-  /// Maps each package name to the directory holding its files.
-  Map<String, String> _packageRoots() {
-    try {
-      return readPackageRoots(_fileSystem);
-    } on PackageConfigException catch (e) {
-      throw _NoticesError(e.message);
-    }
-  }
-
-  String _licenceText(String name, String version, String? root) {
-    if (root == null || _fileSystem.kindOf(root) != FsEntryKind.directory) {
-      throw _NoticesError(
-        'package $name $version: its directory is not in '
-        '$_packageConfigPath or does not exist; $_resolveHint',
-      );
-    }
-    final entries = _fileSystem.list(root)
-      ..sort((a, b) => a.name.compareTo(b.name));
-    for (final candidate in _licenceNames) {
-      for (final FsEntry(name: file, :kind) in entries) {
-        if (kind == FsEntryKind.directory ||
-            file.toLowerCase() != candidate.toLowerCase()) {
-          continue;
-        }
-        final String raw;
-        try {
-          raw = _fileSystem.readAsString(p.posix.join(root, file));
-        } on FileSystemException catch (e) {
-          throw _NoticesError(
-            'package $name $version: licence file $file cannot be read: '
-            '${e.message}',
-          );
-        } on FormatException catch (e) {
-          throw _NoticesError(
-            'package $name $version: licence file $file is not UTF-8: '
-            '${e.message}',
-          );
-        }
-        final text = normaliseLicence(raw);
-        if (text.isEmpty) {
-          throw _NoticesError(
-            'package $name $version: licence file $file is empty',
-          );
-        }
-        return text;
-      }
-    }
-    throw _NoticesError(
-      'package $name $version: no licence file '
-      '(${_licenceNames.join(', ')}) in its package directory',
-    );
-  }
-
-  /// Normalises licence [raw] text as the class documentation describes.
-  static String normaliseLicence(String raw) {
-    final withoutBom = raw.startsWith('﻿') ? raw.substring(1) : raw;
-    final lines = [
-      for (final line
-          in withoutBom
-              .replaceAll('\r\n', '\n')
-              .replaceAll('\r', '\n')
-              .split('\n'))
-        line.trimRight(),
-    ];
-    while (lines.isNotEmpty && lines.first.isEmpty) {
-      lines.removeAt(0);
-    }
-    while (lines.isNotEmpty && lines.last.isEmpty) {
-      lines.removeLast();
-    }
-    return lines.join('\n');
-  }
-
   // --- staleness ---
 
   List<String> _stalenessProblems(
@@ -421,21 +309,21 @@ final class NoticesGenerator {
     final problems = <String>[
       for (final MapEntry(:key, :value) in wanted.entries)
         if (current[key] case null)
-          '$noticesPath: package $key $value is in $_lockPath but missing '
+          '$noticesPath: package $key $value is in $lockPath but missing '
               'from the dependency section',
       for (final MapEntry(:key, :value) in current.entries)
         if (!wanted.containsKey(key))
           '$noticesPath: package $key $value is in the dependency section '
-              'but not in $_lockPath (extra)',
+              'but not in $lockPath (extra)',
       for (final MapEntry(:key, :value) in wanted.entries)
         if (current[key] case final String old when old != value)
           '$noticesPath: package $key is at $old in the dependency section '
-              'but $value in $_lockPath (changed)',
+              'but $value in $lockPath (changed)',
     ];
     if (problems.isEmpty) {
       problems.add(
         '$noticesPath: the dependency section is stale (licence text or '
-        'layout differs from what $_lockPath generates)',
+        'layout differs from what $lockPath generates)',
       );
     }
     return problems;
@@ -524,21 +412,6 @@ final class NoticesGenerator {
           name,
     ]..sort();
   }
-}
-
-/// A package from the root `pubspec.lock`.
-final class LockedPackage {
-  /// Creates a locked package.
-  const LockedPackage(this.name, this.version, this.source);
-
-  /// The package name.
-  final String name;
-
-  /// The locked version.
-  final String version;
-
-  /// The lockfile source: `hosted`, `sdk`, `git` or `path`.
-  final String source;
 }
 
 /// A vendored third-party source recorded in `UPSTREAM.json`.

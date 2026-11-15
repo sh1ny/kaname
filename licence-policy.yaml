@@ -1,0 +1,25 @@
+# Licence policy for pub dependencies, read by `mise run licences`.
+#
+# allowed: SPDX ids that pass without an exception. Each must be a licence the
+#   check knows and that is AGPL-3.0-compatible; anything else is an error.
+# exceptions: the only way to accept a package the check would fail. Each entry
+#   covers one package at one exact version, records the licence the check
+#   found (an SPDX id or `unrecognised`), why the owner accepts it, and the
+#   ISO date of the owner's approval. A stale or unneeded entry fails.
+#   Only the owner approves exceptions.
+#
+# Native platform dependencies (Gradle, CocoaPods/SwiftPM, the Flutter
+# engine's bundled components) are not checked.
+allowed:
+  - MIT
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - Apache-2.0
+  - ISC
+  - Zlib
+exceptions:
+  - package: node_preamble
+    version: "2.0.2"
+    licence: unrecognised
+    reason: "LICENSE holds MIT plus the Dart project's BSD-3-Clause, both allowlisted"
+    approved: 2026-11-15

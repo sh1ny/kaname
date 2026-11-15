@@ -63,6 +63,7 @@ InMemoryFileSystem validRepository() => InMemoryFileSystem()
   ..writeFile('tools/kaname_tools/lib/kaname_tools.dart', '// tools\n')
   ..writeFile('LICENSE')
   ..writeFile('THIRD_PARTY_NOTICES')
+  ..writeFile('licence-policy.yaml')
   ..writeFile('CONTRIBUTING.md')
   ..writeFile('SECURITY.md')
   ..writeFile('.github/pull_request_template.md');

@@ -1,9 +1,13 @@
-/// Repository checks for Kaname: workspace layout, package purity and
-/// third-party notices.
+/// Repository checks for Kaname: workspace layout, package purity,
+/// third-party notices and dependency licences.
 library;
 
 export 'src/cli.dart';
 export 'src/file_system.dart';
+export 'src/licence_matcher.dart';
+export 'src/licence_policy.dart';
+export 'src/licences.dart';
+export 'src/locked_packages.dart';
 export 'src/notices.dart';
 export 'src/package_config.dart';
 export 'src/pubspec.dart';
