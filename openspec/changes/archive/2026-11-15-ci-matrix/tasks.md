@@ -77,7 +77,7 @@
 - [x] 2.4 Write failing tests in `licences_test.dart` on the in-memory file system for every dependency-licences row that maps to it: engine bundle, unrecognised, no licence file, not resolved, all allowed, disallowed, every exception scenario, malformed policy, unknown key, incompatible allowlist entry and unknown allowlist entry. Check that they fail because the command does not exist.
 - [x] 2.5 Implement `kaname_tools licences --check`: shared lockfile and licence-file reading with the notices code (extract it, so that `notices_test.dart` stays green), policy parsing of `licence-policy.yaml` (D5), SDK handling (`flutter` and `flutter_test` as BSD-3-Clause, `sky_engine` as `LicenseRef-flutter-engine-bundle`), and output listing every failure. Register it in `cli.dart` and add the mise task `licences` (`dart run kaname_tools licences --check`) to `check`. Verify that 2.4 and `notices_test.dart` pass and flip the rows green.
 - [x] 2.6 Write `licence-policy.yaml` with `allowed:` set to D3's six identifiers and an empty `exceptions:` list. Add it to the workspace check's required files (with the `workspace_test.dart` case updated) and write `licences_repo_test.dart` "repository licence policy loads and the check passes". Run `mise run licences`. Any package it fails is reported to the owner with its licence text: no exception is written without the owner's approval date (task 2.7).
-- [ ] 2.7 [user] Approve or reject each exception the agent proposes from task 2.6, with a date, or confirm that none were needed. The agent writes the approved entries, and `mise run licences` passes.
+- [x] 2.7 [user] Approve or reject each exception the agent proposes from task 2.6, with a date, or confirm that none were needed. The agent writes the approved entries, and `mise run licences` passes.
 - [x] 2.8 Carry C4 and C8: confirm the delta spec `specs/dependency-licences/spec.md` holds "Exceptions are explicit and owner-reviewed" and "The licence policy file is validated" as written, and that their tests are green.
 
 ## 3. SBOM
@@ -107,7 +107,7 @@
 - [x] 6.1 Push the branch and open the PR (ship). The workflow runs every job on the PR.
 - [x] 6.2 [evidence] Capture this change's PR run: every job's name, runner and conclusion (all `success`), the iOS job's unsigned build, and the uploaded `sbom-cyclonedx` artifact, taken from `gh run view --json jobs` through the fenced KintsugiBot credential → evidence/ci-run.md
 - [x] 6.3 [evidence] Capture the trailer block of each commit on this branch (`git log main..HEAD --format=%H%n%(trailers)`), showing the owner's `Signed-off-by` before the single `Co-authored-by`, and the `signoff` job's passing output → evidence/commit-trailers.md
-- [ ] 6.4 [user] In main's branch protection, mark `check (linux)`, `check (windows)`, `check (macos)`, the six `build (…)` jobs, `spec`, `licences` and `signoff` as required status checks, then confirm by ticking this task.
+- [x] 6.4 [user] In main's branch protection, mark `check (linux)`, `check (windows)`, `check (macos)`, the six `build (…)` jobs, `spec`, `licences` and `signoff` as required status checks, then confirm by ticking this task.
 
 ## Workflow follow-up
 
