@@ -1,10 +1,6 @@
-# This is the configuration file for your local development environment. By
-# default, it runs a single server on port 8080. To set up your server, you will
-# need to add the name of the database you are connecting to and the user name.
-# The password for the database is stored in the config/passwords.yaml.
-#
-# When running your server locally, the server ports are the same as the public
-# facing ports.
+# Development run mode. The API, Insights and web servers bind the same ports
+# they publish. The database and Redis passwords come from
+# config/passwords.yaml, which `mise run server:setup` creates (design D11).
 
 # Configuration for the main API server.
 apiServer:
@@ -13,64 +9,40 @@ apiServer:
   publicPort: 8080
   publicScheme: http
 
-# Configuration for the Insights server.
+# Insights runs in development only (design D8): the runner and the MCP use it.
 insightsServer:
   port: 8081
   publicHost: localhost
   publicPort: 8081
   publicScheme: http
 
-# Configuration for the web server.
+# The web server runs in development only (design D8).
 webServer:
   port: 8082
   publicHost: localhost
   publicPort: 8082
   publicScheme: http
 
-# This is the database setup for your server.
+# Embedded PostgreSQL: Serverpod starts and manages it in dataPath, which is
+# inside the server package and ignored by git.
 database:
   host: localhost
   port: 8090
   name: kaname
   user: postgres
-  #requireSsl: true # defaults to false
-  #isUnixSocket: true # defaults to false
   dataPath: .serverpod/development/pgdata
-  #maxConnectionCount: 10 # Defaults to 10, a negative or null value removes the limit
 
-# This is the setup for Redis.
+# Redis is enabled in every run mode. In development and test it is the
+# container in docker-compose.yaml (design D6).
 redis:
-  enabled: false
+  enabled: true
   host: localhost
   port: 8091
-  #user: # defaults to empty
-  #requireSsl: true # defaults to false
 
 maxRequestSize: 524288 # The maximum size of requests allowed in bytes
 
+# Persistent session logs only in development (design D10).
 sessionLogs:
   persistentEnabled: true
   consoleEnabled: true
   consoleLogFormat: text # Defaults to "json", options are "text" or "json"
-
-#futureCall:
-#  enabled: true # Defaults to true, set to false to disable scheduling and running future calls
-#  executionEnabled: true # Defaults to true
-#  concurrencyLimit: 1 # Defaults to 1, a negative or null value removes the limit
-#  scanInterval: 5000 # Unit in milliseconds, defaults to 5000
-
-# Recommended when serving web clients: keeps auth tokens in httpOnly
-# cookies. Without this, web tokens live in JavaScript-readable storage,
-# where any XSS can steal them. Web clients opt in with
-# `client.cookieAuth = true`. Requires `allowedOrigins`; browsers from
-# origins not in the list lose cross-origin access, including to public
-# endpoints.
-#authCookie:
-#  secure: false # Cookies require https; relax only for http://localhost
-#  #name: serverpod_auth # Defaults to "serverpod_auth"
-#  #refreshName: serverpod_auth_refresh # Defaults to "<name>_refresh"
-#  #domain: example.com # Defaults to host-only; set to share across subdomains
-#  #path: / # Defaults to "/"
-#  #sameSite: lax # Defaults to "lax", options are "strict" or "none"
-#allowedOrigins:
-#  - http://localhost:8082 # The origin serving your Flutter web app

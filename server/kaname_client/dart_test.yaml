@@ -1,0 +1,3 @@
+# The stack tests (design D13, group 6) need the Compose stack running.
+tags:
+  stack: {}

@@ -1,0 +1,26 @@
+# Development Redis for the server's development and test run modes
+# (design D6). Only one checkout at a time runs it: the Compose project is
+# named after this directory.
+#
+# `mise run server:setup` writes .env (the Redis password) from
+# config/passwords.yaml; start with `docker compose up -d`.
+services:
+  redis:
+    # Official Redis 8, pinned by digest (design D3).
+    image: redis:8@sha256:1f88291b4c57bdf249f02eb085a8669889b2d2954e91d4de5118a5da6b78dd53
+    # Published on the loopback interface only.
+    ports:
+      - "127.0.0.1:8091:6379"
+    environment:
+      KANAME_REDIS_PASSWORD: ${KANAME_REDIS_PASSWORD:?run `mise run server:setup` first}
+      # Authenticates redis-cli inside the container, for the healthcheck.
+      REDISCLI_AUTH: ${KANAME_REDIS_PASSWORD:?run `mise run server:setup` first}
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$$KANAME_REDIS_PASSWORD"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

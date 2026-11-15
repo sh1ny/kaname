@@ -128,6 +128,30 @@ run = [
   "git diff --exit-code --stat=200 -- server/kaname_server/lib/src/generated server/kaname_server/test/integration/test_tools/serverpod_test_tools.dart server/kaname_client/lib/src/protocol",
 ]
 
+[tasks."server:setup"]
+description = "Create the ignored dev/test secrets when missing and derive the dev Redis .env"
+dir = "server/kaname_server"
+run = "dart run tool/setup.dart"
+
+[tasks."test:server"]
+description = "Run the server packages' tests; needs the development Redis up (server:setup, then docker compose up -d in server/kaname_server)"
+# Starts nothing. `check`'s `test` task does not run these: they need Redis.
+# The `stack` tag marks tests that need the Compose stack instead.
+run = [
+  { task = "test:server:server" },
+  { task = "test:server:client" },
+]
+
+[tasks."test:server:server"]
+description = "Run the kaname_server tests without the stack tag"
+dir = "server/kaname_server"
+run = "dart test --exclude-tags stack"
+
+[tasks."test:server:client"]
+description = "Run the kaname_client tests without the stack tag"
+dir = "server/kaname_client"
+run = "dart test --exclude-tags stack"
+
 [tasks.check]
 description = "Run every local check (resolve first); stops at the first failure"
 run = [
