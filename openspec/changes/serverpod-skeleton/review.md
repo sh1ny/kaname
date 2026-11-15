@@ -2,47 +2,45 @@
 
 ## Metadata
 
-- **Round:** 3
-- **Prior round:** Round 2 returned APPROVE_WITH_CHANGES. Its re-check confirmed all eight Required Changes (R2-1 to R2-6) and set `CHANGES_APPLIED: yes`, with Suggestions S-6 and S-7 left open (S-2 to S-5 unchanged from round 2). Round 3 (amendment re-check of commit ae49053) returned APPROVE_WITH_CHANGES with Required Changes R3-1 and R3-2 and `CHANGES_APPLIED: no`.
-- **Run:** Required Changes re-check of round 3. Only commit dfac727 is in scope, which is the author's application of R3-1 and R3-2. The check covers whether R3-1 and R3-2 are applied and whether the edits introduce a contradiction. This is not a full re-review. The owner chose option (b) for R3-1 (amend ADR 0002 in place) and judged that SSPL v1 counts as AGPL-compatible for this project. This run checks that the judgement is recorded accurately and consistently. It does not assess whether the judgement is right. The owner wrote the ADR text in this session, so the `[user]` approval task R3-1 proposed is not required. Because the owner counts SSPL as compatible, CONTRIBUTING.md:12 needs no wording change unless a concrete contradiction is found, and none was.
+- **Round:** 4
+- **Prior round:** Round 3 re-check (commit dfac727) returned APPROVE_WITH_CHANGES with R3-1 and R3-2 applied and `CHANGES_APPLIED: yes`, leaving Suggestions S-6 to S-11 open (S-2 to S-5 unchanged from round 2).
+- **Run:** amendment re-check of commit ae70576 (design.md D7 and A9 only), after drift found during apply group 2. This is not a full re-review. In scope: whether D7 and A9 now match the tracked code and the group 2 working tree, whether any stale `server:generated` remains, whether C9 and the workspace-layout delta still agree with D7, and whether the intent-to-add side effect needs a Failure/State note.
 - **Reviewer:** fresh-context subagent (Claude Code, specwright-reviewer design-review mode)
-- **Reviewed:** `git show dfac727` (docs/adr/0002, design.md, proposal.md, review.md hunks); openspec/changes/serverpod-skeleton/{proposal.md, design.md:31, 143-150, 175, 192-201, 308, review.md (round 3), tasks.md:66-68}; a grep of the change's specs for SSPL and ADR 0002; docs/adr/0002-licence-clean-room-and-eula-boundary.md (full); CONTRIBUTING.md:1-20; licence-policy.yaml (working tree, plus its uncommitted diff against HEAD); openspec/specs/dependency-licences/spec.md:4, 47-48, 59-86, 96-97; openspec/schemas/specwright/schema.yaml (review instruction) and templates/review.md. Project skills loaded: serverpod-overview and dart-run-static-analysis (both loaded). No referenced stores.
+- **Reviewed:** `git show ae70576`; openspec/changes/serverpod-skeleton/{proposal.md, design.md (D7 :96-102, summary row :169, A9 :187, C8/C9 :199-200, State & Ownership :243-253, Failure & Visibility :255-266, Flow & State Gaps :278-283), review.md (round 3), tasks.md (test map :10, :43, :45; groups 1-2 :60-76; :91, :115), specs/workspace-layout/spec.md}; server/kaname_server/config/generator.yaml (tracked, HEAD and work tree identical); evidence/scaffold.md:50-56 (tracked). Uncommitted group 2 work-tree files, read as evidence of intent only: server/kaname_server/analysis_options.yaml, server/kaname_client/analysis_options.yaml, analysis_options.yaml (root, unchanged), the `server:generate`/`server:drift` tasks and `analyze`/`format:check` tasks in mise.toml, tools/kaname_tools/test/analysis_options_test.dart, evidence/drift-check.md. Repository-wide grep for `server:generated`, `server:drift`, `intent-to-add` and the generated paths. Project skills loaded: dart-run-static-analysis and serverpod-overview (both loaded). No referenced stores.
 
 ## Findings
 
-### Required Changes re-check
+### Amendment re-check
 
 | Item | Status | Evidence |
 |---|---|---|
-| R3-1, ADR amended in place (option b) | Applied | The last Decision bullet of ADR 0002 now records the owner's judgement: SSPL v1 is "the AGPL-3.0 plus a service clause", its extra obligation "applies only to offering the SSPL-licensed program itself as a hosted service", and "Kaname publishes its full source anyway". It accepts `serverpod` as an unmodified runtime dependency "through an exception pinned to its exact version in `licence-policy.yaml`" and says each Serverpod version change returns to the owner. It ends with the dated note "(Amended 2026-11-15, change `serverpod-skeleton`.)". The CI-fails rule is kept unchanged, so the bullet stays consistent with itself. |
-| R3-1, D13 Choice and Rejected | Applied | design.md:146 names the in-place amendment and gives the same reading of the service clause, worded as "offering Serverpod itself as a hosted service". design.md:147 adds "leaving ADR 0002 unamended" to Rejected, with the reason R3-1 asked for. |
-| R3-1, D13 summary row | Applied | design.md:175 adds "ADR 0002 amended" to the Choice column and "ADR 0002 unamended" to the Rejected column. Reversal cost, importance and chooser are unchanged and match the entry. |
-| R3-1, design Context | Applied | design.md:31 now reads "0002 (AGPL, clean room; its CI licence bullet amended for `serverpod`, D13)". This is the option (b) wording. |
-| R3-1, proposal Impact | Applied | proposal.md:42 adds `licence-policy.yaml` and the ADR file to "Changed:". proposal.md:44 references the amendment and states the owner's reading. CONTRIBUTING.md is correctly absent, because under the owner's judgement it needs no edit. openspec/architecture.md is correctly absent, because option (b) adds no ADR row. |
-| R3-1, tasks | Not required (owner) | The owner wrote the ADR text directly, so neither the `[user]` approval task nor the ADR-writing task is needed. The ADR edit is already committed in dfac727. The licence-policy.yaml entries stay under tasks 1.6 and 1.7 (tasks.md:67-68), which already cover writing approved exceptions and getting `mise run licences` to pass. No task is now missing. |
-| R3-1, CONTRIBUTING.md:12 | No change needed; consistent | "subject to its licence being compatible with the AGPL-3.0" matches the amended ADR, which counts SSPL v1 as compatible. CONTRIBUTING.md:9 links ADR 0002, so a contributor reaches the amended reading from there. |
-| R3-1, dependency-licences spec | No change needed; consistent | Purpose (spec:4) and "Only AGPL-compatible licences pass" (spec:47-48) agree with the owner's reading. `serverpod` passes through an exception, the spec's only route for a package the check would fail (spec:59), and not through the allowlist. So the rule that an allowlist entry must be one the check recognises (spec:86) is not touched. |
-| R3-1, licence-policy.yaml | Consistent | The `serverpod` entry (4.1.2, `unrecognised`, "Server Side Public License v1 (SSPL) ... accepted by the owner (design D13)", 2026-11-15) matches D13, the ADR's "exception pinned to its exact version" and the header rule "Only the owner approves exceptions". The postgres entry matches D13. |
-| R3-2, C10 | Applied | design.md:201 adds C10 with the required content: `serverpod` is the only runtime dependency accepted under SSPL v1, and any Serverpod version change or other non-allowlisted licence goes back to the owner (D13). It has Kind "deliberate gap" and exactly one destination, ADR 0002 (CI licence bullet, amended 2026-11-15). That destination holds the version-change part verbatim. The "any other licence" part is enforced by licence-policy.yaml:9 and spec:59. |
-| Scope of edits | Confined | dfac727 changes only the lines that R3-1 and R3-2 name: design.md:31, 146-147, 175 and 201, proposal.md:42 and 44, the one ADR bullet, and review.md. No other part of the proposal, design or specs changed, so the verdict is not voided. |
-
-### Contradiction check
-
-No contradiction was introduced. The ADR, D13 and its row, design Context, C10, the proposal and licence-policy.yaml all describe the service clause the same way. They all pin the exception to the exact version and all send each Serverpod version change back to the owner. The amended bullet does not conflict with ADR 0002's "Non-commercial: no ... hosted service" bullet: that bullet limits what Kaname itself offers, and the SSPL reading concerns offering Serverpod as a service. C10 says `serverpod` is the only SSPL dependency, while the ADR treats SSPL as compatible in general. These do not conflict: the check cannot recognise SSPL, so another SSPL package would still need its own exception, and only the owner can approve one (licence-policy.yaml:9, spec:59).
+| Task name `server:drift` | Consistent | design.md:98 names `mise run server:drift`. It matches tasks.md:10, :43, :45, :75, :76, :91 and :115, and the work-tree mise.toml task `[tasks."server:drift"]`. |
+| No stale `server:generated` | None remains | A grep over the tracked and work-tree Markdown, TOML, YAML and Dart files finds no `server:generated`. The summary row (design.md:169) names no task, so it needed no edit. |
+| Generated test tools path | Supported | generator.yaml:4 sets `server_test_tools_path: test/integration/test_tools`, and the tracked file `server/kaname_server/test/integration/test_tools/serverpod_test_tools.dart` exists. evidence/scaffold.md:53-54 records it as generated. The work-tree server `analysis_options.yaml` excludes exactly that file, and the new test derives the file from generator.yaml rather than hard-coding it. |
+| Excludes in each package's own options, which include the root | Matches the work tree | Both server packages' `analysis_options.yaml` now `include: ../../analysis_options.yaml` and add only their generated excludes. The scaffold's `recommended.yaml`-only include and its `formatter: trailing_commas: preserve` are gone, so the shared strict modes required by the workspace-layout delta ("The shared analysis options SHALL enable strict casts, strict inference and strict raw types") now govern the server packages. The test asserts both the include and the exact exclude set. These files are uncommitted (group 2). |
+| Intent-to-add step | Matches the work tree; works | The work-tree task runs generate, then `dart format`, then `git add --intent-to-add`, then `git diff --exit-code --stat` over the three generated locations. evidence/drift-check.md (uncommitted) shows that a new model and endpoint make the check exit 1, and that it names the two newly created `probe.dart` files. Without the intent-to-add step, `git diff` would have ignored those files. |
+| Format check still covers generated code | Holds | `format:check` (mise.toml:42-49) formats every workspace member directory, and the analysis excludes do not affect `dart format`. |
+| A9 marked checked | Supported | tasks.md:63 (1.2) is ticked, and scaffold.md:50-56 records the paths that A9 now states. |
+| C9 and the workspace-layout delta | Still agree with D7 | C9 (design.md:199) says generated paths are excluded from analysis but format-checked, and its destination is the delta's "Analysis and formatting are clean". The delta says generated code is excluded from analysis and that every Dart file, "generated code included", is in formatter output form. The test tools file is generated, so it falls under both. The "Generated code" scenario is worded per server package, so it covers that file too. No edit is needed. |
+| Scope of the amendment | Confined | ae70576 changes only design.md:98 and :187. It does not touch the proposal, the specs or any other decision. |
 
 ### Critical (blocking)
 
-None open. C-1 is resolved by R3-1.
+None.
 
 ### Moderate
 
-None open. M-1 is resolved by R3-2.
+None.
 
 ### Suggestions
 
-- **S-11 (policy reason cites a change-local decision).** The `serverpod` exception's reason in licence-policy.yaml cites "design D13". Once the change is archived, that design lives only under the archive. The in-force record is ADR 0002. When the entry is next written (task 1.7), consider citing "ADR 0002; design D13" so that a reader of the policy file reaches the durable record. This does not block.
-- **S-8 (carried forward unchanged from round 3).** The SBOM records no licence for a package excepted as `unrecognised`. Teaching the check `SSPL-1.0` would let the exception, and therefore the SBOM, carry it. This is a tooling scope change and an owner decision.
-- **S-9 (carried forward unchanged from round 3).** A7 (design.md:185) should be marked checked once task 1.1 is committed.
+- **S-12 (intent-to-add leaves index entries; no Failure/State note).** When a local `server:drift` run fails because generation created new files, those files stay in the developer's index as intent-to-add entries. Consequences: `git status` lists them as tracked new files, `git commit -a` now commits them, and deleting the files afterwards leaves index entries that need `git reset -- <paths>`. evidence/drift-check.md's revert needed "the index reset" for this reason. In CI the checkout is disposable, so nothing is affected, and the usual fix for drift (commit the regenerated files) uses up the entries. So this does not block. The only record of the cleanup is the comment in the uncommitted mise.toml. Consider one line in D7, or a "drift check fails locally" row in Failure & Visibility (design.md:255-266): "newly generated files stay as intent-to-add entries; commit them, or `git reset -- <generated paths>` to undo". Alternatively, the task could reset those entries itself before it exits.
+- **S-13 (drift scope is the test tools directory, D7 names the file).** D7 and the analysis exclude name `test/integration/test_tools/serverpod_test_tools.dart`. The work-tree task instead runs `dart format`, `git add --intent-to-add` and `git diff` over the whole `test/integration/test_tools` directory. If someone later adds a hand-written helper there, the task would reformat it. While the helper is untracked, the task would also add it to the index as intent-to-add and fail drift locally. Narrow the task to the file, or have D7 say "directory", so that the design and the task agree.
+- **S-14 (tasks 2.2 and 2.4 wording lags D7).** tasks.md:73 says to exclude the generated paths "in `analysis_options.yaml`", which reads as the root file. D7 now places them in each server package's file. tasks.md:75 lists "generate, `dart format`, `git diff --exit-code`" without the intent-to-add step. The test and the work tree already follow D7, so this is a wording fix to make when the tasks are ticked.
+- **S-15 (the comment says "commit", the command compares with the index).** `git diff` compares the work tree with the index, not with HEAD. The work-tree mise.toml comment ("lists every difference from the commit") and the drift-check evidence describe the comparison against the commit. In CI the two are the same. Locally, staged regenerated files would pass. D7 itself only says `git diff --exit-code`, which is accurate. Correct the comment when the task is committed. Separately, the work-tree mise.toml was edited during this review (`--stat` became `--stat=200`). The evidence quotes `--stat`, so align the two before group 2 is committed.
+- **S-11 (carried forward unchanged from round 3).** The `serverpod` exception's reason in licence-policy.yaml should cite "ADR 0002; design D13".
+- **S-8 (carried forward unchanged from round 3).** The SBOM records no licence for a package excepted as `unrecognised`. Teaching the check `SSPL-1.0` is an owner decision.
+- **S-9 (carried forward unchanged from round 3).** A7 (design.md:185) should be marked checked once task 1.1 is committed. Task 1.1 is now ticked, and A7 still reads "Not checked".
 - **S-10 (carried forward unchanged from round 3).** The THEN at specs/server-runtime/spec.md:14 cannot be asserted literally. Reword it when the spec is next edited.
 - **S-6 (carried forward unchanged from round 2).** The WHEN of the scenario "An analysis info" should say "hand-written code".
 - **S-7 (carried forward unchanged from round 2).** C9 is still listed before C8 (design.md:199-200).
@@ -51,14 +49,16 @@ Round 2 Suggestions S-2 to S-5 remain as they were.
 
 ## Verdict
 
-Commit dfac727 applies R3-1 under the owner's option (b) and applies R3-2. The owner's judgement that SSPL v1 is AGPL-compatible is recorded accurately and in the same terms in ADR 0002, D13 and its summary row, design Context, C10, proposal Impact and licence-policy.yaml. Under that judgement, CONTRIBUTING.md:12 and the dependency-licences spec stay consistent without edits. The edits are confined to the Required Changes and introduce no contradiction. Only non-blocking Suggestions remain.
+Commit ae70576 brings D7 and A9 in line with the tracked generator configuration and with the group 2 work tree. The task is `server:drift` everywhere and no `server:generated` remains. The generated test tools file is listed, analysed by neither package and still format-checked. The excludes live in each server package's options file, which now includes the root strict options. C9 and the workspace-layout delta still agree with D7. The intent-to-add side effect is local, documented only in an uncommitted comment, and harmless in CI, so it is a Suggestion (S-12) rather than a Required Change. No Critical or Moderate finding is open. The Required Changes of round 3 stay applied.
 
 VERDICT: APPROVE_WITH_CHANGES
 
 ## Required Changes
 
-1. **R3-1 (C-1).** Applied under the owner's option (b) (dfac727: ADR 0002 last Decision bullet, design.md:31, 146-147, 175, proposal.md:42, 44). The owner waived the `[user]` ADR approval task, the ADR-writing task and the CONTRIBUTING.md:12 amendment, as recorded in Metadata.
-2. **R3-2 (M-1).** Applied (design.md:201, C10, destination ADR 0002).
+1. **R3-1 (C-1).** Applied under the owner's option (b) (dfac727). Unaffected by ae70576.
+2. **R3-2 (M-1).** Applied (design.md:201, C10). Unaffected by ae70576.
+
+ae70576 adds no Required Change.
 
 CHANGES_APPLIED: yes
 
