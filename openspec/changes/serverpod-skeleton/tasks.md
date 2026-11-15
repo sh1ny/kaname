@@ -121,7 +121,7 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 - [x] 8.1 [evidence] Run `mise run check` on Linux from a clean tree: exit 0, the log shows the server packages analysed and format-checked and no server test run; then planted failures (an analysis info in hand-written server code, an unformatted hand-written file, an unformatted generated file, a failing core test) each make it exit non-zero naming what failed; revert → evidence/check-task.md
 - [x] 8.2 [evidence] Capture this change's PR run: every job's name, runner and conclusion (all `success`, including `server` and `stack`), taken from `gh run view --json jobs` through the fenced KintsugiBot credential → evidence/ci-run.md
 - [x] 8.3 [evidence] Capture the trailer block of each commit on this branch (`git log main..HEAD --format=%H%n%(trailers)`), showing the owner's `Signed-off-by` before the single `Co-authored-by`, and the `signoff` job's passing output → evidence/commit-trailers.md
-- [ ] 8.4 [user] In main's branch protection, add `server` and `stack` as required status checks, then confirm by ticking this task.
+- [x] 8.4 [user] In main's branch protection, add `server` and `stack` as required status checks, then confirm by ticking this task.
 
 ## Workflow follow-up
 
