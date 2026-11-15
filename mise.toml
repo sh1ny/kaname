@@ -91,6 +91,12 @@ run = "dart run kaname_tools notices --check"
 description = "Check that every locked package's licence is allowed by licence-policy.yaml"
 run = "dart run kaname_tools licences --check"
 
+[tasks.signoff]
+description = "Check DCO sign-off on a branch: mise run signoff -- --base <upstream remote>/main"
+# mise appends the arguments after `--` to the command, so --base, --head and
+# --pr-author reach kaname_tools. There is no default base (CONTRIBUTING).
+run = "dart run kaname_tools signoff"
+
 [tasks.sbom]
 description = "Write the CycloneDX SBOM of pubspec.lock to build/sbom/kaname.cdx.json"
 run = "dart run kaname_tools sbom --output build/sbom/kaname.cdx.json"

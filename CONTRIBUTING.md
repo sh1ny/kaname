@@ -51,7 +51,15 @@ If you forgot to sign off:
 - for the last commit: `git commit --amend --signoff --no-edit`;
 - for every commit on your branch: `git rebase --signoff main`;
 
-then force-push your branch (`git push --force-with-lease`). Pull requests with unsigned commits are not merged. There is no automated sign-off check yet: reviewers check it by hand until CI adds one.
+then force-push your branch (`git push --force-with-lease`). Pull requests with unsigned commits are not merged.
+
+CI checks every non-merge commit of a pull request in its `signoff` check, which fails and names each commit's short hash, subject and what is missing or mismatched. The check reads the `Signed-off-by` trailers the way git does and requires one that equals the commit author's `Name <email>`. You can run the same check on your branch before you push, with your upstream remote's `main` as the base (there is no default base, because the right one depends on your remote):
+
+```sh
+mise run signoff -- --base <upstream remote>/main
+```
+
+The only exemption is Dependabot's own commits: a commit whose author is exactly `dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>`, in a pull request opened by `dependabot[bot]`, is skipped and listed as skipped. The same identity in a pull request opened by anyone else is checked like any other commit.
 
 ## Toolchain
 

@@ -1,5 +1,5 @@
 name: kaname_tools
-description: Repository checks for Kaname, run in CI and locally (workspace layout, package purity, notices, licences, SBOM).
+description: Repository checks for Kaname, run in CI and locally (workspace layout, package purity, notices, licences, SBOM, DCO sign-off).
 publish_to: none
 resolution: workspace
 
