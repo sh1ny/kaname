@@ -133,6 +133,13 @@ description = "Create the ignored dev/test secrets when missing and derive the d
 dir = "server/kaname_server"
 run = "dart run tool/setup.dart"
 
+[tasks."server:dev"]
+description = "Start the development server and apply pending migrations; needs the development Redis up"
+# Development applies migrations on start (design D1). The stack never does:
+# it uses the maintenance step (see the doc comment on `main`).
+dir = "server/kaname_server"
+run = "dart run bin/main.dart --apply-migrations"
+
 [tasks."test:server"]
 description = "Run the server packages' tests; needs the development Redis up (server:setup, then docker compose up -d in server/kaname_server)"
 # Starts nothing. `check`'s `test` task does not run these: they need Redis.

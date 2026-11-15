@@ -1,6 +1,7 @@
 name: kaname_server
 description: Kaname's Serverpod server.
 publish_to: none
+version: 0.1.0
 resolution: workspace
 
 environment:

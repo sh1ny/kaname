@@ -10,10 +10,35 @@
 // ignore_for_file: invalid_use_of_internal_member
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
+import 'dart:async' as _ida;
+
 import 'package:http/http.dart' as _i85jenna;
+import 'package:kaname_client/src/protocol/health/health_report.dart'
+    as _ipujyub9;
 import 'package:serverpod_client/serverpod_client.dart' as _isc;
 
 import 'protocol.dart' as _il2as5qe;
+
+/// Reports the server version and the status of its dependencies, to anyone.
+///
+/// The answer is a typed [HealthReport]. It never carries a host, a port, a
+/// credential or the text of a dependency error: a failing check is logged on
+/// the server and shows up as [DependencyStatus.down] only.
+/// {@category Endpoint}
+class EndpointHealth extends _isc.EndpointRef {
+  EndpointHealth(_isc.EndpointCaller caller) : super(caller);
+
+  @override
+  String get name => 'health';
+
+  /// Checks Postgres (`SELECT 1`) and Redis (`PING`) concurrently, each under
+  /// a two-second timeout, and returns their status with the server version.
+  ///
+  /// A timeout or an exception from a dependency maps to
+  /// [DependencyStatus.down] and is logged on the server only.
+  _ida.Future<_ipujyub9.HealthReport> check() =>
+      caller.callServerEndpoint<_ipujyub9.HealthReport>('health', 'check', {});
+}
 
 class Client extends _isc.ServerpodClientShared {
   Client(
@@ -36,10 +61,14 @@ class Client extends _isc.ServerpodClientShared {
          disconnectStreamsOnLostInternetConnection:
              disconnectStreamsOnLostInternetConnection,
          httpClientOverride: httpClientOverride,
-       ) {}
+       ) {
+    health = EndpointHealth(this);
+  }
+
+  late final EndpointHealth health;
 
   @override
-  Map<String, _isc.EndpointRef> get endpointRefLookup => {};
+  Map<String, _isc.EndpointRef> get endpointRefLookup => {'health': health};
 
   @override
   Map<String, _isc.ModuleEndpointCaller> get moduleLookup => {};

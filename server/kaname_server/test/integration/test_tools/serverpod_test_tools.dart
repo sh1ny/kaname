@@ -11,8 +11,11 @@
 // ignore_for_file: no_leading_underscores_for_local_identifiers
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
+import 'dart:async' as _ida;
 import 'dart:io' as _idi;
 
+import 'package:kaname_server/src/generated/health/health_report.dart'
+    as _iaouzw49;
 import 'package:serverpod/serverpod.dart' as _is;
 import 'package:serverpod_test/serverpod_test.dart' as _ist;
 import 'package:kaname_server/src/generated/protocol.dart';
@@ -147,7 +150,9 @@ void withServerpod(
   )(testClosure);
 }
 
-class TestEndpoints {}
+class TestEndpoints {
+  late final _HealthEndpoint health;
+}
 
 class _InternalTestEndpoints extends TestEndpoints
     implements _ist.InternalTestEndpoints {
@@ -155,5 +160,43 @@ class _InternalTestEndpoints extends TestEndpoints
   void initialize(
     _is.SerializationManager serializationManager,
     _is.EndpointDispatch endpoints,
-  ) {}
+  ) {
+    health = _HealthEndpoint(endpoints, serializationManager);
+  }
+}
+
+class _HealthEndpoint {
+  _HealthEndpoint(this._endpointDispatch, this._serializationManager);
+
+  final _is.EndpointDispatch _endpointDispatch;
+
+  final _is.SerializationManager _serializationManager;
+
+  _ida.Future<_iaouzw49.HealthReport> check(
+    _ist.TestSessionBuilder sessionBuilder,
+  ) async {
+    return _ist.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'health',
+            method: 'check',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'health',
+          methodName: 'check',
+          parameters: _ist.testObjectToJson({}),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue = await (_localCallContext.method.call(
+          _localUniqueSession,
+          _localCallContext.arguments,
+        ) as _ida.Future<_iaouzw49.HealthReport>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
 }

@@ -12,6 +12,8 @@
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'package:serverpod/serverpod.dart' as _is;
 
+import '../health/health_endpoint.dart' as _id9paj9q;
+
 class Endpoints extends _is.EndpointDispatch {
   @override
   void initializeEndpoints(_is.Server server) {
@@ -19,5 +21,21 @@ class Endpoints extends _is.EndpointDispatch {
   }
 
   @override
-  void initializeOwnEndpoints(_is.Server server) {}
+  void initializeOwnEndpoints(_is.Server server) {
+    var endpoints = <String, _is.Endpoint>{
+      'health': _id9paj9q.HealthEndpoint()..initialize(server, 'health', null),
+    };
+    connectors['health'] = _is.EndpointConnector(
+      name: 'health',
+      endpoint: endpoints['health']!,
+      methodConnectors: {
+        'check': _is.MethodConnector(
+          name: 'check',
+          params: {},
+          call: (_is.Session session, Map<String, dynamic> params) async =>
+              (endpoints['health'] as _id9paj9q.HealthEndpoint).check(session),
+        ),
+      },
+    );
+  }
 }

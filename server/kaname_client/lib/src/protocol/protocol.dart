@@ -13,6 +13,10 @@
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'package:serverpod_client/serverpod_client.dart' as _isc;
 
+import 'health/dependency_status.dart' as _iztepymd;
+import 'health/health_report.dart' as _if75m2mz;
+export 'health/dependency_status.dart';
+export 'health/health_report.dart';
 export 'client.dart';
 
 class Protocol extends _isc.SerializationManager
@@ -27,9 +31,14 @@ class Protocol extends _isc.SerializationManager
   _isc.ProtocolDeserialization get deserializationMetadata =>
       _isc.ProtocolDeserialization.cached(
         this,
-        types: const [],
+        types: const [
+          _isc.getType<_iztepymd.DependencyStatus>,
+          _isc.getType<_if75m2mz.HealthReport>,
+          _isc.getType<_iztepymd.DependencyStatus?>,
+          _isc.getType<_if75m2mz.HealthReport?>,
+        ],
         modules: const [],
-        classNames: const [],
+        classNames: const ['DependencyStatus', 'HealthReport'],
       );
 
   static String? getClassNameFromObjectJson(dynamic data) =>
@@ -53,11 +62,26 @@ class Protocol extends _isc.SerializationManager
       }
     }
 
+    if (t == _iztepymd.DependencyStatus) {
+      return _iztepymd.DependencyStatus.fromJson(data) as T;
+    }
+    if (t == _if75m2mz.HealthReport) {
+      return _if75m2mz.HealthReport.fromJson(data) as T;
+    }
+    if (t == _isc.getType<_iztepymd.DependencyStatus?>()) {
+      return (data != null ? _iztepymd.DependencyStatus.fromJson(data) : null)
+          as T;
+    }
+    if (t == _isc.getType<_if75m2mz.HealthReport?>()) {
+      return (data != null ? _if75m2mz.HealthReport.fromJson(data) : null) as T;
+    }
     return super.deserialize<T>(data, t);
   }
 
   static String? getClassNameForType(Type type) {
     return switch (type) {
+      _iztepymd.DependencyStatus => 'DependencyStatus',
+      _if75m2mz.HealthReport => 'HealthReport',
       _ => null,
     };
   }
@@ -71,6 +95,12 @@ class Protocol extends _isc.SerializationManager
       return (data['__className__'] as String).replaceFirst('kaname.', '');
     }
 
+    switch (data) {
+      case _iztepymd.DependencyStatus():
+        return 'DependencyStatus';
+      case _if75m2mz.HealthReport():
+        return 'HealthReport';
+    }
     return null;
   }
 
@@ -79,6 +109,12 @@ class Protocol extends _isc.SerializationManager
     var dataClassName = data['className'];
     if (dataClassName is! String) {
       return super.deserializeByClassName(data);
+    }
+    if (dataClassName == 'DependencyStatus') {
+      return deserialize<_iztepymd.DependencyStatus>(data['data']);
+    }
+    if (dataClassName == 'HealthReport') {
+      return deserialize<_if75m2mz.HealthReport>(data['data']);
     }
     return super.deserializeByClassName(data);
   }

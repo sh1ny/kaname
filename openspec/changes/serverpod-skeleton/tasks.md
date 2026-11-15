@@ -9,11 +9,11 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 | server-runtime → The server and its client are workspace packages | Server packages resolve with the workspace | T/workspace_test.dart | root workspace lists kaname_server and kaname_client, the server pubspec holds serverpod_cli as a dev dependency and the lockfile holds it (a workspace lockfile marks it transitive); evidence: task 1.4 (`dart run serverpod_cli version` through mise) | green |
 | server-runtime → The server and its client are workspace packages | Generated client out of date | n/a (mechanical: `mise run server:drift` regenerates, formats and runs `git diff --exit-code`, which names the differing files) → evidence/drift-check.md | task 2.5 | green |
 | server-runtime → Redis is enabled in every server run mode | Run-mode configuration | S/unit/run_mode_config_test.dart | every run mode enables Redis with a host and port | green |
-| server-runtime → Redis is enabled in every server run mode | Redis unreachable at start | S/integration/probes_test.dart | redis unreachable at start: readyz 503 and the log names redis | red |
-| server-runtime → Each run mode uses its defined Postgres | Test run needs no external database | S/integration/health_endpoint_test.dart | all dependencies up (runs on embedded Postgres; CI installs no Postgres) | red |
+| server-runtime → Redis is enabled in every server run mode | Redis unreachable at start | S/integration/probes_test.dart | redis unreachable at start: readyz 503 and the log names redis | green |
+| server-runtime → Each run mode uses its defined Postgres | Test run needs no external database | S/integration/health_endpoint_test.dart | all dependencies up (runs on embedded Postgres; CI installs no Postgres) | green |
 | server-runtime → Each run mode uses its defined Postgres | Embedded data is not tracked | T/gitignore_test.dart | embedded postgres data, passwords.yaml and env files are ignored (`git check-ignore`) | green |
-| server-runtime → Migrations are applied before the server serves | Fresh database | S/integration/migrations_test.dart | maintenance run applies every committed migration to an empty database | red |
-| server-runtime → Migrations are applied before the server serves | Database from a newer server | S/integration/migrations_test.dart | maintenance run exits 1 naming the mismatch on a database with an unknown migration | red |
+| server-runtime → Migrations are applied before the server serves | Fresh database | S/integration/migrations_test.dart | maintenance run applies every committed migration to an empty database | green |
+| server-runtime → Migrations are applied before the server serves | Database from a newer server | S/integration/migrations_test.dart | maintenance run exits 1 naming the mismatch on a database with an unknown migration | green |
 | server-runtime → The server image takes its toolchain from mise | Image matches the pinned toolchain | C/stack/image_test.dart (tag `stack`) | build log shows the mise-installed dart version and pub get with the lockfile enforced; plus T/dockerfile_test.dart: no Dockerfile states a Flutter or Dart version | red |
 | server-runtime → The server image takes its toolchain from mise | No secrets in the image | C/stack/image_test.dart (tag `stack`) | image built from a checkout with passwords.yaml and .env contains neither | red |
 | server-runtime → The server image takes its toolchain from mise | Lockfile out of date | C/stack/image_test.dart (tag `stack`) | build from a copy with an unsatisfied pubspec fails at dependency resolution | red |
@@ -25,11 +25,11 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 | server-runtime → Agents reach the server through the Serverpod MCP entry | Server not running | n/a (mechanical: the bridge's own error, observed by calling a tool with no runner) → evidence/mcp-entry.md | task 7.3 | red |
 | server-runtime → The server is supported only as a Linux container | Supported platform stated | T/policy_docs_test.dart | deploy README states linux/amd64 container support and native Windows and macOS servers unsupported | red |
 | server-runtime → The server is supported only as a Linux container | Server tests on a non-Linux runner | T/ci_workflow_test.dart | server tests run only in the linux server job; check never runs test:server | red |
-| server-health → The health endpoint returns a typed answer | All dependencies up | S/integration/health_endpoint_test.dart | all dependencies up | red |
-| server-health → The health endpoint returns a typed answer | Redis down | S/integration/health_endpoint_test.dart | redis down: postgres up, redis down, no host or error text | red |
-| server-health → The health endpoint returns a typed answer | Postgres down | S/integration/health_endpoint_test.dart | postgres down: answer within 10 seconds with postgres down | red |
-| server-health → Liveness and readiness probes answer over HTTP | Ready server | S/integration/probes_test.dart | ready server: readyz 200 | red |
-| server-health → Liveness and readiness probes answer over HTTP | Dependency lost | S/integration/probes_test.dart | dependency lost after start: livez 200, readyz 503, no details | red |
+| server-health → The health endpoint returns a typed answer | All dependencies up | S/integration/health_endpoint_test.dart | all dependencies up | green |
+| server-health → The health endpoint returns a typed answer | Redis down | S/integration/health_endpoint_test.dart | redis down: postgres up, redis down, no host or error text | green |
+| server-health → The health endpoint returns a typed answer | Postgres down | S/integration/health_endpoint_test.dart | postgres down: answer within 10 seconds with postgres down | green |
+| server-health → Liveness and readiness probes answer over HTTP | Ready server | S/integration/probes_test.dart | ready server: readyz 200 | green |
+| server-health → Liveness and readiness probes answer over HTTP | Dependency lost | S/integration/probes_test.dart | dependency lost after start: livez 200, readyz 503, no details | green |
 | self-host-stack → One Compose file runs the whole stack | Stack comes up | C/stack/stack_test.dart (tag `stack`) | readyz 200 and health through caddy holds postgres up and redis up; plus T/compose_config_test.dart: four services and a migrate step with named volumes | red |
 | self-host-stack → One Compose file runs the whole stack | Data survives a restart | C/stack/stack_test.dart (tag `stack`) | down and up keeps the database and applies no migration twice | red |
 | self-host-stack → One Compose file runs the whole stack | Migration fails | C/stack/stack_test.dart (tag `stack`) | an unknown migration stops migrate and server never starts; plus T/compose_config_test.dart: server depends on migrate completed successfully | red |
@@ -86,13 +86,13 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 
 ## 4. Health endpoint, probes and migrations
 
-- [ ] 4.1 Verify A4 and A8: a throwaway `withServerpod` test shows the test schema is created from the committed migrations, and an endpoint call completes while the embedded Postgres is stopped. If either fails, stop and take the spec change to the owner.
-- [ ] 4.2 Write failing `S/integration/health_endpoint_test.dart` (all up; Redis down; Postgres down within 10 s; no host, port or error text in any answer).
-- [ ] 4.3 Add the `HealthReport{version, postgres, redis}` model and `enum DependencyStatus{up, down}`, and the unauthenticated `health` endpoint with parallel `SELECT 1` and Redis PING, 2 s timeouts each (D4). Regenerate the client; verify the tests pass, `server:drift` is clean; flip rows green.
-- [ ] 4.4 Verify A3: start the server with Redis enabled but unreachable and observe whether it starts with `/livez` 200 and `/readyz` 503. If it fails to start instead, stop and take the spec change to the owner.
-- [ ] 4.5 Write failing `S/integration/probes_test.dart` (ready server; Redis unreachable at start with the log naming Redis; dependency lost after start), spawning the server process with `SERVERPOD_*` overrides; make them pass (custom readiness only if built-in probes don't meet the spec); flip rows green.
-- [ ] 4.6 Verify A5, then write failing `S/integration/migrations_test.dart` (maintenance run applies every migration to an empty database; exits 1 naming the mismatch on a database holding an unknown migration). Create the initial migration (Serverpod's own tables) with the package-local CLI; verify the tests pass; flip rows green.
-- [ ] 4.7 Write C4 as the doc comment on `main` in `server/kaname_server/bin/main.dart`: stack migrations run only in the one-shot maintenance step, because the monolith's `--apply-migrations` keeps serving after a failed migration outside development.
+- [x] 4.1 Verify A4 and A8: a throwaway `withServerpod` test shows the test schema is created from the committed migrations, and an endpoint call completes while the embedded Postgres is stopped. If either fails, stop and take the spec change to the owner.
+- [x] 4.2 Write failing `S/integration/health_endpoint_test.dart` (all up; Redis down; Postgres down within 10 s; no host, port or error text in any answer).
+- [x] 4.3 Add the `HealthReport{version, postgres, redis}` model and `enum DependencyStatus{up, down}`, and the unauthenticated `health` endpoint with parallel `SELECT 1` and Redis PING, 2 s timeouts each (D4). Regenerate the client; verify the tests pass, `server:drift` is clean; flip rows green.
+- [x] 4.4 Verify A3: start the server with Redis enabled but unreachable and observe whether it starts with `/livez` 200 and `/readyz` 503. If it fails to start instead, stop and take the spec change to the owner.
+- [x] 4.5 Write failing `S/integration/probes_test.dart` (ready server; Redis unreachable at start with the log naming Redis; dependency lost after start), spawning the server process with `SERVERPOD_*` overrides; make them pass (custom readiness only if built-in probes don't meet the spec); flip rows green.
+- [x] 4.6 Verify A5, then write failing `S/integration/migrations_test.dart` (maintenance run applies every migration to an empty database; exits 1 naming the mismatch on a database holding an unknown migration). Create the initial migration (Serverpod's own tables) with the package-local CLI; verify the tests pass; flip rows green.
+- [x] 4.7 Write C4 as the doc comment on `main` in `server/kaname_server/bin/main.dart`: stack migrations run only in the one-shot maintenance step, because the monolith's `--apply-migrations` keeps serving after a failed migration outside development.
 
 ## 5. Server image
 

@@ -1,0 +1,5 @@
+### Whether one dependency of the server answered its health check.
+enum: DependencyStatus
+values:
+  - up
+  - down
