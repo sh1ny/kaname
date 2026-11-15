@@ -40,20 +40,20 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 | self-host-stack → Caddy is the only published entry point | Internal services are not published | T/compose_config_test.dart | only caddy publishes a port, bound to 127.0.0.1 | green |
 | self-host-stack → Stack secrets are never committed | Example file only | T/gitignore_test.dart | deploy env example is tracked with placeholders and deploy .env is ignored | green |
 | self-host-stack → Stack secrets are never committed | Missing secret | T/compose_config_test.dart | every secret uses the required-variable form; plus C/stack/stack_test.dart (tag `stack`): compose up with an empty secret stops naming the variable | green |
-| continuous-integration → CI runs the server tests on Linux | Server tests pass | T/ci_workflow_test.dart | server job on linux runs server:setup, starts dev redis, runs server:drift and test:server; evidence: task 8.2 | red |
+| continuous-integration → CI runs the server tests on Linux | Server tests pass | T/ci_workflow_test.dart | server job on linux runs server:setup, starts dev redis, runs server:drift and test:server; evidence: task 8.2 | green |
 | continuous-integration → CI runs the server tests on Linux | Redis container missing | T/ci_workflow_test.dart | server job waits for redis healthy in a named step before tests | green |
 | continuous-integration → CI runs the server tests on Linux | Generated client stale | T/ci_workflow_test.dart | server job runs server:drift; drift behaviour → evidence/drift-check.md | green |
 | continuous-integration → CI runs the server tests on Linux | A server test fails | T/ci_workflow_test.dart | server job is separate from check and check jobs keep fail-fast off | green |
-| continuous-integration → CI checks the self-host stack on Linux | Stack healthy | T/ci_workflow_test.dart | stack job on linux generates placeholder secrets, builds web, runs stack:test; evidence: task 8.2 | red |
+| continuous-integration → CI checks the self-host stack on Linux | Stack healthy | T/ci_workflow_test.dart | stack job on linux generates placeholder secrets, builds web, runs stack:test; evidence: task 8.2 | green |
 | continuous-integration → CI checks the self-host stack on Linux | Stack never becomes ready | T/ci_workflow_test.dart | stack job prints every service log on failure and always runs compose down with volumes | green |
-| workspace-layout → Analysis and formatting are clean | Clean workspace | n/a (mechanical: `mise run check` exit 0 with the server packages present) → evidence/check-task.md | task 8.1 | red |
-| workspace-layout → Analysis and formatting are clean | An analysis info | n/a (mechanical: a planted `info` in hand-written server code makes `mise run analyze` exit non-zero) → evidence/check-task.md | task 8.1 | red |
+| workspace-layout → Analysis and formatting are clean | Clean workspace | n/a (mechanical: `mise run check` exit 0 with the server packages present) → evidence/check-task.md | task 8.1 | green |
+| workspace-layout → Analysis and formatting are clean | An analysis info | n/a (mechanical: a planted `info` in hand-written server code makes `mise run analyze` exit non-zero) → evidence/check-task.md | task 8.1 | green |
 | workspace-layout → Analysis and formatting are clean | Files outside the workspace members | T/workspace_test.dart | format directories are workspace members only (re-run) | green |
 | workspace-layout → Analysis and formatting are clean | An unformatted file | n/a (mechanical: `dart format --set-exit-if-changed` on a planted file) → evidence/check-task.md | task 8.1 | green |
 | workspace-layout → Analysis and formatting are clean | Generated code | T/analysis_options_test.dart | analysis excludes exactly the generated server and client paths; plus evidence/check-task.md: an unformatted generated file fails format:check | green |
 | workspace-layout → Packages follow the placement and naming rule | Current packages comply | T/workspace_test.dart | current layout reports app, core, tools, server and client and passes | green |
 | workspace-layout → Packages follow the placement and naming rule | A misplaced or misnamed package | T/workspace_test.dart | missing prefix or directory mismatch fails with rule (extended to `server/`) | green |
-| workspace-layout → One task runs every local check | All checks pass | n/a (mechanical: `mise run check` exit 0; its log shows no server test ran and the server packages analysed) → evidence/check-task.md | task 8.1 | red |
+| workspace-layout → One task runs every local check | All checks pass | n/a (mechanical: `mise run check` exit 0; its log shows no server test ran and the server packages analysed) → evidence/check-task.md | task 8.1 | green |
 | workspace-layout → One task runs every local check | One check fails | n/a (mechanical: `mise run check` non-zero with a planted failure) → evidence/check-task.md | task 8.1 | green |
 | workspace-layout → One task runs every local check | Server tests run on their own | n/a (mechanical: `mise run test:server` exit 0, then non-zero naming a planted failing test) → evidence/server-tests.md | task 3.6 | green |
 
@@ -65,7 +65,7 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 - [x] 1.4 [evidence] Capture the scaffold record: CLI version, the `create` output paths, the resolve result, and `mise exec -C server/kaname_server -- dart run serverpod_cli version` → evidence/scaffold.md
 - [x] 1.5 Write failing tests in `T/workspace_test.dart`: "current layout reports app, core, tools, server and client and passes" and the misnamed-package test extended to `server/`, plus the resolve test row; update `tools/kaname_tools/lib/src/workspace.dart` so `server/` packages are recognised; verify they pass and flip the rows green. Re-run "format directories are workspace members only".
 - [x] 1.6 Regenerate THIRD_PARTY_NOTICES (`mise run notices`) and make `mise run licences` pass for the new pub dependencies; any exception goes to task 1.7.
-- [ ] 1.7 [user] Approve or reject each licence exception the agent proposes from task 1.6, with a date, or confirm that none were needed. The agent writes approved entries, and `mise run licences` passes.
+- [x] 1.7 [user] Approve or reject each licence exception the agent proposes from task 1.6, with a date, or confirm that none were needed. The agent writes approved entries, and `mise run licences` passes.
 
 ## 2. Analysis, formatting and the drift check
 
@@ -118,9 +118,9 @@ Abbreviations: `S` = `server/kaname_server/test`, `C` = `server/kaname_client/te
 
 ## 8. Integration on the pull request
 
-- [ ] 8.1 [evidence] Run `mise run check` on Linux from a clean tree: exit 0, the log shows the server packages analysed and format-checked and no server test run; then planted failures (an analysis info in hand-written server code, an unformatted hand-written file, an unformatted generated file, a failing core test) each make it exit non-zero naming what failed; revert → evidence/check-task.md
-- [ ] 8.2 [evidence] Capture this change's PR run: every job's name, runner and conclusion (all `success`, including `server` and `stack`), taken from `gh run view --json jobs` through the fenced KintsugiBot credential → evidence/ci-run.md
-- [ ] 8.3 [evidence] Capture the trailer block of each commit on this branch (`git log main..HEAD --format=%H%n%(trailers)`), showing the owner's `Signed-off-by` before the single `Co-authored-by`, and the `signoff` job's passing output → evidence/commit-trailers.md
+- [x] 8.1 [evidence] Run `mise run check` on Linux from a clean tree: exit 0, the log shows the server packages analysed and format-checked and no server test run; then planted failures (an analysis info in hand-written server code, an unformatted hand-written file, an unformatted generated file, a failing core test) each make it exit non-zero naming what failed; revert → evidence/check-task.md
+- [x] 8.2 [evidence] Capture this change's PR run: every job's name, runner and conclusion (all `success`, including `server` and `stack`), taken from `gh run view --json jobs` through the fenced KintsugiBot credential → evidence/ci-run.md
+- [x] 8.3 [evidence] Capture the trailer block of each commit on this branch (`git log main..HEAD --format=%H%n%(trailers)`), showing the owner's `Signed-off-by` before the single `Co-authored-by`, and the `signoff` job's passing output → evidence/commit-trailers.md
 - [ ] 8.4 [user] In main's branch protection, add `server` and `stack` as required status checks, then confirm by ticking this task.
 
 ## Workflow follow-up
