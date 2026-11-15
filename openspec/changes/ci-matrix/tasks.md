@@ -53,9 +53,9 @@
 | dependency-licences → The licence policy file is validated | Unknown key | tools/kaname_tools/test/licences_test.dart | unknown policy key fails naming file and key | green |
 | dependency-licences → The licence policy file is validated | Incompatible allowlist entry | tools/kaname_tools/test/licences_test.dart | allowlisted GPL-2.0-only fails as not AGPL-compatible | green |
 | dependency-licences → The licence policy file is validated | Unknown allowlist entry | tools/kaname_tools/test/licences_test.dart | allowlist id without a template fails | green |
-| dependency-licences → An SBOM is generated from the lockfile | Generate | tools/kaname_tools/test/sbom_test.dart | SBOM lists every locked package sorted with purl, source, licence and hash | red |
-| dependency-licences → An SBOM is generated from the lockfile | Deterministic | tools/kaname_tools/test/sbom_test.dart | two runs give byte-identical output without serial or timestamp | red |
-| dependency-licences → An SBOM is generated from the lockfile | Not resolved | tools/kaname_tools/test/sbom_test.dart | unresolved workspace fails and writes no file | red |
+| dependency-licences → An SBOM is generated from the lockfile | Generate | tools/kaname_tools/test/sbom_test.dart | SBOM lists every locked package sorted with purl, source, licence and hash | green |
+| dependency-licences → An SBOM is generated from the lockfile | Deterministic | tools/kaname_tools/test/sbom_test.dart | two runs give byte-identical output without serial or timestamp | green |
+| dependency-licences → An SBOM is generated from the lockfile | Not resolved | tools/kaname_tools/test/sbom_test.dart | unresolved workspace fails and writes no file | green |
 | third-party-notices → A stale dependency section is detectable | Up to date | tools/kaname_tools/test/notices_test.dart | check after write passes and writes nothing | green |
 | third-party-notices → A stale dependency section is detectable | Lockfile changed without regenerating | tools/kaname_tools/test/notices_test.dart | check names missing, extra and changed packages | green |
 | third-party-notices → A stale dependency section is detectable | Stale notices in a pull request | tools/kaname_tools/test/ci_workflow_test.dart | check job runs resolve then check on linux, windows and macos with fail-fast off (`check` includes `notices:check`, `mise.toml:89-98`) | red |
@@ -82,9 +82,9 @@
 
 ## 3. SBOM
 
-- [ ] 3.1 Write failing tests in `sbom_test.dart`: generate (every locked package sorted, with `pkg:pub` purl, `kaname:source` property, licence or LicenseRef, and SHA-256 for hosted packages), deterministic (byte-identical twice, no `serialNumber` or `timestamp`), and not resolved (exits non-zero and writes no file). Check that they fail for the right reason.
-- [ ] 3.2 Implement `kaname_tools sbom --output <path>` (D13). It writes CycloneDX 1.6 JSON in a fixed key order, through a temporary file and a rename, reusing the classification from group 2. Add the mise task `sbom` (writing `build/sbom/kaname.cdx.json`, under the ignored `build/`). Verify that 3.1 passes, flip the rows green, and validate one output against the CycloneDX 1.6 JSON schema once, recording the command used in the PR description.
-- [ ] 3.3 Carry C6: confirm the delta spec requirement "An SBOM is generated from the lockfile" states the byte-identical rule, and that its test is green.
+- [x] 3.1 Write failing tests in `sbom_test.dart`: generate (every locked package sorted, with `pkg:pub` purl, `kaname:source` property, licence or LicenseRef, and SHA-256 for hosted packages), deterministic (byte-identical twice, no `serialNumber` or `timestamp`), and not resolved (exits non-zero and writes no file). Check that they fail for the right reason.
+- [x] 3.2 Implement `kaname_tools sbom --output <path>` (D13). It writes CycloneDX 1.6 JSON in a fixed key order, through a temporary file and a rename, reusing the classification from group 2. Add the mise task `sbom` (writing `build/sbom/kaname.cdx.json`, under the ignored `build/`). Verify that 3.1 passes, flip the rows green, and validate one output against the CycloneDX 1.6 JSON schema once, recording the command used in the PR description.
+- [x] 3.3 Carry C6: confirm the delta spec requirement "An SBOM is generated from the lockfile" states the byte-identical rule, and that its test is green.
 
 ## 4. DCO sign-off check
 

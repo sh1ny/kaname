@@ -91,6 +91,10 @@ run = "dart run kaname_tools notices --check"
 description = "Check that every locked package's licence is allowed by licence-policy.yaml"
 run = "dart run kaname_tools licences --check"
 
+[tasks.sbom]
+description = "Write the CycloneDX SBOM of pubspec.lock to build/sbom/kaname.cdx.json"
+run = "dart run kaname_tools sbom --output build/sbom/kaname.cdx.json"
+
 [tasks."build:web"]
 description = "Build the app for the web (release)"
 dir = "app"

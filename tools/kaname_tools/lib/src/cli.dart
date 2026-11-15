@@ -7,6 +7,7 @@ import 'licences.dart';
 import 'notices.dart';
 import 'purity.dart';
 import 'real_file_system.dart';
+import 'sbom.dart';
 import 'workspace.dart';
 
 /// Exit status when every check passed.
@@ -41,7 +42,8 @@ CommandRunner<int> buildRunner(FileSystem fileSystem, CliOutput output) =>
       ..addCommand(WorkspaceCommand(fileSystem, output))
       ..addCommand(PurityCommand(fileSystem, output))
       ..addCommand(NoticesCommand(fileSystem, output))
-      ..addCommand(LicencesCommand(fileSystem, output));
+      ..addCommand(LicencesCommand(fileSystem, output))
+      ..addCommand(SbomCommand(fileSystem, output));
 
 /// Runs `kaname_tools` with [args] and returns the process exit status.
 ///

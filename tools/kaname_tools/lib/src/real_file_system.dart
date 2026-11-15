@@ -65,8 +65,11 @@ final class RealFileSystem implements FileSystem {
   String readAsString(String path) => File(_absolute(path)).readAsStringSync();
 
   @override
-  void writeAsString(String path, String content) =>
-      File(_absolute(path)).writeAsStringSync(content);
+  void writeAsString(String path, String content) {
+    final file = File(_absolute(path));
+    file.parent.createSync(recursive: true);
+    file.writeAsStringSync(content);
+  }
 
   @override
   void rename(String from, String to) =>

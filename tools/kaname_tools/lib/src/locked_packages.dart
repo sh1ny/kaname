@@ -23,7 +23,7 @@ const List<String> licenceFileNames = [
 /// A package from the root `pubspec.lock`.
 final class LockedPackage {
   /// Creates a locked package.
-  const LockedPackage(this.name, this.version, this.source);
+  const LockedPackage(this.name, this.version, this.source, {this.sha256});
 
   /// The package name.
   final String name;
@@ -33,6 +33,10 @@ final class LockedPackage {
 
   /// The lockfile source: `hosted`, `sdk`, `git` or `path`.
   final String source;
+
+  /// The lockfile's SHA-256 of the package archive, in hex, when it records
+  /// one (hosted packages).
+  final String? sha256;
 }
 
 /// The lockfile, the package config or a package's licence file cannot be
@@ -78,9 +82,21 @@ List<LockedPackage> readLockedPackages(FileSystem fileSystem) {
         switch ((key, value)) {
           (
             final String name,
-            {'source': final String source, 'version': final String version},
+            final Map<Object?, Object?> entry &&
+                {
+                  'source': final String source,
+                  'version': final String version,
+                },
           ) =>
-            LockedPackage(name, version, source),
+            LockedPackage(
+              name,
+              version,
+              source,
+              sha256: switch (entry['description']) {
+                {'sha256': final String hash} => hash,
+                _ => null,
+              },
+            ),
           _ => throw WorkspaceReadException(
             '$lockPath: package "$key" has no string source and version',
           ),
