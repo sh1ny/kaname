@@ -28,7 +28,7 @@ TIER: FULL
   - Every config key can be set through `SERVERPOD_*` environment variables.
   - `--apply-migrations` on a normal start logs a failed or mismatched migration and keeps running outside development. `--role maintenance --apply-migrations` applies the migrations and exits 1 on failure or mismatch in every run mode.
   - `/livez`, `/readyz` and `/startupz` sit on the API server (8080); unauthenticated requests get the status only. The Insights server is 8081 and the web server 8082.
-- In-force ADRs: 0001 (stack, Compose, one instance, package-local CLI), 0002 (AGPL, clean room), 0003 (`server/`, `deploy/`, mise not melos), 0009 (one process; worker isolates come later).
+- In-force ADRs: 0001 (stack, Compose, one instance, package-local CLI), 0002 (AGPL, clean room; its CI licence bullet amended for `serverpod`, D13), 0003 (`server/`, `deploy/`, mise not melos), 0009 (one process; worker isolates come later).
 
 ## Decisions
 
@@ -143,8 +143,8 @@ TIER: FULL
 
 ### D13: Licence exceptions for `serverpod` and `postgres`
 
-- **Choice:** `licence-policy.yaml` gains two owner-approved exceptions (2026-11-15). `serverpod` 4.1.2, the server framework itself, ships the Server Side Public License v1 (SSPL) as its `LICENSE`; the other `serverpod_*` packages, `serverpod_cli` included, are BSD-3-Clause. `postgres` 3.6.0 (through `serverpod_database`) is BSD-3-Clause with an unfilled template, which the check reports as unrecognised. Each exception covers its one exact version, so a Serverpod upgrade puts the licence back to the owner.
-- **Rejected:** stopping the change to revisit ADR 0001 (Serverpod as the backend).
+- **Choice:** `licence-policy.yaml` gains two owner-approved exceptions (2026-11-15). `serverpod` 4.1.2, the server framework itself, ships the Server Side Public License v1 (SSPL) as its `LICENSE`; the other `serverpod_*` packages, `serverpod_cli` included, are BSD-3-Clause. `postgres` 3.6.0 (through `serverpod_database`) is BSD-3-Clause with an unfilled template, which the check reports as unrecognised. Each exception covers its one exact version, so a Serverpod upgrade puts the licence back to the owner. The owner counts SSPL v1 (the AGPL-3.0 plus a service clause that applies only to offering Serverpod itself as a hosted service) as AGPL-compatible, and ADR 0002's CI licence bullet is amended in place to say so.
+- **Rejected:** stopping the change to revisit ADR 0001 (Serverpod as the backend); leaving ADR 0002 unamended (its CI licence bullet would then read as rejecting this exact dependency).
 - **Reversal cost:** high (the whole server rests on the package)
 - **Important:** yes, binds future changes (every Serverpod upgrade re-checks the exception)
 - **Chosen by:** user (found in task 1.6, 2026-11-15)
@@ -172,7 +172,7 @@ TIER: FULL
 | D10 | Session logs | Persistent only in development | Persistent everywhere | low | yes | user |
 | D11 | Dev/test secrets | `server:setup` generates `passwords.yaml` (one Redis password for dev and test), derives `.env` | Commit fixed dev passwords | low | yes | user |
 | D12 | Caddy bind | Publish on `127.0.0.1:80` only | All interfaces | low | yes | user |
-| D13 | Licence exceptions | Owner-approved exceptions for `serverpod` 4.1.2 (SSPL) and `postgres` 3.6.0 (unfilled BSD-3) | Revisit ADR 0001 | high | yes | user |
+| D13 | Licence exceptions | Owner-approved exceptions for `serverpod` 4.1.2 (SSPL, ADR 0002 amended) and `postgres` 3.6.0 (unfilled BSD-3) | Revisit ADR 0001; ADR 0002 unamended | high | yes | user |
 
 ## Assumptions
 
@@ -198,6 +198,7 @@ TIER: FULL
 - **C7:** Insights and persistent session logs run only in development: an unbounded log table and an unused listener otherwise (D8, D10). Kind: invariant. Destination: spec: specs/server-runtime/spec.md → Requirement: Insights and persistent session logs run only in development
 - **C9:** Serverpod-generated paths are excluded from analysis but still format-checked (D7). Kind: invariant. Destination: spec: specs/workspace-layout/spec.md → Requirement: Analysis and formatting are clean
 - **C8:** `config/passwords.yaml` is the only source of development and test secrets; development and test share one Redis password, and the development Redis `.env` is derived from it (D11). Kind: invariant. Destination: doc comment: server/kaname_server/tool/setup.dart main
+- **C10:** `serverpod` is the only runtime dependency accepted under SSPL v1; any Serverpod version change, and any other licence outside the allowlist, goes back to the owner (D13). Kind: deliberate gap. Destination: ADR 0002 (CI licence bullet, amended 2026-11-15)
 
 ## Diagrams (FULL)
 

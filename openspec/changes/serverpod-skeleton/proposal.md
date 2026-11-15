@@ -39,9 +39,9 @@ Kaname has no server yet. The architecture rests on one Serverpod process with P
 ## Impact
 
 - New: `server/kaname_server/` (with a development Compose file for Redis and a setup tool), `server/kaname_client/`, `deploy/` (compose file, Caddyfile, Dockerfile, environment example), server tests, mise tasks for the server and the stack.
-- Changed: root `pubspec.yaml` (workspace members), `pubspec.lock`, `analysis_options.yaml` (generated code excluded), `THIRD_PARTY_NOTICES`, `.github/workflows/ci.yml`, `.mcp.json`, `.omp/mcp.json`, `.claude/settings.json`, `AGENTS.md`, `.gitignore` (embedded database data, passwords, the environment file).
+- Changed: root `pubspec.yaml` (workspace members), `pubspec.lock`, `analysis_options.yaml` (generated code excluded), `THIRD_PARTY_NOTICES`, `.github/workflows/ci.yml`, `.mcp.json`, `.omp/mcp.json`, `.claude/settings.json`, `AGENTS.md`, `.gitignore` (embedded database data, passwords, the environment file), `licence-policy.yaml`, `docs/adr/0002-licence-clean-room-and-eula-boundary.md` (CI licence bullet).
 - GitHub: two more required status checks on `main` (owner setting).
-- Licences: the `serverpod` package (4.1.2) is licensed under SSPL v1, unlike the BSD-3 `serverpod_*` packages, and `postgres` 3.6.0 has an unfilled BSD-3 template. Both pass the licence check only through owner-approved, version-pinned exceptions (design D13).
+- Licences: the `serverpod` package (4.1.2) is licensed under SSPL v1, unlike the BSD-3 `serverpod_*` packages, and `postgres` 3.6.0 has an unfilled BSD-3 template. Both pass the licence check only through owner-approved, version-pinned exceptions (design D13); ADR 0002's CI licence bullet is amended to record that the owner counts SSPL v1 as AGPL-compatible.
 - Container images (Postgres, Redis, Caddy, Debian) are pulled at run time, not vendored. Their licences sit outside the pub licence check, like the native-dependency gap `ci-matrix` named. The design checks which Redis image and licence fit ADR 0002.
 - Local development needs Docker for Redis. Server tests need Docker on Linux only.
 
