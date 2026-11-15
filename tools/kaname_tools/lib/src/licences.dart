@@ -304,6 +304,16 @@ LicenceCheckResult _evaluate(
 }
 
 /// The `licences` command: checks dependency licences against the policy.
+///
+/// The check covers pub packages only. A deliberate gap: the licences of the
+/// container images (Postgres, Redis, Caddy, Debian) and of the native
+/// libraries that pub build hooks bundle into the server image
+/// (`libsqlite3`, SQLite, public domain; `libsqlite3_connection_pool`, which
+/// statically links the Rust `lru` crate and Rust std, MIT/Apache-2.0) are
+/// outside this check, the generated section of THIRD_PARTY_NOTICES and the
+/// SBOM. The server image is built locally and not redistributed, so nothing
+/// is owed yet. A change that publishes the image, or that brings a hook
+/// package into a distributed app, must add their notices first.
 final class LicencesCommand extends Command<int> {
   /// Creates the command over [_fileSystem], writing to [_output].
   LicencesCommand(this._fileSystem, this._output) {

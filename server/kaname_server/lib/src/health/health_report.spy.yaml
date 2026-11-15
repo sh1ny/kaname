@@ -1,0 +1,8 @@
+### The typed answer of the health endpoint: the server version and the
+### status of each dependency. It never carries hosts, ports, credentials or
+### dependency error text. Fields are only ever added.
+class: HealthReport
+fields:
+  version: String
+  postgres: DependencyStatus
+  redis: DependencyStatus

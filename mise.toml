@@ -106,6 +106,82 @@ description = "Build the app for the web (release)"
 dir = "app"
 run = "flutter build web --release"
 
+[tasks."server:generate"]
+description = "Run the package-local Serverpod code generation for the server and its client"
+dir = "server/kaname_server"
+run = "dart run serverpod_cli generate"
+
+[tasks."server:drift"]
+description = "Fail if the committed Serverpod generated code differs from a fresh generation"
+# Regenerates, puts the generated paths in formatter output form, then lists
+# every difference from the index (the commit, on a clean checkout).
+# `git add --intent-to-add` makes files that generation newly created visible
+# to `git diff` (it ignores untracked files). It records only an empty index
+# entry: commit the regenerated files, or remove the entries with
+# `git reset -- <paths>`. The paths: server/kaname_server/lib/src/generated,
+# the generated test tools file (server_test_tools_path) and
+# server/kaname_client/lib/src/protocol.
+run = [
+  { task = "server:generate" },
+  "dart format server/kaname_server/lib/src/generated server/kaname_server/test/integration/test_tools/serverpod_test_tools.dart server/kaname_client/lib/src/protocol",
+  "git add --intent-to-add -- server/kaname_server/lib/src/generated server/kaname_server/test/integration/test_tools/serverpod_test_tools.dart server/kaname_client/lib/src/protocol",
+  "git diff --exit-code --stat=200 -- server/kaname_server/lib/src/generated server/kaname_server/test/integration/test_tools/serverpod_test_tools.dart server/kaname_client/lib/src/protocol",
+]
+
+[tasks."server:setup"]
+description = "Create the ignored dev/test secrets when missing and derive the dev Redis .env"
+dir = "server/kaname_server"
+run = "dart run tool/setup.dart"
+
+[tasks."server:dev"]
+description = "Start the development server and apply pending migrations; needs the development Redis up"
+# Development applies migrations on start (design D1). The stack never does:
+# it uses the maintenance step (see the doc comment on `main`).
+dir = "server/kaname_server"
+run = "dart run bin/main.dart --apply-migrations"
+
+[tasks."test:server"]
+description = "Run the server packages' tests; needs the development Redis up (server:setup, then docker compose up -d in server/kaname_server)"
+# Starts nothing. `check`'s `test` task does not run these: they need Redis.
+# The `stack` tag marks tests that need the Compose stack instead.
+run = [
+  { task = "test:server:server" },
+  { task = "test:server:client" },
+]
+
+[tasks."test:server:server"]
+description = "Run the kaname_server tests without the stack tag"
+dir = "server/kaname_server"
+run = "dart test --exclude-tags stack"
+
+[tasks."test:server:client"]
+description = "Run the kaname_client tests without the stack tag"
+dir = "server/kaname_client"
+run = "dart test --exclude-tags stack"
+
+[tasks."stack:up"]
+description = "Build the web app, then build and start the self-host stack in deploy/ and wait until it is healthy; needs deploy/.env"
+# Caddy serves app/build/web, so the web build comes first. Copy
+# deploy/.env.example to deploy/.env and fill it in before the first run.
+run = [
+  { task = "build:web" },
+  "docker compose --file deploy/compose.yaml up --detach --wait --build",
+]
+
+[tasks."stack:test"]
+description = "Run the stack tests (tag `stack`) against the running stack and build the image from scratch; needs Docker"
+# One file at a time: the tests stop and start the stack and build images.
+# `stack:up` first (the CI `stack` job does). Not part of `check` or `test:server`.
+dir = "server/kaname_client"
+run = "dart test --tags stack --concurrency=1"
+
+[tasks."stack:down"]
+description = "Stop the self-host stack and delete its data volumes"
+# Compose evaluates the required secrets even for `down`, so a checkout without
+# deploy/.env still stops the stack; the values are never used.
+env = { POSTGRES_PASSWORD = "unused", REDIS_PASSWORD = "unused", SERVERPOD_SERVICE_SECRET = "unused" }
+run = "docker compose --file deploy/compose.yaml down --volumes --remove-orphans"
+
 [tasks.check]
 description = "Run every local check (resolve first); stops at the first failure"
 run = [

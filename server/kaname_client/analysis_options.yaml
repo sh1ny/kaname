@@ -1,0 +1,8 @@
+# The client follows the shared workspace options (design D1). Serverpod
+# generates the excluded path: it stays format-checked but is not analysed
+# (design D7).
+include: ../../analysis_options.yaml
+
+analyzer:
+  exclude:
+    - lib/src/protocol/**

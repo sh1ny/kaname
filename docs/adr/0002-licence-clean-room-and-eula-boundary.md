@@ -13,7 +13,7 @@ Kaname is public from day one and runs next to the EVE client. It must stay insi
 - **Clean room:** concepts only. No third-party product code, schemas or templates are copied. A pinned, unmodified, credited dependency is use, not copying. Any copied data file needs the owner's approval first and a licence notice. Code from the owner's own projects may be adapted with a provenance note.
 - **Non-commercial:** no paid tiers, hosted service, ads or ISK-for-access.
 - **EULA boundary:** desktop integration only reads game and chat log files and moves or resizes windows. Never input broadcasting, synthetic input, focus cycling on keys, memory reading, screen capture or OCR of the client, packet inspection, or global keyboard hooks; hotkeys work only while Kaname's window is focused. An architecture test enforces it when desktop extras land.
-- CI fails on dependencies whose licences are not AGPL-compatible, and `THIRD_PARTY_NOTICES` lists every bundled dependency.
+- CI fails on dependencies whose licences are not AGPL-compatible, and `THIRD_PARTY_NOTICES` lists every bundled dependency. The owner counts the Server Side Public License v1 (SSPL), which is the AGPL-3.0 plus a service clause, as compatible: its extra obligation applies only to offering the SSPL-licensed program itself as a hosted service, and Kaname publishes its full source anyway. The `serverpod` package is accepted on that basis as an unmodified runtime dependency, through an exception pinned to its exact version in `licence-policy.yaml`; each Serverpod version change returns to the owner. (Amended 2026-11-15, change `serverpod-skeleton`.)
 
 ## Consequences
 - Contributors follow CONTRIBUTING's no-copy rule; reviewers check provenance.

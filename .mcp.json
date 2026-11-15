@@ -9,6 +9,11 @@
       "type": "stdio",
       "command": "mise",
       "args": ["exec", "--", "npx", "-y", "@upstash/context7-mcp"]
+    },
+    "serverpod": {
+      "type": "stdio",
+      "command": "mise",
+      "args": ["exec", "-C", "server/kaname_server", "--", "dart", "run", "serverpod_cli", "mcp-server", "--server-dir", "."]
     }
   }
 }

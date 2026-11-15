@@ -8,6 +8,8 @@ environment:
 workspace:
   - app
   - packages/kaname_core
+  - server/kaname_client
+  - server/kaname_server
   - tools/kaname_tools
 
 dev_dependencies:

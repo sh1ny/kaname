@@ -1,0 +1,31 @@
+# Staging run mode: it resembles production. The database and Redis are
+# external services. Secrets come from the environment (SERVERPOD_PASSWORD_*),
+# never from this file. Insights and the web server are off (design D8).
+
+# Configuration for the main API server.
+apiServer:
+  port: 8080
+  publicHost: api-staging.examplepod.com
+  publicPort: 443
+  publicScheme: https
+
+# External PostgreSQL 16 or later.
+database:
+  host: postgres
+  port: 5432
+  name: kaname
+  user: postgres
+
+# Redis is enabled in every run mode.
+redis:
+  enabled: true
+  host: redis
+  port: 6379
+
+maxRequestSize: 524288 # The maximum size of requests allowed in bytes
+
+# Console logs only: no persistent session logs outside development (D10).
+sessionLogs:
+  persistentEnabled: false
+  consoleEnabled: true
+  consoleLogFormat: json # Defaults to "json", options are "text" or "json"

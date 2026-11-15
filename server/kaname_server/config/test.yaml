@@ -1,0 +1,30 @@
+# Test run mode, loaded by `withServerpod`. Every port is zero, so the servers
+# find free ports and tests can run concurrently. Passwords come from
+# config/passwords.yaml. Insights and the web server are off (design D8).
+
+# Configuration for the main API test server.
+apiServer:
+  port: 0
+  publicHost: localhost
+  publicPort: 0
+  publicScheme: http
+
+# Embedded PostgreSQL. Port 0 lets it use an available port with no conflicts.
+database:
+  host: localhost
+  port: 0
+  name: kaname_test
+  user: postgres
+  dataPath: .serverpod/test/pgdata
+
+# Redis is enabled in every run mode. Tests use the development container in
+# docker-compose.yaml, with the same password as development (design D6, D11).
+redis:
+  enabled: true
+  host: localhost
+  port: 8091
+
+# Console logs only: no persistent session logs outside development (D10).
+sessionLogs:
+  persistentEnabled: false
+  consoleEnabled: true

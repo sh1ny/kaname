@@ -23,3 +23,13 @@ exceptions:
     licence: unrecognised
     reason: "LICENSE holds MIT plus the Dart project's BSD-3-Clause, both allowlisted"
     approved: 2026-11-15
+  - package: postgres
+    version: "3.6.0"
+    licence: unrecognised
+    reason: "BSD-3-Clause with the template's placeholders unfilled; through serverpod_database"
+    approved: 2026-11-15
+  - package: serverpod
+    version: "4.1.2"
+    licence: unrecognised
+    reason: "Server Side Public License v1 (SSPL); the Serverpod server framework itself, accepted by the owner (ADR 0002; design D13)"
+    approved: 2026-11-15
