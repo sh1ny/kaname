@@ -96,7 +96,9 @@ const Set<String> _entryKeys = {
 /// must name a template the matcher knows (see [licenceTemplates]) that is
 /// AGPL-3.0-compatible, so a typo or an incompatible identifier cannot widen
 /// the policy. `exceptions:` is a list of entries with `package`, `version`,
-/// `licence`, `reason` and `approved` (an ISO date), all strings. An unknown
+/// `licence`, `reason` and `approved` (an ISO date), all strings. `licence`
+/// is a template's SPDX identifier or `unrecognised`, never a read failure
+/// such as a missing licence file, so an exception cannot hide one. An unknown
 /// key, at the top or in an entry, is an error. Any problem makes the whole
 /// policy [PolicyInvalid], so nothing is allowed or excepted by a bad file.
 PolicyLoad loadLicencePolicy(FileSystem fileSystem) {
@@ -196,6 +198,15 @@ List<LicenceException> _readExceptions(Object? value, List<String> problems) {
             '(quote versions)',
           );
       }
+    }
+    final licence = fields['licence'];
+    if (licence != null &&
+        licence != unrecognisedLicenceName &&
+        licenceTemplateFor(licence) == null) {
+      problems.add(
+        '$licencePolicyPath: $name: "licence" must be an SPDX id the check '
+        'knows or unrecognised, found "$licence"',
+      );
     }
     final approved = fields['approved'];
     if (approved != null && !_isIsoDate(approved)) {

@@ -293,6 +293,41 @@ void main() {
       },
     );
 
+    test('exception cannot record or cover a licence read failure', () async {
+      // A read-failure label is not a licence: the loader refuses it, so a
+      // missing licence file cannot be passed off as an approved package.
+      for (final label in ['"no licence file"', '"unreadable licence"']) {
+        final result = await _check(
+          repo(policy(entry(licence: label)), text: ''),
+        );
+
+        expect(result.code, 1, reason: label);
+        expect(result.err, contains('exceptions[0]'), reason: label);
+        expect(
+          result.err,
+          contains('must be an SPDX id the check knows or unrecognised'),
+          reason: label,
+        );
+        expect(result.out, isNot(contains('excepted')), reason: label);
+      }
+
+      // A valid entry for a package whose licence file is missing names
+      // the read failure, not a licence mismatch.
+      final missing = _repo(
+        packages: [('weird', '1.2.3', 'hosted')],
+        policy: policy(entry()),
+      );
+      final result = await _check(missing);
+
+      expect(result.code, 1);
+      expect(result.err, contains('weird 1.2.3'));
+      expect(
+        result.err,
+        contains('cannot cover a package whose licence was not read'),
+      );
+      expect(result.out, isNot(contains('excepted')));
+    });
+
     test('exception for an allowed package fails as not needed', () async {
       final result = await _check(
         repo(
