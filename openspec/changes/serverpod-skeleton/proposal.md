@@ -22,7 +22,7 @@ Kaname has no server yet. The architecture rests on one Serverpod process with P
   - A new Linux `server` job runs the server tests and the generated-client drift check, with Redis from the server package's development container.
   - A new Linux `stack` job runs `docker compose up` and asserts the health answer through Caddy.
   - Two new required check names on `main` (a `[user]` task).
-- The Serverpod MCP entry (`mise exec -C server/kaname_server -- dart run serverpod_cli:serverpod mcp-server --server-dir .`) goes in `.mcp.json` and `.omp/mcp.json`, and is enabled and allow-listed in `.claude/settings.json`. The M0 TODO in AGENTS.md is removed.
+- The Serverpod MCP entry (`mise exec -C server/kaname_server -- dart run serverpod_cli mcp-server --server-dir .`) goes in `.mcp.json` and `.omp/mcp.json`, and is enabled and allow-listed in `.claude/settings.json`. The M0 TODO in AGENTS.md is removed.
 - THIRD_PARTY_NOTICES is regenerated, and the licence check covers the new pub dependencies.
 
 ## Capabilities
@@ -41,6 +41,7 @@ Kaname has no server yet. The architecture rests on one Serverpod process with P
 - New: `server/kaname_server/` (with a development Compose file for Redis and a setup tool), `server/kaname_client/`, `deploy/` (compose file, Caddyfile, Dockerfile, environment example), server tests, mise tasks for the server and the stack.
 - Changed: root `pubspec.yaml` (workspace members), `pubspec.lock`, `analysis_options.yaml` (generated code excluded), `THIRD_PARTY_NOTICES`, `.github/workflows/ci.yml`, `.mcp.json`, `.omp/mcp.json`, `.claude/settings.json`, `AGENTS.md`, `.gitignore` (embedded database data, passwords, the environment file).
 - GitHub: two more required status checks on `main` (owner setting).
+- Licences: the `serverpod` package (4.1.2) is licensed under SSPL v1, unlike the BSD-3 `serverpod_*` packages, and `postgres` 3.6.0 has an unfilled BSD-3 template. Both pass the licence check only through owner-approved, version-pinned exceptions (design D13).
 - Container images (Postgres, Redis, Caddy, Debian) are pulled at run time, not vendored. Their licences sit outside the pub licence check, like the native-dependency gap `ci-matrix` named. The design checks which Redis image and licence fit ADR 0002.
 - Local development needs Docker for Redis. Server tests need Docker on Linux only.
 

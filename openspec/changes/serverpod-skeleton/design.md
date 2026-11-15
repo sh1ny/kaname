@@ -21,7 +21,7 @@ TIER: FULL
 - `.gitignore` already ignores Serverpod local state, passwords files and `.env` files except `.env.example` (`.gitignore:20-27`).
 - The root workspace includes `app` (`pubspec.yaml:8-11`), which depends on the Flutter SDK (`app/pubspec.yaml:11-18`). Resolving the workspace, even for the server alone, therefore needs Flutter.
 - Analysis runs with strict modes (`analysis_options.yaml:6-10`) and excludes only `.claude`, `brand`, `build` and `.dart_tool` (`analysis_options.yaml:11-16`).
-- AGENTS.md holds the M0 TODO for the Serverpod MCP entry (`AGENTS.md:15`). `.mcp.json` and `.omp/mcp.json` hold only `dart` and `context7` (`.mcp.json:2-13`, `.omp/mcp.json:3-14`), and `.claude/settings.json` enables and allow-lists only those two (`.claude/settings.json:1-5`). Their commands start at the repository root through `mise exec`, and `mise exec -C <dir>` runs a command as if started in `<dir>` (global `-C, --cd` flag in `mise --help`, mise 2026.11). The root package does not depend on `serverpod_cli` (`pubspec.yaml:13-14`), so S7's entry runs `mise exec -C server/kaname_server -- dart run serverpod_cli:serverpod mcp-server --server-dir .` (A10).
+- AGENTS.md holds the M0 TODO for the Serverpod MCP entry (`AGENTS.md:15`). `.mcp.json` and `.omp/mcp.json` hold only `dart` and `context7` (`.mcp.json:2-13`, `.omp/mcp.json:3-14`), and `.claude/settings.json` enables and allow-lists only those two (`.claude/settings.json:1-5`). Their commands start at the repository root through `mise exec`, and `mise exec -C <dir>` runs a command as if started in `<dir>` (global `-C, --cd` flag in `mise --help`, mise 2026.11). The root package does not depend on `serverpod_cli` (`pubspec.yaml:13-14`), so S7's entry runs `mise exec -C server/kaname_server -- dart run serverpod_cli mcp-server --server-dir .` (A10).
 - Serverpod 4.1 facts (Serverpod docs through Context7, 2026-11-15; installed skills `serverpod-overview`, `serverpod-health-checks`):
   - New projects use embedded Postgres through `database.dataPath` in development and test; external Postgres must be 16 or later.
   - Redis is configured per run mode (`redis.enabled`, `host`, `port`), with its password from `passwords.yaml` or `SERVERPOD_PASSWORD_redis`. The server refuses to start when Redis is enabled and the password is missing.
@@ -141,6 +141,14 @@ TIER: FULL
 - **Important:** yes, changes what self-hosters see
 - **Chosen by:** user (round 1 fix)
 
+### D13: Licence exceptions for `serverpod` and `postgres`
+
+- **Choice:** `licence-policy.yaml` gains two owner-approved exceptions (2026-11-15). `serverpod` 4.1.2, the server framework itself, ships the Server Side Public License v1 (SSPL) as its `LICENSE`; the other `serverpod_*` packages, `serverpod_cli` included, are BSD-3-Clause. `postgres` 3.6.0 (through `serverpod_database`) is BSD-3-Clause with an unfilled template, which the check reports as unrecognised. Each exception covers its one exact version, so a Serverpod upgrade puts the licence back to the owner.
+- **Rejected:** stopping the change to revisit ADR 0001 (Serverpod as the backend).
+- **Reversal cost:** high (the whole server rests on the package)
+- **Important:** yes, binds future changes (every Serverpod upgrade re-checks the exception)
+- **Chosen by:** user (found in task 1.6, 2026-11-15)
+
 ### Decision summary
 
 | # | Decision | Choice | Rejected | Reversal cost | Important | Chosen by |
@@ -164,6 +172,7 @@ TIER: FULL
 | D10 | Session logs | Persistent only in development | Persistent everywhere | low | yes | user |
 | D11 | Dev/test secrets | `server:setup` generates `passwords.yaml` (one Redis password for dev and test), derives `.env` | Commit fixed dev passwords | low | yes | user |
 | D12 | Caddy bind | Publish on `127.0.0.1:80` only | All interfaces | low | yes | user |
+| D13 | Licence exceptions | Owner-approved exceptions for `serverpod` 4.1.2 (SSPL) and `postgres` 3.6.0 (unfilled BSD-3) | Revisit ADR 0001 | high | yes | user |
 
 ## Assumptions
 
@@ -176,7 +185,7 @@ TIER: FULL
 - **A7:** `serverpod_cli` (a dev dependency with heavy analyzer and build dependencies) resolves in one workspace with the versions the Flutter SDK pins for `flutter_test`. Not checked because the CLI is not added yet. A conflict would block `mise run resolve` on every OS. Depends on it: every task; task 1 checks it first, and a conflict goes to the owner.
 - **A8:** `serverpod_test`'s `withServerpod` creates the test database schema from the committed migrations on the embedded test Postgres. Not checked (the installed `serverpod-testing` skill describes the harness, not the schema step). Depends on it: `server-runtime` "Migrations are applied before the server serves" for test mode; the first server test.
 - **A9:** Serverpod writes generated code to `lib/src/generated/` in the server and `lib/src/protocol/` in the client. Not checked against the pinned CLI's output. Depends on it: D7's analysis excludes; task 1 adjusts the paths to what the CLI writes.
-- **A10:** `dart run serverpod_cli:serverpod mcp-server --server-dir .` is the package-local form of the MCP bridge command. Not checked (the CLI is not installed yet). Depends on it: S7's entry; the MCP task starts it and records the result.
+- **A10:** `dart run serverpod_cli mcp-server --server-dir .` is the package-local form of the MCP bridge command. Partly checked in task 1.4: the package's executable file is `bin/serverpod_cli.dart` (`executables:` maps `serverpod` to it), so `dart run serverpod_cli:serverpod` fails and `dart run serverpod_cli <command>` is the working form (`version` prints 4.1.2); the bridge itself is started in the MCP task. Depends on it: S7's entry; the MCP task starts it and records the result.
 
 ## Carried constraints
 
