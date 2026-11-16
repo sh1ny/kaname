@@ -93,6 +93,14 @@ run = "dart run kaname_tools notices --write"
 description = "Fail if THIRD_PARTY_NOTICES is stale or misses a vendored source"
 run = "dart run kaname_tools notices --check"
 
+[tasks.tokens]
+description = "Generate the Ember UI package tokens from brand/tokens.json"
+run = "dart run kaname_tools tokens --write"
+
+[tasks."tokens:check"]
+description = "Fail if the generated Ember UI tokens are stale or were edited by hand"
+run = "dart run kaname_tools tokens --check"
+
 [tasks.licences]
 description = "Check that every locked package's licence is allowed by licence-policy.yaml"
 run = "dart run kaname_tools licences --check"
@@ -195,6 +203,7 @@ run = [
   { task = "purity" },
   { task = "analyze" },
   { task = "format:check" },
+  { task = "tokens:check" },
   { task = "test" },
   { task = "notices:check" },
   { task = "licences" },

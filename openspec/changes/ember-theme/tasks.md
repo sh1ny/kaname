@@ -6,12 +6,12 @@ Package tests live in `app_packages/kaname_ember_ui/test/` (shortened to `ember_
 
 | Requirement | Scenario | Test file | Test name | State |
 |---|---|---|---|---|
-| ember-ui → Tokens are generated from the brand source | Generated tokens are current | tools/kaname_tools/test/tokens_repo_test.dart | committed generated tokens match brand/tokens.json | red |
-| ember-ui → Tokens are generated from the brand source | Tokens edited without regenerating | tools/kaname_tools/test/tokens_test.dart | check names the stale generated file and says to run the generator | red |
-| ember-ui → Tokens are generated from the brand source | Generated file edited by hand | tools/kaname_tools/test/tokens_test.dart | check names a hand-edited generated file | red |
+| ember-ui → Tokens are generated from the brand source | Generated tokens are current | tools/kaname_tools/test/tokens_repo_test.dart | committed generated tokens match brand/tokens.json | green |
+| ember-ui → Tokens are generated from the brand source | Tokens edited without regenerating | tools/kaname_tools/test/tokens_test.dart | check names the stale generated file and says to run the generator | green |
+| ember-ui → Tokens are generated from the brand source | Generated file edited by hand | tools/kaname_tools/test/tokens_test.dart | check names a hand-edited generated file | green |
 | ember-ui → Every colour role exists in both rooms | Both rooms carry every role | ember_ui/test/theme_test.dart | dark and light themes expose every colour role in tokens.json | red |
-| ember-ui → Every colour role exists in both rooms | A role without a light value | tools/kaname_tools/test/tokens_test.dart | a role without a light value fails naming role and room and writes nothing | red |
-| ember-ui → Every colour role exists in both rooms | An unparseable colour | tools/kaname_tools/test/tokens_test.dart | an unparseable colour fails naming role and value and writes nothing | red |
+| ember-ui → Every colour role exists in both rooms | A role without a light value | tools/kaname_tools/test/tokens_test.dart | a role without a light value fails naming role and room and writes nothing | green |
+| ember-ui → Every colour role exists in both rooms | An unparseable colour | tools/kaname_tools/test/tokens_test.dart | an unparseable colour fails naming role and value and writes nothing | green |
 | ember-ui → Fonts are bundled and never fetched from another host | Type styles use bundled families | ember_ui/test/fonts_test.dart | every type style names a font family the package declares | red |
 | ember-ui → Fonts are bundled and never fetched from another host | A font asset is missing | ember_ui/test/fonts_test.dart | loading fonts with a declared file missing fails naming the file | red |
 | ember-ui → The web build loads no engine or font files from third-party hosts | Self-contained web build | tools/kaname_tools/test/webbuild_test.dart | self-contained build passes the check | red |
@@ -49,12 +49,12 @@ Package tests live in `app_packages/kaname_ember_ui/test/` (shortened to `ember_
 
 ## 2. Token generator and the ink-tertiary edit
 
-- [ ] 2.1 Write failing tests in `tools/kaname_tools/test/tokens_test.dart` (in-memory file system fixture) for: stale generated file named with the "run the generator" hint; hand-edited generated file named; role without a light value fails naming role and room and writes nothing; unparseable colour fails naming role and value and writes nothing; mono stack and style skipped; a style naming an unbundled family fails. Verify they fail because the `tokens` command does not exist.
-- [ ] 2.2 Implement `kaname_tools tokens --write/--check` (D1; sealed parse result, no `dynamic`, typed colour parsing of `#rrggbb` and `rgba(...)`, whole-file render then one write, formatter output form, doc comment on every generated public member), registered in `cli.dart`; verify the 2.1 tests pass and flip their rows green.
-- [ ] 2.3 Change `ink-tertiary` in `brand/tokens.json` to dark `#918d86`, light `#635e55` (S7); rerun `mise exec -- node brand/tools/build.mjs`; verify `git diff --stat brand/` shows only `tokens.json`, `tokens.css` and `brand/flutter/ember_tokens.dart`.
-- [ ] 2.4 Add mise tasks `tokens` (`--write`) and `tokens:check` (`--check`), with `tokens:check` in `check`; run `mise run tokens` to write `app_packages/kaname_ember_ui/lib/src/generated/ember_tokens.dart`, carrying C9 in the `EmberType` doc comment ("no mono type style; the first code or source view adds a bundled mono font and its style, never the system stack"); verify `mise run tokens:check` exits 0 and the file analyzes clean.
-- [ ] 2.5 Write `tools/kaname_tools/test/tokens_repo_test.dart` (committed generated tokens match `brand/tokens.json`, and a second write changes nothing); verify it passes and flip its row green.
-- [ ] 2.6 DESIGN.md: set the `ink-tertiary` frontmatter colours to the new values, and add to "What Kaname changes" the `ink-tertiary` edit (S7, with the 4.5:1 on Hover and Press reason) and the missing `mono` style (S9); verify `grep -n 918d86 DESIGN.md` and the section text.
+- [x] 2.1 Write failing tests in `tools/kaname_tools/test/tokens_test.dart` (in-memory file system fixture) for: stale generated file named with the "run the generator" hint; hand-edited generated file named; role without a light value fails naming role and room and writes nothing; unparseable colour fails naming role and value and writes nothing; mono stack and style skipped; a style naming an unbundled family fails. Verify they fail because the `tokens` command does not exist.
+- [x] 2.2 Implement `kaname_tools tokens --write/--check` (D1; sealed parse result, no `dynamic`, typed colour parsing of `#rrggbb` and `rgba(...)`, whole-file render then one write, formatter output form, doc comment on every generated public member), registered in `cli.dart`; verify the 2.1 tests pass and flip their rows green.
+- [x] 2.3 Change `ink-tertiary` in `brand/tokens.json` to dark `#918d86`, light `#635e55` (S7); rerun `mise exec -- node brand/tools/build.mjs`; verify `git diff --stat brand/` shows only `tokens.json`, `tokens.css` and `brand/flutter/ember_tokens.dart`.
+- [x] 2.4 Add mise tasks `tokens` (`--write`) and `tokens:check` (`--check`), with `tokens:check` in `check`; run `mise run tokens` to write `app_packages/kaname_ember_ui/lib/src/generated/ember_tokens.dart`, carrying C9 in the `EmberType` doc comment ("no mono type style; the first code or source view adds a bundled mono font and its style, never the system stack"); verify `mise run tokens:check` exits 0 and the file analyzes clean.
+- [x] 2.5 Write `tools/kaname_tools/test/tokens_repo_test.dart` (committed generated tokens match `brand/tokens.json`, and a second write changes nothing); verify it passes and flip its row green.
+- [x] 2.6 DESIGN.md: set the `ink-tertiary` frontmatter colours to the new values, and add to "What Kaname changes" the `ink-tertiary` edit (S7, with the 4.5:1 on Hover and Press reason) and the missing `mono` style (S9); verify `grep -n 918d86 DESIGN.md` and the section text.
 
 ## 3. Fonts, licences and notices
 

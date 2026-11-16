@@ -16,4 +16,8 @@ export 'src/purity.dart';
 export 'src/real_file_system.dart';
 export 'src/sbom.dart';
 export 'src/signoff.dart';
+export 'src/tokens.dart';
+export 'src/tokens_model.dart';
+export 'src/tokens_parse.dart';
+export 'src/tokens_render.dart';
 export 'src/workspace.dart';
