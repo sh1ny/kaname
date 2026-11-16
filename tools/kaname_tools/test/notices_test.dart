@@ -14,6 +14,7 @@ const _fullHandWritten =
     'Fixture notices.\n'
     '\n'
     'Fonts: brand/fonts/OFL-fixture.txt\n'
+    '  app_packages/pkg/fonts/OFL-pkgfont.txt\n'
     '\n'
     'Alpha: https://github.com/example/alpha\n'
     '  .claude/skills/LICENSE.alpha\n'
@@ -97,6 +98,9 @@ InMemoryFileSystem _fixture({String handWritten = _fullHandWritten}) =>
       )
       ..writeFile('brand/fonts/OFL-fixture.txt', 'font licence\n')
       ..writeFile('brand/fonts/OFL-NOTICE.md', 'not a licence file\n')
+      ..writeFile('app_packages/pkg/fonts/OFL-pkgfont.txt', 'font licence\n')
+      ..writeFile('app_packages/pkg/fonts/PROVENANCE.md', 'not a licence\n')
+      ..writeFile('app_packages/pkg/build/fonts/OFL-built.txt', 'copy\n')
       ..writeFile('THIRD_PARTY_NOTICES', _notices(handWritten, ''));
 
 String _notices(String handWritten, String generated) =>
@@ -313,6 +317,31 @@ void main() {
     ); // alpha's URL is listed
     expect(lines, isNot(contains(contains('LICENSE.beta'))));
     expect(lines, isNot(contains(contains('OFL-NOTICE'))));
+    expect(fs.writeCount, writes);
+  });
+
+  test('check names an OFL file under app_packages missing from the '
+      'hand-written sections', () async {
+    fs.writeFile(
+      'THIRD_PARTY_NOTICES',
+      _notices(
+        _fullHandWritten.replaceAll(
+          '  app_packages/pkg/fonts/OFL-pkgfont.txt\n',
+          '',
+        ),
+        '',
+      ),
+    );
+    await runTool(fs, ['notices', '--write']);
+    final writes = fs.writeCount;
+
+    final result = await runTool(fs, ['notices', '--check']);
+
+    expect(result.code, 1);
+    final lines = result.err.trim().split('\n');
+    expect(lines, contains(contains('app_packages/pkg/fonts/OFL-pkgfont.txt')));
+    expect(lines, isNot(contains(contains('PROVENANCE'))));
+    expect(lines, isNot(contains(contains('OFL-built'))));
     expect(fs.writeCount, writes);
   });
 }

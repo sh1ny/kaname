@@ -16,3 +16,17 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+
+flutter:
+  fonts:
+    - family: Geist
+      fonts:
+        - asset: fonts/Geist[wght].ttf
+    - family: Literata
+      fonts:
+        - asset: fonts/Literata[opsz,wght].ttf
+        - asset: fonts/Literata-Italic[opsz,wght].ttf
+          style: italic
+  assets:
+    - fonts/OFL-geist.txt
+    - fonts/OFL-literata.txt

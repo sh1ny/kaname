@@ -12,13 +12,13 @@ Package tests live in `app_packages/kaname_ember_ui/test/` (shortened to `ember_
 | ember-ui → Every colour role exists in both rooms | Both rooms carry every role | ember_ui/test/theme_test.dart | dark and light themes expose every colour role in tokens.json | red |
 | ember-ui → Every colour role exists in both rooms | A role without a light value | tools/kaname_tools/test/tokens_test.dart | a role without a light value fails naming role and room and writes nothing | green |
 | ember-ui → Every colour role exists in both rooms | An unparseable colour | tools/kaname_tools/test/tokens_test.dart | an unparseable colour fails naming role and value and writes nothing | green |
-| ember-ui → Fonts are bundled and never fetched from another host | Type styles use bundled families | ember_ui/test/fonts_test.dart | every type style names a font family the package declares | red |
-| ember-ui → Fonts are bundled and never fetched from another host | A font asset is missing | ember_ui/test/fonts_test.dart | loading fonts with a declared file missing fails naming the file | red |
+| ember-ui → Fonts are bundled and never fetched from another host | Type styles use bundled families | ember_ui/test/fonts_test.dart | every type style names a font family the package declares | green |
+| ember-ui → Fonts are bundled and never fetched from another host | A font asset is missing | ember_ui/test/fonts_test.dart | loading fonts with a declared file missing fails naming the file | green |
 | ember-ui → The web build loads no engine or font files from third-party hosts | Self-contained web build | tools/kaname_tools/test/webbuild_test.dart | self-contained build passes the check | red |
 | ember-ui → The web build loads no engine or font files from third-party hosts | A build that depends on the CDN | tools/kaname_tools/test/webbuild_test.dart | build without local engine, wasm or own-origin fallback fails naming what it found | red |
 | ember-ui → The web build loads no engine or font files from third-party hosts | A glyph no bundled font covers | n/a: mechanical check, evidence/web-requests.md (task 7.9) | n/a: needs a real browser and network log; the capture script lists every request's origin | n/a |
-| ember-ui → Font licences ship with the app | Licence page lists the fonts | ember_ui/test/licences_test.dart | licence entries hold full OFL text for Geist and Literata | red |
-| ember-ui → Font licences ship with the app | A licence text is missing | ember_ui/test/licences_test.dart | a missing licence file fails naming family and file | red |
+| ember-ui → Font licences ship with the app | Licence page lists the fonts | ember_ui/test/licences_test.dart | licence entries hold full OFL text for Geist and Literata | green |
+| ember-ui → Font licences ship with the app | A licence text is missing | ember_ui/test/licences_test.dart | a missing licence file fails naming family and file | green |
 | ember-ui → The package provides a dark and a light theme | Themes in both rooms | ember_ui/test/theme_test.dart | a widget reads dark roles under dark and light roles under light | red |
 | ember-ui → The package provides a dark and a light theme | Roles read without the Ember theme | ember_ui/test/theme_test.dart | reading Ember roles under a non-Ember theme throws "Ember theme is not installed" | red |
 | ember-ui → The app follows the system theme until the user chooses | Dark system setting | app/test/app_test.dart | dark platform brightness renders the Ember dark canvas | red |
@@ -35,8 +35,8 @@ Package tests live in `app_packages/kaname_ember_ui/test/` (shortened to `ember_
 | ember-ui → Token colours meet WCAG contrast | Ember fills are exempt from the surface bar | ember_ui/test/contrast_test.dart | an Ember fill below 3:1 on a surface is not a failure | red |
 | workspace-layout → Packages follow the placement and naming rule | Current packages comply | tools/kaname_tools/test/workspace_test.dart | current layout reports app, ember_ui, core, tools, server and client and exits 0 | green |
 | workspace-layout → Packages follow the placement and naming rule | A misplaced or misnamed package | tools/kaname_tools/test/workspace_test.dart | missing prefix or directory mismatch fails with rule | green |
-| third-party-notices → Vendored assets are listed by hand | Current vendored assets listed | tools/kaname_tools/test/notices_repo_test.dart | repository notices cover every vendored source | red |
-| third-party-notices → Vendored assets are listed by hand | A vendored source without an entry | tools/kaname_tools/test/notices_test.dart | check names an OFL file under app_packages missing from the hand-written sections | red |
+| third-party-notices → Vendored assets are listed by hand | Current vendored assets listed | tools/kaname_tools/test/notices_repo_test.dart | repository notices cover every vendored source | green |
+| third-party-notices → Vendored assets are listed by hand | A vendored source without an entry | tools/kaname_tools/test/notices_test.dart | check names an OFL file under app_packages missing from the hand-written sections | green |
 | self-host-stack → The fallback-font path never serves the web app | Fallback font requested | server/kaname_client/test/stack/stack_test.dart | Given the stack when a fallback font is requested then Caddy answers 404 and not index.html | red |
 | self-host-stack → The fallback-font path never serves the web app | Ordinary app route still falls back | server/kaname_client/test/stack/stack_test.dart | Given the stack when an app route without a file is requested then index.html is served | red |
 
@@ -58,12 +58,12 @@ Package tests live in `app_packages/kaname_ember_ui/test/` (shortened to `ember_
 
 ## 3. Fonts, licences and notices
 
-- [ ] 3.1 Verify A4: confirm the three files exist at google/fonts commit `4e5f06dbb274a27ebe71ed54ea706b3ee40eabd9` with the listed sizes (GitHub contents API); if Geist's latest commit differs, pin the commit actually downloaded from and record it.
-- [ ] 3.2 Download `Geist[wght].ttf`, `Literata[opsz,wght].ttf`, `Literata-Italic[opsz,wght].ttf` and both `OFL.txt` (saved as `OFL-geist.txt`, `OFL-literata.txt`) unmodified into `app_packages/kaname_ember_ui/fonts/`; write `fonts/PROVENANCE.md` with commit, source paths and SHA-256 of each file; verify with `sha256sum` against PROVENANCE.md.
-- [ ] 3.3 Write failing tests: `fonts_test.dart` (every type style names a declared package family and no system family such as `ui-monospace`; loading fonts with a declared file missing fails naming the file) and `licences_test.dart` (licence entries for Geist and Literata hold the full OFL-1.1 text with each family's copyright line; a missing licence file fails naming family and file). Verify they fail for the right reason.
-- [ ] 3.4 Declare the families in the package pubspec and the OFL texts as assets; implement `EmberFonts` (`lib/src/fonts.dart`) with `registerLicences()` and the D8 test font loader (injectable asset source, so a missing file is testable), carrying C5 in the `EmberFonts` doc comment; verify the 3.3 tests pass and flip their rows green.
-- [ ] 3.5 Write a failing `notices_test.dart` case: an `OFL-*.txt` under a package in `app_packages/` that the hand-written sections do not name makes `notices --check` fail naming it; then extend `notices.dart` font-licence coverage to `app_packages/*/` and verify the case passes (flip its row green).
-- [ ] 3.6 Add the package's licence paths to the Geist and Literata entries in `THIRD_PARTY_NOTICES`; verify `notices_repo_test.dart` and `mise run notices:check` pass and flip its row green.
+- [x] 3.1 Verify A4: confirm the three files exist at google/fonts commit `4e5f06dbb274a27ebe71ed54ea706b3ee40eabd9` with the listed sizes (GitHub contents API); if Geist's latest commit differs, pin the commit actually downloaded from and record it.
+- [x] 3.2 Download `Geist[wght].ttf`, `Literata[opsz,wght].ttf`, `Literata-Italic[opsz,wght].ttf` and both `OFL.txt` (saved as `OFL-geist.txt`, `OFL-literata.txt`) unmodified into `app_packages/kaname_ember_ui/fonts/`; write `fonts/PROVENANCE.md` with commit, source paths and SHA-256 of each file; verify with `sha256sum` against PROVENANCE.md.
+- [x] 3.3 Write failing tests: `fonts_test.dart` (every type style names a declared package family and no system family such as `ui-monospace`; loading fonts with a declared file missing fails naming the file) and `licences_test.dart` (licence entries for Geist and Literata hold the full OFL-1.1 text with each family's copyright line; a missing licence file fails naming family and file). Verify they fail for the right reason.
+- [x] 3.4 Declare the families in the package pubspec and the OFL texts as assets; implement `EmberFonts` (`lib/src/fonts.dart`) with `registerLicences()` and the D8 test font loader (injectable asset source, so a missing file is testable), carrying C5 in the `EmberFonts` doc comment; verify the 3.3 tests pass and flip their rows green.
+- [x] 3.5 Write a failing `notices_test.dart` case: an `OFL-*.txt` under a package in `app_packages/` that the hand-written sections do not name makes `notices --check` fail naming it; then extend `notices.dart` font-licence coverage to `app_packages/*/` and verify the case passes (flip its row green).
+- [x] 3.6 Add the package's licence paths to the Geist and Literata entries in `THIRD_PARTY_NOTICES`; verify `notices_repo_test.dart` and `mise run notices:check` pass and flip its row green.
 
 ## 4. Themes, colours and contrast
 
