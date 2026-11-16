@@ -185,9 +185,15 @@ class EmberColors extends ThemeExtension<EmberColors> {
 
   /// The colour roles of the ambient theme.
   ///
-  /// Throws when the theme has no [EmberColors] extension; `EmberTheme` installs it.
-  static EmberColors of(BuildContext context) =>
-      Theme.of(context).extension<EmberColors>()!;
+  /// Throws a [FlutterError] saying the Ember theme is not installed
+  /// when the theme has no [EmberColors] extension; `EmberTheme` installs it.
+  static EmberColors of(BuildContext context) {
+    return Theme.of(context).extension<EmberColors>() ??
+        (throw FlutterError(
+          'Ember theme is not installed: no EmberColors extension on '
+          'the ambient Theme. Use EmberTheme.dark() or EmberTheme.light().',
+        ));
+  }
 
   /// Every role by its token name, for example `ink-tertiary`.
   Map<String, Color> get byRole => {

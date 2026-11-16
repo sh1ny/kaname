@@ -99,11 +99,21 @@ void _colours(StringBuffer b, List<ColourRole> roles) {
     ..writeln('/// The colour roles of the ambient theme.')
     ..writeln('///')
     ..writeln(
-      '/// Throws when the theme has no [EmberColors] extension; '
-      '`EmberTheme` installs it.',
+      '/// Throws a [FlutterError] saying the Ember theme is not installed',
     )
-    ..writeln('static EmberColors of(BuildContext context) =>')
-    ..writeln('Theme.of(context).extension<EmberColors>()!;')
+    ..writeln(
+      '/// when the theme has no [EmberColors] extension; `EmberTheme` '
+      'installs it.',
+    )
+    ..writeln('static EmberColors of(BuildContext context) {')
+    ..writeln('return Theme.of(context).extension<EmberColors>() ??')
+    ..writeln('(throw FlutterError(')
+    ..writeln("'Ember theme is not installed: no EmberColors extension on '")
+    ..writeln(
+      "'the ambient Theme. Use EmberTheme.dark() or EmberTheme.light().',",
+    )
+    ..writeln('));')
+    ..writeln('}')
     ..writeln('/// Every role by its token name, for example `ink-tertiary`.')
     ..writeln('Map<String, Color> get byRole => {');
   for (final role in roles) {
