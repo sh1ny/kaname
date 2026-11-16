@@ -100,6 +100,15 @@ void main() {
         'https://fonts.gstatic.com/s/',
         '//fonts.example.org/',
         'font-fallback/',
+        // Browsers read a backslash as "/" and drop tabs and newlines, so
+        // each of these resolves to https://fonts.example.org/. The strings
+        // are the JavaScript literal's source text: escapes stay undecoded.
+        '/\\\\fonts.example.org/',
+        '/\t/fonts.example.org/',
+        r'/\t/fonts.example.org/',
+        r'/\n/fonts.example.org/',
+        r'/\fonts.example.org/',
+        r'/\x5cfonts.example.org/',
       ]) {
         test(
           'fontFallbackBaseUrl $foreign is not an own-origin path',

@@ -116,17 +116,31 @@ final class WebBuildChecker {
         if (setting.group(2) case final String address
             when !isOwnOriginPath(address))
           '$path sets fontFallbackBaseUrl to "$address", which is not a '
-              'path on the app\'s own origin (it must start with one "/")'
+              'path on the app\'s own origin (it must start with one "/" and hold '
+              'only URL path characters: no backslash, escape or control '
+              'character)'
         else if (setting.group(2) == null)
           '$path sets fontFallbackBaseUrl to ${setting.group(3)}, which is '
               'not a string literal path on the app\'s own origin',
     ];
   }
 
+  /// A single `/`, then URL path characters only (RFC 3986 `pchar` and `/`,
+  /// without quotes).
+  static final RegExp _ownOriginPath = RegExp(
+    r"^/(?!/)[A-Za-z0-9\-._~!$&()*+,;=:@%/]*$",
+  );
+
   /// Whether [address] is a path on the page's own origin: it starts with one
   /// `/` and has no scheme, host or protocol-relative form.
+  ///
+  /// [address] is the source text of a JavaScript string literal, so it may
+  /// hold escapes. Only URL path characters are accepted: a browser reads a
+  /// backslash as `/` and drops tabs and newlines, so `/\\host/` or `/\t/host/`
+  /// would reach another host, and any escape (`\u005c`) starts with a
+  /// backslash too.
   static bool isOwnOriginPath(String address) =>
-      address.startsWith('/') && !address.startsWith('//');
+      _ownOriginPath.hasMatch(address);
 
   /// The JSON object assigned to `_flutter.buildConfig`, or `null` when the
   /// script has none that parses.
