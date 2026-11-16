@@ -253,9 +253,15 @@ final class EmberControls {
       fillColor: c.raised,
       isDense: true,
       // Material reads the theme's compact density in a text field and offers
-      // no per-field override, so the field's 7px of vertical padding grows
-      // by the 8px per side that compact density takes away (16px in all).
-      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
+      // no per-field override, so the field's vertical padding makes up the
+      // 8px per side that compact density takes away, and the 5.5px per side
+      // the 13px value text is shorter than the 17px serif Material's
+      // defaults were measured with: 7 + 8 + 5.5 = 20.5, keeping the labelled
+      // field at 44px.
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 20.5,
+      ),
       border: border(_hairline),
       enabledBorder: border(_hairline),
       disabledBorder: border(BorderSide(color: _dim(c.hairlineStrong))),

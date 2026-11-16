@@ -96,7 +96,11 @@ abstract final class EmberTheme {
         displaySmall: EmberType.display.copyWith(color: c.ink),
         headlineSmall: EmberType.headline.copyWith(color: c.ink),
         titleLarge: EmberType.title.copyWith(color: c.ink),
-        bodyLarge: EmberType.prose.copyWith(color: c.prose),
+        // Material reads `bodyLarge` for typed text in fields, dropdowns and
+        // list tiles, so it is the sans body style. The serif prose voice is
+        // `EmberType.prose` in `EmberColors.prose`, used where long-form text
+        // asks for it.
+        bodyLarge: EmberType.body.copyWith(color: c.ink),
         bodyMedium: EmberType.body.copyWith(color: c.ink),
         titleSmall: EmberType.uiHeading.copyWith(color: c.ink),
         labelLarge: EmberType.control.copyWith(color: c.ink),

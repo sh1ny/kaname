@@ -284,6 +284,40 @@ void main() {
       }
     },
   );
+
+  testWidgets('text field value uses the Ember body sans style in Ink', (
+    tester,
+  ) async {
+    for (final theme in _themes) {
+      await tester.pumpWidget(
+        _app(
+          theme.data,
+          SizedBox(
+            width: 200,
+            child: TextField(
+              controller: TextEditingController(text: 'Aria Vale'),
+              decoration: const InputDecoration(labelText: 'Pilot'),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final style = tester
+          .widget<EditableText>(find.byType(EditableText))
+          .style;
+      expect(
+        style.fontFamily,
+        EmberType.body.fontFamily,
+        reason: '${theme.name}: the value is set in the sans family',
+      );
+      expect(style.fontSize, EmberType.body.fontSize);
+      expect(
+        style.color,
+        theme.colors.ink,
+        reason: '${theme.name}: the value is Ink',
+      );
+    }
+  });
 }
 
 bool _same(Color a, Color b) =>
