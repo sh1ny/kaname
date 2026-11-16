@@ -65,36 +65,26 @@ void main() {
     expect(result.code, 0);
   });
 
-  test('current layout reports app, core, tools, server and client and '
-      'passes', () async {
-    fs
-      ..writeFile(
-        'server/kaname_server/pubspec.yaml',
-        pubspecSource('kaname_server'),
-      )
-      ..writeFile(
-        'server/kaname_client/pubspec.yaml',
-        pubspecSource('kaname_client'),
-      )
-      ..writeFile(
-        'pubspec.yaml',
-        'name: kaname_workspace\n'
-            'workspace:\n'
-            '  - app\n'
-            '  - packages/kaname_core\n'
-            '  - server/kaname_client\n'
-            '  - server/kaname_server\n'
-            '  - tools/kaname_tools\n',
-      );
+  test('current layout reports app, ember_ui, core, tools, server and client '
+      'and exits 0', () async {
+    final repository = RealFileSystem.locate(Directory.current.path);
+    expect(repository, isNotNull, reason: 'no workspace root above the cwd');
+    final out = StringBuffer();
+    final err = StringBuffer();
 
-    final result = await runTool(fs, ['workspace']);
+    final code = await runCli(
+      ['workspace'],
+      fileSystem: repository!,
+      output: CliOutput(out: out, err: err),
+    );
 
-    expect(result.err, isEmpty);
-    expect(result.code, 0);
+    expect(err.toString(), isEmpty);
+    expect(code, 0);
     expect(
-      result.out.trim().split('\n'),
+      out.toString().trim().split('\n'),
       unorderedEquals([
         'kaname_app at app/',
+        'kaname_ember_ui at app_packages/kaname_ember_ui/',
         'kaname_core at packages/kaname_core/',
         'kaname_tools at tools/kaname_tools/',
         'kaname_server at server/kaname_server/',

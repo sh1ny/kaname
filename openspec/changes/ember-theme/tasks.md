@@ -33,7 +33,7 @@ Package tests live in `app_packages/kaname_ember_ui/test/` (shortened to `ember_
 | ember-ui → Token colours meet WCAG contrast | Current tokens pass | ember_ui/test/contrast_test.dart | every listed pair meets its threshold in both rooms | red |
 | ember-ui → Token colours meet WCAG contrast | A token edit lowers contrast | ember_ui/test/contrast_test.dart | a lowered pair fails naming theme, roles, measured and required ratio | red |
 | ember-ui → Token colours meet WCAG contrast | Ember fills are exempt from the surface bar | ember_ui/test/contrast_test.dart | an Ember fill below 3:1 on a surface is not a failure | red |
-| workspace-layout → Packages follow the placement and naming rule | Current packages comply | tools/kaname_tools/test/workspace_test.dart | current layout reports app, ember_ui, core, tools, server and client and exits 0 | red |
+| workspace-layout → Packages follow the placement and naming rule | Current packages comply | tools/kaname_tools/test/workspace_test.dart | current layout reports app, ember_ui, core, tools, server and client and exits 0 | green |
 | workspace-layout → Packages follow the placement and naming rule | A misplaced or misnamed package | tools/kaname_tools/test/workspace_test.dart | missing prefix or directory mismatch fails with rule | green |
 | third-party-notices → Vendored assets are listed by hand | Current vendored assets listed | tools/kaname_tools/test/notices_repo_test.dart | repository notices cover every vendored source | red |
 | third-party-notices → Vendored assets are listed by hand | A vendored source without an entry | tools/kaname_tools/test/notices_test.dart | check names an OFL file under app_packages missing from the hand-written sections | red |
@@ -42,10 +42,10 @@ Package tests live in `app_packages/kaname_ember_ui/test/` (shortened to `ember_
 
 ## 1. Package scaffold
 
-- [ ] 1.1 Update the "current layout" test in `workspace_test.dart` to expect `kaname_ember_ui` at `app_packages/kaname_ember_ui/`; run `mise run test:tools` and confirm it fails because the package does not exist.
-- [ ] 1.2 Create `app_packages/kaname_ember_ui/` (Flutter package: `pubspec.yaml` with `resolution: workspace`, `analysis_options.yaml` with `public_member_api_docs` as in `packages/kaname_core`, `lib/kaname_ember_ui.dart`, `README.md`), list it in the root `pubspec.yaml` workspace, run `mise run resolve`; verify `mise run workspace` exits 0 and the 1.1 test is green (flip its row).
-- [ ] 1.3 Add a `test:ember_ui` mise task (`flutter test` in the package) to `test`; re-run the unchanged "missing prefix or directory mismatch" test (row stays green); verify `mise run test` runs the new task.
-- [ ] 1.4 Run `mise run notices` (the lockfile changed) and verify `mise run notices:check` exits 0.
+- [x] 1.1 Update the "current layout" test in `workspace_test.dart` to expect `kaname_ember_ui` at `app_packages/kaname_ember_ui/`; run `mise run test:tools` and confirm it fails because the package does not exist.
+- [x] 1.2 Create `app_packages/kaname_ember_ui/` (Flutter package: `pubspec.yaml` with `resolution: workspace`, `analysis_options.yaml` with `public_member_api_docs` as in `packages/kaname_core`, `lib/kaname_ember_ui.dart`, `README.md`), list it in the root `pubspec.yaml` workspace, run `mise run resolve`; verify `mise run workspace` exits 0 and the 1.1 test is green (flip its row).
+- [x] 1.3 Add a `test:ember_ui` mise task (`flutter test` in the package) to `test`; re-run the unchanged "missing prefix or directory mismatch" test (row stays green); verify `mise run test` runs the new task.
+- [x] 1.4 Run `mise run notices` (the lockfile changed) and verify `mise run notices:check` exits 0.
 
 ## 2. Token generator and the ink-tertiary edit
 

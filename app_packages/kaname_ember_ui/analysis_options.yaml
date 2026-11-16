@@ -1,0 +1,12 @@
+# Shared packages document their public API (design D1). Flutter packages add
+# flutter_lints on top of the shared root options, as the app does.
+analyzer:
+  exclude:
+    - build/**
+include:
+  - ../../analysis_options.yaml
+  - package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    - public_member_api_docs
