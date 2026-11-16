@@ -59,7 +59,7 @@ The app's release web build SHALL include Flutter's rendering engine files in it
 - **THEN** the web build check exits non-zero and names what is missing or which address it found
 
 #### Scenario: A glyph no bundled font covers
-- **WHEN** the web app renders a character that neither Geist nor Literata covers
+- **WHEN** the web app renders a character that no font in the web build covers (neither Geist, Literata, nor the Roboto fallback Flutter bundles with the local engine), such as a CJK character
 - **THEN** it requests nothing from any other host, and the character shows as an empty box
 
 ### Requirement: Font licences ship with the app
