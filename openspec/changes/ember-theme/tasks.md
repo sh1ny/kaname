@@ -105,9 +105,9 @@ Package tests live in `app_packages/kaname_ember_ui/test/` (shortened to `ember_
 
 ## 8. Integration
 
-- [ ] 8.1 C1: confirm the spec's "Tokens are generated from the brand source" requirement carries the never-edit-by-hand rule, and that the generated file's header says so.
-- [ ] 8.2 Run `mise run check` and `mise run spec:validate`; both exit 0.
-- [ ] 8.3 Confirm every Test map row is green or n/a with its evidence committed.
+- [x] 8.1 C1: confirm the spec's "Tokens are generated from the brand source" requirement carries the never-edit-by-hand rule, and that the generated file's header says so.
+- [x] 8.2 Run `mise run check` and `mise run spec:validate`; both exit 0.
+- [x] 8.3 Confirm every Test map row is green or n/a with its evidence committed.
 
 ## Workflow follow-up
 
