@@ -2,19 +2,41 @@
 
 ## Metadata
 
-- **Round:** 4 (re-check of Required Changes)
-- **Prior round:** Round 4's re-check confirmed Required Changes 1-4 applied and returned APPROVE_WITH_CHANGES with CHANGES_APPLIED: no, adding Required Change 5 (chip shape 75ms tween, chip checkmark draw-in, chip outlines in the theme-switch exceptions). The owner chose the recommended option and the author applied it.
+- **Round:** 5 (re-review of an amendment made during apply)
+- **Prior round:** Round 4's re-check confirmed Required Changes 1-5 applied and marked them applied on its APPROVE_WITH_CHANGES verdict. Commit 051a28c then amended design A5 and task 7.9 after the group 7 browser run, which voided that verdict for the amended text. This round supersedes it.
 - **Reviewer:** fresh-context subagent (Claude Code specwright-reviewer)
 - **Reviewed:**
-  - Change artifacts, limited to what Required Change 5 touches: openspec/changes/ember-theme/proposal.md (What Changes l.13 and l.20, S10 l.120-126), specs/ember-ui/spec.md (requirements "The app follows the system theme until the user chooses" l.87-96, "Material controls take Ember's shapes and states" l.98-115, and the "Tab to each control" THEN l.122 for consistency with the new wording), and design.md (D2 l.45, D5 l.69, the S10 summary row l.116, C7 l.143, C12 l.148, the Flow & State Gaps brightness bullet l.237). review.md (round 4 re-check) was read for Required Change 5 and the author's response.
-  - The installed Flutter 3.47.9 SDK was read as evidence. It lies outside the repository, so this location supports the check but is not a design citation: material `material.dart` l.875-911 (`_MaterialInteriorState.forEachTween` tweens elevation, shadow colour, surface tint and shape only; the `color` is not tweened). This confirms that on a theme switch the chip's 75ms blend is limited to its shape (outline) and that its fill changes on the next frame, so "chip outlines" is the complete chip entry in the theme-switch exceptions.
+  - The amendment diff (`git show 051a28c`): design.md A5 (l.132) and tasks.md 7.9 (l.104).
+  - design.md: A1 (l.129), S4/D6 (l.75-85, summary rows l.110 and l.123), C6 (l.142), C10 (l.146), Resource Bounds (l.227), Failure & Visibility (l.219), Mechanism Ledger (l.247-249), Risks (l.257).
+  - proposal.md: What Changes (l.18), Capabilities (l.30), Impact (l.38) and S4 (l.72-78).
+  - specs/ember-ui/spec.md, requirement "The web build loads no engine or font files from third-party hosts" (l.50-63). specs/self-host-stack/spec.md in full.
+  - tasks.md: test matrix rows l.17-19 and group 7 (l.96-104).
+  - evidence/web-requests.md (untracked, the 2026-11-16 run).
+  - review.md (round 4 and its re-check) and the template `openspec/schemas/specwright/templates/review.md`.
+  - For reference, the implementation in the work tree, which is not yet committed: `app/web/flutter_bootstrap.js` (untracked), `deploy/Caddyfile` (modified, the `@fontFallback` rule) and `server/kaname_client/test/stack/stack_test.dart` (modified, l.179-198).
+  - The installed Flutter 3.47.9 SDK, which lies outside the repository. It is evidence for this check, not a design citation:
+    - `packages/flutter_tools/lib/src/build_system/targets/web.dart` l.39-40, l.654 and l.701-753 (`_bundleLocalRobotoFallback`), and l.818 (`useLocalCanvasKit`).
+    - engine `lib/web_ui/lib/src/engine/font_fallbacks.dart` l.41-59 (`globalFontFallbacks = ['Roboto']`).
+    - engine `lib/web_ui/lib/src/engine/canvaskit/text.dart` l.1255-1266 (`_computeCombinedFontFamilies` appends the global fallbacks to every paragraph's families).
+  - A cmap comparison of the engine's `txt/third_party/fonts/Roboto-Regular.ttf` (171,676 B) with the package's `Geist[wght].ttf` and `Literata[opsz,wght].ttf`. It was done with a stdlib script in a scratch directory.
   - Skills: the request named none, so none were loaded.
 
 <!-- This verdict covers only the contents reviewed. Editing proposal, specs or design afterward (other than applying Required Changes, or an edit confined to the proposal's `## Release Notes` section) voids it. -->
 
 ## Findings
 
-These findings cover only Required Change 5 and what its edit touches.
+The amended A5 matches the evidence:
+- The run made 19 requests, all to `http://localhost`.
+- Roboto was served as `200 /assets/fonts/fallback/Roboto-Regular.ttf`.
+- Rendering 要 made five Noto Sans SC/TC/HK/JP/KR requests under `/font-fallback/`, and each got 404 with a plain-text body.
+- The glyph showed as an empty box.
+
+The amendment does not contradict S4, D6, C6 or C10:
+- The bootstrap sets `fontFallbackBaseUrl: "/font-fallback/"`.
+- The Caddy rule answers `/font-fallback` and `/font-fallback/*` with 404 ahead of the single-page-app fallback.
+- The `webbuild` check still enforces both settings.
+
+The Failure & Visibility row (a 404 on the own origin, an empty box and a console warning) and the Mechanism Ledger's Caddy row still hold. The evidence shows the `console.warn` lines and the Noto requests the Caddy rule exists for. No artifact other than A5 said that Roboto returns 404 at start-up. The two findings below come from what the corrected behaviour reveals, not from the edit's wording itself.
 
 ### Critical (blocking)
 
@@ -22,11 +44,27 @@ None.
 
 ### Moderate
 
-None.
+- **M-1: A5 states the Roboto bundling without its condition.** A5 says that "Flutter 3.47.9's release web build bundles it as `assets/fonts/fallback/Roboto-Regular.ttf`". The SDK does this only when the build uses the local engine. `_bundleLocalRobotoFallback` returns at once unless `useLocalCanvasKit` is `'true'` (`web.dart` l.701-704). It also skips the copy when the app's font manifest already declares a family named `Roboto` (l.713-718).
+
+  Without `--no-web-resources-cdn`, the engine still puts `Roboto` first in its global fallback list (`font_fallbacks.dart` l.41). It would then request Roboto from the fallback address, which is the round-2 reading. So A5's "requests nothing from `/font-fallback/`" depends on C6's flag, and A5 does not say so. As worded, it presents a flag-dependent outcome as a property of every release build. Its "Depends on it" line also omits the link a future Flutter bump or flag change would break.
+
+- **M-2: the spec scenario, proposal and Risks still say every glyph outside Geist and Literata shows as a box. Roboto now covers some of them.** Because Roboto is bundled and registered, the engine adds it to every paragraph's family list (`canvaskit/text.dart` l.1264). A character that Roboto covers renders in Roboto, not as an empty box.
+
+  The cmap comparison finds 174 code points above U+0020 that Roboto covers and neither Geist nor Literata does. Examples are U+017F ſ, U+03D1 ϑ, U+03D6 ϖ and the historic Cyrillic letters U+0460-U+04A8.
+
+  The following text is therefore now wrong for those characters:
+  - The spec scenario "A glyph no bundled font covers" (spec l.61-63, WHEN "a character that neither Geist nor Literata covers", THEN "shows as an empty box").
+  - Proposal What Changes (l.18, "Glyphs outside Geist and Literata (CJK, emoji) show as empty boxes on web").
+  - The design's Risks bullet (l.257).
+
+  The 7.9 evidence used a CJK character, which no loaded font covers, so it passes. But the main spec this archives into would state a behaviour that is false for a known set of characters. S4's own wording, "Glyphs outside the bundled fonts" (proposal l.74), is correct once Roboto counts as bundled, so S4 needs no edit.
 
 ### Suggestions
 
-None that require an edit. One cosmetic note: the Flow & State Gaps bullet (design l.237) reads "inherited text colour inside `Scaffold` the 167ms blend of text-field borders and labels", with no comma after `Scaffold`. The meaning is still clear from the list that follows, so no change is required, and an edit for this alone would void the verdict.
+- **S-1: the claim about a start-up with only covered text is inferred, not observed.** A5 says that "a start-up with only covered text requests nothing from `/font-fallback/`". The only run rendered 要, so this is inferred from the fact that every `/font-fallback/` request in that run was a CJK family. The inference is sound given the SDK, but nothing in 7.9 records it. Either add "(inferred: every fallback request in the run was for 要)", or have 7.9 also record a load of the unmodified placeholder with no `/font-fallback/` request. Neither is required, because no requirement depends on that claim.
+- **S-2: reorder task 7.9.** It refers to "the CJK character's `/font-fallback/` requests" before the clause that says to render one. Reordering it would read more clearly, for example: "...all must be on the app's own origin; render one CJK character, note it shows as an empty box, and that its `/font-fallback/` requests get 404 with no request to another host". The current wording is still assertable, and the evidence meets every clause. tasks.md is outside the verdict's void rule.
+- **S-3: stale comment in the uncommitted stack test.** `stack_test.dart` l.185-186 says "the engine asks for Roboto there on every start-up". That is the round-2 belief A5 has now dropped. Reword it when committing group 7, for example: "the engine asks there for fonts covering glyphs no loaded font has". The sample path `/font-fallback/roboto/v32/...` is still a valid probe. The self-host-stack scenario's example path `roboto/v1/x.woff2` is also fine as an arbitrary file under the path and needs no edit.
+- **S-4: font counts leave out Roboto on web.** The Resource Bounds row ("About 2 MB (3 files)", design l.227) and T5 ("3 font files", l.11) count the package's fonts. The web build also ships Flutter's Roboto-Regular.ttf (about 170 KB), which comes from the SDK, not the repository. A clause noting this would keep the bounds honest. It is optional, because the extra file is fixed per Flutter version.
 
 ## Verdict
 
@@ -34,72 +72,31 @@ VERDICT: APPROVE_WITH_CHANGES
 
 ## Required Changes
 
-1. **Menu hover moves focus (M-1, round 4). Status: applied correctly** (confirmed in the round-4 re-check; design l.45, proposal l.20).
-2. **Chip focus-ring tween and hover fade (M-2, round 4). Status: applied correctly.** It was applied as worded in the round-4 re-check. Its narrower wording, "the chip focus ring's 75ms tween", and the "chip selection fade" record have now been replaced by Required Change 5.
-3. **Text fields blend on a theme switch (M-3, round 4). Status: applied correctly.** It was applied as worded in the round-4 re-check. The missing chip entry in the same exception list is now added by Required Change 5.
-4. **Suggestion S-1 (round 4). Status: applied correctly** (D5 l.69; the qualified "Tab to each control" THEN, spec l.122, was accepted by the reviewer in the round-4 re-check).
-5. **Chip shape tween and chip selection record (M-1, S-1 of the round-4 re-check). Status: applied correctly.**
-   - The chip shape tween is now described as "chip shape (75ms tween of outline, selected border and focus ring; a fixed Material constant)" in What Changes (proposal l.13) and the DESIGN.md list (l.20). S10 (l.122) and C12 (design l.148) use the recommended wording, "the chip shape's 75ms tween (outline, selected border and focus ring; a fixed Material constant)". The old "chip focus ring's 75ms tween" appears nowhere.
-   - The checkmark draw-in is now "chip selection draw-in of the checkmark (195ms; the fill changes on the next frame because `ChipThemeData.color` is set)" in S10 and C12. What Changes and the DESIGN.md list carry the shortened form "chip checkmark draw-in (195ms; the fill changes on the next frame)". The "chip selection fade" wording appears nowhere.
-   - The shortened forms say the same thing in the list's grammar, and the reason (`ChipThemeData.color` per state) is recorded in D5 (l.69), S10 and C12. S10 says "All five" and C12 says "Five Material transitions", so the count is unchanged.
-   - Spec l.88 carries the recommended exception sentence word for word: "...and chip outlines over Material's 75ms; all three are recorded exceptions." C7 (l.143), the Flow & State Gaps bullet (l.237) and the proposal's DESIGN.md list (l.20) add the 75ms chip-outline blend.
-   - The S10 summary row (design l.116, "Field, chip, snackbar, tooltip transitions") still matches, and as recommended it was left unchanged.
-   - Consistency check:
-     - The theme-switch SHALL ("Surfaces and Ember-styled controls SHALL switch instantly") now lists all three blends that Material keeps. The SDK confirms that the chip's `Material` tweens only shape, elevation, shadow and tint, not colour. The chip fill therefore switches instantly, and "chip outlines" is the complete chip exception.
-     - C7, the Flow & State Gaps bullet, the proposal's DESIGN.md list and the spec name the same three exceptions with the same durations (200ms, 167ms, 75ms).
-     - The controls requirement (spec l.99, "text-field, chip, snackbar and tooltip transitions are Material's own") covers both chip transitions.
-     - The "Documented exceptions" scenario (spec l.113-115, "the chip's fill reach[es] its final Ember colour once Material's transition ends") stays true and assertable. The fill reaches its final colour on the next frame, which is at or before the end of any transition.
-     - The "Tab to each control" THEN (spec l.122, "once Material's 75ms ring tween ends") agrees with "the chip shape's 75ms tween (… focus ring …)" and with D2's `lerpFrom`/`lerpTo` (design l.45).
-     - The edit adds no new contradiction.
+1. **A5 (design l.132), M-1.** Replace the sentence "Roboto is not among those requests: Flutter 3.47.9's release web build bundles it as `assets/fonts/fallback/Roboto-Regular.ttf` and the app loads it from its own origin, so a start-up with only covered text requests nothing from `/font-fallback/`." with:
 
-CHANGES_APPLIED: yes
+   "Roboto is not among those requests: when the build uses the local engine (`--no-web-resources-cdn`, kept by C6), Flutter 3.47.9 bundles Roboto as `assets/fonts/fallback/Roboto-Regular.ttf` unless the app already declares a `Roboto` family (`flutter_tools` `build_system/targets/web.dart` lines 701-753, outside the repository), and the app loads it from its own origin. A start-up with only covered text therefore requests nothing from `/font-fallback/`. Because the engine appends its fallback list to every paragraph's families, characters Roboto covers render in Roboto rather than as a box."
+
+   Leave the rest of A5 unchanged.
+
+2. **Spec scenario "A glyph no bundled font covers" (specs/ember-ui/spec.md l.62), M-2.** Replace the WHEN line with:
+
+   "- **WHEN** the web app renders a character that no font in the web build covers (neither Geist, Literata, nor the Roboto fallback Flutter bundles with the local engine), such as a CJK character"
+
+   Keep the THEN line unchanged.
+
+3. **Proposal What Changes (proposal.md l.18) and design Risks (design.md l.257), M-2.**
+   - In the proposal, change "Glyphs outside Geist and Literata (CJK, emoji) show as empty boxes on web." to "Glyphs outside Geist, Literata and Flutter's bundled Roboto fallback (CJK, emoji) show as empty boxes on web."
+   - In the Risks bullet, change "[Glyphs outside Geist and Literata (CJK, emoji) show as boxes on web]" to "[Glyphs outside Geist, Literata and Flutter's bundled Roboto (CJK, emoji) show as boxes on web]".
+
+CHANGES_APPLIED: no
 
 ## Rebuttals
 
-Reviewer check of the round-3 items (kept from round 4):
+Prior rounds, in brief:
+- Rounds 1-4 settled S4 and D6, which moved fallback fonts to an own-origin path with a Caddy 404 after round 1's C-1.
+- Round 2 contributed the reading of `font_fallbacks.dart` that A5 originally recorded, which said Roboto returns 404 at every start-up.
+- Round 4 and its re-check settled the focus, transition and theme-switch exceptions, with Required Changes 1-5 confirmed applied.
 
-- **M-1 (round 3), snackbar and tooltip motion:** verified fixed.
-  - Proposal S10 limits the no-animation rule to buttons, icon buttons and menu items. It records the snackbar transition (250ms) and the tooltip fade (150ms in, 75ms out).
-  - The What Changes controls bullet and the last bullet's DESIGN.md list name all four transitions.
-  - The spec's controls requirement reads "text-field, chip, snackbar and tooltip transitions are Material's own".
-  - C12 names the four transitions. Round 4's M-2 adds a fifth.
-- **M-2 (round 3), inherited-text blend:** verified fixed.
-  - The spec's theme-switch requirement covers surfaces and Ember-styled controls, and records the 200ms inherited-text blend.
-  - C7, the Flow & State Gaps bullet and the proposal's DESIGN.md list match.
-  - Round 4's M-3 is the same class of gap in text fields.
-- **S-1 (round 3), instant hover and press:** verified applied. D5 adds a transparent overlay with per-state background colours. Round 4's suggestion S-1 adds the missing zero `animationDuration`.
-- **S-2 (round 3), menu-ring clipping:** verified applied.
-  - D2 and the spec's focus requirement draw the menu-item ring just inside the item's 8px shape (DESIGN.md l.357).
-  - The ring is the shape's own border, and `ButtonStyleButton` paints it through its `Material` (`button_style_button.dart` l.602, 608-609). So the scroll view's clip no longer cuts it.
-  - Round 4's M-1 is a separate issue: when the ring shows.
-- **S-3 (round 3), small fixes:** verified fixed.
-  - The Resource Bounds row now reads `flutter_bootstrap.js` and lists `canvaskit/`.
-  - Context l.18 says "S1-S11".
-  - The proposal's Impact names the `test:ember_ui` task and the `notices.dart` coverage change.
+None of those outcomes is reopened here. This round covers only the A5 and task 7.9 amendment and what the observed behaviour makes stale.
 
-Author responses to round 4 (the owner chose the recommended option for changes 1 and 2):
-
-- **Required change 1 (M-1):** applied as worded in D2 and in the proposal's DESIGN.md list.
-- **Required change 2 (M-2):** applied as worded in proposal S10, What Changes and the DESIGN.md list, in design C12 (now five transitions), D2 (`lerpFrom`/`lerpTo`) and D5 (`ChipThemeData.color` per state).
-- **Required change 3 (M-3):** applied as worded in the spec's theme-switch requirement, C7, the Flow & State Gaps bullet and the proposal's DESIGN.md list.
-- **Required change 4 (S-1):** applied in D5 as worded. In the "Tab to each control" THEN, "on the next frame" covers buttons, icon buttons and menu items. Chips are judged once Material's 75ms ring tween ends, and text fields once their 167ms border transition ends (both recorded exceptions, S10), because applying the wording literally to them would contradict those exceptions. Please confirm this reading in the re-check.
-
-Reviewer confirmation per item (round-4 re-check):
-
-- **Required change 1:** confirmed fixed (design l.45, proposal l.20). No new contradiction.
-- **Required change 2:** confirmed applied as worded (proposal l.13, l.20, l.122; design l.45, l.69, l.148). The wording it introduced is narrower than what Material does (M-1) and keeps a fill fade that D5's edit removes (S-1). Both are carried into Required Change 5.
-- **Required change 3:** confirmed applied as worded (spec l.88; design l.143, l.237; proposal l.20). Chips are missing from the same exception list (M-1), which is carried into Required Change 5.
-- **Required change 4:** confirmed applied, and the author's deviation is accepted by the reviewer. Qualifying chips and text fields by their recorded transitions applies the intent of S-1 and agrees with S10, C12 and the "Documented exceptions" scenario. Literal wording would have contradicted them.
-
-Author response to the round-4 re-check (the owner chose the recommended option):
-
-- **Required change 5:** applied as worded. Proposal S10, What Changes (l.13) and the DESIGN.md list (l.20), and design C12, now say "chip shape 75ms tween (outline, selected border and focus ring)" and "chip checkmark draw-in (195ms; the fill changes on the next frame)". The theme-switch exception in the spec, C7, the Flow & State Gaps bullet and the proposal's DESIGN.md list now name chip outlines (75ms). The count stays at five, and no mechanism changed.
-
-Reviewer confirmation (this re-check):
-
-- **Required change 5:** confirmed applied correctly.
-  - S10 (proposal l.122) and C12 (design l.148) carry the recommended wording word for word.
-  - What Changes (l.13) and the DESIGN.md list (l.20) carry a shortened form with the same meaning that fits the list's grammar. The `ChipThemeData.color` reason stays recorded in D5, S10 and C12.
-  - The spec sentence (l.88) matches exactly, and C7 (l.143), the Flow & State Gaps bullet (l.237) and the proposal's DESIGN.md list (l.20) agree with it.
-  - The two spec requirements, C7, C12, S10 and the Flow & State Gaps bullet agree. The SDK confirms that chip outlines are the only chip blend on a theme switch.
-  - No new contradiction was found. Required Changes 1-5 are all applied.
+The round-2 reading of `font_fallbacks.dart` was correct about the engine's list. The engine does start `globalFontFallbacks` with `Roboto`. What it missed is the flutter_tools step, which registers a bundled Roboto whenever the engine is local. The amendment's correction is right, and Required Change 1 only adds the condition that makes it true.
