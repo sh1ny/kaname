@@ -296,6 +296,20 @@ void main() {
       }
     });
 
+    test('web build bundles the engine and its output is checked', () {
+      final build = job('build');
+      final web = build.combinations.firstWhere((c) => c['target'] == 'web');
+      expect(web['command'], contains('--no-web-resources-cdn'));
+      final buildIndex = build.steps.indexWhere(
+        (s) => (s['run'] as String?)?.contains('matrix.command') ?? false,
+      );
+      final check = build.steps.indexWhere(
+        (s) => s['run'] == 'mise run webbuild:check',
+      );
+      expect(check, greaterThan(buildIndex));
+      expect(build.steps[check]['if'], contains("matrix.target == 'web'"));
+    });
+
     test('ios build passes --no-codesign', () {
       final ios = job('build').combinations
           .singleWhere((c) => c['target'] == 'ios');
@@ -587,6 +601,11 @@ void main() {
           ?.group(0);
       expect(stackUp, isNotNull);
       expect(stackUp, contains('task = "build:web"'));
+      // build:web checks its own output, so the stack's build is covered.
+      final buildWeb = RegExp(r'\[tasks\."build:web"\][\s\S]*?\n\n')
+          .firstMatch(mise)
+          ?.group(0);
+      expect(buildWeb, contains('task = "webbuild:check"'));
       expect(
         stackUp!.indexOf('build:web'),
         lessThan(stackUp.indexOf('docker compose')),

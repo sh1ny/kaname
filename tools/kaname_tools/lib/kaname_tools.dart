@@ -20,4 +20,5 @@ export 'src/tokens.dart';
 export 'src/tokens_model.dart';
 export 'src/tokens_parse.dart';
 export 'src/tokens_render.dart';
+export 'src/webbuild.dart';
 export 'src/workspace.dart';

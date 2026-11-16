@@ -11,6 +11,7 @@ import 'real_file_system.dart';
 import 'sbom.dart';
 import 'signoff.dart';
 import 'tokens.dart';
+import 'webbuild.dart';
 import 'workspace.dart';
 
 /// Exit status when every check passed.
@@ -51,7 +52,8 @@ CommandRunner<int> buildRunner(
   ..addCommand(LicencesCommand(fileSystem, output))
   ..addCommand(SbomCommand(fileSystem, output))
   ..addCommand(SignoffCommand(gitLog, output))
-  ..addCommand(TokensCommand(fileSystem, output));
+  ..addCommand(TokensCommand(fileSystem, output))
+  ..addCommand(WebBuildCommand(fileSystem, output));
 
 /// Runs `kaname_tools` with [args] and returns the process exit status.
 ///

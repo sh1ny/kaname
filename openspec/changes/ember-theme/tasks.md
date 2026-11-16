@@ -14,8 +14,8 @@ Package tests live in `app_packages/kaname_ember_ui/test/` (shortened to `ember_
 | ember-ui → Every colour role exists in both rooms | An unparseable colour | tools/kaname_tools/test/tokens_test.dart | an unparseable colour fails naming role and value and writes nothing | green |
 | ember-ui → Fonts are bundled and never fetched from another host | Type styles use bundled families | ember_ui/test/fonts_test.dart | every type style names a font family the package declares | green |
 | ember-ui → Fonts are bundled and never fetched from another host | A font asset is missing | ember_ui/test/fonts_test.dart | loading fonts with a declared file missing fails naming the file | green |
-| ember-ui → The web build loads no engine or font files from third-party hosts | Self-contained web build | tools/kaname_tools/test/webbuild_test.dart | self-contained build passes the check | red |
-| ember-ui → The web build loads no engine or font files from third-party hosts | A build that depends on the CDN | tools/kaname_tools/test/webbuild_test.dart | build without local engine, wasm or own-origin fallback fails naming what it found | red |
+| ember-ui → The web build loads no engine or font files from third-party hosts | Self-contained web build | tools/kaname_tools/test/webbuild_test.dart | self-contained build passes the check | green |
+| ember-ui → The web build loads no engine or font files from third-party hosts | A build that depends on the CDN | tools/kaname_tools/test/webbuild_test.dart | build without local engine, wasm or own-origin fallback fails naming what it found | green |
 | ember-ui → The web build loads no engine or font files from third-party hosts | A glyph no bundled font covers | n/a: mechanical check, evidence/web-requests.md (task 7.9) | n/a: needs a real browser and network log; the capture script lists every request's origin | n/a |
 | ember-ui → Font licences ship with the app | Licence page lists the fonts | ember_ui/test/licences_test.dart | licence entries hold full OFL text for Geist and Literata | green |
 | ember-ui → Font licences ship with the app | A licence text is missing | ember_ui/test/licences_test.dart | a missing licence file fails naming family and file | green |
@@ -37,8 +37,8 @@ Package tests live in `app_packages/kaname_ember_ui/test/` (shortened to `ember_
 | workspace-layout → Packages follow the placement and naming rule | A misplaced or misnamed package | tools/kaname_tools/test/workspace_test.dart | missing prefix or directory mismatch fails with rule | green |
 | third-party-notices → Vendored assets are listed by hand | Current vendored assets listed | tools/kaname_tools/test/notices_repo_test.dart | repository notices cover every vendored source | green |
 | third-party-notices → Vendored assets are listed by hand | A vendored source without an entry | tools/kaname_tools/test/notices_test.dart | check names an OFL file under app_packages missing from the hand-written sections | green |
-| self-host-stack → The fallback-font path never serves the web app | Fallback font requested | server/kaname_client/test/stack/stack_test.dart | Given the stack when a fallback font is requested then Caddy answers 404 and not index.html | red |
-| self-host-stack → The fallback-font path never serves the web app | Ordinary app route still falls back | server/kaname_client/test/stack/stack_test.dart | Given the stack when an app route without a file is requested then index.html is served | red |
+| self-host-stack → The fallback-font path never serves the web app | Fallback font requested | server/kaname_client/test/stack/stack_test.dart | Given the stack when a fallback font is requested then Caddy answers 404 and not index.html | green |
+| self-host-stack → The fallback-font path never serves the web app | Ordinary app route still falls back | server/kaname_client/test/stack/stack_test.dart | Given the stack when an app route without a file is requested then index.html is served | green |
 
 ## 1. Package scaffold
 
@@ -93,15 +93,15 @@ Package tests live in `app_packages/kaname_ember_ui/test/` (shortened to `ember_
 
 ## 7. Web build, check and Caddy
 
-- [ ] 7.1 Verify A1: run `mise exec -C app -- flutter build web --release --no-web-resources-cdn` once and record that the emitted `flutter_bootstrap.js` sets `useLocalCanvasKit: true` and `canvaskit/` holds `.wasm` files; if not, stop (design drift for S4/D6).
-- [ ] 7.2 Write failing `tools/kaname_tools/test/webbuild_test.dart` (in-memory fixtures): a self-contained build passes; missing `useLocalCanvasKit`, no `.wasm` in `canvaskit/`, missing `fontFallbackBaseUrl` and a foreign `fontFallbackBaseUrl` each fail naming what is missing or the address found. Verify failure reasons.
-- [ ] 7.3 Implement `kaname_tools webbuild --check <dir>` (D6) and register it in `cli.dart`; verify the 7.2 tests pass and flip both rows green. C6: confirm the spec's web build requirement carries the invariant.
-- [ ] 7.4 Add `app/web/flutter_bootstrap.js` loading the engine with `fontFallbackBaseUrl: "/font-fallback/"`; add `--no-web-resources-cdn` to `build:web` and a `webbuild:check` mise task on `app/build/web`, run by `build:web` after its build; verify `mise run build:web` builds and passes the check.
-- [ ] 7.5 CI: add `--no-web-resources-cdn` to the web matrix build command (`.github/workflows/ci.yml:77`) and a web-only step running `mise run webbuild:check` after it; update `ci_workflow_test.dart` if it asserts the web command; verify `mise run test:tools` passes.
-- [ ] 7.6 Write the two failing stack tests in `stack_test.dart` (fallback font request answered 404 with a body that is not `index.html`; an app route without a file still gets `index.html`); run `mise run stack:up` and `mise run stack:test` and verify the 404 test fails (the route test may already pass).
-- [ ] 7.7 Add a `/font-fallback/*` 404 rule ahead of the SPA fallback in `deploy/Caddyfile`, with a comment that the path must match `app/web/flutter_bootstrap.js` (C10); verify both stack tests pass after `mise run stack:up` and flip their rows green. C10: confirm the self-host-stack requirement carries the invariant.
-- [ ] 7.8 Verify `mise run stack:up` runs `webbuild:check` through `build:web`; then `mise run stack:down`.
-- [ ] 7.9 [evidence] Verify A5: serve the built web app through the stack, load it in a headless browser, record every request URL and status; all must be on the app's own origin, and the CJK character's `/font-fallback/` requests must get 404; render one CJK character and note it shows as an empty box with no request to another host → evidence/web-requests.md
+- [x] 7.1 Verify A1: run `mise exec -C app -- flutter build web --release --no-web-resources-cdn` once and record that the emitted `flutter_bootstrap.js` sets `useLocalCanvasKit: true` and `canvaskit/` holds `.wasm` files; if not, stop (design drift for S4/D6).
+- [x] 7.2 Write failing `tools/kaname_tools/test/webbuild_test.dart` (in-memory fixtures): a self-contained build passes; missing `useLocalCanvasKit`, no `.wasm` in `canvaskit/`, missing `fontFallbackBaseUrl` and a foreign `fontFallbackBaseUrl` each fail naming what is missing or the address found. Verify failure reasons.
+- [x] 7.3 Implement `kaname_tools webbuild --check <dir>` (D6) and register it in `cli.dart`; verify the 7.2 tests pass and flip both rows green. C6: confirm the spec's web build requirement carries the invariant.
+- [x] 7.4 Add `app/web/flutter_bootstrap.js` loading the engine with `fontFallbackBaseUrl: "/font-fallback/"`; add `--no-web-resources-cdn` to `build:web` and a `webbuild:check` mise task on `app/build/web`, run by `build:web` after its build; verify `mise run build:web` builds and passes the check.
+- [x] 7.5 CI: add `--no-web-resources-cdn` to the web matrix build command (`.github/workflows/ci.yml:77`) and a web-only step running `mise run webbuild:check` after it; update `ci_workflow_test.dart` if it asserts the web command; verify `mise run test:tools` passes.
+- [x] 7.6 Write the two failing stack tests in `stack_test.dart` (fallback font request answered 404 with a body that is not `index.html`; an app route without a file still gets `index.html`); run `mise run stack:up` and `mise run stack:test` and verify the 404 test fails (the route test may already pass).
+- [x] 7.7 Add a `/font-fallback/*` 404 rule ahead of the SPA fallback in `deploy/Caddyfile`, with a comment that the path must match `app/web/flutter_bootstrap.js` (C10); verify both stack tests pass after `mise run stack:up` and flip their rows green. C10: confirm the self-host-stack requirement carries the invariant.
+- [x] 7.8 Verify `mise run stack:up` runs `webbuild:check` through `build:web`; then `mise run stack:down`.
+- [x] 7.9 [evidence] Verify A5: serve the built web app through the stack, load it in a headless browser, record every request URL and status; all must be on the app's own origin, and the CJK character's `/font-fallback/` requests must get 404; render one CJK character and note it shows as an empty box with no request to another host → evidence/web-requests.md
 
 ## 8. Integration
 

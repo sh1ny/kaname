@@ -176,6 +176,39 @@ void main() {
     }
   }, timeout: _slow);
 
+  test('Given the stack when a fallback font is requested then Caddy answers '
+      '404 and not index.html', () async {
+    await waitUntilReady();
+    final index = File('${repositoryRoot()}/app/build/web/index.html')
+        .readAsStringSync();
+
+    // The path is the one in app/web/flutter_bootstrap.js; the engine asks
+    // there for fonts covering glyphs that no bundled font covers.
+    for (final path in [
+      '/font-fallback/roboto/v32/KFOmCnqEu92Fr1Me5WZLCzYlKw.woff2',
+      '/font-fallback/',
+      '/font-fallback',
+    ]) {
+      final answer = await http('GET', path);
+      expect(answer.status, 404, reason: path);
+      expect(answer.contentType, isNot('text/html'), reason: path);
+      expect(answer.body, isNot(index), reason: path);
+      expect(answer.body.toLowerCase(), isNot(contains('<html')), reason: path);
+    }
+  }, timeout: _slow);
+
+  test('Given the stack when an app route without a file is requested then '
+      'index.html is served', () async {
+    await waitUntilReady();
+    final index = File('${repositoryRoot()}/app/build/web/index.html')
+        .readAsStringSync();
+
+    final route = await http('GET', '/settings');
+    expect(route.status, 200);
+    expect(route.contentType, 'text/html');
+    expect(route.body, index);
+  }, timeout: _slow);
+
   test('Given the stack when health calls are served then no session log row '
       'is written and no Insights port listens', () async {
     await waitUntilReady();
