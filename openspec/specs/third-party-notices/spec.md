@@ -11,10 +11,10 @@ Keeps one `THIRD_PARTY_NOTICES` file at the repository root that names every bun
 
 #### Scenario: Current vendored assets listed
 - **WHEN** the notices file is read after this change
-- **THEN** it has an entry for Geist and for Literata naming `brand/fonts/OFL-geist.txt` and `brand/fonts/OFL-literata.txt`, and one entry per source in `UPSTREAM.json` with its repository URL and every licence file that source records (`license` and, where present, `repository_license`); the Serverpod entry names both the SSPL-1.0 and the BSD-3-Clause texts
+- **THEN** it has an entry for Geist and for Literata naming `brand/fonts/OFL-geist.txt` and `brand/fonts/OFL-literata.txt` and the matching licence files bundled in `app_packages/kaname_ember_ui/`, and one entry per source in `UPSTREAM.json` with its repository URL and every licence file that source records (`license` and, where present, `repository_license`); the Serverpod entry names both the SSPL-1.0 and the BSD-3-Clause texts
 
 #### Scenario: A vendored source without an entry
-- **WHEN** a source's repository URL or one of its recorded licence files from `UPSTREAM.json`, or a `brand/fonts/OFL-*.txt` file, does not appear in the hand-written sections
+- **WHEN** a source's repository URL or one of its recorded licence files from `UPSTREAM.json`, a `brand/fonts/OFL-*.txt` file, or an `OFL-*.txt` file inside a package under `app_packages/`, does not appear in the hand-written sections
 - **THEN** the notices check mode fails and names the missing source or file
 
 ### Requirement: The dependency section is generated from the lockfile
