@@ -21,8 +21,8 @@ Package tests live in `app_packages/kaname_ember_ui/test/` (shortened to `ember_
 | ember-ui → Font licences ship with the app | A licence text is missing | ember_ui/test/licences_test.dart | a missing licence file fails naming family and file | green |
 | ember-ui → The package provides a dark and a light theme | Themes in both rooms | ember_ui/test/theme_test.dart | a widget reads dark roles under dark and light roles under light | green |
 | ember-ui → The package provides a dark and a light theme | Roles read without the Ember theme | ember_ui/test/theme_test.dart | reading Ember roles under a non-Ember theme throws "Ember theme is not installed" | green |
-| ember-ui → The app follows the system theme until the user chooses | Dark system setting | app/test/app_test.dart | dark platform brightness renders the Ember dark canvas | red |
-| ember-ui → The app follows the system theme until the user chooses | System setting changes while running | app/test/app_test.dart | brightness change shows the light canvas on the next frame | red |
+| ember-ui → The app follows the system theme until the user chooses | Dark system setting | app/test/app_test.dart | dark platform brightness renders the Ember dark canvas | green |
+| ember-ui → The app follows the system theme until the user chooses | System setting changes while running | app/test/app_test.dart | brightness change shows the light canvas on the next frame | green |
 | ember-ui → Material controls take Ember's shapes and states | Specimen matches the goldens | ember_ui/test/golden_test.dart | control specimen matches its golden in dark and light | green |
 | ember-ui → Material controls take Ember's shapes and states | A styling change alters a control | n/a: mechanical check, evidence/golden-failure.txt (task 5.10) | n/a: flutter_test's golden comparator reports the differing file; recorded once by altering a radius locally | n/a |
 | ember-ui → Material controls take Ember's shapes and states | No state animation | ember_ui/test/states_test.dart | buttons, icon buttons and menu items paint no splash and change state on the next frame | green |
@@ -87,9 +87,9 @@ Package tests live in `app_packages/kaname_ember_ui/test/` (shortened to `ember_
 
 ## 6. App wiring
 
-- [ ] 6.1 Write failing tests in `app/test/app_test.dart`: with platform brightness dark the app renders the Ember dark canvas colour; changing platform brightness to light shows the Ember light canvas on the next frame with no intermediate colour. Verify failure reasons.
-- [ ] 6.2 Verify A3 while wiring: add `kaname_ember_ui` to the app, give `MaterialApp` `theme: EmberTheme.light()`, `darkTheme: EmberTheme.dark()`, `themeMode: ThemeMode.system` and `themeAnimationDuration: Duration.zero`, call `EmberFonts.registerLicences()` in `main`; verify the 6.1 tests and the existing "Kaname" test pass, flip the rows green, and confirm a Linux desktop or web debug build bundles `packages/kaname_ember_ui/fonts/` (A3). C7: confirm the spec's "The app follows the system theme until the user chooses" requirement carries the instant switch and the three blends.
-- [ ] 6.3 DESIGN.md "What Kaname changes": record Material's 200ms blend of inherited text colour, 167ms blend of text-field borders and labels and 75ms blend of chip outlines on a theme switch; verify by reading the section.
+- [x] 6.1 Write failing tests in `app/test/app_test.dart`: with platform brightness dark the app renders the Ember dark canvas colour; changing platform brightness to light shows the Ember light canvas on the next frame with no intermediate colour. Verify failure reasons.
+- [x] 6.2 Verify A3 while wiring: add `kaname_ember_ui` to the app, give `MaterialApp` `theme: EmberTheme.light()`, `darkTheme: EmberTheme.dark()`, `themeMode: ThemeMode.system` and `themeAnimationDuration: Duration.zero`, call `EmberFonts.registerLicences()` in `main`; verify the 6.1 tests and the existing "Kaname" test pass, flip the rows green, and confirm a Linux desktop or web debug build bundles `packages/kaname_ember_ui/fonts/` (A3). C7: confirm the spec's "The app follows the system theme until the user chooses" requirement carries the instant switch and the three blends.
+- [x] 6.3 DESIGN.md "What Kaname changes": record Material's 200ms blend of inherited text colour, 167ms blend of text-field borders and labels and 75ms blend of chip outlines on a theme switch; verify by reading the section.
 
 ## 7. Web build, check and Caddy
 
