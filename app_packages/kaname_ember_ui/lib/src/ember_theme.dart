@@ -6,6 +6,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'ember_controls.dart';
 import 'generated/ember_tokens.dart';
 
 /// Builds Material [ThemeData] that carries Ember's roles, one per room.
@@ -20,6 +21,21 @@ import 'generated/ember_tokens.dart';
 /// can come from a theme. The first change that needs one builds an Ember
 /// segmented control in this package with its own focus test.
 ///
+/// Buttons, icon buttons, chips, text fields and menu items take their shapes
+/// and states from the control themes (see `EmberControls`), not from the
+/// [ColorScheme]. The icon button is the case to know: in Flutter 3.47.9 its
+/// defaults read `primary` for a selected icon (and for its selected hover and
+/// press tints), `onSurfaceVariant` for the resting icon and every other tint,
+/// and `onSurface` at 38% for a disabled one. Ember wants Ink with the Hover
+/// fill for selected and hovered, so the theme sets the icon button's
+/// foreground, fill and (transparent) overlay explicitly and the scheme slots
+/// are never read for it.
+///
+/// The theme's density is compact so Material chips reach Ember's 24px; the
+/// styled controls (buttons, icon buttons, menu items, text fields) pin their
+/// own density to keep their sizes, and a Material widget added later inherits
+/// compact density unless its theme pins it.
+///
 /// In the light theme an empty text field's edge is 1.37:1 against the field,
 /// below 3:1 for component boundaries; fields rely on their visible label.
 abstract final class EmberTheme {
@@ -28,6 +44,15 @@ abstract final class EmberTheme {
 
   /// The light room.
   static ThemeData light() => _build(Brightness.light);
+
+  /// The height below which Material will not draw a chip (its `_kChipHeight`).
+  static const double _materialChipFloor = 32;
+
+  /// Compact vertical density, derived from [EmberSize.chip]: Material shrinks
+  /// a chip by half of the density's size adjustment (4px per density step).
+  static final VisualDensity _density = VisualDensity(
+    vertical: (EmberSize.chip - _materialChipFloor) / 2,
+  );
 
   static ThemeData _build(Brightness brightness) {
     final dark = brightness == Brightness.dark;
@@ -49,8 +74,11 @@ abstract final class EmberTheme {
       surfaceContainerHighest: c.press,
       outline: c.hairlineStrong,
       outlineVariant: c.hairline,
+      // Floating layers (menus, snackbars) cast Ember's Float shadow colour.
+      shadow:
+          (dark ? EmberShadows.floatDark : EmberShadows.floatLight).first.color,
     );
-    const pill = StadiumBorder();
+    final controls = EmberControls(c);
     final hairline = BorderSide(color: c.hairlineStrong);
     return ThemeData(
       brightness: brightness,
@@ -58,7 +86,11 @@ abstract final class EmberTheme {
       scaffoldBackgroundColor: c.canvas,
       canvasColor: c.canvas,
       dividerColor: c.hairline,
+      // Floating layers (menus, snackbars) cast Ember's Float shadow colour.
+      shadowColor:
+          (dark ? EmberShadows.floatDark : EmberShadows.floatLight).first.color,
       fontFamily: EmberType.sans,
+      visualDensity: _density,
       package: EmberType.package,
       textTheme: TextTheme(
         displaySmall: EmberType.display.copyWith(color: c.ink),
@@ -75,68 +107,13 @@ abstract final class EmberTheme {
       hoverColor: c.hover,
       focusColor: c.accentSoft,
       highlightColor: Colors.transparent,
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          backgroundColor: c.accent,
-          foregroundColor: c.accentInk,
-          minimumSize: const Size(0, EmberSize.control),
-          padding: const EdgeInsets.symmetric(horizontal: EmberSpace.md),
-          shape: pill,
-          textStyle: EmberType.control,
-          animationDuration: Duration.zero,
-        ),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: c.ink,
-          side: hairline,
-          minimumSize: const Size(0, EmberSize.control),
-          padding: const EdgeInsets.symmetric(horizontal: EmberSpace.md),
-          shape: pill,
-          textStyle: EmberType.control,
-          animationDuration: Duration.zero,
-        ),
-      ),
-      textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          foregroundColor: c.inkSecondary,
-          minimumSize: const Size(0, EmberSize.control),
-          padding: const EdgeInsets.symmetric(horizontal: EmberSpace.md),
-          shape: pill,
-          textStyle: EmberType.control,
-          animationDuration: Duration.zero,
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: c.raised,
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(EmberRadius.m),
-          borderSide: hairline,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(EmberRadius.m),
-          borderSide: hairline,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(EmberRadius.m),
-          borderSide: BorderSide(color: c.accent),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(EmberRadius.m),
-          borderSide: BorderSide(color: c.errLine),
-        ),
-        hintStyle: EmberType.body.copyWith(color: c.inkTertiary),
-      ),
-      chipTheme: ChipThemeData(
-        shape: StadiumBorder(side: hairline),
-        backgroundColor: Colors.transparent,
-        selectedColor: c.accentSoft,
-        labelStyle: EmberType.label.copyWith(color: c.inkSecondary),
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-      ),
+      filledButtonTheme: FilledButtonThemeData(style: controls.filled),
+      outlinedButtonTheme: OutlinedButtonThemeData(style: controls.outlined),
+      textButtonTheme: TextButtonThemeData(style: controls.text),
+      iconButtonTheme: IconButtonThemeData(style: controls.icon),
+      inputDecorationTheme: controls.input,
+      chipTheme: controls.chip,
+      menuButtonTheme: MenuButtonThemeData(style: controls.menuItem),
       menuTheme: MenuThemeData(
         style: MenuStyle(
           backgroundColor: WidgetStatePropertyAll(c.raised),
