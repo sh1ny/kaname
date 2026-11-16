@@ -101,7 +101,7 @@ Package tests live in `app_packages/kaname_ember_ui/test/` (shortened to `ember_
 - [ ] 7.6 Write the two failing stack tests in `stack_test.dart` (fallback font request answered 404 with a body that is not `index.html`; an app route without a file still gets `index.html`); run `mise run stack:up` and `mise run stack:test` and verify the 404 test fails (the route test may already pass).
 - [ ] 7.7 Add a `/font-fallback/*` 404 rule ahead of the SPA fallback in `deploy/Caddyfile`, with a comment that the path must match `app/web/flutter_bootstrap.js` (C10); verify both stack tests pass after `mise run stack:up` and flip their rows green. C10: confirm the self-host-stack requirement carries the invariant.
 - [ ] 7.8 Verify `mise run stack:up` runs `webbuild:check` through `build:web`; then `mise run stack:down`.
-- [ ] 7.9 [evidence] Verify A5: serve the built web app through the stack, load it in a headless browser, record every request URL and status; all must be on the app's own origin, with the expected `/font-fallback/` Roboto 404; render one CJK character and note it shows as an empty box with no request to another host → evidence/web-requests.md
+- [ ] 7.9 [evidence] Verify A5: serve the built web app through the stack, load it in a headless browser, record every request URL and status; all must be on the app's own origin, and the CJK character's `/font-fallback/` requests must get 404; render one CJK character and note it shows as an empty box with no request to another host → evidence/web-requests.md
 
 ## 8. Integration
 
