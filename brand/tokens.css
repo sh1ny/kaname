@@ -58,7 +58,7 @@
   --hairline-strong: rgba(255,255,255,.12);
   --ink: #e8e6e1;
   --ink-secondary: #aaa69f;
-  --ink-tertiary: #87837c;
+  --ink-tertiary: #918d86;
   --prose: #dcd9d2;
   --accent: #e9a14b;
   --accent-text: #eeab5c;
@@ -90,7 +90,7 @@
   --hairline-strong: rgba(30,24,16,.15);
   --ink: #1d1b18;
   --ink-secondary: #565149;
-  --ink-tertiary: #6c675e;
+  --ink-tertiary: #635e55;
   --prose: #2a2722;
   --accent: #d98a2b;
   --accent-text: #8a4c05;
@@ -124,7 +124,7 @@
     --hairline-strong: rgba(30,24,16,.15);
     --ink: #1d1b18;
     --ink-secondary: #565149;
-    --ink-tertiary: #6c675e;
+    --ink-tertiary: #635e55;
     --prose: #2a2722;
     --accent: #d98a2b;
     --accent-text: #8a4c05;

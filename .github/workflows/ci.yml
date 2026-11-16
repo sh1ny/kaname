@@ -74,7 +74,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {target: web, os: ubuntu-24.04, command: flutter build web --release}
+          - {target: web, os: ubuntu-24.04, command: flutter build web --release --no-web-resources-cdn}
           - {target: linux, os: ubuntu-24.04, command: flutter build linux --release}
           - {target: android, os: ubuntu-24.04, command: flutter build apk --release}
           - {target: windows, os: windows-2025, command: flutter build windows --release}
@@ -104,6 +104,9 @@ jobs:
       - run: mise run resolve
       - run: mise exec -- ${{ matrix.command }}
         working-directory: app
+      - name: Check that the web build is self-contained
+        if: matrix.target == 'web'
+        run: mise run webbuild:check
 
   server:
     name: server

@@ -14,12 +14,14 @@ Geist
   Repository: https://github.com/vercel/geist-font
   Licence: SIL Open Font License 1.1
   Licence text: brand/fonts/OFL-geist.txt
+  Bundled in the app: app_packages/kaname_ember_ui/fonts/OFL-geist.txt
 
 Literata
   Copyright 2017 The Literata Project Authors
   Repository: https://github.com/googlefonts/literata
   Licence: SIL Open Font License 1.1
   Licence text: brand/fonts/OFL-literata.txt
+  Bundled in the app: app_packages/kaname_ember_ui/fonts/OFL-literata.txt
 
 Vendored agent skills
 ---------------------

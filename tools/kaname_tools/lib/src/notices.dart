@@ -101,6 +101,7 @@ final class NoticesGenerator {
   static const String _upstreamPath = '.claude/skills/UPSTREAM.json';
   static const String _skillsDirectory = '.claude/skills';
   static const String _fontsDirectory = 'brand/fonts';
+  static const String _packagesDirectory = 'app_packages';
 
   static final _indexLine = RegExp(r'^(\S+) (\S+) (\S+) (L\d+|flutter-sdk)$');
 
@@ -159,7 +160,8 @@ final class NoticesGenerator {
   /// Lists the vendored sources the hand-written text does not mention.
   ///
   /// The vendored sources are every entry of `.claude/skills/UPSTREAM.json`
-  /// and every `brand/fonts/OFL-*.txt` file. Each source needs its repository
+  /// every `brand/fonts/OFL-*.txt` file and every `OFL-*.txt` file inside a
+  /// package under `app_packages/`. Each source needs its repository
   /// URL, and each recorded licence file its path, in the text outside the
   /// generated markers. A name counts only as a whole token: a mention of
   /// `LICENSE.serverpod-root` does not cover `LICENSE.serverpod`. Returns
@@ -354,6 +356,9 @@ final class NoticesGenerator {
     for (final font in _fontLicences()) {
       require('$_fontsDirectory/$font', 'bundled font', 'licence file');
     }
+    for (final path in _packageFontLicences()) {
+      require(path, 'bundled font', 'licence file');
+    }
     return problems;
   }
 
@@ -411,6 +416,38 @@ final class NoticesGenerator {
             name.endsWith('.txt'))
           name,
     ]..sort();
+  }
+
+  /// The repository-relative paths of every `OFL-*.txt` file inside a package
+  /// under `app_packages/`, searched recursively.
+  ///
+  /// Hidden directories and `build` output directories are skipped: they hold
+  /// generated copies, not sources.
+  List<String> _packageFontLicences() {
+    if (_fileSystem.kindOf(_packagesDirectory) != FsEntryKind.directory) {
+      return const [];
+    }
+    final found = <String>[];
+    void search(String directory) {
+      for (final FsEntry(:name, :kind) in _fileSystem.list(directory)) {
+        final path = '$directory/$name';
+        switch (kind) {
+          case FsEntryKind.directory:
+            if (!name.startsWith('.') && name != 'build') search(path);
+          case FsEntryKind.file:
+            if (name.startsWith('OFL-') && name.endsWith('.txt')) {
+              found.add(path);
+            }
+          case FsEntryKind.link:
+            break;
+        }
+      }
+    }
+
+    for (final FsEntry(:name, :kind) in _fileSystem.list(_packagesDirectory)) {
+      if (kind == FsEntryKind.directory) search('$_packagesDirectory/$name');
+    }
+    return found..sort();
   }
 }
 

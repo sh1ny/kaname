@@ -26,7 +26,7 @@ Every package SHALL carry the `kaname_` name prefix and its directory name SHALL
 
 #### Scenario: Current packages comply
 - **WHEN** the workspace check runs after this change
-- **THEN** it reports `kaname_app` at `app/`, `kaname_core` at `packages/kaname_core/`, `kaname_tools` at `tools/kaname_tools/`, `kaname_server` at `server/kaname_server/` and `kaname_client` at `server/kaname_client/`, and exits 0
+- **THEN** it reports `kaname_app` at `app/`, `kaname_ember_ui` at `app_packages/kaname_ember_ui/`, `kaname_core` at `packages/kaname_core/`, `kaname_tools` at `tools/kaname_tools/`, `kaname_server` at `server/kaname_server/` and `kaname_client` at `server/kaname_client/`, and exits 0
 
 #### Scenario: A misplaced or misnamed package
 - **WHEN** a package under `packages/`, `app_packages/`, `server/` or `tools/` is named without the `kaname_` prefix, or its directory name differs from its package name

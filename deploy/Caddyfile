@@ -23,6 +23,17 @@
 		reverse_proxy server:8080
 	}
 
+	# The web app loads fallback fonts from this path, an empty address on its
+	# own origin (never a Google host): the engine asks here for glyphs that the
+	# bundled fonts do not cover and gets a plain 404, not the single-page-app
+	# fallback.
+	# The path must match fontFallbackBaseUrl in app/web/flutter_bootstrap.js;
+	# change one, change the other.
+	@fontFallback path /font-fallback /font-fallback/*
+	handle @fontFallback {
+		respond "Not Found" 404
+	}
+
 	# Everything else is the web build, with the single-page-app fallback.
 	handle {
 		root * /srv

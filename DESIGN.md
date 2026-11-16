@@ -17,7 +17,7 @@ colors:
   hairline-strong: "rgba(255,255,255,.12)"
   ink: "#e8e6e1"
   ink-secondary: "#aaa69f"
-  ink-tertiary: "#87837c"
+  ink-tertiary: "#918d86"
   prose: "#dcd9d2"
   ok: "#6fcf8e"
   warn-bg: "rgba(232,128,92,.08)"
@@ -42,7 +42,7 @@ colors:
   light-hairline-strong: "rgba(30,24,16,.15)"
   light-ink: "#1d1b18"
   light-ink-secondary: "#565149"
-  light-ink-tertiary: "#6c675e"
+  light-ink-tertiary: "#635e55"
   light-prose: "#2a2722"
   light-ok: "#2f9a57"
   light-warn-bg: "#fbeee6"
@@ -398,3 +398,12 @@ A 352px Shelf panel at the right with a tabbed segmented header, stretch and clo
 - **Making it yours:** a product may rename Ember, swap the accent (keeping fill, text, ink, soft and line variants that pass contrast in both rooms) or swap the serif. Keep the structure: one accent, tonal depth, two voices, one motion family. Write the product's own DESIGN.md that cites this file and records what it changed.
 
 ## What Kaname changes
+
+- **Ink Tertiary is lighter in the dark room and darker in the light room.** The kit's values (`#87837c` dark, `#6c675e` light) fall to between 3.95:1 and 4.39:1 on the Hover and Press surfaces, below the 4.5:1 that text needs. Kaname uses `#918d86` (dark, 4.55:1 on Press) and `#635e55` (light, 4.53:1 on Press). Both stay below Ink Secondary, so the hierarchy holds. `brand/tokens.json` carries the change; `brand/BRAND.md` keeps the kit as delivered.
+- **There is no `mono` type style yet.** The kit's mono is a system font stack (`ui-monospace`, Cascadia Mono, Consolas), which Flutter web cannot use. The token generator skips it. The first change that needs a code or source view picks a bundled mono font and adds its style.
+- **Text fields draw the focused border in Focus, not Ember.** In the light room Ember on Raised is 2.76:1, below the 3:1 a component boundary needs; Focus passes. The Ember Glow halo stays as in the kit.
+- **Menu items take the focus ring just inside their shape.** An outside ring would be cut by the menu's clip and by neighbouring items. Material moves focus to a menu item when the pointer hovers it, so a hovered item shows the Hover fill and the ring; the Hover fill alone is about 1.1:1 on the menu, so the ring is what makes the item findable.
+- **Five Material transitions stay.** The text-field border takes 167ms (with a 15ms hover fade); the chip checkmark draws in over 195ms while its fill changes on the next frame; the chip shape tweens over 75ms (outline, selected border and focus ring, a fixed Material constant); the snackbar takes 250ms; the tooltip fades in over 150ms and out over 75ms. Buttons, icon buttons and menu items change state on the next frame, as the kit does.
+- **Buttons, icon buttons and menu items have a pressed fill.** The kit's CSS has none. Pressed controls take the Press fill, and the primary button darkens 7% (it brightens 7% on hover).
+- **An empty light text field is faint against the page.** Its edge is 1.37:1 against the field and the field is about 1.07:1 against the page, below 3:1. Fields carry a visible label, so none is a bare box. Revisit at the M0 look check or the first form-heavy change.
+- **A theme switch is instant, with three Material exceptions.** The app turns off MaterialApp's theme animation (`themeAnimationDuration: Duration.zero`), so surfaces and Ember-styled controls change on the next frame. Material still blends text that inherits its default text style over 200ms, text-field borders and labels over 167ms, and chip outlines over 75ms. The app shell's rewrite of MaterialApp must keep `themeAnimationDuration: Duration.zero`.

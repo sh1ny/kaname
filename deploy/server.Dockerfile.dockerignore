@@ -10,6 +10,7 @@
 
 # Workspace members: pubspecs only, to resolve the whole workspace.
 !app/pubspec.yaml
+!app_packages/kaname_ember_ui/pubspec.yaml
 !packages/kaname_core/pubspec.yaml
 !tools/kaname_tools/pubspec.yaml
 

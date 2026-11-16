@@ -1,0 +1,22 @@
+Evidence for the "A styling change alters a control" scenario (ember-ui, "Material controls take Ember's shapes and states"), task 5.10.
+
+Date: 2026-11-16
+Altered: in app_packages/kaname_ember_ui/lib/src/ember_controls.dart, the default (outlined) button's shape radius, from `_shape(EmberRadius.pill)` to `_shape(EmberRadius.m)` (a pill became an 8px rounded rectangle). Reverted after this capture. Captured against the goldens regenerated after the compact-chip density change.
+Command (from the repository root, on Linux/WSL):
+  mise exec -C app_packages/kaname_ember_ui -- flutter test test/golden_test.dart
+Result: exit code 1. The golden test fails and names the specimen and theme that differ (control_specimen_dark.png and control_specimen_light.png; the `dark` and `light` suffixes are the themes). Output follows, with the package-resolution preamble and the stack traces dropped.
+
+00:00 +0: loading app_packages/kaname_ember_ui/test/golden_test.dart
+00:00 +0: (setUpAll)
+00:00 +0: golden images control specimen matches its golden in dark and light
+Golden "goldens/control_specimen_dark.png": Pixel test failed, 0.10%, 474px diff detected.
+Failure feedback can be found at
+app_packages/kaname_ember_ui/test/failures
+Golden "goldens/control_specimen_light.png": Pixel test failed, 0.10%, 482px diff detected.
+Failure feedback can be found at
+app_packages/kaname_ember_ui/test/failures
+00:00 +0 -1: golden images control specimen matches its golden in dark and light [E]
+00:00 +0 -1: (tearDownAll)
+00:00 +0 -1: Some tests failed.
+Failing tests:
+  app_packages/kaname_ember_ui/test/golden_test.dart: golden images control specimen matches its golden in dark and light
