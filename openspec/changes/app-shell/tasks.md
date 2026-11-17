@@ -53,9 +53,9 @@ All paths are under `app/test/`.
 | app-server-connection → An unreachable server is shown without internal detail | Server stopped | `server/server_status_test.dart` | failure or 10s time-out gives Unreachable with no exception text and the shell still navigates | green |
 | app-server-connection → An unreachable server is shown without internal detail | Server comes back | `server/server_status_test.dart` | Check again after Unreachable shows the new answer | green |
 | dependency-licences → Locked packages are classified by licence | Other Flutter SDK packages | `tools/kaname_tools/test/licences_test.dart` (outside `app/test/`) | every other Flutter SDK package is accepted as BSD-3-Clause without a licence file | green |
-| ember-ui → Keyboard focus is always visible | Tab to each control | `app_packages/kaname_ember_ui/test/focus_test.dart` (outside `app/test/`) | segmented-control options paint the outside outline in both themes | red |
-| ember-ui → Keyboard focus is always visible | Focus leaves a control | `app_packages/kaname_ember_ui/test/focus_test.dart` (outside `app/test/`) | focus leaving a control clears its indicator, segmented options included | red |
-| ember-ui → Keyboard focus is always visible | Segmented-control option beside the selected one | `app_packages/kaname_ember_ui/test/focus_test.dart` (outside `app/test/`) | an option beside the selected one shows its full outline | red |
+| ember-ui → Keyboard focus is always visible | Tab to each control | `app_packages/kaname_ember_ui/test/focus_test.dart` (outside `app/test/`) | tab to each control paints its Focus indicator in both themes (segmented options included) | green |
+| ember-ui → Keyboard focus is always visible | Focus leaves a control | `app_packages/kaname_ember_ui/test/focus_test.dart` (outside `app/test/`) | focus leaving a control removes its indicator (segmented options included) | green |
+| ember-ui → Keyboard focus is always visible | Segmented-control option beside the selected one | `app_packages/kaname_ember_ui/test/focus_test.dart` (outside `app/test/`) | an option beside the selected one shows its full outline | green |
 
 ## 1. Dependencies and assumptions
 
@@ -111,7 +111,7 @@ All paths are under `app/test/`.
   - `KanameApp` uses `MaterialApp.router` with `themeAnimationDuration: Duration.zero`.
 
   Write C5 in the `KanameApp` doc comment. Replace `app/test/app_test.dart` with tests that keep its two Ember canvas checks, now through the shell. Verify with `mise exec -- flutter test` in `app/`.
-- [ ] 6.4 Per D11 (added during apply), move the segmented control into `kaname_ember_ui`:
+- [x] 6.4 Per D11 (added during apply), move the segmented control into `kaname_ember_ui`:
   - write the failing tests (red): in the package's `focus_test.dart`, in both themes, a case that tabs to an option whose right-hand neighbour is selected and checks the full outside outline, and the options in the "focus leaving a control" test; a widget test for selection by tap and by Enter/Space and for the semantics (group label; each option a button with its label, selected state and mutual exclusion);
   - implement and export `EmberSegmentedControl<T>`, with the focused option's ring painted above its neighbours and a caller-given key per option;
   - update the `ember_theme.dart` doc comment, the library doc in `lib/kaname_ember_ui.dart` and the package's pubspec description;

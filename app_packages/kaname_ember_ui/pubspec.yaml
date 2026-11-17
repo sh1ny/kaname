@@ -1,5 +1,5 @@
 name: kaname_ember_ui
-description: "Kaname's Ember design system for Flutter: tokens, theme and bundled fonts."
+description: "Kaname's Ember design system for Flutter: tokens, theme, bundled fonts and a segmented control."
 publish_to: none
 version: 0.0.1
 resolution: workspace
