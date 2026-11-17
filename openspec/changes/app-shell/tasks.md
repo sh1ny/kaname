@@ -134,9 +134,9 @@ All paths are under `app/test/`.
 
 ## 8. Integration
 
-- [ ] 8.1 Run `mise run check` and `mise run build:web`, which includes `webbuild:check`. Both must pass. Verify the CI workflow still builds all six targets on this branch's PR.
-- [ ] 8.2 Verify A2: run `mise run stack:up` with `deploy/.env` set, load `http://127.0.0.1:<port>/settings` in a headless browser, and confirm that the health request goes to `/api/` on the same origin and returns. If the Serverpod web client needs another host form, stop for design drift.
-- [ ] 8.3 [evidence] Record the stack proof (D8) → evidence/stack-web-health.md. The file holds the commands run, the status-bar and Settings → Server text shown (version, Postgres up, Redis up), the request URL seen by the browser, and the deep-link check of `/settings`. Then run `mise run stack:down`.
+- [x] 8.1 Run `mise run check` and `mise run build:web`, which includes `webbuild:check`. Both must pass. Verify the CI workflow still builds all six targets on this branch's PR.
+- [x] 8.2 Verify A2: run `mise run stack:up` with `deploy/.env` set, load `http://127.0.0.1:<port>/settings` in a headless browser, and confirm that the health request goes to `/api/` on the same origin and returns. If the Serverpod web client needs another host form, stop for design drift.
+- [x] 8.3 [evidence] Record the stack proof (D8) → evidence/stack-web-health.md. The file holds the commands run, the status-bar and Settings → Server text shown (version, Postgres up, Redis up), the request URL seen by the browser, and the deep-link check of `/settings`. Then run `mise run stack:down`.
 - [ ] 8.4 [user] The owner opens the app on Windows desktop, on the web through the stack, and on a phone. The owner checks the frame at each width, the rail, sidebar, inspector, bottom bar and drawer, Settings (theme choice survives a restart, the server answer or "No server configured", About and licences), and the placeholder icons (Open Question). The owner accepts the look and the shell, or lists what to change. This checks the M0 exit criterion "The owner opens the empty app on Windows desktop, web and a phone and accepts the look and the shell".
 
 ## Workflow follow-up
