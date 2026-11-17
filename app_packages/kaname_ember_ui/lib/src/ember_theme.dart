@@ -16,10 +16,10 @@ import 'generated/ember_tokens.dart';
 /// from the [EmberColors] extension with [EmberColors.of], which throws when
 /// the theme is not Ember.
 ///
-/// The package styles no segmented control. Material's `SegmentedButton`
+/// The theme styles no segmented control. Material's `SegmentedButton`
 /// forces rectangular, clipped segments, so neither pills nor the focus ring
-/// can come from a theme. The first change that needs one builds an Ember
-/// segmented control in this package with its own focus test.
+/// can come from a theme; use `EmberSegmentedControl`, a widget of this
+/// package, instead.
 ///
 /// Buttons, icon buttons, chips, text fields and menu items take their shapes
 /// and states from the control themes (see `EmberControls`), not from the

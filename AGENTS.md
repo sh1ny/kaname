@@ -33,6 +33,7 @@ These rules also apply to delegated agents. Before planning specs/design/tasks o
 - CLI, native assets and FFI: matching `dart-build-cli-app`, `dart-setup-ffi-assets`, `dart-use-ffigen` skills. All upstream Dart and Flutter skills are available; consult the manifest rather than assuming this list is exhaustive.
 - Prefer sealed domain states and exhaustive switches. No `dynamic` in domain code: use `Map<String, Object?>` only at external edges, validate and convert to typed values, and surface invalid input explicitly.
 - Keep state ownership explicit, domain logic independent of widgets, dependencies constructor-injected, and behavior tested at the cheapest complete layer. Prefer deterministic hand-written fakes; no mocking package by default.
+- App state follows [`docs/guides/riverpod.md`](docs/guides/riverpod.md) (ADR 0010): providers only in `logic/`, `data/` never imports Riverpod, no codegen or `persist`, sealed states in a `Notifier`.
 - Read `codebase-design`, `domain-modeling` and `improve-codebase-architecture` for their matching design/refactoring work; use `unslop` for focused cleanup, not unrelated rewrites.
 
 ## UI and brand

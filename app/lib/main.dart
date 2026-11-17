@@ -1,31 +1,77 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
+import 'package:kaname_client/kaname_client.dart';
 import 'package:kaname_ember_ui/kaname_ember_ui.dart';
 
-/// Starts the app after registering the bundled font licences.
+import 'app.dart';
+import 'server/data/server_address.dart';
+import 'server/data/server_health.dart';
+import 'server/logic/server_status.dart';
+import 'settings/data/app_version_source.dart';
+import 'settings/data/theme_preference_store.dart';
+import 'settings/logic/app_version.dart';
+import 'settings/logic/theme_choice_notifier.dart';
+
+/// Starts the app.
 ///
-/// Registration reads the licence assets, so it completes before the first
-/// frame; a missing asset fails startup instead of shipping unlicensed fonts.
+/// Everything the first frame needs is ready before [runApp]: the bundled font
+/// licences are registered (a missing asset fails startup instead of shipping
+/// unlicensed fonts), the URL strategy is set to plain paths, the stored theme
+/// choice is opened (falling back to a store whose saves fail when platform
+/// storage cannot be opened), the app version is read and the server address
+/// is resolved.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await EmberFonts.registerLicences();
-  runApp(const KanameApp());
+  usePathUrlStrategy();
+
+  final ThemePreferenceStore store = await _openThemeStore();
+  final version = await PackageInfoAppVersionSource().read();
+  final target = ServerAddress(
+    isWeb: kIsWeb,
+    isDebug: kDebugMode,
+    define: const String.fromEnvironment('KANAME_SERVER_URL'),
+    base: Uri.base,
+  ).resolve();
+
+  runApp(
+    ProviderScope(
+      overrides: [
+        serverTargetProvider.overrideWithValue(target),
+        serverHealthProvider.overrideWithValue(_healthFor(target)),
+        themePreferenceStoreProvider.overrideWithValue(store),
+        appVersionProvider.overrideWithValue(version),
+      ],
+      child: const KanameApp(),
+    ),
+  );
 }
 
-/// The Kaname app: a placeholder screen until the app shell lands.
-class KanameApp extends StatelessWidget {
-  /// Creates the app.
-  const KanameApp({super.key});
+Future<ThemePreferenceStore> _openThemeStore() async {
+  try {
+    return await SharedPreferencesThemePreferenceStore.create();
+  } on Object {
+    return const FallbackThemePreferenceStore();
+  }
+}
+
+/// The health call for [target]: the generated client when there is a server,
+/// otherwise a stand-in the status notifier never calls.
+ServerHealth _healthFor(ServerTarget target) => switch (target) {
+  ConfiguredServer(:final uri) => ClientServerHealth(uri),
+  NoServer() || InvalidServer() => const _NeverCalledServerHealth(),
+};
+
+/// Stands in for the server when no usable address exists.
+///
+/// The status notifier makes no call without a [ConfiguredServer]; reaching
+/// this is a bug, so it fails loudly.
+final class _NeverCalledServerHealth implements ServerHealth {
+  const _NeverCalledServerHealth();
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Kaname',
-      theme: EmberTheme.light(),
-      darkTheme: EmberTheme.dark(),
-      themeMode: ThemeMode.system,
-      // Ember switches themes instantly; the app shell must keep this.
-      themeAnimationDuration: Duration.zero,
-      home: const Scaffold(body: Center(child: Text('Kaname'))),
-    );
-  }
+  Future<HealthReport> check() =>
+      Future.error(StateError('No server is configured.'));
 }

@@ -1,0 +1,179 @@
+{
+  "@@locale": "en",
+  "appTitle": "Kaname",
+  "@appTitle": {
+    "description": "The app's name, shown in the window or browser tab title."
+  },
+  "navHome": "Home",
+  "@navHome": {
+    "description": "Label of the Home destination in the rail, bottom bar and its empty state."
+  },
+  "navPersonal": "Personal",
+  "@navPersonal": {
+    "description": "Label of the Personal destination."
+  },
+  "navOrganisation": "Organisation",
+  "@navOrganisation": {
+    "description": "Label of the Organisation destination."
+  },
+  "navSettings": "Settings",
+  "@navSettings": {
+    "description": "Label of the Settings destination."
+  },
+  "settingsTitle": "Settings",
+  "@settingsTitle": {
+    "description": "Title of the Settings screen."
+  },
+  "primaryNavigation": "Main navigation",
+  "@primaryNavigation": {
+    "description": "Screen-reader name of the rail."
+  },
+  "emptySlotBody": "Nothing here yet.",
+  "@emptySlotBody": {
+    "description": "Body of an empty module slot's empty state."
+  },
+  "sidebarEmpty": "No sections yet.",
+  "@sidebarEmpty": {
+    "description": "Empty state inside the contextual sidebar."
+  },
+  "sidebarOpen": "Open sidebar",
+  "@sidebarOpen": {
+    "description": "Label of the control that opens the sidebar drawer on narrow windows."
+  },
+  "sidebarClose": "Close sidebar",
+  "@sidebarClose": {
+    "description": "Label of the scrim that closes the sidebar drawer."
+  },
+  "inspectorTitle": "Inspector",
+  "@inspectorTitle": {
+    "description": "Title of the inspector panel."
+  },
+  "inspectorOpen": "Open inspector",
+  "@inspectorOpen": {
+    "description": "Label of the top-bar toggle while the inspector is closed."
+  },
+  "inspectorClose": "Close inspector",
+  "@inspectorClose": {
+    "description": "Label of the inspector's close control and of its scrim."
+  },
+  "inspectorEmpty": "Nothing to inspect yet.",
+  "@inspectorEmpty": {
+    "description": "Empty state inside the inspector."
+  },
+  "notFoundTitle": "Page not found",
+  "@notFoundTitle": {
+    "description": "Title of the not-found state."
+  },
+  "notFoundBody": "There is nothing at this address.",
+  "@notFoundBody": {
+    "description": "Body of the not-found state."
+  },
+  "notFoundHome": "Go to Home",
+  "@notFoundHome": {
+    "description": "Label of the control that leads from the not-found state to Home."
+  },
+  "settingsAppearance": "Appearance",
+  "@settingsAppearance": {
+    "description": "Heading of the Appearance section of Settings."
+  },
+  "settingsServer": "Server",
+  "@settingsServer": {
+    "description": "Heading of the Server section of Settings."
+  },
+  "settingsAbout": "About",
+  "@settingsAbout": {
+    "description": "Heading of the About section of Settings."
+  },
+  "themeChoiceLabel": "Theme",
+  "@themeChoiceLabel": {
+    "description": "Screen-reader name of the System, Dark or Light control."
+  },
+  "themeSystem": "System",
+  "@themeSystem": {
+    "description": "Theme choice that follows the operating system."
+  },
+  "themeDark": "Dark",
+  "@themeDark": {
+    "description": "Theme choice that is always dark."
+  },
+  "themeLight": "Light",
+  "@themeLight": {
+    "description": "Theme choice that is always light."
+  },
+  "themeNotSaved": "Your theme choice was not saved.",
+  "@themeNotSaved": {
+    "description": "Message shown when the theme choice could not be stored; it still applies until the app closes."
+  },
+  "serverStatusConnected": "Server connected",
+  "@serverStatusConnected": {
+    "description": "Status bar text: the server answered and its dependencies are up."
+  },
+  "serverStatusDegraded": "Server connected with a dependency down",
+  "@serverStatusDegraded": {
+    "description": "Status bar text: the server answered but Postgres or Redis is down."
+  },
+  "serverStatusChecking": "Checking server",
+  "@serverStatusChecking": {
+    "description": "Status bar text: a health check is running."
+  },
+  "serverStatusUnreachable": "Server unreachable",
+  "@serverStatusUnreachable": {
+    "description": "Status bar text: the health check failed or timed out."
+  },
+  "serverStatusNotConfigured": "No server configured",
+  "@serverStatusNotConfigured": {
+    "description": "Status bar and Settings text: the build has no server address."
+  },
+  "serverStatusInvalid": "Server address invalid",
+  "@serverStatusInvalid": {
+    "description": "Status bar text: the configured server address is not a valid http or https URL."
+  },
+  "serverInvalidBody": "The configured server address is invalid.",
+  "@serverInvalidBody": {
+    "description": "Settings text: the configured server address is not an absolute http or https URL."
+  },
+  "serverUnreachableBody": "The server could not be reached.",
+  "@serverUnreachableBody": {
+    "description": "Settings text: the health check failed or timed out. Shows no technical detail."
+  },
+  "serverVersionLabel": "Version",
+  "@serverVersionLabel": {
+    "description": "Label of the server version in Settings."
+  },
+  "serverPostgresLabel": "Postgres",
+  "@serverPostgresLabel": {
+    "description": "Label of the Postgres status in Settings."
+  },
+  "serverRedisLabel": "Redis",
+  "@serverRedisLabel": {
+    "description": "Label of the Redis status in Settings."
+  },
+  "serverDependencyUp": "Up",
+  "@serverDependencyUp": {
+    "description": "Status of a server dependency that is working."
+  },
+  "serverDependencyDown": "Down",
+  "@serverDependencyDown": {
+    "description": "Status of a server dependency that is not working."
+  },
+  "serverCheckAgain": "Check again",
+  "@serverCheckAgain": {
+    "description": "Label of the control that asks the server for its health again."
+  },
+  "serverChecking": "Checking…",
+  "@serverChecking": {
+    "description": "Label of the check-again control while a check is running."
+  },
+  "aboutVersionLabel": "Version",
+  "@aboutVersionLabel": {
+    "description": "Label of the app version in About."
+  },
+  "aboutLicences": "Licences",
+  "@aboutLicences": {
+    "description": "Label of the About row that opens the licence page."
+  },
+  "aboutLicencesOpen": "View licences",
+  "@aboutLicencesOpen": {
+    "description": "Label of the control that opens the licence page."
+  }
+}

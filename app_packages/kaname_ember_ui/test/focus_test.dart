@@ -36,7 +36,8 @@ Widget _scene(GlobalKey boundary, ThemeData theme, Widget child) =>
       ),
     );
 
-/// Every styled control except the menu item, in tab order.
+/// Every styled control except the menu item, in tab order, ending with the
+/// segmented control's options.
 Widget _controls() => Column(
   crossAxisAlignment: CrossAxisAlignment.start,
   children: [
@@ -84,8 +85,25 @@ Widget _controls() => Column(
         width: 200,
         child: TextField(decoration: InputDecoration(labelText: 'Name')),
       ),
+      _segmented(),
     ])
       Padding(padding: const EdgeInsets.only(bottom: 16), child: control),
+  ],
+);
+
+/// The segmented control's options, in tab order. Each label has an even
+/// number of characters, so every option sits on whole pixels.
+const _segments = ['Auto', 'Dark', 'Lite'];
+
+/// A segmented control whose middle option is selected, so the first option's
+/// right-hand neighbour paints the selected fill and the Seated shadow.
+Widget _segmented({String selected = 'Dark'}) => EmberSegmentedControl<String>(
+  semanticLabel: 'Theme',
+  value: selected,
+  onChanged: (_) {},
+  segments: [
+    for (final label in _segments)
+      EmberSegment(value: label, label: label, key: Key('segment.$label')),
   ],
 );
 
@@ -132,6 +150,13 @@ List<_Control> _controlList(WidgetTester tester) {
       indicator: FocusIndicator.borderWithHalo,
       settle: const Duration(milliseconds: 167),
     ),
+    for (final label in _segments)
+      (
+        name: 'Segmented option $label',
+        finder: find.byKey(Key('segment.$label')),
+        indicator: FocusIndicator.outsideRing,
+        settle: Duration.zero,
+      ),
   ];
 }
 
@@ -280,6 +305,34 @@ void main() {
         menuBoundary,
         _probe(tester, first, theme),
       );
+    }
+  });
+
+  testWidgets('an option beside the selected one shows its full outline', (
+    tester,
+  ) async {
+    for (final theme in _themes) {
+      for (final (focused, selected) in [('Auto', 'Dark'), ('Dark', 'Lite')]) {
+        final boundary = GlobalKey();
+        await tester.pumpWidget(
+          _scene(boundary, theme.data, _segmented(selected: selected)),
+        );
+        for (final label in _segments) {
+          await _tab(tester, Duration.zero);
+          if (label == focused) break;
+        }
+        final option = (
+          name: 'Segmented option $focused beside selected $selected',
+          finder: find.byKey(Key('segment.$focused')),
+          indicator: FocusIndicator.outsideRing,
+          settle: Duration.zero,
+        );
+        await expectFocusIndicator(
+          tester,
+          boundary,
+          _probe(tester, option, theme),
+        );
+      }
     }
   });
 

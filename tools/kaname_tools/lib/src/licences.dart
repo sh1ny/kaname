@@ -22,7 +22,8 @@ import 'locked_packages.dart';
 /// third-party licences.
 const String engineBundleLicence = 'LicenseRef-flutter-engine-bundle';
 
-/// The licence of the Flutter SDK packages `flutter` and `flutter_test`.
+/// The licence of the Flutter SDK packages (`source: sdk`), such as `flutter`,
+/// `flutter_test` and `flutter_localizations`, other than `sky_engine`.
 const String flutterLicence = 'BSD-3-Clause';
 
 /// What is known about the licence of one locked package.
@@ -111,12 +112,14 @@ final class NotClassified extends LockClassification {
 
 /// Classifies every package of the root lockfile, sorted by name.
 ///
-/// The SDK packages `flutter` and `flutter_test` take the Flutter SDK's
-/// licence, [flutterLicence]; `sky_engine` takes [engineBundleLicence]. Every
-/// other package is classified from its licence file, found as the notices
-/// check finds it. A package whose licence file is missing or unreadable is
-/// reported as such and does not stop the others. Returns [NotClassified]
-/// when the lockfile or the package config is missing or invalid.
+/// Packages taken from the Flutter SDK (`source: sdk`) carry no licence file
+/// of their own: they take the Flutter SDK's licence, [flutterLicence], except
+/// `sky_engine`, which takes [engineBundleLicence]. This matches how the
+/// notices check references every SDK package. Every other package is
+/// classified from its licence file, found as the notices check finds it. A
+/// package whose licence file is missing or unreadable is reported as such and
+/// does not stop the others. Returns [NotClassified] when the lockfile or the
+/// package config is missing or invalid.
 LockClassification classifyLockedPackages(
   FileSystem fileSystem, [
   LicenceMatcher matcher = const LicenceMatcher(),
@@ -148,7 +151,7 @@ PackageLicence _licenceOf(
   switch ((package.source, package.name)) {
     case ('sdk', 'sky_engine'):
       return const FoundLicence(KnownLicence(engineBundleLicence));
-    case ('sdk', 'flutter' || 'flutter_test'):
+    case ('sdk', _):
       return const FoundLicence(KnownLicence(flutterLicence));
   }
   try {

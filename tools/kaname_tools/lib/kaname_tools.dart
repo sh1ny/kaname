@@ -1,10 +1,12 @@
 /// Repository checks for Kaname: workspace layout, package purity,
-/// third-party notices, dependency licences, the SBOM and commit sign-off.
+/// third-party notices, dependency licences, the SBOM, commit sign-off and
+/// the app's generated localisations.
 library;
 
 export 'src/cli.dart';
 export 'src/file_system.dart';
 export 'src/git_log.dart';
+export 'src/l10n.dart';
 export 'src/licence_matcher.dart';
 export 'src/licence_policy.dart';
 export 'src/licences.dart';
