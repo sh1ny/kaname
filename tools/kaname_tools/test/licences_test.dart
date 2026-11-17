@@ -122,6 +122,22 @@ void main() {
     expect(result.out, contains('MIT: 1'));
   });
 
+  test('every other Flutter SDK package is accepted as BSD-3-Clause without '
+      'a licence file', () async {
+    final fs = _repo(
+      packages: [
+        ('flutter_localizations', '0.0.0', 'sdk'),
+        ('flutter_web_plugins', '0.0.0', 'sdk'),
+      ],
+    );
+
+    final result = await _check(fs);
+
+    expect(result.err, isEmpty);
+    expect(result.code, 0);
+    expect(result.out, contains('BSD-3-Clause: 2'));
+  });
+
   test('unrecognised licence fails naming package and version', () async {
     final fs = _repo(
       packages: [('alpha', '1.0.0', 'hosted'), ('weird', '1.2.3', 'hosted')],
