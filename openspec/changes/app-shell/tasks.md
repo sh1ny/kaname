@@ -52,10 +52,11 @@ All paths are under `app/test/`.
 | app-server-connection → The app shows the health answer | Redis down | `server/server_status_view_test.dart` | Redis down shows text and error colour | red |
 | app-server-connection → An unreachable server is shown without internal detail | Server stopped | `server/server_status_test.dart` | failure or 10s time-out gives Unreachable with no exception text and the shell still navigates | red |
 | app-server-connection → An unreachable server is shown without internal detail | Server comes back | `server/server_status_test.dart` | Check again after Unreachable shows the new answer | red |
+| dependency-licences → Locked packages are classified by licence | Other Flutter SDK packages | `tools/kaname_tools/test/licences_test.dart` (outside `app/test/`) | every other Flutter SDK package is accepted as BSD-3-Clause without a licence file | red |
 
 ## 1. Dependencies and assumptions
 
-- [ ] 1.1 Verify A3: add `flutter_riverpod` (3.x), `go_router`, `shared_preferences`, `package_info_plus`, `intl`, `flutter_localizations` (SDK), `flutter_web_plugins` (SDK) and `kaname_client` to `app/pubspec.yaml`, then run `mise run resolve`. Verify with `mise run notices` followed by `mise run notices:check` and `mise run licences`, which must pass. Any failure stops this task and goes to the owner.
+- [ ] 1.1 Verify A3: add `flutter_riverpod` (3.x), `go_router`, `shared_preferences`, `package_info_plus`, `intl`, `flutter_localizations` (SDK), `flutter_web_plugins` (SDK) and `kaname_client` to `app/pubspec.yaml`, then run `mise run resolve`. Verify with `mise run notices` followed by `mise run notices:check` and `mise run licences`, which must pass. Any failure stops this task and goes to the owner. (Applied: the SDK packages failed; per D10, write the failing `licences_test.dart` test, then classify every SDK package except `sky_engine` as BSD-3-Clause in `tools/kaname_tools/lib/src/licences.dart`, run `mise run test:tools`, and flip its row green.)
 - [ ] 1.2 Verify A4 for the web target: in a scratch run, `SharedPreferencesWithCache.create` and `PackageInfo.fromPlatform()` both work under `flutter test --platform chrome` or a debug web run. Record the result in the task's commit message. The other platforms are checked at task 8.4.
 
 ## 2. Localisation (S6, D7)

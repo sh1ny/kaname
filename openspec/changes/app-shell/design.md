@@ -105,6 +105,14 @@ TIER: FULL
 - **Important:** yes. It adds a dependency.
 - **Chosen by:** user
 
+### D10: Every Flutter SDK package takes the SDK's licence
+
+- **Choice:** the licence check (`tools/kaname_tools/lib/src/licences.dart`) classifies every locked package with `source: sdk` as BSD-3-Clause, except `sky_engine`, which keeps `LicenseRef-flutter-engine-bundle`. This matches the notices check, which already references every SDK package as `flutter-sdk` (its C5). The `dependency-licences` requirement is modified to say so. Found during apply: A3 failed because `flutter_localizations` and `flutter_web_plugins` have no licence file in their package directory, while the check only special-cased `flutter` and `flutter_test`.
+- **Rejected:** naming only the two new packages in the check (the next SDK package hits the same failure); owner exceptions in `licence-policy.yaml` (exceptions cover packages whose licence the check finds wrong, not SDK packages with no file of their own).
+- **Reversal cost:** low
+- **Important:** yes. It changes a supply-chain check and a main spec.
+- **Chosen by:** user (decided by the owner during apply, after A3 failed)
+
 ### Decision summary
 
 | # | Decision | Choice | Rejected | Reversal cost | Important | Chosen by |
@@ -127,12 +135,13 @@ TIER: FULL
 | D7 | l10n output | Committed, analysis-excluded, `l10n:check` | Generated at build | low | yes | user |
 | D8 | Stack proof | `[evidence]` task with headless browser | CI e2e job; widget tests only | low | no | user |
 | D9 | App version | `package_info_plus` behind `AppVersionSource`, read before `runApp` | Build define; generated constant | low | yes | user |
+| D10 | SDK package licences | Every `source: sdk` package except `sky_engine` is BSD-3-Clause; `dependency-licences` modified | Name the two packages; policy exceptions | low | yes | user |
 
 ## Assumptions
 
 - **A1:** The pinned Flutter 3.47.9 gen-l10n accepts `output-dir` inside `lib/` without a synthetic package, and `flutter: generate: true` triggers it on `pub get`. Not checked because no l10n setup exists in the repo yet. Depends on it: D7 and the l10n task group (verified first in that group).
 - **A2:** The Serverpod 4.1 client works on Flutter web with an `http://<origin>/api/` host and needs a trailing slash. The Caddy → server path under `/api/` is already exercised by the server-side stack tests run in the CI `stack` job (`.github/workflows/ci.yml:177-180`); the browser side is not. Not checked because no web call exists yet. Depends on it: D5, the evidence task.
-- **A3:** `shared_preferences`, `go_router`, `flutter_riverpod`, `intl` and `package_info_plus` resolve with the pinned SDK and pass `mise run licences` (BSD-3 or MIT). Not checked because they are not added yet. Depends on it: the dependency task (a licence failure stops it and returns to the owner).
+- **A3:** `shared_preferences`, `go_router`, `flutter_riverpod`, `intl` and `package_info_plus` resolve with the pinned SDK and pass `mise run licences` (BSD-3 or MIT). Not checked because they are not added yet. Depends on it: the dependency task (a licence failure stops it and returns to the owner). Result during apply: the five pub.dev packages passed; the SDK packages `flutter_localizations` and `flutter_web_plugins` failed for want of a licence file, which D10 resolves.
 - **A4:** `SharedPreferencesWithCache.create` works on all six targets, including the web through `localStorage`. Not checked because it is runtime-only. Depends on it: D6 and the `[user]` look check.
 
 ## Carried constraints

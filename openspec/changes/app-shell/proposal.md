@@ -43,7 +43,8 @@ Non-goals (S8): sign-in or SSO, a server-address UI, a command palette, any modu
 - `app-server-connection`: how the app finds its server on each platform, calls the health endpoint and shows the answer or the failure.
 
 ### Modified Capabilities
-- None. The `ember-ui` requirement already allows a user theme choice ("while the user has not chosen a theme"), and `server-health` is unchanged.
+- `dependency-licences`: every package taken from the Flutter SDK, not only `flutter` and `flutter_test`, takes the Flutter SDK's licence (BSD-3-Clause), as the notices check already treats them. The app's new SDK dependencies `flutter_localizations` and `flutter_web_plugins` have no licence file of their own, so the licence check failed on them (D10).
+- The `ember-ui` requirement already allows a user theme choice ("while the user has not chosen a theme"), and `server-health` is unchanged.
 
 ## Impact
 
@@ -51,6 +52,7 @@ Non-goals (S8): sign-in or SSO, a server-address UI, a command palette, any modu
 - New app dependencies: `flutter_riverpod` 3, `go_router`, `shared_preferences` (the theme preference only), `package_info_plus` (the About version), `flutter_localizations`, `flutter_web_plugins` (SDK, path URLs) and `intl`, and `kaname_client` (workspace). `pubspec.lock` and `THIRD_PARTY_NOTICES` are regenerated, and the licence check must pass.
 - `docs/guides/riverpod.md` (new), AGENTS.md (link), DESIGN.md ("What Kaname changes").
 - Web build: switches to path URLs (`usePathUrlStrategy()`) with base href `/`. Compose stack: no changes expected. The web app uses the existing `/api/` route and single-page-app fallback in `deploy/Caddyfile`.
+- `tools/kaname_tools`: the licence check classifies every Flutter SDK package except `sky_engine` as BSD-3-Clause (D10), with a test.
 - No server or API changes.
 
 ## Decision Making
