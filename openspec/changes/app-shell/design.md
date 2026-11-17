@@ -113,6 +113,14 @@ TIER: FULL
 - **Important:** yes. It changes a supply-chain check and a main spec.
 - **Chosen by:** user (decided by the owner during apply, after A3 failed)
 
+### D11: The segmented control lives in kaname_ember_ui
+
+- **Choice:** the System/Dark/Light control is a generic `EmberSegmentedControl<T>` in `app_packages/kaname_ember_ui`, exported from the package and drawn as DESIGN.md's "Segmented controls": a pill track of 24px pill options, the selected one with the segment fill, Ink and the Seated shadow, and the 2-pixel Focus outline 2 pixels outside the focused option through `EmberFocusBorder.pill`. Options take focus in order with Tab and activate with Enter or Space. The package's focus test covers it in both themes, which the existing ember-ui requirement "Keyboard focus is always visible" already asks of every styled control, so no requirement changes. The package's theme doc comment, which says the first change that needs one builds it in the package with its own focus test, is updated. The app's Appearance section uses it, and `app/lib/settings/ui/theme_segmented.dart` is removed. Found during apply: group 6 built the control inside the app, against that package note.
+- **Rejected:** keeping it in the app (the package note names this case, and a second screen would copy it); Material `SegmentedButton` themed toward Ember (it clips rectangular segments, so neither pills nor the focus ring can come from a theme).
+- **Reversal cost:** low
+- **Important:** no. Users see the same control.
+- **Chosen by:** user (decided by the owner during apply, after group 6)
+
 ### Decision summary
 
 | # | Decision | Choice | Rejected | Reversal cost | Important | Chosen by |
@@ -136,6 +144,7 @@ TIER: FULL
 | D8 | Stack proof | `[evidence]` task with headless browser | CI e2e job; widget tests only | low | no | user |
 | D9 | App version | `package_info_plus` behind `AppVersionSource`, read before `runApp` | Build define; generated constant | low | yes | user |
 | D10 | SDK package licences | Every `source: sdk` package except `sky_engine` is BSD-3-Clause; `dependency-licences` modified | Name the two packages; policy exceptions | low | yes | user |
+| D11 | Segmented control | `EmberSegmentedControl` in `kaname_ember_ui` with a focus test; app uses it | Keep in app; themed `SegmentedButton` | low | no | user |
 
 ## Assumptions
 

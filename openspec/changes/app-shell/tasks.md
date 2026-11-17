@@ -108,6 +108,7 @@ All paths are under `app/test/`.
   - `KanameApp` uses `MaterialApp.router` with `themeAnimationDuration: Duration.zero`.
 
   Write C5 in the `KanameApp` doc comment. Replace `app/test/app_test.dart` with tests that keep its two Ember canvas checks, now through the shell. Verify with `mise exec -- flutter test` in `app/`.
+- [ ] 6.4 Per D11 (added during apply), move the segmented control into `kaname_ember_ui`: write the failing focus-test case for `EmberSegmentedControl` in the package's `focus_test.dart` (both themes) plus a widget test for selection by tap and by Enter/Space (red); implement and export `EmberSegmentedControl<T>`; update the `ember_theme.dart` doc comment; make the Appearance section use it and delete `app/lib/settings/ui/theme_segmented.dart`. Verify with `mise exec -- flutter test` in `app_packages/kaname_ember_ui` and in `app/`, and `dart analyze --fatal-infos`.
 
 ## 7. Documentation
 

@@ -53,6 +53,7 @@ Non-goals (S8): sign-in or SSO, a server-address UI, a command palette, any modu
 - `docs/guides/riverpod.md` (new), AGENTS.md (link), DESIGN.md ("What Kaname changes").
 - Web build: switches to path URLs (`usePathUrlStrategy()`) with base href `/`. Compose stack: no changes expected. The web app uses the existing `/api/` route and single-page-app fallback in `deploy/Caddyfile`.
 - `tools/kaname_tools`: the licence check classifies every Flutter SDK package except `sky_engine` as BSD-3-Clause (D10), with a test.
+- `app_packages/kaname_ember_ui`: gains `EmberSegmentedControl`, with a focus test, used by the Settings Appearance section (D11).
 - No server or API changes.
 
 ## Decision Making
