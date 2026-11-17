@@ -144,82 +144,87 @@ class _AppFrameState extends ConsumerState<AppFrame> {
                 ? l10n.appTitle
                 : destinations[selected].label(l10n),
           );
-          return Column(
-            children: [
-              ShellTopBar(
-                inspectorOpen: inspectorOpen,
-                onInspectorToggle: _toggleInspector,
-                inspectorToggleFocus: _toggleFocus,
-                drawerOpen: _drawerOpen,
-                onDrawerToggle: narrow
-                    ? () => setState(() => _drawerOpen = !_drawerOpen)
-                    : null,
-              ),
-              Expanded(
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: Row(
-                        children: [
-                          if (!narrow)
-                            ShellRail(
-                              registry: registry,
-                              selectedIndex: selected,
-                              onSelected: _select,
+          // The frame keeps inside the system insets (status bar, cutout,
+          // home indicator); the canvas fills the rest of the window.
+          return SafeArea(
+            child: Column(
+              children: [
+                ShellTopBar(
+                  inspectorOpen: inspectorOpen,
+                  onInspectorToggle: _toggleInspector,
+                  inspectorToggleFocus: _toggleFocus,
+                  drawerOpen: _drawerOpen,
+                  onDrawerToggle: narrow
+                      ? () => setState(() => _drawerOpen = !_drawerOpen)
+                      : null,
+                ),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Row(
+                          children: [
+                            if (!narrow)
+                              ShellRail(
+                                registry: registry,
+                                selectedIndex: selected,
+                                onSelected: _select,
+                              ),
+                            if (!narrow) sidebar,
+                            Expanded(
+                              child: ShellMain(
+                                key: _mainKey,
+                                focusNode: _mainFocus,
+                                child: widget.navigationShell,
+                              ),
                             ),
-                          if (!narrow) sidebar,
-                          Expanded(
-                            child: ShellMain(
-                              key: _mainKey,
-                              focusNode: _mainFocus,
-                              child: widget.navigationShell,
-                            ),
-                          ),
-                          if (breakpoint == ShellBreakpoint.wide)
-                            InspectorDock(
-                              open: inspectorOpen,
-                              duration: duration,
+                            if (breakpoint == ShellBreakpoint.wide)
+                              InspectorDock(
+                                open: inspectorOpen,
+                                duration: duration,
+                                onClose: closeInspector,
+                                closeFocus: _closeFocus,
+                              ),
+                          ],
+                        ),
+                      ),
+                      if (breakpoint.inspectorIsSheet)
+                        Positioned.fill(
+                          child: SlidePanelHost(
+                            open: inspectorOpen,
+                            duration: duration,
+                            builder: (context, progress) => InspectorSheet(
+                              progress: progress,
                               onClose: closeInspector,
                               closeFocus: _closeFocus,
                             ),
-                        ],
-                      ),
-                    ),
-                    if (breakpoint.inspectorIsSheet)
-                      Positioned.fill(
-                        child: SlidePanelHost(
-                          open: inspectorOpen,
-                          duration: duration,
-                          builder: (context, progress) => InspectorSheet(
-                            progress: progress,
-                            onClose: closeInspector,
-                            closeFocus: _closeFocus,
                           ),
                         ),
-                      ),
-                    if (narrow)
-                      Positioned.fill(
-                        child: SlidePanelHost(
-                          open: _drawerOpen,
-                          duration: duration,
-                          builder: (context, progress) => ShellDrawer(
-                            progress: progress,
-                            onClose: () => setState(() => _drawerOpen = false),
-                            child: sidebar,
+                      if (narrow)
+                        Positioned.fill(
+                          child: SlidePanelHost(
+                            open: _drawerOpen,
+                            duration: duration,
+                            builder: (context, progress) => ShellDrawer(
+                              progress: progress,
+                              onClose: () =>
+                                  setState(() => _drawerOpen = false),
+                              child: sidebar,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              if (narrow)
-                ShellBottomBar(
-                  registry: registry,
-                  selectedIndex: selected,
-                  onSelected: _select,
-                ),
-              ShellStatusBar(trailing: widget.statusBarTrailing),
-            ],
+                if (narrow)
+                  ShellBottomBar(
+                    registry: registry,
+                    selectedIndex: selected,
+                    onSelected: _select,
+                  ),
+                ShellStatusBar(trailing: widget.statusBarTrailing),
+              ],
+            ),
           );
         },
       ),

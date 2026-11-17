@@ -124,4 +124,25 @@ void main() {
     expect(find.byType(ShellDrawer), findsNothing);
     expect(find.widgetWithText(EmptyState, 'Personal'), findsOneWidget);
   });
+
+  testWidgets('narrow window keeps the shell inside the system insets', (
+    tester,
+  ) async {
+    // A phone with a status bar or cutout on top and a home indicator below.
+    tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
+    addTearDown(tester.view.resetPadding);
+    await pumpShell(tester, size: const Size(390, 844));
+
+    expect(tester.getTopLeft(find.byType(ShellTopBar)).dy, 44);
+    expect(tester.getBottomLeft(find.byType(ShellStatusBar)).dy, 844 - 34);
+    // The bottom bar sits right above the status bar: no inset counted twice.
+    expect(
+      tester.getBottomLeft(find.byType(ShellBottomBar)).dy,
+      tester.getTopLeft(find.byType(ShellStatusBar)).dy,
+    );
+    expect(
+      tester.getSize(find.byType(ShellStatusBar)).height,
+      EmberSize.statusBar,
+    );
+  });
 }

@@ -44,26 +44,23 @@ class ShellBottomBar extends StatelessWidget {
           color: colors.canvas,
           border: Border(top: BorderSide(color: colors.hairline)),
         ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.all(EmberSpace.xs),
-            child: FocusTraversalGroup(
-              child: Row(
-                children: [
-                  for (final (index, slot) in registry.destinations.indexed)
-                    Expanded(
-                      child: ShellNavItem(
-                        key: ShellKeys.bar(slot.id),
-                        icon: slot.icon,
-                        label: slot.label(l10n),
-                        selected: selectedIndex == index,
-                        showLabel: true,
-                        onPressed: () => onSelected(index),
-                      ),
+        child: Padding(
+          padding: const EdgeInsets.all(EmberSpace.xs),
+          child: FocusTraversalGroup(
+            child: Row(
+              children: [
+                for (final (index, slot) in registry.destinations.indexed)
+                  Expanded(
+                    child: ShellNavItem(
+                      key: ShellKeys.bar(slot.id),
+                      icon: slot.icon,
+                      label: slot.label(l10n),
+                      selected: selectedIndex == index,
+                      showLabel: true,
+                      onPressed: () => onSelected(index),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
         ),
