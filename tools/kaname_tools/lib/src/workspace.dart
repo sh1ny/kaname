@@ -71,12 +71,17 @@ final class WorkspaceCheck {
   final FileSystem _fileSystem;
 
   /// Top-level directories that hold packages.
+  ///
+  /// `spikes` holds disposable harnesses, such as the web grid spike. It is a
+  /// package root outside the purity rule (`PurityCheck.pureRoots` leaves it
+  /// out), so a package that must stay pure never goes there.
   static const List<String> packageRoots = [
     'app',
     'app_packages',
     'packages',
     'server',
     'tools',
+    'spikes',
   ];
 
   /// Files every repository must carry, relative to the root.
@@ -229,7 +234,7 @@ final class WorkspaceCommand extends Command<int> {
   /// Member paths the format check accepts: nothing a shell would read as
   /// anything but a word.
   static final _formatDirPattern = RegExp(
-    r'^(app|(app_packages|packages|server|tools)/kaname_[a-z0-9_]+)$',
+    r'^(app|(app_packages|packages|server|tools|spikes)/kaname_[a-z0-9_]+)$',
   );
 
   @override

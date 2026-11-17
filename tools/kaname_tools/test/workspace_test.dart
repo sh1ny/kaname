@@ -251,6 +251,100 @@ workspace:
     expect(result.out, 'app\npackages/kaname_core\ntools/kaname_tools\n');
   });
 
+  test('spikes root accepts kaname_ members', () async {
+    fs
+      ..writeFile(
+        'spikes/kaname_grid_spike/pubspec.yaml',
+        pubspecSource('kaname_grid_spike'),
+      )
+      ..writeFile(
+        'pubspec.yaml',
+        'name: kaname_workspace\n'
+            'workspace:\n'
+            '  - app\n'
+            '  - packages/kaname_core\n'
+            '  - tools/kaname_tools\n'
+            '  - spikes/kaname_grid_spike\n',
+      );
+
+    final accepted = await runTool(fs, ['workspace']);
+
+    expect(accepted.err, isEmpty);
+    expect(accepted.code, 0);
+
+    fs
+      ..writeFile('spikes/helpers/pubspec.yaml', pubspecSource('helpers'))
+      ..writeFile(
+        'pubspec.yaml',
+        'name: kaname_workspace\n'
+            'workspace:\n'
+            '  - app\n'
+            '  - packages/kaname_core\n'
+            '  - tools/kaname_tools\n'
+            '  - spikes/kaname_grid_spike\n'
+            '  - spikes/helpers\n',
+      );
+
+    final refused = await runTool(fs, ['workspace']);
+
+    expect(refused.code, 1);
+    expect(
+      refused.err,
+      allOf(
+        contains('spikes/helpers'),
+        contains('"helpers"'),
+        contains('kaname_ prefix'),
+      ),
+    );
+    expect(refused.err, isNot(contains('spikes/kaname_grid_spike')));
+  });
+
+  test('format dirs accept spikes members', () async {
+    fs
+      ..writeFile(
+        'spikes/kaname_grid_spike/pubspec.yaml',
+        pubspecSource('kaname_grid_spike'),
+      )
+      ..writeFile(
+        'pubspec.yaml',
+        'name: kaname_workspace\n'
+            'workspace:\n'
+            '  - app\n'
+            '  - packages/kaname_core\n'
+            '  - tools/kaname_tools\n'
+            '  - spikes/kaname_grid_spike\n',
+      );
+
+    final accepted = await runTool(fs, ['workspace', '--format-dirs']);
+
+    expect(accepted.err, isEmpty);
+    expect(accepted.code, 0);
+    expect(
+      accepted.out,
+      'app\npackages/kaname_core\nspikes/kaname_grid_spike\n'
+      'tools/kaname_tools\n',
+    );
+
+    for (final member in [
+      'spikes/kaname_x; touch pwned',
+      'spikes/Kaname_upper',
+    ]) {
+      fs.writeFile(
+        'pubspec.yaml',
+        'name: kaname_workspace\n'
+            'workspace:\n'
+            '  - app\n'
+            '  - "$member"\n',
+      );
+
+      final refused = await runTool(fs, ['workspace', '--format-dirs']);
+
+      expect(refused.code, 1, reason: member);
+      expect(refused.out, isEmpty, reason: member);
+      expect(refused.err, contains(member));
+    }
+  });
+
   test('missing required file fails with its path', () async {
     fs
       ..deleteFile('.github/pull_request_template.md')

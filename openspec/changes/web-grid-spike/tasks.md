@@ -16,9 +16,9 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 
 | Area | Behaviour | Test file | Test name | State |
 |---|---|---|---|---|
-| tools → workspace | a `spikes/kaname_*` member is accepted; other `spikes/` names are refused | `tools/kaname_tools/test/workspace_test.dart` | spikes root accepts kaname_ members | red |
-| tools → workspace | `--format-dirs` prints `spikes/kaname_grid_spike` and still refuses unsafe paths | `tools/kaname_tools/test/workspace_test.dart` | format dirs accept spikes members | red |
-| tools → purity | `spikes/` is not checked for purity | `tools/kaname_tools/test/purity_test.dart` | spikes members are outside the purity rule | red |
+| tools → workspace | a `spikes/kaname_*` member is accepted; other `spikes/` names are refused | `tools/kaname_tools/test/workspace_test.dart` | spikes root accepts kaname_ members | green |
+| tools → workspace | `--format-dirs` prints `spikes/kaname_grid_spike` and still refuses unsafe paths | `tools/kaname_tools/test/workspace_test.dart` | format dirs accept spikes members | green |
+| tools → purity | `spikes/` is not checked for purity | `tools/kaname_tools/test/purity_test.dart` | spikes members are outside the purity rule | green |
 | tools → serve | serves files with content types (`.wasm`, `.mjs`, `.js`, `.html`), and `/` serves `index.html` | `tools/kaname_tools/test/serve_test.dart` | serves files with their content types | red |
 | tools → serve | COOP/COEP sent by default, absent with `--no-isolation` | `tools/kaname_tools/test/serve_test.dart` | isolation headers follow the flag | red |
 | tools → serve | unknown path and `/font-fallback/x` get a plain 404 | `tools/kaname_tools/test/serve_test.dart` | non-files and font fallback answer 404 | red |
@@ -47,8 +47,8 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 
 ## 1. Workspace tooling for `spikes/`
 
-- [ ] 1.1 Write failing tests for the `spikes` package root and `--format-dirs` pattern in `tools/kaname_tools/test/workspace_test.dart`, and for purity exclusion in `purity_test.dart`. Verify they fail for the right reason (map rows "spikes root…", "format dirs…", "spikes members…").
-- [ ] 1.2 Add `spikes` to `WorkspaceCheck.packageRoots` and to the `--format-dirs` pattern in `tools/kaname_tools/lib/src/workspace.dart`, leaving `pureRoots` unchanged. Write C2 as the doc comment on `WorkspaceCheck.packageRoots`. Verify with `mise run test:tools`; flip the three rows green.
+- [x] 1.1 Write failing tests for the `spikes` package root and `--format-dirs` pattern in `tools/kaname_tools/test/workspace_test.dart`, and for purity exclusion in `purity_test.dart`. Verify they fail for the right reason (map rows "spikes root…", "format dirs…", "spikes members…").
+- [x] 1.2 Add `spikes` to `WorkspaceCheck.packageRoots` and to the `--format-dirs` pattern in `tools/kaname_tools/lib/src/workspace.dart`, leaving `pureRoots` unchanged. Write C2 as the doc comment on `WorkspaceCheck.packageRoots`. Verify with `mise run test:tools`; flip the three rows green.
 
 ## 2. `kaname_tools serve`
 
