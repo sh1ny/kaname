@@ -40,18 +40,18 @@ All paths are under `app/test/`.
 | app-settings → The theme choice survives a restart | Storage fails to save | `settings/theme_choice_test.dart` | failed save keeps the choice and shows the not-saved message | red |
 | app-settings → About shows the version and the licence page | Open licences | `settings/about_test.dart` | licence page lists Geist and Literata | red |
 | app-settings → About shows the version and the licence page | Back from licences | `settings/about_test.dart` | back from licences returns to Settings with the choice unchanged | red |
-| app-server-connection → The web app talks to the server on its own origin | Served by the stack | `server/server_address_test.dart` | web with base http://127.0.0.1:8080/ targets /api/ on that origin | red |
-| app-server-connection → The web app talks to the server on its own origin | Served under another host name | `server/server_address_test.dart` | web target follows the base origin's host | red |
-| app-server-connection → The web app talks to the server on its own origin | Release web build given an address | `server/server_address_test.dart` | release web ignores the define | red |
-| app-server-connection → Desktop and mobile take an optional build-time server address | Address given | `server/server_address_test.dart` | native define http://127.0.0.1:8080/ is the target | red |
+| app-server-connection → The web app talks to the server on its own origin | Served by the stack | `server/server_address_test.dart` | web with base http://127.0.0.1:8080/ targets /api/ on that origin | green |
+| app-server-connection → The web app talks to the server on its own origin | Served under another host name | `server/server_address_test.dart` | web target follows the base origin's host | green |
+| app-server-connection → The web app talks to the server on its own origin | Release web build given an address | `server/server_address_test.dart` | release web ignores the define | green |
+| app-server-connection → Desktop and mobile take an optional build-time server address | Address given | `server/server_address_test.dart` | native define http://127.0.0.1:8080/ is the target | green |
 | app-server-connection → Desktop and mobile take an optional build-time server address | No address | `server/server_status_test.dart` | no address gives NotConfigured, makes no call, and the UI shows No server configured | red |
 | app-server-connection → Desktop and mobile take an optional build-time server address | Invalid address | `server/server_status_test.dart` | address without a scheme gives InvalidAddress, makes no call, and Settings says invalid | red |
-| app-server-connection → The app calls the health endpoint at start and on request | Check again | `server/server_status_test.dart` | Check again makes one new call and replaces the answer | red |
-| app-server-connection → The app calls the health endpoint at start and on request | Double press | `server/server_status_test.dart` | two presses during a call share one call and show busy | red |
+| app-server-connection → The app calls the health endpoint at start and on request | Check again | `server/server_status_test.dart` | Check again makes one new call and replaces the answer | green |
+| app-server-connection → The app calls the health endpoint at start and on request | Double press | `server/server_status_test.dart` | two presses during a call share one call and show busy | green |
 | app-server-connection → The app shows the health answer | Everything up | `server/server_status_view_test.dart` | all up shows connected and version, Postgres up, Redis up | red |
 | app-server-connection → The app shows the health answer | Redis down | `server/server_status_view_test.dart` | Redis down shows text and error colour | red |
 | app-server-connection → An unreachable server is shown without internal detail | Server stopped | `server/server_status_test.dart` | failure or 10s time-out gives Unreachable with no exception text and the shell still navigates | red |
-| app-server-connection → An unreachable server is shown without internal detail | Server comes back | `server/server_status_test.dart` | Check again after Unreachable shows the new answer | red |
+| app-server-connection → An unreachable server is shown without internal detail | Server comes back | `server/server_status_test.dart` | Check again after Unreachable shows the new answer | green |
 | dependency-licences → Locked packages are classified by licence | Other Flutter SDK packages | `tools/kaname_tools/test/licences_test.dart` (outside `app/test/`) | every other Flutter SDK package is accepted as BSD-3-Clause without a licence file | green |
 
 ## 1. Dependencies and assumptions
@@ -66,10 +66,10 @@ All paths are under `app/test/`.
 
 ## 3. Server connection (S2, D3, D5)
 
-- [ ] 3.1 Write the failing `server/server_address_test.dart` tests for every ServerAddress row of the test map (red). `ServerAddress` takes `isWeb`, `isDebug`, the raw define and the base `Uri` as inputs.
-- [ ] 3.2 Implement `app/lib/server/data/server_address.dart`, returning the sealed `ServerTarget` (`ConfiguredServer`, `NoServer` or `InvalidServer`). Write C3 in the `ServerAddress` doc comment. Verify the 3.1 tests pass and flip their rows green.
-- [ ] 3.3 Write the failing `server/server_status_test.dart` tests (red). Use a hand-written `FakeServerHealth` with controllable completers, and `ProviderContainer.test`.
-- [ ] 3.4 Implement the `ServerHealth` interface and the `ClientServerHealth` adapter (`Client(host, connectionTimeout: Duration(seconds: 10))`) in `app/lib/server/data/`. Implement the sealed `ServerStatus` and `ServerStatusNotifier` in `app/lib/server/logic/`, with a 10s backstop, single-flight and every failure mapped to `Unreachable`. Write C7 in the `ServerStatus` doc comment, citing the spec requirement. Verify the 3.3 tests pass and flip their rows green.
+- [x] 3.1 Write the failing `server/server_address_test.dart` tests for every ServerAddress row of the test map (red). `ServerAddress` takes `isWeb`, `isDebug`, the raw define and the base `Uri` as inputs.
+- [x] 3.2 Implement `app/lib/server/data/server_address.dart`, returning the sealed `ServerTarget` (`ConfiguredServer`, `NoServer` or `InvalidServer`). Write C3 in the `ServerAddress` doc comment. Verify the 3.1 tests pass and flip their rows green.
+- [x] 3.3 Write the failing `server/server_status_test.dart` tests (red). Use a hand-written `FakeServerHealth` with controllable completers, and `ProviderContainer.test`.
+- [x] 3.4 Implement the `ServerHealth` interface and the `ClientServerHealth` adapter (`Client(host, connectionTimeout: Duration(seconds: 10))`) in `app/lib/server/data/`. Implement the sealed `ServerStatus` and `ServerStatusNotifier` in `app/lib/server/logic/`, with a 10s backstop, single-flight and every failure mapped to `Unreachable`. Write C7 in the `ServerStatus` doc comment, citing the spec requirement. Verify the 3.3 tests pass and flip their rows green.
 
 ## 4. Settings data (S3, D6, D9)
 
