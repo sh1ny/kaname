@@ -33,12 +33,12 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 | spike → logic | `Seeding` → `Ready`; self-check mismatch → `SeedFailed` naming the check | `spikes/kaname_grid_spike/test/logic/grid_notifier_test.dart` | seed states and self-check | green |
 | spike → logic | a throwing operation keeps the view and sets a typed `lastError` | `spikes/kaname_grid_spike/test/logic/grid_notifier_test.dart` | failed operation keeps view and sets lastError | green |
 | spike → logic | resize, current row and collapse-key reset behave as designed | `spikes/kaname_grid_spike/test/logic/grid_notifier_test.dart` | widths, current row and collapse keys | green |
-| spike → ui | header row and name column stay pinned while scrolling both axes | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | header and name column stay pinned | red |
-| spike → ui | only visible cells are built (virtualised on both axes) | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | builds only visible cells | red |
-| spike → ui | group header: label in the pinned cell, sums in their columns, no merges | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | group header layout | red |
-| spike → ui | arrow keys move the current row with the Ember focus ring | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | keyboard moves the current row | red |
-| spike → ui | dragging a header edge resizes the column | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | drag resizes a column | red |
-| spike → ui | filter input is debounced; `Seeding`, `SeedFailed` and `lastError` are shown | `spikes/kaname_grid_spike/test/ui/grid_screen_test.dart` | filter debounce and visible states | red |
+| spike → ui | header row and name column stay pinned while scrolling both axes | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | header and name column stay pinned | green |
+| spike → ui | only visible cells are built (virtualised on both axes) | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | builds only visible cells | green |
+| spike → ui | group header: label in the pinned cell, sums in their columns, no merges | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | group header layout | green |
+| spike → ui | arrow keys move the current row with the Ember focus ring | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | keyboard moves the current row | green |
+| spike → ui | dragging a header edge resizes the column | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | drag resizes a column | green |
+| spike → ui | filter input is debounced; `Seeding`, `SeedFailed` and `lastError` are shown | `spikes/kaname_grid_spike/test/ui/grid_screen_test.dart` | filter debounce and visible states | green |
 | spike → bench | missed frames (skipped refreshes), p50/p90/p99, verdict per S4 | `spikes/kaname_grid_spike/test/logic/bench_metrics_test.dart` | metrics and S4 verdict | red |
 | spike → bench | step order, `stepDone` handshake, timeouts → `Aborted`, cancel | `spikes/kaname_grid_spike/test/logic/benchmark_notifier_test.dart` | benchmark state machine | red |
 | spike → bench | result JSON v1 fields; abort published through `BenchHost` | `spikes/kaname_grid_spike/test/logic/benchmark_result_test.dart` | result JSON v1 and abort publication | red |
@@ -95,8 +95,8 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 
 ## 6. Grid UI (`ui/`)
 
-- [ ] 6.1 Write failing widget tests (`grid_view_test.dart`, `grid_screen_test.dart`) for the UI rows, with a small seeded fixture overridden through providers. Verify they fail.
-- [ ] 6.2 Implement `ui/grid_view.dart`:
+- [x] 6.1 Write failing widget tests (`grid_view_test.dart`, `grid_screen_test.dart`) for the UI rows, with a small seeded fixture overridden through providers. Verify they fail.
+- [x] 6.2 Implement `ui/grid_view.dart`:
   - `TableView.builder` with `pinnedRowCount: 1`, `pinnedColumnCount: 1` and 30px rows;
   - column extents from `Ready` widths, with drag-to-resize on header edges;
   - group headers per D1 (label, count and arrow in the pinned cell, sums in their columns, no merges);
@@ -104,7 +104,7 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
   - Ember tokens, Geist 13px with tabular figures.
 
   Verify the pinned, virtualised, group-header, keyboard and resize rows are green.
-- [ ] 6.3 Implement `ui/grid_screen.dart`:
+- [x] 6.3 Implement `ui/grid_screen.dart`:
   - a toolbar with a debounced filter input, category filter, sort and group pickers and an expand/collapse-all control;
   - the renderer and thread-mode readout and the Benchmark button;
   - the `Seeding` and `SeedFailed` states and the `lastError` banner, which names the operation.
