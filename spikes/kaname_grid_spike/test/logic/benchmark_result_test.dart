@@ -33,7 +33,7 @@ void main() {
 
     // Operations: each takes 40 ms to the next frame; the filter's raster
     // time arrives afterwards.
-    rig.playAll(
+    await rig.playAll(
       afterOp: (step) {
         if (step == BenchStep.filter) {
           rig.notifier.recordWork(buildMs: 1, rasterMs: 7);
@@ -120,7 +120,7 @@ void main() {
     small.notifier.run(config: BenchConfig.smoke);
     small.finishScroll(frameCount: 3); // 2 intervals
     small.finishScroll(frameCount: 5); // 4 intervals, 1 fits
-    small.playAll(frameCount: 1);
+    await small.playAll(frameCount: 1);
     final dropped = small.host.published.single['droppedSamples'];
     expect(dropped, 3);
   });

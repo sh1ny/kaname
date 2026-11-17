@@ -199,7 +199,15 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
                 .inMicroseconds /
             1000;
       _awaitingRaster = record;
-      _advance(current.step);
+      // This runs inside a frame callback, where a state change schedules no
+      // new frame. Start the next step once the frame is over, so its own
+      // state change asks for the frame that ends it.
+      final step = current.step;
+      scheduleMicrotask(() {
+        if (state case Running(step: final now) when now == step) {
+          _advance(step);
+        }
+      });
     }
   }
 

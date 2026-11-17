@@ -36,7 +36,7 @@ void main() {
     rig.container.listen(gridProvider, (_, next) {
       if (next is Ready && rig.step != null) grids[rig.step!] = next;
     });
-    rig.playAll();
+    await rig.playAll();
     bool changed(BenchStep step, bool Function(Ready) check) =>
         check(grids[step]!);
     expect(

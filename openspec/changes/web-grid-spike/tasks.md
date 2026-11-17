@@ -43,7 +43,7 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 | spike → bench | step order, `stepDone` handshake, timeouts → `Aborted`, cancel | `spikes/kaname_grid_spike/test/logic/benchmark_notifier_test.dart` | benchmark state machine | green |
 | spike → bench | result JSON v1 fields; abort published through `BenchHost` | `spikes/kaname_grid_spike/test/logic/benchmark_result_test.dart` | result JSON v1 and abort publication | green |
 | spike → bench | `?bench=1` autostarts; grid input disabled while running | `spikes/kaname_grid_spike/test/ui/benchmark_ui_test.dart` | autostart and input lock | green |
-| spike → web build | `build:spike` output passes `webbuild --check` | n/a (mechanical: `mise run build:spike`) | n/a | red |
+| spike → web build | `build:spike` output passes `webbuild --check` | n/a (mechanical: `mise run build:spike`) | n/a | green |
 
 ## 1. Workspace tooling for `spikes/`
 
@@ -135,12 +135,12 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 
 ## 8. Web build, bootstrap and runner
 
-- [ ] 8.1 Write `spikes/kaname_grid_spike/web/flutter_bootstrap.js` per D8. It reads `?renderer=` and `?threads=single`, passes `renderer` and `forceSingleThreadedSkwasm` in the `config` literal, keeps `fontFallbackBaseUrl: "/font-fallback/"` in that literal, and logs unknown values. Add the mise tasks `build:spike` (`test:spike:web`, then `flutter build web --wasm --release --no-web-resources-cdn`, then `kaname_tools webbuild --check spikes/kaname_grid_spike/build/web`) and `serve:spike`.
+- [x] 8.1 Write `spikes/kaname_grid_spike/web/flutter_bootstrap.js` per D8. It reads `?renderer=` and `?threads=single`, passes `renderer` and `forceSingleThreadedSkwasm` in the `config` literal, keeps `fontFallbackBaseUrl: "/font-fallback/"` in that literal, and logs unknown values. Add the mise tasks `build:spike` (`test:spike:web`, then `flutter build web --wasm --release --no-web-resources-cdn`, then `kaname_tools webbuild --check spikes/kaname_grid_spike/build/web`) and `serve:spike`.
   - Verify A7 by running `mise run build:spike`. If `webbuild --check` rejects valid `--wasm` output, stop and report it as design drift, without changing the checker silently.
   - Flip the "web build" row green.
-- [ ] 8.2 Write C3 as a doc comment on `WebBuildChecker` in `tools/kaname_tools/lib/src/webbuild.dart`. Verify with `mise run analyze`.
-- [ ] 8.3 Verify A2: add `puppeteer` as a `dev_dependency` of the spike only. Confirm that `mise run resolve` changes no existing locked version (`git diff pubspec.lock` shows additions only), that `mise run licences` passes, and that it launches Chrome for Testing headless. If any of these fails, remove it, record the outcome in the commit, and use the manual `?bench=1` fallback (D4) in group 9.
-- [ ] 8.4 Implement `spikes/kaname_grid_spike/tool/bench.dart`. For each combination of skwasm threaded, skwasm single-threaded and CanvasKit, it:
+- [x] 8.2 Write C3 as a doc comment on `WebBuildChecker` in `tools/kaname_tools/lib/src/webbuild.dart`. Verify with `mise run analyze`.
+- [x] 8.3 Verify A2: add `puppeteer` as a `dev_dependency` of the spike only. Confirm that `mise run resolve` changes no existing locked version (`git diff pubspec.lock` shows additions only), that `mise run licences` passes, and that it launches Chrome for Testing headless. If any of these fails, remove it, record the outcome in the commit, and use the manual `?bench=1` fallback (D4) in group 9.
+- [x] 8.4 Implement `spikes/kaname_grid_spike/tool/bench.dart`. For each combination of skwasm threaded, skwasm single-threaded and CanvasKit, it:
   - serves the build with `kaname_tools serve`, adding `--no-isolation` for the single-threaded row;
   - opens headless Chrome at `/?bench=1&renderer=…&threads=…`;
   - polls `window.gridBenchResult` with a 10-minute timeout;

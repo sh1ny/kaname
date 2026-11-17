@@ -132,12 +132,15 @@ class BenchRig {
 
   /// Plays the whole script: every scroll step with frames, every operation
   /// with a frame [opDelay] after it started, then [afterOps] for the rest.
-  void playAll({
+  ///
+  /// An operation step advances in a microtask after its frame (the frame
+  /// callback cannot schedule another frame), so this yields after each one.
+  Future<void> playAll({
     int frameCount = 6,
     double intervalMs = 16.7,
     Duration opDelay = const Duration(milliseconds: 40),
     void Function(BenchStep step)? afterOp,
-  }) {
+  }) async {
     while (state is Running) {
       final current = step!;
       if (current.isScroll) {
@@ -145,6 +148,7 @@ class BenchRig {
       } else {
         clock.advance(opDelay);
         frames(1, intervalMs: intervalMs);
+        await Future<void>.value();
         afterOp?.call(current);
       }
     }
