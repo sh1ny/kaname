@@ -110,6 +110,7 @@ See proposal.md for the why and the scope decisions S1–S8.
   4. **Horizontal scroll:** to the last column and back, 5s each way.
   5. **Operations:** apply filter text, a category filter, sort on three columns (text, integer, float), group by two columns, collapse and expand every group, then clear the query. Then, on all 200,000 rows, sort on the same three columns and group by the same two columns, so S4's "filter, group or sort over 200,000 rows" is measured; the filtered steps stay as a smaller comparison (pre-ship review round 2, owner's choice).
   6. **Resize:** resize one column by script.
+  7. **Settle:** run an empty animation for 0.5s so the web engine's last batched frame timings arrive before the result is built. Not reported as a segment (pre-ship review round 3, owner's choice).
 
   **Who drives what** (M-2, owner's choice):
   - `BenchmarkNotifier` (sealed state `Idle`, `Running(step)`, `Done(result)`, `Aborted(reason)`) publishes `Running(step)`.
