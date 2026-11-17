@@ -68,6 +68,16 @@ description = "Run the kaname_ember_ui tests"
 dir = "app_packages/kaname_ember_ui"
 run = "flutter test"
 
+[tasks."test:spike"]
+description = "Run the grid spike's VM tests"
+dir = "spikes/kaname_grid_spike"
+run = "flutter test"
+
+[tasks."test:spike:web"]
+description = "Run the grid spike's web-tagged tests in Chrome (dart2js); not part of check (C7)"
+dir = "spikes/kaname_grid_spike"
+run = "flutter test --platform chrome --tags web"
+
 [tasks.test]
 description = "Run every workspace member's tests"
 run = [
@@ -75,6 +85,7 @@ run = [
   { task = "test:tools" },
   { task = "test:app" },
   { task = "test:ember_ui" },
+  { task = "test:spike" },
 ]
 
 [tasks.workspace]

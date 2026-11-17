@@ -11,6 +11,7 @@ workspace:
   - packages/kaname_core
   - server/kaname_client
   - server/kaname_server
+  - spikes/kaname_grid_spike
   - tools/kaname_tools
 
 dev_dependencies:

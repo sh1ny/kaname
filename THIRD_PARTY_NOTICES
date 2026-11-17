@@ -245,6 +245,7 @@ term_glyph 1.2.2 hosted L27
 test 1.31.1 hosted L17
 test_api 0.7.12 hosted L43
 test_core 0.6.18 hosted L43
+two_dimensional_scrollables 0.5.6 hosted L19
 type_plus 2.1.1 hosted L20
 typed_data 1.4.0 hosted L5
 uuid 4.6.0 hosted L61

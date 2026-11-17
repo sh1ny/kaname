@@ -25,6 +25,7 @@ The repository is one pub workspace:
 | `app_packages/kaname_<name>/` | (none yet) | Shared Flutter packages |
 | `server/` | (none yet) | Serverpod server and client |
 | `tools/kaname_<name>/` | `kaname_tools` | Repository checks and the notices generator |
+| `spikes/kaname_<name>/` | `kaname_grid_spike` | Disposable harnesses outside the product (not purity-checked) |
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before contributing (no-copy rule, EULA boundary, DCO sign-off) and report vulnerabilities as [SECURITY.md](SECURITY.md) describes. Agent instructions are in [AGENTS.md](AGENTS.md); UI guidance is in [DESIGN.md](DESIGN.md).
 

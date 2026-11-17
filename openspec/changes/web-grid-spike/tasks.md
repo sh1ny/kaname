@@ -59,8 +59,8 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 
 ## 3. Spike package scaffold
 
-- [ ] 3.1 Verify A4: check the current `two_dimensional_scrollables` release and its Flutter constraint against Flutter 3.47.9 (Context7 or pub.dev, then `flutter pub add --dry-run`). Record the version in the task's commit message. If it is incompatible, stop: that is design drift (D1).
-- [ ] 3.2 Create `spikes/kaname_grid_spike` (Flutter, `publish_to: none`, `resolution: workspace`, web platform only) with dependencies `flutter`, `flutter_riverpod`, `kaname_ember_ui` and `two_dimensional_scrollables`. List it in the root `pubspec.yaml`.
+- [x] 3.1 Verify A4: check the current `two_dimensional_scrollables` release and its Flutter constraint against Flutter 3.47.9 (Context7 or pub.dev, then `flutter pub add --dry-run`). Record the version in the task's commit message. If it is incompatible, stop: that is design drift (D1).
+- [x] 3.2 Create `spikes/kaname_grid_spike` (Flutter, `publish_to: none`, `resolution: workspace`, web platform only) with dependencies `flutter`, `flutter_riverpod`, `kaname_ember_ui` and `two_dimensional_scrollables`. List it in the root `pubspec.yaml`.
   - The `lib/` folders are `data/`, `logic/` and `ui/`, plus `main.dart`, whose library doc comment carries C1 and C7.
   - Add `analysis_options.yaml` matching the app's.
   - Add mise tasks `test:spike` (VM, added to `test`) and `test:spike:web` (`flutter test --platform chrome --tags web`).
