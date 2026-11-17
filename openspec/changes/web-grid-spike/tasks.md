@@ -30,9 +30,9 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 | spike → engine | sort is total (row-index tie-break), ascending and descending, text/int/float | `spikes/kaname_grid_spike/test/data/grid_engine_test.dart` | sort is total and deterministic | green |
 | spike → engine | group runs, counts, sums; collapsed groups show only headers | `spikes/kaname_grid_spike/test/data/grid_engine_test.dart` | group with totals and collapse | green |
 | spike → engine | operations never copy rows and report elapsed time | `spikes/kaname_grid_spike/test/data/grid_engine_test.dart` | operations return index views and timing | green |
-| spike → logic | `Seeding` → `Ready`; self-check mismatch → `SeedFailed` naming the check | `spikes/kaname_grid_spike/test/logic/grid_notifier_test.dart` | seed states and self-check | red |
-| spike → logic | a throwing operation keeps the view and sets a typed `lastError` | `spikes/kaname_grid_spike/test/logic/grid_notifier_test.dart` | failed operation keeps view and sets lastError | red |
-| spike → logic | resize, current row and collapse-key reset behave as designed | `spikes/kaname_grid_spike/test/logic/grid_notifier_test.dart` | widths, current row and collapse keys | red |
+| spike → logic | `Seeding` → `Ready`; self-check mismatch → `SeedFailed` naming the check | `spikes/kaname_grid_spike/test/logic/grid_notifier_test.dart` | seed states and self-check | green |
+| spike → logic | a throwing operation keeps the view and sets a typed `lastError` | `spikes/kaname_grid_spike/test/logic/grid_notifier_test.dart` | failed operation keeps view and sets lastError | green |
+| spike → logic | resize, current row and collapse-key reset behave as designed | `spikes/kaname_grid_spike/test/logic/grid_notifier_test.dart` | widths, current row and collapse keys | green |
 | spike → ui | header row and name column stay pinned while scrolling both axes | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | header and name column stay pinned | red |
 | spike → ui | only visible cells are built (virtualised on both axes) | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | builds only visible cells | red |
 | spike → ui | group header: label in the pinned cell, sums in their columns, no merges | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | group header layout | red |
@@ -84,8 +84,8 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 
 ## 5. Grid state (`logic/`)
 
-- [ ] 5.1 Write failing `grid_notifier_test.dart` tests with `ProviderContainer.test` and hand-written fakes for the seed and engine (no mocking package). Verify they fail.
-- [ ] 5.2 Implement `logic/grid_notifier.dart`:
+- [x] 5.1 Write failing `grid_notifier_test.dart` tests with `ProviderContainer.test` and hand-written fakes for the seed and engine (no mocking package). Verify they fail.
+- [x] 5.2 Implement `logic/grid_notifier.dart`:
   - sealed `GridState` (`Seeding`, `Ready`, `SeedFailed(reason)`), with the seed started after the first frame and the startup self-check against the golden and the checksums;
   - `Ready` with the query, view, widths, current row, last timing and a typed `lastError` (which operation failed; the exception message goes to `debugPrint` only, per `docs/guides/riverpod.md:47`);
   - the methods `setFilter`, `sortBy`, `groupBy`, `toggleGroup`, `resizeColumn` and `moveCurrent`;
