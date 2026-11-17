@@ -36,7 +36,7 @@ All paths are under `app/test/`.
 | app-settings → The user chooses System, Dark or Light | Choose Light on a dark system | `settings/theme_choice_test.dart` | choosing Light on a dark system shows the light canvas next frame | red |
 | app-settings → The user chooses System, Dark or Light | System follows a later OS change | `settings/theme_choice_test.dart` | System follows an OS brightness change | red |
 | app-settings → The theme choice survives a restart | Restart after choosing Dark | `settings/theme_preference_store_test.dart` | Dark saved, then a new app start shows dark on the first frame | red |
-| app-settings → The theme choice survives a restart | Unreadable stored value | `settings/theme_preference_store_test.dart` | missing, empty or unknown value reads as System | red |
+| app-settings → The theme choice survives a restart | Unreadable stored value | `settings/theme_preference_store_test.dart` | missing, empty or unknown value reads as System | green |
 | app-settings → The theme choice survives a restart | Storage fails to save | `settings/theme_choice_test.dart` | failed save keeps the choice and shows the not-saved message | red |
 | app-settings → About shows the version and the licence page | Open licences | `settings/about_test.dart` | licence page lists Geist and Literata | red |
 | app-settings → About shows the version and the licence page | Back from licences | `settings/about_test.dart` | back from licences returns to Settings with the choice unchanged | red |
@@ -73,9 +73,9 @@ All paths are under `app/test/`.
 
 ## 4. Settings data (S3, D6, D9)
 
-- [ ] 4.1 Write the failing `settings/theme_preference_store_test.dart` tests (red), with `shared_preferences`' in-memory test platform.
-- [ ] 4.2 Implement `ThemeChoice`, the `ThemePreferenceStore` interface and its `SharedPreferencesWithCache` implementation, allow-listing only `kaname.theme_mode`, plus the failing-save fallback store, in `app/lib/settings/data/`. Write C2 and C8 in the `ThemePreferenceStore` doc comment. Verify the 4.1 tests pass and flip their rows green.
-- [ ] 4.3 Implement the `AppVersionSource` interface and its `package_info_plus` implementation, which returns "unknown" on failure. Add a unit test with a throwing source. Verify the test passes.
+- [x] 4.1 Write the failing `settings/theme_preference_store_test.dart` tests (red), with `shared_preferences`' in-memory test platform.
+- [x] 4.2 Implement `ThemeChoice`, the `ThemePreferenceStore` interface and its `SharedPreferencesWithCache` implementation, allow-listing only `kaname.theme_mode`, plus the failing-save fallback store, in `app/lib/settings/data/`. Write C2 and C8 in the `ThemePreferenceStore` doc comment. Verify the 4.1 tests pass and flip their rows green.
+- [x] 4.3 Implement the `AppVersionSource` interface and its `package_info_plus` implementation, which returns "unknown" on failure. Add a unit test with a throwing source. Verify the test passes.
 
 ## 5. Shell (S1, S4, S5, D2, D4)
 
