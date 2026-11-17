@@ -99,6 +99,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Kaname'**
   String get appTitle;
+
+  /// Label of the Home destination in the rail, bottom bar and its empty state.
+  ///
+  /// In en, this message translates to:
+  /// **'Home'**
+  String get navHome;
+
+  /// Label of the Personal destination.
+  ///
+  /// In en, this message translates to:
+  /// **'Personal'**
+  String get navPersonal;
+
+  /// Label of the Organisation destination.
+  ///
+  /// In en, this message translates to:
+  /// **'Organisation'**
+  String get navOrganisation;
+
+  /// Label of the Settings destination.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get navSettings;
+
+  /// Title of the Settings screen.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get settingsTitle;
+
+  /// Screen-reader name of the rail.
+  ///
+  /// In en, this message translates to:
+  /// **'Main navigation'**
+  String get primaryNavigation;
+
+  /// Body of an empty module slot's empty state.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing here yet.'**
+  String get emptySlotBody;
+
+  /// Empty state inside the contextual sidebar.
+  ///
+  /// In en, this message translates to:
+  /// **'No sections yet.'**
+  String get sidebarEmpty;
+
+  /// Label of the control that opens the sidebar drawer on narrow windows.
+  ///
+  /// In en, this message translates to:
+  /// **'Open sidebar'**
+  String get sidebarOpen;
+
+  /// Label of the scrim that closes the sidebar drawer.
+  ///
+  /// In en, this message translates to:
+  /// **'Close sidebar'**
+  String get sidebarClose;
+
+  /// Title of the inspector panel.
+  ///
+  /// In en, this message translates to:
+  /// **'Inspector'**
+  String get inspectorTitle;
+
+  /// Label of the top-bar toggle while the inspector is closed.
+  ///
+  /// In en, this message translates to:
+  /// **'Open inspector'**
+  String get inspectorOpen;
+
+  /// Label of the inspector's close control and of its scrim.
+  ///
+  /// In en, this message translates to:
+  /// **'Close inspector'**
+  String get inspectorClose;
+
+  /// Empty state inside the inspector.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing to inspect yet.'**
+  String get inspectorEmpty;
+
+  /// Title of the not-found state.
+  ///
+  /// In en, this message translates to:
+  /// **'Page not found'**
+  String get notFoundTitle;
+
+  /// Body of the not-found state.
+  ///
+  /// In en, this message translates to:
+  /// **'There is nothing at this address.'**
+  String get notFoundBody;
+
+  /// Label of the control that leads from the not-found state to Home.
+  ///
+  /// In en, this message translates to:
+  /// **'Go to Home'**
+  String get notFoundHome;
 }
 
 class _AppLocalizationsDelegate

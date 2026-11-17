@@ -13,24 +13,24 @@ All paths are under `app/test/`.
 
 | Requirement | Scenario | Test file | Test name | State |
 |---|---|---|---|---|
-| app-shell → Wide windows show the full desktop frame | Desktop width | `shell/app_frame_test.dart` | wide window shows top bar, rail, sidebar, main and status bar | red |
-| app-shell → Wide windows show the full desktop frame | Window narrowed across the breakpoint | `shell/app_frame_test.dart` | narrowing to 1000 turns the open inspector into a sheet and keeps main state | red |
-| app-shell → Medium windows show the inspector as an overlay | Inspector opened at medium width | `shell/inspector_test.dart` | medium width opens the inspector as a sheet over a scrim | red |
-| app-shell → Medium windows show the inspector as an overlay | Scrim dismisses the sheet | `shell/inspector_test.dart` | tapping the scrim closes the sheet and keeps main | red |
-| app-shell → Narrow windows use bottom navigation and a sidebar drawer | Phone width | `shell/app_frame_test.dart` | narrow window shows bottom bar with four destinations and no rail | red |
-| app-shell → Narrow windows use bottom navigation and a sidebar drawer | Drawer closes on navigation | `shell/app_frame_test.dart` | picking a bottom-bar destination closes the drawer | red |
-| app-shell → The docked inspector opens and closes without replacing the subject | Open and close with the keyboard | `shell/inspector_test.dart` | closing returns focus to the toggle and keeps main state | red |
-| app-shell → The docked inspector opens and closes without replacing the subject | Opener gone when closing | `shell/inspector_test.dart` | closing with the opener gone focuses main without error | red |
-| app-shell → Panels move with one motion and honour reduced motion | Normal motion | `shell/inspector_test.dart` | inspector reaches 352 at 200ms, not before | red |
-| app-shell → Panels move with one motion and honour reduced motion | Reduced motion | `shell/inspector_test.dart` | disableAnimations opens the inspector on the next frame | red |
-| app-shell → Module slots come from one registry | Registered slots appear in order | `shell/slot_registry_test.dart` | M0 registry lists Home, Personal, Organisation with Settings at the foot | red |
-| app-shell → Module slots come from one registry | Duplicate slot | `shell/slot_registry_test.dart` | duplicate id or path throws naming the duplicate | red |
-| app-shell → Every destination has a route and deep links work | Deep link on the web | `shell/router_test.dart` | initial location /settings shows Settings selected | red |
-| app-shell → Every destination has a route and deep links work | Unknown path | `shell/router_test.dart` | unknown location redirects to not-found inside the frame with a Home link | red |
-| app-shell → Shell text is localised | English device | `shell/localisation_test.dart` | en-GB shows English labels | red |
-| app-shell → Shell text is localised | Unsupported locale | `shell/localisation_test.dart` | ja-JP falls back to English without errors | red |
-| app-shell → Shell controls are reachable by keyboard and screen reader | Tab through the rail | `shell/accessibility_test.dart` | rail items take focus in order with the ring and selected semantics | red |
-| app-shell → Shell controls are reachable by keyboard and screen reader | Icon-only control without a label | `shell/accessibility_test.dart` | every icon-only shell control has a semantic label | red |
+| app-shell → Wide windows show the full desktop frame | Desktop width | `shell/app_frame_test.dart` | wide window shows top bar, rail, sidebar, main and status bar | green |
+| app-shell → Wide windows show the full desktop frame | Window narrowed across the breakpoint | `shell/app_frame_test.dart` | narrowing to 1000 turns the open inspector into a sheet and keeps main state | green |
+| app-shell → Medium windows show the inspector as an overlay | Inspector opened at medium width | `shell/inspector_test.dart` | medium width opens the inspector as a sheet over a scrim | green |
+| app-shell → Medium windows show the inspector as an overlay | Scrim dismisses the sheet | `shell/inspector_test.dart` | tapping the scrim closes the sheet and keeps main | green |
+| app-shell → Narrow windows use bottom navigation and a sidebar drawer | Phone width | `shell/app_frame_test.dart` | narrow window shows bottom bar with four destinations and no rail | green |
+| app-shell → Narrow windows use bottom navigation and a sidebar drawer | Drawer closes on navigation | `shell/app_frame_test.dart` | picking a bottom-bar destination closes the drawer | green |
+| app-shell → The docked inspector opens and closes without replacing the subject | Open and close with the keyboard | `shell/inspector_test.dart` | closing returns focus to the toggle and keeps main state | green |
+| app-shell → The docked inspector opens and closes without replacing the subject | Opener gone when closing | `shell/inspector_test.dart` | closing with the opener gone focuses main without error | green |
+| app-shell → Panels move with one motion and honour reduced motion | Normal motion | `shell/inspector_test.dart` | inspector reaches 352 at 200ms, not before | green |
+| app-shell → Panels move with one motion and honour reduced motion | Reduced motion | `shell/inspector_test.dart` | disableAnimations opens the inspector on the next frame | green |
+| app-shell → Module slots come from one registry | Registered slots appear in order | `shell/slot_registry_test.dart` | M0 registry lists Home, Personal, Organisation with Settings at the foot | green |
+| app-shell → Module slots come from one registry | Duplicate slot | `shell/slot_registry_test.dart` | duplicate id or path throws naming the duplicate | green |
+| app-shell → Every destination has a route and deep links work | Deep link on the web | `shell/router_test.dart` | initial location /settings shows Settings selected | green |
+| app-shell → Every destination has a route and deep links work | Unknown path | `shell/router_test.dart` | unknown location redirects to not-found inside the frame with a Home link | green |
+| app-shell → Shell text is localised | English device | `shell/localisation_test.dart` | en-GB shows English labels | green |
+| app-shell → Shell text is localised | Unsupported locale | `shell/localisation_test.dart` | ja-JP falls back to English without errors | green |
+| app-shell → Shell controls are reachable by keyboard and screen reader | Tab through the rail | `shell/accessibility_test.dart` | rail items take focus in order with the ring and selected semantics | green |
+| app-shell → Shell controls are reachable by keyboard and screen reader | Icon-only control without a label | `shell/accessibility_test.dart` | every icon-only shell control has a semantic label | green |
 | app-settings → Settings has Appearance, Server and About sections | Open Settings | `settings/settings_screen_test.dart` | sections appear in order Appearance, Server, About | red |
 | app-settings → Settings has Appearance, Server and About sections | Narrow window | `settings/settings_screen_test.dart` | at 390 sections stack with no overflow | red |
 | app-settings → The user chooses System, Dark or Light | Choose Light on a dark system | `settings/theme_choice_test.dart` | choosing Light on a dark system shows the light canvas next frame | red |
@@ -79,16 +79,16 @@ All paths are under `app/test/`.
 
 ## 5. Shell (S1, S4, S5, D2, D4)
 
-- [ ] 5.1 Write the failing `shell/slot_registry_test.dart` and `shell/router_test.dart` tests (red).
-- [ ] 5.2 Implement the slot registry (`app/lib/shell/logic/`) with its duplicate guard, and placeholder modules in `app/lib/modules/{home,personal,organisation}/` with localised empty states. Write C1 in the registry's doc comment, citing the spec requirement. Verify the registry tests pass and flip their rows green.
-- [ ] 5.3 Implement `buildRouter`:
+- [x] 5.1 Write the failing `shell/slot_registry_test.dart` and `shell/router_test.dart` tests (red).
+- [x] 5.2 Implement the slot registry (`app/lib/shell/logic/`) with its duplicate guard, and placeholder modules in `app/lib/modules/{home,personal,organisation}/` with localised empty states. Write C1 in the registry's doc comment, citing the spec requirement. Verify the registry tests pass and flip their rows green.
+- [x] 5.3 Implement `buildRouter`:
   - `StatefulShellRoute.indexedStack` with one branch per slot, plus Settings (with `/settings/licences`) and a hidden not-found branch;
   - `/` redirects to `/home`, and unmatched locations redirect to `/not-found`;
   - no `preload`.
 
   Write C10 and C11 in the `buildRouter` doc comment. Verify the router tests pass and flip their rows green.
-- [ ] 5.4 Write the failing `shell/app_frame_test.dart`, `shell/inspector_test.dart` and `shell/accessibility_test.dart` tests (red). Set window sizes with `tester.view.physicalSize`, and reduced motion with `MediaQueryData(disableAnimations: true)`.
-- [ ] 5.5 Implement `AppFrame` and the shell widgets in `app/lib/shell/ui/`, following DESIGN.md's Layout and Ember tokens:
+- [x] 5.4 Write the failing `shell/app_frame_test.dart`, `shell/inspector_test.dart` and `shell/accessibility_test.dart` tests (red). Set window sizes with `tester.view.physicalSize`, and reduced motion with `MediaQueryData(disableAnimations: true)`.
+- [x] 5.5 Implement `AppFrame` and the shell widgets in `app/lib/shell/ui/`, following DESIGN.md's Layout and Ember tokens:
   - the frame itself, the top bar, the rail, the bottom bar and the status-bar slot;
   - the sidebar and its drawer, at 200ms with `panelEase`;
   - the inspector panel and its overlay sheet;
@@ -97,7 +97,7 @@ All paths are under `app/test/`.
   - a main column that stays mounted.
 
   Write C6 in the `InspectorPanel` doc comment and C9 in the `ShellBottomBar` doc comment. Verify the 5.4 tests pass and flip their rows green.
-- [ ] 5.6 Write `shell/localisation_test.dart` (red), then route every shell string through `AppLocalizations`, with English as the fallback locale. Verify the tests pass and flip their rows green.
+- [x] 5.6 Write `shell/localisation_test.dart` (red), then route every shell string through `AppLocalizations`, with English as the fallback locale. Verify the tests pass and flip their rows green.
 
 ## 6. Screens and wiring (S2, S3, C5)
 

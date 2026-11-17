@@ -3,5 +3,73 @@
   "appTitle": "Kaname",
   "@appTitle": {
     "description": "The app's name, shown in the window or browser tab title."
+  },
+  "navHome": "Home",
+  "@navHome": {
+    "description": "Label of the Home destination in the rail, bottom bar and its empty state."
+  },
+  "navPersonal": "Personal",
+  "@navPersonal": {
+    "description": "Label of the Personal destination."
+  },
+  "navOrganisation": "Organisation",
+  "@navOrganisation": {
+    "description": "Label of the Organisation destination."
+  },
+  "navSettings": "Settings",
+  "@navSettings": {
+    "description": "Label of the Settings destination."
+  },
+  "settingsTitle": "Settings",
+  "@settingsTitle": {
+    "description": "Title of the Settings screen."
+  },
+  "primaryNavigation": "Main navigation",
+  "@primaryNavigation": {
+    "description": "Screen-reader name of the rail."
+  },
+  "emptySlotBody": "Nothing here yet.",
+  "@emptySlotBody": {
+    "description": "Body of an empty module slot's empty state."
+  },
+  "sidebarEmpty": "No sections yet.",
+  "@sidebarEmpty": {
+    "description": "Empty state inside the contextual sidebar."
+  },
+  "sidebarOpen": "Open sidebar",
+  "@sidebarOpen": {
+    "description": "Label of the control that opens the sidebar drawer on narrow windows."
+  },
+  "sidebarClose": "Close sidebar",
+  "@sidebarClose": {
+    "description": "Label of the scrim that closes the sidebar drawer."
+  },
+  "inspectorTitle": "Inspector",
+  "@inspectorTitle": {
+    "description": "Title of the inspector panel."
+  },
+  "inspectorOpen": "Open inspector",
+  "@inspectorOpen": {
+    "description": "Label of the top-bar toggle while the inspector is closed."
+  },
+  "inspectorClose": "Close inspector",
+  "@inspectorClose": {
+    "description": "Label of the inspector's close control and of its scrim."
+  },
+  "inspectorEmpty": "Nothing to inspect yet.",
+  "@inspectorEmpty": {
+    "description": "Empty state inside the inspector."
+  },
+  "notFoundTitle": "Page not found",
+  "@notFoundTitle": {
+    "description": "Title of the not-found state."
+  },
+  "notFoundBody": "There is nothing at this address.",
+  "@notFoundBody": {
+    "description": "Body of the not-found state."
+  },
+  "notFoundHome": "Go to Home",
+  "@notFoundHome": {
+    "description": "Label of the control that leads from the not-found state to Home."
   }
 }
