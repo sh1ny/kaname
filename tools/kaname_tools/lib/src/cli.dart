@@ -10,6 +10,7 @@ import 'notices.dart';
 import 'purity.dart';
 import 'real_file_system.dart';
 import 'sbom.dart';
+import 'serve.dart';
 import 'signoff.dart';
 import 'tokens.dart';
 import 'webbuild.dart';
@@ -56,6 +57,7 @@ CommandRunner<int> buildRunner(
   ..addCommand(SignoffCommand(gitLog, output))
   ..addCommand(TokensCommand(fileSystem, output))
   ..addCommand(WebBuildCommand(fileSystem, output))
+  ..addCommand(ServeCommand(output))
   ..addCommand(L10nCommand(fileSystem, l10nGenerator, output));
 
 /// Runs `kaname_tools` with [args] and returns the process exit status.

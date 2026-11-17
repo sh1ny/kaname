@@ -19,11 +19,11 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 | tools → workspace | a `spikes/kaname_*` member is accepted; other `spikes/` names are refused | `tools/kaname_tools/test/workspace_test.dart` | spikes root accepts kaname_ members | green |
 | tools → workspace | `--format-dirs` prints `spikes/kaname_grid_spike` and still refuses unsafe paths | `tools/kaname_tools/test/workspace_test.dart` | format dirs accept spikes members | green |
 | tools → purity | `spikes/` is not checked for purity | `tools/kaname_tools/test/purity_test.dart` | spikes members are outside the purity rule | green |
-| tools → serve | serves files with content types (`.wasm`, `.mjs`, `.js`, `.html`), and `/` serves `index.html` | `tools/kaname_tools/test/serve_test.dart` | serves files with their content types | red |
-| tools → serve | COOP/COEP sent by default, absent with `--no-isolation` | `tools/kaname_tools/test/serve_test.dart` | isolation headers follow the flag | red |
-| tools → serve | unknown path and `/font-fallback/x` get a plain 404 | `tools/kaname_tools/test/serve_test.dart` | non-files and font fallback answer 404 | red |
-| tools → serve | `..` and encoded escapes outside the root are refused | `tools/kaname_tools/test/serve_test.dart` | paths outside the root are refused | red |
-| tools → serve | binds loopback by default; bind failure exits 1 with a message | `tools/kaname_tools/test/serve_test.dart` | binds loopback and reports bind failure | red |
+| tools → serve | serves files with content types (`.wasm`, `.mjs`, `.js`, `.html`), and `/` serves `index.html` | `tools/kaname_tools/test/serve_test.dart` | serves files with their content types | green |
+| tools → serve | COOP/COEP sent by default, absent with `--no-isolation` | `tools/kaname_tools/test/serve_test.dart` | isolation headers follow the flag | green |
+| tools → serve | unknown path and `/font-fallback/x` get a plain 404 | `tools/kaname_tools/test/serve_test.dart` | non-files and font fallback answer 404 | green |
+| tools → serve | `..` and encoded escapes outside the root are refused | `tools/kaname_tools/test/serve_test.dart` | paths outside the root are refused | green |
+| tools → serve | binds loopback by default; bind failure exits 1 with a message | `tools/kaname_tools/test/serve_test.dart` | binds loopback and reports bind failure | green |
 | spike → seed | xorshift32 first 16 outputs match the golden (VM and Chrome) | `spikes/kaname_grid_spike/test/data/prng_test.dart` | xorshift32 matches golden | red |
 | spike → seed | 200,000 rows, 25 columns, web-portable lists, ints < 2^31, checksums match constants | `spikes/kaname_grid_spike/test/data/seed_test.dart` | seed is deterministic and web-portable | red |
 | spike → engine | substring and category filters | `spikes/kaname_grid_spike/test/data/grid_engine_test.dart` | filter by text and category | red |
@@ -52,8 +52,8 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 
 ## 2. `kaname_tools serve`
 
-- [ ] 2.1 Write failing tests in `tools/kaname_tools/test/serve_test.dart` for the five serve rows of the test map, using a temporary directory and a real loopback `HttpServer` on port 0. Verify they fail.
-- [ ] 2.2 Implement `ServeCommand` in `tools/kaname_tools/lib/src/serve.dart`, registered in `cli.dart`. It uses `dart:io` only and follows D5: content types, COOP/COEP unless `--no-isolation`, a plain 404 for non-files, `index.html` only for `/`, path-escape refusal, `--host` defaulting to `127.0.0.1`, `--port` and a 30s idle timeout.
+- [x] 2.1 Write failing tests in `tools/kaname_tools/test/serve_test.dart` for the five serve rows of the test map, using a temporary directory and a real loopback `HttpServer` on port 0. Verify they fail.
+- [x] 2.2 Implement `ServeCommand` in `tools/kaname_tools/lib/src/serve.dart`, registered in `cli.dart`. It uses `dart:io` only and follows D5: content types, COOP/COEP unless `--no-isolation`, a plain 404 for non-files, `index.html` only for `/`, path-escape refusal, `--host` defaulting to `127.0.0.1`, `--port` and a 30s idle timeout.
   - Write C4 as the doc comment on `ServeCommand`, and C9 on `ServeCommand.run`.
   - Verify with `mise run test:tools` (rows green) and `mise run purity`.
 
