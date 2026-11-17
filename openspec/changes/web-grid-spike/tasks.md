@@ -39,10 +39,10 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 | spike → ui | arrow keys move the current row with the Ember focus ring | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | keyboard moves the current row | green |
 | spike → ui | dragging a header edge resizes the column | `spikes/kaname_grid_spike/test/ui/grid_view_test.dart` | drag resizes a column | green |
 | spike → ui | filter input is debounced; `Seeding`, `SeedFailed` and `lastError` are shown | `spikes/kaname_grid_spike/test/ui/grid_screen_test.dart` | filter debounce and visible states | green |
-| spike → bench | missed frames (skipped refreshes), p50/p90/p99, verdict per S4 | `spikes/kaname_grid_spike/test/logic/bench_metrics_test.dart` | metrics and S4 verdict | red |
-| spike → bench | step order, `stepDone` handshake, timeouts → `Aborted`, cancel | `spikes/kaname_grid_spike/test/logic/benchmark_notifier_test.dart` | benchmark state machine | red |
-| spike → bench | result JSON v1 fields; abort published through `BenchHost` | `spikes/kaname_grid_spike/test/logic/benchmark_result_test.dart` | result JSON v1 and abort publication | red |
-| spike → bench | `?bench=1` autostarts; grid input disabled while running | `spikes/kaname_grid_spike/test/ui/benchmark_ui_test.dart` | autostart and input lock | red |
+| spike → bench | missed frames (skipped refreshes), p50/p90/p99, verdict per S4 | `spikes/kaname_grid_spike/test/logic/bench_metrics_test.dart` | metrics and S4 verdict | green |
+| spike → bench | step order, `stepDone` handshake, timeouts → `Aborted`, cancel | `spikes/kaname_grid_spike/test/logic/benchmark_notifier_test.dart` | benchmark state machine | green |
+| spike → bench | result JSON v1 fields; abort published through `BenchHost` | `spikes/kaname_grid_spike/test/logic/benchmark_result_test.dart` | result JSON v1 and abort publication | green |
+| spike → bench | `?bench=1` autostarts; grid input disabled while running | `spikes/kaname_grid_spike/test/ui/benchmark_ui_test.dart` | autostart and input lock | green |
 | spike → web build | `build:spike` output passes `webbuild --check` | n/a (mechanical: `mise run build:spike`) | n/a | red |
 
 ## 1. Workspace tooling for `spikes/`
@@ -113,15 +113,15 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 
 ## 7. Benchmark (`logic/` + `ui/`)
 
-- [ ] 7.1 Write failing tests `bench_metrics_test.dart`, `benchmark_notifier_test.dart`, `benchmark_result_test.dart` and `benchmark_ui_test.dart` for the bench rows, with a fake `BenchHost` and a fake clock. Verify they fail.
-- [ ] 7.2 Implement `logic/bench_metrics.dart` as pure functions:
+- [x] 7.1 Write failing tests `bench_metrics_test.dart`, `benchmark_notifier_test.dart`, `benchmark_result_test.dart` and `benchmark_ui_test.dart` for the bench rows, with a fake `BenchHost` and a fake clock. Verify they fail.
+- [x] 7.2 Implement `logic/bench_metrics.dart` as pure functions:
   - calibrated refresh period (median);
   - missed frames `max(0, round(interval / period) − 1)` and the ratio missed / (missed + intervals);
   - p50, p90, p99 and max;
   - the S4 verdict per segment (≤5% missed, p99 ≤33ms, work p90 ≤16.7ms when timings exist, every operation on screen ≤300ms).
 
   Verify the "metrics and S4 verdict" row is green.
-- [ ] 7.3 Implement `logic/benchmark_notifier.dart` (sealed `Idle`, `Running(step)`, `Done(result)`, `Aborted(reason)`) and `logic/benchmark_result.dart`.
+- [x] 7.3 Implement `logic/benchmark_notifier.dart` (sealed `Idle`, `Running(step)`, `Done(result)`, `Aborted(reason)`) and `logic/benchmark_result.dart`.
   - **Script:** calibrate; hand-speed scroll 20s at 3,000 px/s; stress traversal 30s each way; horizontal scroll 5s each way; operations; resize.
   - **Timeouts and cancel:** per-step timeout of 2× planned + 10s, and Cancel.
   - **Handshake:** scroll steps are run by the grid widget through `stepDone(step)`; operation steps call `GridNotifier`.
@@ -129,7 +129,7 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
   - **Result:** JSON `schemaVersion: 1`, with C6 as the doc comment on `BenchmarkResult`. On `Aborted`, publish `{schemaVersion: 1, aborted: reason}` through `BenchHost`, so the runner fails fast (review round 2, S-a).
 
   Verify the state-machine and JSON rows are green.
-- [ ] 7.4 Implement the `BenchHost` seam: an interface in `logic/`, a web implementation (conditional import) that sets `window.gridBenchResult`, reads `Uri.base` for `?bench=1` and reports the renderer, and a VM stub. Also implement the grid widget's scroll-step runner and input lock, and `ui/result_panel.dart` (figures against the budget, "Copy JSON").
+- [x] 7.4 Implement the `BenchHost` seam: an interface in `logic/`, a web implementation (conditional import) that sets `window.gridBenchResult`, reads `Uri.base` for `?bench=1` and reports the renderer, and a VM stub. Also implement the grid widget's scroll-step runner and input lock, and `ui/result_panel.dart` (figures against the budget, "Copy JSON").
   - Verify A6: use `dart:ui_web` if it exposes the active renderer, else record the requested renderer plus `kIsWasm`, and note which in the commit.
   - Verify the "autostart and input lock" row is green, then run `mise run test:spike` and `mise run test:spike:web`.
 
