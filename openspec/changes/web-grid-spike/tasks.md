@@ -153,9 +153,9 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 
 ## 9. Measurements, report and owner check
 
-- [ ] 9.1 Ask the owner whether the machine is idle enough for timing runs. Wait for the answer; do not run 9.2 on a busy machine.
-- [ ] 9.2 [evidence] Run `mise run bench:spike` on the idle development machine and save the three JSON results, plus a header with the machine, the CPU and GPU path (`chrome://gpu` summary), the load state the owner confirmed and the date → evidence/bench-dev-machine.md
-- [ ] 9.3 Write `docs/spikes/web-grid.md`:
+- [x] 9.1 Ask the owner whether the machine is idle enough for timing runs. Wait for the answer; do not run 9.2 on a busy machine.
+- [x] 9.2 [evidence] Run `mise run bench:spike` on the idle development machine and save the three JSON results, plus a header with the machine, the CPU and GPU path (`chrome://gpu` summary), the load state the owner confirmed and the date → evidence/bench-dev-machine.md
+- [x] 9.3 Write `docs/spikes/web-grid.md`:
   - **Method:** the script, the metrics and the S4 budget.
   - **Machines and load state.**
   - **Per-renderer tables:** hand-speed verdict, stress headroom, operations (engine and on-screen) and seed time.
@@ -166,8 +166,8 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
   - **Owner's laptop:** how to run the spike there on the Windows clone (`mise run build:spike`, `mise run serve:spike`, then open `/?renderer=…` or press Benchmark).
 
   Link the report from the roadmap's M0 section only at milestone close, not here. Verify that the report quotes the evidence file's numbers.
-- [ ] 9.4 Run `mise run check` and `mise run spec:validate`. Both pass.
-- [ ] 9.5 [user] The owner runs the spike on a low-end laptop on web (skwasm and `?renderer=canvaskit`). The owner scrolls, groups and filters the grid, optionally presses Benchmark and pastes the JSON into the report, and then accepts the result or asks for a plan change. This checks the M0 exit criterion "The owner scrolls, groups and filters the grid spike on web on a low-end laptop and accepts the result or asks for a plan change".
+- [x] 9.4 Run `mise run check` and `mise run spec:validate`. Both pass.
+- [ ] 9.5 [user] The owner runs the spike on web on the development PC, under load from gaming (amended 2026-11-17, owner's choice: "This PC counts"; the low-end laptop run becomes optional, see the report's "Owner's laptop" section), (skwasm and `?renderer=canvaskit`). The owner scrolls, groups and filters the grid, optionally presses Benchmark and pastes the JSON into the report, and then accepts the result or asks for a plan change. This checks the M0 exit criterion "The owner scrolls, groups and filters the grid spike on web on a low-end laptop and accepts the result or asks for a plan change".
 
 ## Workflow follow-up
 
