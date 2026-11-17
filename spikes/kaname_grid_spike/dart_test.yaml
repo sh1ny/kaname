@@ -1,0 +1,4 @@
+# Tests tagged `web` also run in Chrome through `mise run test:spike:web`
+# (dart2js). Plain `flutter test` runs every test on the VM.
+tags:
+  web:

@@ -24,12 +24,12 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 | tools → serve | unknown path and `/font-fallback/x` get a plain 404 | `tools/kaname_tools/test/serve_test.dart` | non-files and font fallback answer 404 | green |
 | tools → serve | `..` and encoded escapes outside the root are refused | `tools/kaname_tools/test/serve_test.dart` | paths outside the root are refused | green |
 | tools → serve | binds loopback by default; bind failure exits 1 with a message | `tools/kaname_tools/test/serve_test.dart` | binds loopback and reports bind failure | green |
-| spike → seed | xorshift32 first 16 outputs match the golden (VM and Chrome) | `spikes/kaname_grid_spike/test/data/prng_test.dart` | xorshift32 matches golden | red |
-| spike → seed | 200,000 rows, 25 columns, web-portable lists, ints < 2^31, checksums match constants | `spikes/kaname_grid_spike/test/data/seed_test.dart` | seed is deterministic and web-portable | red |
-| spike → engine | substring and category filters | `spikes/kaname_grid_spike/test/data/grid_engine_test.dart` | filter by text and category | red |
-| spike → engine | sort is total (row-index tie-break), ascending and descending, text/int/float | `spikes/kaname_grid_spike/test/data/grid_engine_test.dart` | sort is total and deterministic | red |
-| spike → engine | group runs, counts, sums; collapsed groups show only headers | `spikes/kaname_grid_spike/test/data/grid_engine_test.dart` | group with totals and collapse | red |
-| spike → engine | operations never copy rows and report elapsed time | `spikes/kaname_grid_spike/test/data/grid_engine_test.dart` | operations return index views and timing | red |
+| spike → seed | xorshift32 first 16 outputs match the golden (VM and Chrome) | `spikes/kaname_grid_spike/test/data/prng_test.dart` | xorshift32 matches golden | green |
+| spike → seed | 200,000 rows, 25 columns, web-portable lists, ints < 2^31, checksums match constants | `spikes/kaname_grid_spike/test/data/seed_test.dart` | seed is deterministic and web-portable | green |
+| spike → engine | substring and category filters | `spikes/kaname_grid_spike/test/data/grid_engine_test.dart` | filter by text and category | green |
+| spike → engine | sort is total (row-index tie-break), ascending and descending, text/int/float | `spikes/kaname_grid_spike/test/data/grid_engine_test.dart` | sort is total and deterministic | green |
+| spike → engine | group runs, counts, sums; collapsed groups show only headers | `spikes/kaname_grid_spike/test/data/grid_engine_test.dart` | group with totals and collapse | green |
+| spike → engine | operations never copy rows and report elapsed time | `spikes/kaname_grid_spike/test/data/grid_engine_test.dart` | operations return index views and timing | green |
 | spike → logic | `Seeding` → `Ready`; self-check mismatch → `SeedFailed` naming the check | `spikes/kaname_grid_spike/test/logic/grid_notifier_test.dart` | seed states and self-check | red |
 | spike → logic | a throwing operation keeps the view and sets a typed `lastError` | `spikes/kaname_grid_spike/test/logic/grid_notifier_test.dart` | failed operation keeps view and sets lastError | red |
 | spike → logic | resize, current row and collapse-key reset behave as designed | `spikes/kaname_grid_spike/test/logic/grid_notifier_test.dart` | widths, current row and collapse keys | red |
@@ -69,10 +69,10 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 
 ## 4. Seed and query engine (`data/`)
 
-- [ ] 4.1 Write failing VM tests (`prng_test.dart`, `seed_test.dart`, `grid_engine_test.dart`) for the seed and engine rows, tagging the PRNG, seed and engine tests `web`. Verify they fail.
-- [ ] 4.2 Implement `data/prng.dart` (xorshift32, every step masked with `& 0xFFFFFFFF`), `data/columns.dart` (web-portable typed lists only; dictionary codes with ranks; integers < 2^31; C8 as its library doc comment) and `data/seed.dart`. The seed builds 200,000 rows and 25 columns from syllable-generated names, with no SDE, ESI or third-party schema, and its golden and checksum constants are exported for the self-check.
+- [x] 4.1 Write failing VM tests (`prng_test.dart`, `seed_test.dart`, `grid_engine_test.dart`) for the seed and engine rows, tagging the PRNG, seed and engine tests `web`. Verify they fail.
+- [x] 4.2 Implement `data/prng.dart` (xorshift32, every step masked with `& 0xFFFFFFFF`), `data/columns.dart` (web-portable typed lists only; dictionary codes with ranks; integers < 2^31; C8 as its library doc comment) and `data/seed.dart`. The seed builds 200,000 rows and 25 columns from syllable-generated names, with no SDE, ESI or third-party schema, and its golden and checksum constants are exported for the self-check.
   - Verify the PRNG and seed rows are green with `mise run test:spike`.
-- [ ] 4.3 Implement `data/grid_engine.dart`:
+- [x] 4.3 Implement `data/grid_engine.dart`:
   - filter by dictionary mask, then a scan;
   - self-written merge sort with a row-index tie-break;
   - grouping with counts and the sums of quantity and total value;
@@ -80,7 +80,7 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
   - a `Stopwatch` time per operation.
 
   C5 (with its ADR 0005 sentence) is the library doc comment. Verify the engine rows are green with `mise run test:spike`.
-- [ ] 4.4 Run `mise run test:spike:web` (Chrome, one job at a time) and confirm the tagged PRNG, seed and engine tests pass under dart2js. Flip nothing new; this guards C-1 and C8.
+- [x] 4.4 Run `mise run test:spike:web` (Chrome, one job at a time) and confirm the tagged PRNG, seed and engine tests pass under dart2js. Flip nothing new; this guards C-1 and C8.
 
 ## 5. Grid state (`logic/`)
 
