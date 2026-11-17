@@ -224,6 +224,29 @@ void main() {
     expect(raster[BenchStep.sortText], isNull);
   });
 
+  test('timings that arrive during settle reach the last operations', () async {
+    final rig = await benchRig();
+    rig.notifier.run(config: BenchConfig.smoke);
+    final opFrames = <BenchStep, int>{};
+    await rig.playAll(
+      afterOp: (step) => opFrames[step] = rig.lastFrame,
+      stopAt: BenchStep.settle,
+    );
+    expect(rig.step, BenchStep.settle, reason: 'the run waits after resize');
+
+    // The engine's last batch arrives while the settle animation runs.
+    for (final frame in opFrames.values) {
+      rig.notifier.recordWork(frameNumber: frame, buildMs: 1, rasterMs: 5);
+    }
+    rig.finishScroll();
+
+    final result = (rig.state as Done).result;
+    expect([for (final op in result.operations) op.rasterMs], everyElement(5));
+    expect([
+      for (final segment in result.segments) segment.step,
+    ], isNot(contains(BenchStep.settle)));
+  });
+
   test('a run needs a ready grid', () async {
     final rig = await benchRig(seed: false);
     expect(rig.container.read(gridProvider), isA<Seeding>());

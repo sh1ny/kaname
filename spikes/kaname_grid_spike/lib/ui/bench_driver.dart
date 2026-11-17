@@ -129,7 +129,9 @@ class _BenchDriverState extends ConsumerState<BenchDriver> {
     final maxX = horizontal.position.maxScrollExtent;
     switch (step) {
       case BenchStep.calibrate:
-        await _calibrate(config.calibrate);
+        await _stillFrames(config.calibrate);
+      case BenchStep.settle:
+        await _stillFrames(BenchConfig.settle);
       case BenchStep.handSpeed:
         vertical.jumpTo(0);
         await _legs(vertical, config.handSpeed, config, token);
@@ -186,9 +188,10 @@ class _BenchDriverState extends ConsumerState<BenchDriver> {
   /// Runs an empty animation for [duration].
   ///
   /// The ticker asks for a frame at every display refresh while nothing in
-  /// the tree changes, so the frames are cheap and their spacing measures the
-  /// display, not how fast the grid draws.
-  Future<void> _calibrate(Duration duration) async {
+  /// the tree changes, so the frames are cheap: their spacing measures the
+  /// display, not how fast the grid draws (calibration), and they make the
+  /// web engine send its pending frame timings (settle).
+  Future<void> _stillFrames(Duration duration) async {
     final ticker = Ticker((_) {}, debugLabel: 'benchmark calibration')..start();
     try {
       await Future<void>.delayed(duration);

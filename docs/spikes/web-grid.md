@@ -16,6 +16,7 @@ The script, in order:
 4. **Horizontal scroll:** to the last column and back, 5s each way.
 5. **Operations:** filter text `a`, category filter, sort on name, quantity and a float column, group by category then by a second column, collapse all, expand all, clear the query. Then the same three sorts and two groupings again on all 200,000 rows, with no filter.
 6. **Resize:** one column to 320px.
+7. **Settle:** 0.5s of an empty animation, so the engine's last batched frame timings arrive. Not reported.
 
 **Metrics.** Times between frames come from persistent frame callbacks. Missed frames count skipped refreshes: each interval adds `max(0, round(interval / period) − 1)`. Work time is build plus raster time from `FrameTiming`. For each operation the spike records the engine time (the Dart query) and the time until on screen (from the call to the end of the first frame showing the new view, plus its raster time when reported).
 
@@ -33,8 +34,8 @@ The script, in order:
 - **Machine:** the owner's development PC, Intel Core i7-13700K, through WSL2 (6 logical CPUs and 23 GB visible to WSL).
 - **Browser:** Chrome for Testing 157.0.8103.78, headless, 1600×900 at device pixel ratio 1, refresh period 16.7ms (60Hz).
 - **GPU path:** software. WebGL runs on SwiftShader (`ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)`), because WSL gives headless Chrome no GPU.
-- **Load:** idle, confirmed by the owner; load average 0.58 before the run (just after the build).
-- **Date:** 2026-11-18. The first full run, on 2026-11-17, is kept in the evidence's "Earlier run" section for the crash below. It is not quoted here: it predates the pre-ship review fixes (frame timings matched to their own frames, calibration on an empty animation, full-set steps).
+- **Load:** idle, confirmed by the owner; load average 0.32 before the run.
+- **Date:** 2026-11-18. The first full run, on 2026-11-17, is kept in the evidence's "Earlier run" section for the crash below. It is not quoted here: it predates the pre-ship review fixes (frame timings matched to their own frames, calibration on an empty animation, full-set steps, the closing settle).
 
 ## Results
 
@@ -42,58 +43,57 @@ The script, in order:
 
 | Row | Missed | p99 | Work p90 | Ops ≤300ms | Verdict |
 |---|---|---|---|---|---|
-| skwasm multi-threaded | 0.1% | 16.67ms | 12.8ms | yes | **pass** |
-| skwasm single-threaded | 0.2% | 16.8ms | 12.6ms | yes | **pass** |
-| CanvasKit | 10.6% | 33.3ms | 19.8ms | yes | **miss** (missed frames, p99, work) |
+| skwasm multi-threaded | 0.08% | 16.67ms | 12.5ms | yes | **pass** |
+| skwasm single-threaded | 0.25% | 16.8ms | 12.4ms | yes | **pass** |
+| CanvasKit | 12.0% | 33.3ms | 19.3ms | yes | **miss** (missed frames, p99, work) |
 
 ### Stress headroom (not judged)
 
 | Row | Down: missed, p50 | Up: missed, p50 | Work p90 |
 |---|---|---|---|
-| skwasm multi-threaded | 47.9%, 33.3ms | 48.2%, 33.3ms | 81–85ms |
-| skwasm single-threaded | 57.2%, 33.4ms | 58.1%, 33.4ms | 37ms |
-| CanvasKit | 74.7%, 66.7ms | 73.8%, 66.7ms | 62–65ms |
+| skwasm multi-threaded | 47.6%, 33.3ms | 48.0%, 33.3ms | 82ms |
+| skwasm single-threaded | 57.3%, 33.4ms | 57.4%, 33.4ms | 37ms |
+| CanvasKit | 74.4%, 66.7ms | 73.9%, 66.7ms | 63–64ms |
 
 At about 200,000 px/s every frame shows new rows. skwasm holds 30 fps there and CanvasKit 15 fps. In the multi-threaded row, work time includes waiting on the render thread, so it is not comparable with the single-threaded figure.
 
-Horizontal scrolling (not judged) missed 0–4.3% of frames in every row. Its p99 reached 33.3ms for CanvasKit and 33.4ms on the single-threaded outward leg, just over the 33ms that S4 applies to the hand-speed segment.
+Horizontal scrolling (not judged) missed under 1% of frames on skwasm, with p99 at one refresh period. CanvasKit missed 1.0% on the way out and 7.3% on the way back, with p99 33.3ms.
 
 ### Operations
 
-Engine time and time until on screen, in milliseconds. A `*` marks an operation whose raster time never arrived. The web engine reports frame timings in batches at least 100ms apart, and the run ends before the last batch, so the last one or two operations count only to the end of their frame.
+Engine time and time until on screen (to the end of the first frame showing the new view, plus that frame's raster time), in milliseconds. Every operation has its raster time.
 
 | Operation | skwasm multi | skwasm single | CanvasKit |
 |---|---|---|---|
-| Filter text (200,000 → 151,114 rows) | 1.6 / 102 | 1.8 / 75 | 1.9 / 83 |
-| Category (→ 4,515 rows) | 5.7 / 82 | 2.1 / 64 | 1.5 / 78 |
-| Sort text (4,515 rows) | 3.8 / 58 | 7.1 / 52 | 2.7 / 67 |
-| Sort integer (4,515 rows) | 3.1 / 49 | 3.4 / 46 | 3.0 / 65 |
-| Sort float (4,515 rows) | 5.1 / 53 | 3.6 / 45 | 3.2 / 72 |
-| Group first (4,515 rows) | 3.2 / 47 | 5.8 / 47 | 3.1 / 68 |
-| Group second (4,515 rows) | 3.5 / 35 | 3.4 / 44 | 3.2 / 80 |
-| Collapse all | 0.0 / 33 | 0.0 / 27 | 0.1 / 61 |
-| Expand all | 0.0 / 157 | 0.0 / 38 | 0.0 / 73 |
-| Clear (→ 200,000 rows) | 0.2 / 187 | 0.2 / 90 | 0.3 / 141 |
-| Sort text, 200,000 rows | 66.6 / 252 | 74.4 / 147 | 48.2 / 193 |
-| Sort integer, 200,000 rows | 64.7 / 252 | 72.0 / 156 | 40.3 / 188 |
-| Sort float, 200,000 rows | 68.7 / 250 | 72.9 / 148 | 44.2 / 178 |
-| Group first, 200,000 rows | 77.6 / 130* | 82.6 / 166 | 50.5 / 183 |
-| Group second, 200,000 rows | 80.8 / 135* | 80.1 / 157* | 45.0 / 125* |
-| Resize column | n/a / 46* | n/a / 51* | n/a / 53* |
+| Filter text (200,000 → 151,114 rows) | 1.6 / 105 | 1.6 / 67 | 1.9 / 87 |
+| Category (→ 4,515 rows) | 2.0 / 68 | 1.9 / 65 | 1.5 / 75 |
+| Sort text (4,515 rows) | 6.5 / 58 | 3.3 / 45 | 2.7 / 71 |
+| Sort integer (4,515 rows) | 3.3 / 52 | 5.1 / 43 | 3.6 / 68 |
+| Sort float (4,515 rows) | 3.1 / 48 | 3.9 / 43 | 3.2 / 71 |
+| Group first (4,515 rows) | 4.5 / 46 | 3.1 / 41 | 3.0 / 78 |
+| Group second (4,515 rows) | 3.1 / 33 | 4.2 / 41 | 2.8 / 80 |
+| Collapse all | 0.0 / 36 | 0.0 / 25 | 0.1 / 65 |
+| Expand all | 0.0 / 165 | 0.1 / 35 | 0.0 / 83 |
+| Clear (→ 200,000 rows) | 0.2 / 190 | 0.2 / 75 | 0.5 / 154 |
+| Sort text, 200,000 rows | 69.8 / 254 | 69.5 / 132 | 43.6 / 198 |
+| Sort integer, 200,000 rows | 67.1 / 252 | 67.5 / 145 | 41.1 / 176 |
+| Sort float, 200,000 rows | 76.3 / **285** | 69.5 / 134 | 45.6 / 200 |
+| Group first, 200,000 rows | 76.1 / 193 | 84.6 / 155 | 50.2 / 206 |
+| Group second, 200,000 rows | 89.3 / 218 | 73.8 / 149 | 48.8 / 141 |
+| Resize column | n/a / 115 | n/a / 70 | n/a / 62 |
 
-Every operation reached the screen within 300ms. The slowest took 252ms: multi-threaded skwasm sorting all 200,000 rows, which leaves 48ms of headroom on this machine. Three things stand out:
+Every operation reached the screen within 300ms. The slowest took 285ms: multi-threaded skwasm sorting all 200,000 rows by a decimal column. That leaves 15ms of headroom on this machine. Single-threaded skwasm stays under 156ms, and CanvasKit under 206ms.
 
-- **Engine speed.** The Dart engine runs the full-set sorts and groupings in 64–83ms compiled to wasm (skwasm rows) and 40–51ms compiled to JavaScript (CanvasKit row).
-- **Raster time.** Multi-threaded raster times (10–134ms) run well above single-threaded ones (7–10ms), which is why that row's on-screen figures are the highest. The cause was not investigated: the render thread may queue frames.
-- **Unmeasured groupings.** The two multi-threaded full-set groupings have no raster time, so their on-screen figures are lower than the full-set sorts' and not comparable with them.
+- **Engine speed.** The Dart engine runs the full-set sorts and groupings in 67–89ms compiled to wasm (skwasm rows) and 41–50ms compiled to JavaScript (CanvasKit row).
+- **Multi-threaded raster.** Raster times there (10–154ms) run well above single-threaded ones (7–10ms), so that row's on-screen figures are the highest even though its engine times match. The cause was not investigated: the render thread may queue frames.
 
 ### Seed time
 
-Generating the 200,000 rows at startup: 44ms (skwasm multi-threaded), 43ms (single-threaded), 54ms (CanvasKit).
+Generating the 200,000 rows at startup: 43ms (skwasm multi-threaded), 43ms (single-threaded), 50ms (CanvasKit).
 
 ## Multi-threaded skwasm crash
 
-In the first full run (2026-11-17) the multi-threaded skwasm page threw `RuntimeError: memory access out of bounds` inside `skwasm.wasm`, called from the app's `main.dart.wasm`. It happened about 100s in, around the operations step. Every other multi-threaded run finished: two re-runs of that row, three shorter smoke runs and two later full runs, including the one quoted above. So the crash is intermittent: one failure in eight multi-threaded runs. The stack sits in the engine, not in spike code, and the spike has no native or unsafe code of its own. Single-threaded skwasm and CanvasKit never crashed. Before the product relies on multi-threaded skwasm, the crash needs a reproduction on the Flutter release in use and an upstream report.
+In the first full run (2026-11-17) the multi-threaded skwasm page threw `RuntimeError: memory access out of bounds` inside `skwasm.wasm`, called from the app's `main.dart.wasm`. It happened about 100s in, around the operations step. Every other multi-threaded run finished: two re-runs of that row, three shorter smoke runs and three later full runs, including the one quoted above. So the crash is intermittent: one failure in nine multi-threaded runs. The stack sits in the engine, not in spike code, and the spike has no native or unsafe code of its own. Single-threaded skwasm and CanvasKit never crashed. Before the product relies on multi-threaded skwasm, the crash needs a reproduction on the Flutter release in use and an upstream report.
 
 ## Caveats
 
@@ -106,10 +106,10 @@ In the first full run (2026-11-17) the multi-threaded skwasm page threw `Runtime
 
 **Go for skwasm; adjust for CanvasKit.**
 
-- skwasm passes S4 with a wide margin, single-threaded and multi-threaded, even on a software GPU: under 0.5% missed frames, p99 at one refresh period, and every operation on screen within 300ms, including sorting and grouping all 200,000 rows (at most 252ms).
-- CanvasKit misses S4 on this machine (10.6% missed frames, p99 33.3ms against 33ms, work p90 19.8ms). Operations stay within budget. With work p90 above one refresh period on a software rasteriser, raster cost is the likely cause, and real GPUs could clear it. The fix for this miss: treat CanvasKit as the fallback only for browsers without WasmGC, ship `--wasm` so capable browsers get skwasm, and let the owner's `?renderer=canvaskit` check decide whether the fallback is acceptable or needs work (for example fewer visible columns or lighter cell painting).
+- skwasm passes S4 with a wide margin, single-threaded and multi-threaded, even on a software GPU: under 0.5% missed frames, p99 at one refresh period, and every operation on screen within 300ms, including sorting and grouping all 200,000 rows. Single-threaded skwasm keeps the most margin (at most 156ms); multi-threaded reaches 285ms.
+- CanvasKit misses S4 on this machine (12.0% missed frames, p99 33.3ms against 33ms, work p90 19.3ms). Operations stay within budget. With work p90 above one refresh period on a software rasteriser, raster cost is the likely cause, and real GPUs could clear it. The fix for this miss: treat CanvasKit as the fallback only for browsers without WasmGC, ship `--wasm` so capable browsers get skwasm, and let the owner's `?renderer=canvaskit` check decide whether the fallback is acceptable or needs work (for example fewer visible columns or lighter cell painting).
 - The multi-threaded crash keeps multi-threaded skwasm from being the default until it is understood (above).
-- Full-set sorts leave 48ms of headroom here, most of it spent outside the Dart engine. On a slower machine they could miss. If they do, the fix is the one S4 names: run the query in a web worker, or page from the server (C5).
+- Multi-threaded full-set sorts leave 15ms of headroom here, most of their time spent outside the Dart engine. On a slower machine they could miss. If they do, the fix is the one S4 names: run the query in a web worker, or page from the server (C5).
 
 ## Recommendation: move the product web build to `--wasm`
 

@@ -38,6 +38,7 @@ String benchStepLabel(BenchStep step) => switch (step) {
   BenchStep.groupFirstFull => 'Group all rows by one column',
   BenchStep.groupSecondFull => 'Group all rows by another column',
   BenchStep.resize => 'Resize a column',
+  BenchStep.settle => 'Collecting the last frame timings',
 };
 
 /// The words for why a run stopped.

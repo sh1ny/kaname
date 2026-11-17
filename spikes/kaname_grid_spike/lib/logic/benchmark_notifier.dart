@@ -303,6 +303,7 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
       case BenchStep.resize:
         grid.resizeColumn(columns.categoryIndex, _resizeWidth);
       case BenchStep.calibrate ||
+          BenchStep.settle ||
           BenchStep.handSpeed ||
           BenchStep.stressDown ||
           BenchStep.stressUp ||
@@ -340,7 +341,11 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
     };
     final segments = <SegmentResult>[];
     for (final step in BenchStep.values) {
-      if (!step.isScroll || step == BenchStep.calibrate) continue;
+      if (!step.isScroll ||
+          step == BenchStep.calibrate ||
+          step == BenchStep.settle) {
+        continue;
+      }
       final work = [...?segmentWork[step]]..sort();
       segments.add(
         SegmentResult(

@@ -135,7 +135,8 @@ class BenchRig {
   }
 
   /// Plays the whole script: every scroll step with frames, every operation
-  /// with a frame [opDelay] after it started, then [afterOps] for the rest.
+  /// with a frame [opDelay] after it started, then [afterOp] for the rest.
+  /// Returns early when the run reaches [stopAt].
   ///
   /// An operation step advances in a microtask after its frame (the frame
   /// callback cannot schedule another frame), so this yields after each one.
@@ -144,9 +145,11 @@ class BenchRig {
     double intervalMs = 16.7,
     Duration opDelay = const Duration(milliseconds: 40),
     void Function(BenchStep step)? afterOp,
+    BenchStep? stopAt,
   }) async {
     while (state is Running) {
       final current = step!;
+      if (current == stopAt) return;
       if (current.isScroll) {
         finishScroll(frameCount: frameCount, intervalMs: intervalMs);
       } else {

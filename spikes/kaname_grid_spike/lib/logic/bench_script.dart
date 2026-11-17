@@ -8,8 +8,8 @@ library;
 
 /// What runs a [BenchStep].
 enum BenchStepKind {
-  /// The grid widget animates its scroll controllers and calls
-  /// `BenchmarkNotifier.stepDone`.
+  /// The grid widget runs the step (a scroll, or an empty animation while the
+  /// grid stays still) and calls `BenchmarkNotifier.stepDone`.
   scroll,
 
   /// `BenchmarkNotifier` calls a `GridNotifier` method and waits for the next
@@ -83,7 +83,11 @@ enum BenchStep {
   groupSecondFull(BenchStepKind.operation),
 
   /// Resizes one column.
-  resize(BenchStepKind.operation);
+  resize(BenchStepKind.operation),
+
+  /// Runs an empty animation so the last batched frame timings arrive before
+  /// the result is built; not reported as a segment.
+  settle(BenchStepKind.scroll);
 
   const BenchStep(this.kind);
 
@@ -148,12 +152,18 @@ final class BenchConfig {
   /// How long each way of the horizontal scroll takes.
   final Duration horizontalLeg;
 
+  /// How long the closing empty animation runs. The web engine sends frame
+  /// timings in batches at least 100ms apart, and only when a frame is drawn,
+  /// so 0.5s of frames brings in every pending timing.
+  static const Duration settle = Duration(milliseconds: 500);
+
   /// The planned duration of [step]. An operation has none.
   Duration planned(BenchStep step) => switch (step) {
     BenchStep.calibrate => calibrate,
     BenchStep.handSpeed => handSpeed,
     BenchStep.stressDown || BenchStep.stressUp => stressLeg,
     BenchStep.horizontalOut || BenchStep.horizontalBack => horizontalLeg,
+    BenchStep.settle => settle,
     _ => Duration.zero,
   };
 
