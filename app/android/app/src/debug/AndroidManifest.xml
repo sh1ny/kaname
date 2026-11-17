@@ -4,4 +4,8 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Development builds may call a local server over plain HTTP, such as
+         the self-host stack at http://10.0.2.2/api/ from the emulator.
+         Release builds keep Android's default and refuse plain HTTP. -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>
