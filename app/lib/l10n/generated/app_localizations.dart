@@ -201,6 +201,162 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Go to Home'**
   String get notFoundHome;
+
+  /// Heading of the Appearance section of Settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Appearance'**
+  String get settingsAppearance;
+
+  /// Heading of the Server section of Settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Server'**
+  String get settingsServer;
+
+  /// Heading of the About section of Settings.
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get settingsAbout;
+
+  /// Screen-reader name of the System, Dark or Light control.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme'**
+  String get themeChoiceLabel;
+
+  /// Theme choice that follows the operating system.
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get themeSystem;
+
+  /// Theme choice that is always dark.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get themeDark;
+
+  /// Theme choice that is always light.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get themeLight;
+
+  /// Message shown when the theme choice could not be stored; it still applies until the app closes.
+  ///
+  /// In en, this message translates to:
+  /// **'Your theme choice was not saved.'**
+  String get themeNotSaved;
+
+  /// Status bar text: the server answered and its dependencies are up.
+  ///
+  /// In en, this message translates to:
+  /// **'Server connected'**
+  String get serverStatusConnected;
+
+  /// Status bar text: the server answered but Postgres or Redis is down.
+  ///
+  /// In en, this message translates to:
+  /// **'Server connected with a dependency down'**
+  String get serverStatusDegraded;
+
+  /// Status bar text: a health check is running.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking server'**
+  String get serverStatusChecking;
+
+  /// Status bar text: the health check failed or timed out.
+  ///
+  /// In en, this message translates to:
+  /// **'Server unreachable'**
+  String get serverStatusUnreachable;
+
+  /// Status bar and Settings text: the build has no server address.
+  ///
+  /// In en, this message translates to:
+  /// **'No server configured'**
+  String get serverStatusNotConfigured;
+
+  /// Status bar text: the configured server address is not a valid http or https URL.
+  ///
+  /// In en, this message translates to:
+  /// **'Server address invalid'**
+  String get serverStatusInvalid;
+
+  /// Settings text: the configured server address is not an absolute http or https URL.
+  ///
+  /// In en, this message translates to:
+  /// **'The configured server address is invalid.'**
+  String get serverInvalidBody;
+
+  /// Settings text: the health check failed or timed out. Shows no technical detail.
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not be reached.'**
+  String get serverUnreachableBody;
+
+  /// Label of the server version in Settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get serverVersionLabel;
+
+  /// Label of the Postgres status in Settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Postgres'**
+  String get serverPostgresLabel;
+
+  /// Label of the Redis status in Settings.
+  ///
+  /// In en, this message translates to:
+  /// **'Redis'**
+  String get serverRedisLabel;
+
+  /// Status of a server dependency that is working.
+  ///
+  /// In en, this message translates to:
+  /// **'Up'**
+  String get serverDependencyUp;
+
+  /// Status of a server dependency that is not working.
+  ///
+  /// In en, this message translates to:
+  /// **'Down'**
+  String get serverDependencyDown;
+
+  /// Label of the control that asks the server for its health again.
+  ///
+  /// In en, this message translates to:
+  /// **'Check again'**
+  String get serverCheckAgain;
+
+  /// Label of the check-again control while a check is running.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking…'**
+  String get serverChecking;
+
+  /// Label of the app version in About.
+  ///
+  /// In en, this message translates to:
+  /// **'Version'**
+  String get aboutVersionLabel;
+
+  /// Label of the About row that opens the licence page.
+  ///
+  /// In en, this message translates to:
+  /// **'Licences'**
+  String get aboutLicences;
+
+  /// Label of the control that opens the licence page.
+  ///
+  /// In en, this message translates to:
+  /// **'View licences'**
+  String get aboutLicencesOpen;
 }
 
 class _AppLocalizationsDelegate

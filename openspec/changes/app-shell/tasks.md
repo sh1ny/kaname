@@ -31,26 +31,26 @@ All paths are under `app/test/`.
 | app-shell → Shell text is localised | Unsupported locale | `shell/localisation_test.dart` | ja-JP falls back to English without errors | green |
 | app-shell → Shell controls are reachable by keyboard and screen reader | Tab through the rail | `shell/accessibility_test.dart` | rail items take focus in order with the ring and selected semantics | green |
 | app-shell → Shell controls are reachable by keyboard and screen reader | Icon-only control without a label | `shell/accessibility_test.dart` | every icon-only shell control has a semantic label | green |
-| app-settings → Settings has Appearance, Server and About sections | Open Settings | `settings/settings_screen_test.dart` | sections appear in order Appearance, Server, About | red |
-| app-settings → Settings has Appearance, Server and About sections | Narrow window | `settings/settings_screen_test.dart` | at 390 sections stack with no overflow | red |
-| app-settings → The user chooses System, Dark or Light | Choose Light on a dark system | `settings/theme_choice_test.dart` | choosing Light on a dark system shows the light canvas next frame | red |
-| app-settings → The user chooses System, Dark or Light | System follows a later OS change | `settings/theme_choice_test.dart` | System follows an OS brightness change | red |
-| app-settings → The theme choice survives a restart | Restart after choosing Dark | `settings/theme_preference_store_test.dart` | Dark saved, then a new app start shows dark on the first frame | red |
+| app-settings → Settings has Appearance, Server and About sections | Open Settings | `settings/settings_screen_test.dart` | sections appear in order Appearance, Server, About | green |
+| app-settings → Settings has Appearance, Server and About sections | Narrow window | `settings/settings_screen_test.dart` | at 390 sections stack with no overflow | green |
+| app-settings → The user chooses System, Dark or Light | Choose Light on a dark system | `settings/theme_choice_test.dart` | choosing Light on a dark system shows the light canvas next frame | green |
+| app-settings → The user chooses System, Dark or Light | System follows a later OS change | `settings/theme_choice_test.dart` | System follows an OS brightness change | green |
+| app-settings → The theme choice survives a restart | Restart after choosing Dark | `settings/theme_preference_store_test.dart` | Dark saved, then a new app start shows dark on the first frame | green |
 | app-settings → The theme choice survives a restart | Unreadable stored value | `settings/theme_preference_store_test.dart` | missing, empty or unknown value reads as System | green |
-| app-settings → The theme choice survives a restart | Storage fails to save | `settings/theme_choice_test.dart` | failed save keeps the choice and shows the not-saved message | red |
-| app-settings → About shows the version and the licence page | Open licences | `settings/about_test.dart` | licence page lists Geist and Literata | red |
-| app-settings → About shows the version and the licence page | Back from licences | `settings/about_test.dart` | back from licences returns to Settings with the choice unchanged | red |
+| app-settings → The theme choice survives a restart | Storage fails to save | `settings/theme_choice_test.dart` | failed save keeps the choice and shows the not-saved message | green |
+| app-settings → About shows the version and the licence page | Open licences | `settings/about_test.dart` | licence page lists Geist and Literata | green |
+| app-settings → About shows the version and the licence page | Back from licences | `settings/about_test.dart` | back from licences returns to Settings with the choice unchanged | green |
 | app-server-connection → The web app talks to the server on its own origin | Served by the stack | `server/server_address_test.dart` | web with base http://127.0.0.1:8080/ targets /api/ on that origin | green |
 | app-server-connection → The web app talks to the server on its own origin | Served under another host name | `server/server_address_test.dart` | web target follows the base origin's host | green |
 | app-server-connection → The web app talks to the server on its own origin | Release web build given an address | `server/server_address_test.dart` | release web ignores the define | green |
 | app-server-connection → Desktop and mobile take an optional build-time server address | Address given | `server/server_address_test.dart` | native define http://127.0.0.1:8080/ is the target | green |
-| app-server-connection → Desktop and mobile take an optional build-time server address | No address | `server/server_status_test.dart` | no address gives NotConfigured, makes no call, and the UI shows No server configured | red |
-| app-server-connection → Desktop and mobile take an optional build-time server address | Invalid address | `server/server_status_test.dart` | address without a scheme gives InvalidAddress, makes no call, and Settings says invalid | red |
+| app-server-connection → Desktop and mobile take an optional build-time server address | No address | `server/server_status_test.dart` | no address gives NotConfigured, makes no call, and the UI shows No server configured | green |
+| app-server-connection → Desktop and mobile take an optional build-time server address | Invalid address | `server/server_status_test.dart` | address without a scheme gives InvalidAddress, makes no call, and Settings says invalid | green |
 | app-server-connection → The app calls the health endpoint at start and on request | Check again | `server/server_status_test.dart` | Check again makes one new call and replaces the answer | green |
 | app-server-connection → The app calls the health endpoint at start and on request | Double press | `server/server_status_test.dart` | two presses during a call share one call and show busy | green |
-| app-server-connection → The app shows the health answer | Everything up | `server/server_status_view_test.dart` | all up shows connected and version, Postgres up, Redis up | red |
-| app-server-connection → The app shows the health answer | Redis down | `server/server_status_view_test.dart` | Redis down shows text and error colour | red |
-| app-server-connection → An unreachable server is shown without internal detail | Server stopped | `server/server_status_test.dart` | failure or 10s time-out gives Unreachable with no exception text and the shell still navigates | red |
+| app-server-connection → The app shows the health answer | Everything up | `server/server_status_view_test.dart` | all up shows connected and version, Postgres up, Redis up | green |
+| app-server-connection → The app shows the health answer | Redis down | `server/server_status_view_test.dart` | Redis down shows text and error colour | green |
+| app-server-connection → An unreachable server is shown without internal detail | Server stopped | `server/server_status_test.dart` | failure or 10s time-out gives Unreachable with no exception text and the shell still navigates | green |
 | app-server-connection → An unreachable server is shown without internal detail | Server comes back | `server/server_status_test.dart` | Check again after Unreachable shows the new answer | green |
 | dependency-licences → Locked packages are classified by licence | Other Flutter SDK packages | `tools/kaname_tools/test/licences_test.dart` (outside `app/test/`) | every other Flutter SDK package is accepted as BSD-3-Clause without a licence file | green |
 
@@ -101,9 +101,9 @@ All paths are under `app/test/`.
 
 ## 6. Screens and wiring (S2, S3, C5)
 
-- [ ] 6.1 Write the failing `server/server_status_view_test.dart`, `settings/settings_screen_test.dart`, `settings/theme_choice_test.dart` and `settings/about_test.dart` tests (red).
-- [ ] 6.2 Implement the status-bar server indicator and the Settings screen: Appearance (a System, Dark or Light segmented control), Server (full answer, Check again, busy state, not configured, invalid, unreachable) and About (the version, plus a licence page through `showLicensePage` or a routed `LicensePage`). Use exhaustive switches over `ServerStatus` and `ThemeChoice`. Verify the 6.1 tests pass and flip their rows green.
-- [ ] 6.3 Rewrite `app/lib/main.dart` and `app/lib/app.dart`:
+- [x] 6.1 Write the failing `server/server_status_view_test.dart`, `settings/settings_screen_test.dart`, `settings/theme_choice_test.dart` and `settings/about_test.dart` tests (red).
+- [x] 6.2 Implement the status-bar server indicator and the Settings screen: Appearance (a System, Dark or Light segmented control), Server (full answer, Check again, busy state, not configured, invalid, unreachable) and About (the version, plus a licence page through `showLicensePage` or a routed `LicensePage`). Use exhaustive switches over `ServerStatus` and `ThemeChoice`. Verify the 6.1 tests pass and flip their rows green.
+- [x] 6.3 Rewrite `app/lib/main.dart` and `app/lib/app.dart`:
   - `main()` registers the font licences, calls `usePathUrlStrategy()`, creates the preferences (falling back on failure), reads the version, resolves `ServerAddress` from `kIsWeb`, `kDebugMode`, `KANAME_SERVER_URL` and `Uri.base`, and runs `ProviderScope` with overrides;
   - `KanameApp` uses `MaterialApp.router` with `themeAnimationDuration: Duration.zero`.
 

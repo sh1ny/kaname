@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kaname_app/settings/data/theme_preference_store.dart';
+import 'package:kaname_app/settings/ui/settings_keys.dart';
+import 'package:kaname_ember_ui/kaname_ember_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
+
+import '../support/pump_shell.dart';
 
 Future<SharedPreferencesThemePreferenceStore> _openStore() async {
   return SharedPreferencesThemePreferenceStore.create();
@@ -17,17 +21,45 @@ void main() {
     SharedPreferencesAsyncPlatform.instance = platform;
   });
 
-  test(
+  testWidgets(
     'Dark saved, then a new app start shows dark on the first frame',
-    () async {
-      final first = await _openStore();
-      await first.save(ThemeChoice.dark);
+    (tester) async {
+      final binding = TestWidgetsFlutterBinding.ensureInitialized();
+      addTearDown(binding.platformDispatcher.clearPlatformBrightnessTestValue);
+      late SharedPreferencesThemePreferenceStore second;
+      await tester.runAsync(() async {
+        final first = await _openStore();
+        await first.save(ThemeChoice.dark);
 
-      // A brand new cache over the same platform simulates an app restart.
-      final second = await _openStore();
+        // A brand new cache over the same platform simulates an app restart.
+        second = await _openStore();
+      });
 
       expect(second.read(), ThemeChoice.dark);
       expect(second.read().themeMode, ThemeMode.dark);
+
+      // The new start, on a light system: only the first frame is pumped.
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
+      await pumpShell(
+        tester,
+        location: '/settings',
+        size: const Size(1440, 900),
+        store: second,
+        settle: false,
+      );
+      expect(canvasOf(tester), EmberColors.dark.canvas);
+      expect(renderedCanvasOf(tester), EmberColors.dark.canvas);
+
+      final semantics = tester.ensureSemantics();
+      await tester.pumpAndSettle();
+      expect(
+        isSelectedNode(
+          tester,
+          find.byKey(SettingsKeys.themeOption(ThemeChoice.dark)),
+        ),
+        isTrue,
+      );
+      semantics.dispose();
     },
   );
 

@@ -1,11 +1,16 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kaname_app/server/data/server_address.dart';
 import 'package:kaname_app/server/logic/server_status.dart';
+import 'package:kaname_app/server/ui/server_keys.dart';
+import 'package:kaname_app/settings/ui/settings_keys.dart';
+import 'package:kaname_app/shell/ui/shell_keys.dart';
 import 'package:kaname_client/kaname_client.dart';
 
+import '../support/pump_shell.dart';
 import 'fake_server_health.dart';
 
 final _up = HealthReport(
@@ -37,20 +42,60 @@ ProviderContainer containerFor(
 );
 
 void main() {
-  test('no address gives NotConfigured, makes no call, and the UI shows '
-      'No server configured', () {
+  testWidgets('no address gives NotConfigured, makes no call, and the UI shows '
+      'No server configured', (tester) async {
     final fake = FakeServerHealth();
     final container = containerFor(fake, target: const NoServer());
     expect(container.read(serverStatusProvider), isA<NotConfigured>());
     expect(fake.calls, 0);
+
+    final harness = await pumpShell(
+      tester,
+      location: '/settings',
+      size: const Size(1440, 900),
+      health: fake,
+    );
+    expect(harness.container.read(serverStatusProvider), isA<NotConfigured>());
+    expect(fake.calls, 0);
+    expect(
+      find.descendant(
+        of: find.byKey(ServerKeys.indicator),
+        matching: find.text('No server configured'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(SettingsKeys.server),
+        matching: find.text('No server configured'),
+      ),
+      findsOneWidget,
+    );
   });
 
-  test('address without a scheme gives InvalidAddress, makes no call, and '
-      'Settings says invalid', () {
+  testWidgets('address without a scheme gives InvalidAddress, makes no call, '
+      'and Settings says invalid', (tester) async {
     final fake = FakeServerHealth();
     final container = containerFor(fake, target: const InvalidServer('x'));
     expect(container.read(serverStatusProvider), isA<InvalidAddress>());
     expect(fake.calls, 0);
+
+    await pumpShell(
+      tester,
+      location: '/settings',
+      size: const Size(1440, 900),
+      target: const InvalidServer('localhost'),
+      health: fake,
+    );
+    expect(fake.calls, 0);
+    expect(
+      find.descendant(
+        of: find.byKey(SettingsKeys.server),
+        matching: find.text('The configured server address is invalid.'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('localhost'), findsNothing);
   });
 
   test('the first check starts when the status is first read', () async {
@@ -104,13 +149,13 @@ void main() {
     expect(container.read(serverStatusProvider), _connected(_up));
   });
 
-  test('failure or 10s time-out gives Unreachable with no exception text and '
-      'the shell still navigates', () async {
+  testWidgets('failure or 10s time-out gives Unreachable with no exception '
+      'text and the shell still navigates', (tester) async {
     final fake = FakeServerHealth();
     final container = containerFor(fake);
     container.read(serverStatusProvider);
     fake.fail(StateError('connect to 10.0.0.5:8080 refused'));
-    await pumpEventQueue();
+    await tester.pump();
     expect(container.read(serverStatusProvider), isA<Unreachable>());
     expect(
       container.read(serverStatusProvider).toString(),
@@ -119,12 +164,45 @@ void main() {
 
     // A call that never answers is given up at the injected backstop; the
     // backstop is injected (10s in the app) so the test needs no fake clock.
-    final hung = FakeServerHealth();
-    final slow = containerFor(hung, timeout: const Duration(milliseconds: 20));
-    slow.read(serverStatusProvider);
-    expect(slow.read(serverStatusProvider), isA<Checking>());
-    await slow.read(serverStatusProvider.notifier).check();
-    expect(slow.read(serverStatusProvider), isA<Unreachable>());
+    await tester.runAsync(() async {
+      final hung = FakeServerHealth();
+      final slow = containerFor(
+        hung,
+        timeout: const Duration(milliseconds: 20),
+      );
+      slow.read(serverStatusProvider);
+      expect(slow.read(serverStatusProvider), isA<Checking>());
+      await slow.read(serverStatusProvider.notifier).check();
+      expect(slow.read(serverStatusProvider), isA<Unreachable>());
+    });
+
+    // The UI half: the failure shows as unreachable with no internal detail.
+    final shownFake = FakeServerHealth();
+    final harness = await pumpShell(
+      tester,
+      location: '/settings',
+      size: const Size(1440, 900),
+      target: _configured,
+      health: shownFake,
+    );
+    shownFake.fail(StateError('connect to 10.0.0.5:8080 refused'));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(ServerKeys.indicator),
+        matching: find.text('Server unreachable'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(ServerKeys.checkAgain), findsOneWidget);
+    for (final leak in ['10.0.0.5', '8080', 'refused', 'StateError']) {
+      expect(find.textContaining(leak), findsNothing, reason: leak);
+    }
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byKey(ShellKeys.rail('personal')));
+    await tester.pumpAndSettle();
+    expect(harness.router.routeInformationProvider.value.uri.path, '/personal');
   });
 
   test('the default backstop is 10 seconds', () {
