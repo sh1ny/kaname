@@ -108,7 +108,7 @@ See proposal.md for the why and the scope decisions S1–S8.
   2. **Hand-speed scroll:** 20s of vertical scrolling at 3,000 px/s, reversing at the ends. The S4 verdict is judged on this segment (owner's choice in round 1, S-a).
   3. **Stress traversal:** top to bottom in 30s, then back in 30s. This is reported as headroom, not judged.
   4. **Horizontal scroll:** to the last column and back, 5s each way.
-  5. **Operations:** apply filter text, a category filter, sort on three columns (text, integer, float), group by two columns, collapse and expand every group, then clear the query.
+  5. **Operations:** apply filter text, a category filter, sort on three columns (text, integer, float), group by two columns, collapse and expand every group, then clear the query. Then, on all 200,000 rows, sort on the same three columns and group by the same two columns, so S4's "filter, group or sort over 200,000 rows" is measured; the filtered steps stay as a smaller comparison (pre-ship review round 2, owner's choice).
   6. **Resize:** resize one column by script.
 
   **Who drives what** (M-2, owner's choice):
