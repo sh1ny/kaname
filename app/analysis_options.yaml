@@ -5,6 +5,8 @@ include:
 
 analyzer:
   exclude:
+    # gen-l10n output, committed and checked by `mise run l10n:check`.
+    - lib/l10n/generated/**
     # Generated platform projects.
     - build/**
     - android/**

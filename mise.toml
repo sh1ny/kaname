@@ -101,6 +101,10 @@ run = "dart run kaname_tools tokens --write"
 description = "Fail if the generated Ember UI tokens are stale or were edited by hand"
 run = "dart run kaname_tools tokens --check"
 
+[tasks."l10n:check"]
+description = "Fail if the app's committed gen-l10n output differs from a fresh generation in a temporary directory"
+run = "dart run kaname_tools l10n --check"
+
 [tasks.licences]
 description = "Check that every locked package's licence is allowed by licence-policy.yaml"
 run = "dart run kaname_tools licences --check"
@@ -218,6 +222,7 @@ run = [
   { task = "analyze" },
   { task = "format:check" },
   { task = "tokens:check" },
+  { task = "l10n:check" },
   { task = "test" },
   { task = "notices:check" },
   { task = "licences" },

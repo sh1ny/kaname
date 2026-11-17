@@ -1,0 +1,7 @@
+{
+  "@@locale": "en",
+  "appTitle": "Kaname",
+  "@appTitle": {
+    "description": "The app's name, shown in the window or browser tab title."
+  }
+}

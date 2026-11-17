@@ -61,8 +61,8 @@ All paths are under `app/test/`.
 
 ## 2. Localisation (S6, D7)
 
-- [ ] 2.1 Verify A1: set up gen-l10n. Add `app/l10n.yaml` (`arb-dir: lib/l10n`, `template-arb-file: app_en.arb`, `output-dir: lib/l10n/generated`, no synthetic package) and `flutter: generate: true`, then run `mise exec -- flutter gen-l10n` in `app/`. Verify the output appears in `lib/l10n/generated/`. If the pinned Flutter refuses this layout, stop for design drift.
-- [ ] 2.2 Commit the generated files, exclude `lib/l10n/generated/**` from `app/analysis_options.yaml`, and add a `l10n:check` mise task that regenerates into a temporary directory and fails on any difference. Wire it into `check` and the CI job that runs `check`. Verify that `mise run l10n:check` passes, and fails after a hand edit to the ARB without regeneration (revert afterwards).
+- [x] 2.1 Verify A1: set up gen-l10n. Add `app/l10n.yaml` (`arb-dir: lib/l10n`, `template-arb-file: app_en.arb`, `output-dir: lib/l10n/generated`, no synthetic package) and `flutter: generate: true`, then run `mise exec -- flutter gen-l10n` in `app/`. Verify the output appears in `lib/l10n/generated/`. If the pinned Flutter refuses this layout, stop for design drift.
+- [x] 2.2 Commit the generated files, exclude `lib/l10n/generated/**` from `app/analysis_options.yaml`, and add a `l10n:check` mise task that regenerates into a temporary directory and fails on any difference. Wire it into `check` and the CI job that runs `check`. Verify that `mise run l10n:check` passes, and fails after a hand edit to the ARB without regeneration (revert afterwards).
 
 ## 3. Server connection (S2, D3, D5)
 
