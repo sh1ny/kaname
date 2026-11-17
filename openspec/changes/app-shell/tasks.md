@@ -111,7 +111,7 @@ All paths are under `app/test/`.
 
 ## 7. Documentation
 
-- [ ] 7.1 Write `docs/guides/riverpod.md`, the project's Riverpod guide (ADR 0010):
+- [x] 7.1 Write `docs/guides/riverpod.md`, the project's Riverpod guide (ADR 0010):
   - providers live only in `logic/`, and `data/` code is plain Dart that never imports Riverpod;
   - no codegen and no `persist`;
   - `Notifier` with sealed states, as `ServerStatusNotifier` shows;
@@ -120,7 +120,7 @@ All paths are under `app/test/`.
   - where to put a new module.
 
   Carry C4: ADR 0010 already states it, and accepted ADRs are not edited. The guide restates it and links to the ADR. Link the guide from AGENTS.md's "Dart and Flutter code" section. Verify the link resolves and the guide names the pinned Riverpod version from `pubspec.lock`.
-- [ ] 7.2 Add the S4 bottom-navigation deviation to DESIGN.md's "What Kaname changes", and the inspector-stretch gap. Add a run note to `app/README.md` with `flutter run -d chrome --dart-define=KANAME_SERVER_URL=http://127.0.0.1:8080/` for debug web, and the same define for desktop and mobile. Verify by reading the rendered Markdown.
+- [x] 7.2 Add the S4 bottom-navigation deviation to DESIGN.md's "What Kaname changes", and the inspector-stretch gap. Add a run note to `app/README.md` with `flutter run -d chrome --dart-define=KANAME_SERVER_URL=http://127.0.0.1:8080/` for debug web, and the same define for desktop and mobile. Verify by reading the rendered Markdown.
 
 ## 8. Integration
 
