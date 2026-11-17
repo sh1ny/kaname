@@ -32,6 +32,11 @@ String benchStepLabel(BenchStep step) => switch (step) {
   BenchStep.collapseAll => 'Collapse all groups',
   BenchStep.expandAll => 'Expand all groups',
   BenchStep.clear => 'Clear the query',
+  BenchStep.sortTextFull => 'Sort all rows by text',
+  BenchStep.sortIntegerFull => 'Sort all rows by integer',
+  BenchStep.sortFloatFull => 'Sort all rows by decimal',
+  BenchStep.groupFirstFull => 'Group all rows by one column',
+  BenchStep.groupSecondFull => 'Group all rows by another column',
   BenchStep.resize => 'Resize a column',
 };
 

@@ -79,6 +79,34 @@ void main() {
     expect(cleared.filterText, isEmpty);
     expect(cleared.sortColumn, isNull);
     expect(cleared.groupColumn, isNull);
+
+    // Then the same sorts and groupings over all rows, with no filter.
+    Ready full(BenchStep step) => grids[step]!;
+    for (final step in [
+      BenchStep.sortTextFull,
+      BenchStep.sortIntegerFull,
+      BenchStep.sortFloatFull,
+      BenchStep.groupFirstFull,
+      BenchStep.groupSecondFull,
+    ]) {
+      expect(full(step).query.filterText, isEmpty, reason: step.name);
+      expect(full(step).query.categoryCode, isNull, reason: step.name);
+      expect(full(step).view.matched, rig.ready.columns.rowCount);
+    }
+    expect(
+      full(BenchStep.sortTextFull).query.sortColumn,
+      grids[BenchStep.sortText]!.query.sortColumn,
+    );
+    expect(
+      full(BenchStep.sortIntegerFull).query.sortColumn,
+      grids[BenchStep.sortInteger]!.query.sortColumn,
+    );
+    expect(
+      full(BenchStep.sortFloatFull).query.sortColumn,
+      grids[BenchStep.sortFloat]!.query.sortColumn,
+    );
+    expect(full(BenchStep.groupFirstFull).query.groupColumn, first);
+    expect(full(BenchStep.groupSecondFull).query.groupColumn, second);
     expect(rig.ready.widths[1], isNot(160), reason: 'resize changed a width');
     expect(rig.state, isA<Done>());
 

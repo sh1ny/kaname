@@ -281,18 +281,18 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
         grid.setFilter(_filterText);
       case BenchStep.category:
         grid.setCategory(0);
-      case BenchStep.sortText:
+      case BenchStep.sortText || BenchStep.sortTextFull:
         grid.sortBy(columns.nameIndex, direction: SortDirection.ascending);
-      case BenchStep.sortInteger:
+      case BenchStep.sortInteger || BenchStep.sortIntegerFull:
         grid.sortBy(columns.quantityIndex, direction: SortDirection.ascending);
-      case BenchStep.sortFloat:
+      case BenchStep.sortFloat || BenchStep.sortFloatFull:
         grid.sortBy(
           columns.totalValueIndex,
           direction: SortDirection.ascending,
         );
-      case BenchStep.groupFirst:
+      case BenchStep.groupFirst || BenchStep.groupFirstFull:
         grid.groupBy(columns.categoryIndex);
-      case BenchStep.groupSecond:
+      case BenchStep.groupSecond || BenchStep.groupSecondFull:
         grid.groupBy(_secondGroupColumn(columns));
       case BenchStep.collapseAll:
         grid.collapseAll();

@@ -129,8 +129,7 @@ class _BenchDriverState extends ConsumerState<BenchDriver> {
     final maxX = horizontal.position.maxScrollExtent;
     switch (step) {
       case BenchStep.calibrate:
-        vertical.jumpTo(0);
-        await _legs(vertical, config.calibrate, config, token);
+        await _calibrate(config.calibrate);
       case BenchStep.handSpeed:
         vertical.jumpTo(0);
         await _legs(vertical, config.handSpeed, config, token);
@@ -172,11 +171,30 @@ class _BenchDriverState extends ConsumerState<BenchDriver> {
           BenchStep.collapseAll ||
           BenchStep.expandAll ||
           BenchStep.clear ||
+          BenchStep.sortTextFull ||
+          BenchStep.sortIntegerFull ||
+          BenchStep.sortFloatFull ||
+          BenchStep.groupFirstFull ||
+          BenchStep.groupSecondFull ||
           BenchStep.resize:
         return;
     }
     if (token != _token || !mounted) return;
     ref.read(benchmarkProvider.notifier).stepDone(step);
+  }
+
+  /// Runs an empty animation for [duration].
+  ///
+  /// The ticker asks for a frame at every display refresh while nothing in
+  /// the tree changes, so the frames are cheap and their spacing measures the
+  /// display, not how fast the grid draws.
+  Future<void> _calibrate(Duration duration) async {
+    final ticker = Ticker((_) {}, debugLabel: 'benchmark calibration')..start();
+    try {
+      await Future<void>.delayed(duration);
+    } finally {
+      ticker.dispose();
+    }
   }
 
   /// Scrolls [controller] at the config's hand speed for [duration],

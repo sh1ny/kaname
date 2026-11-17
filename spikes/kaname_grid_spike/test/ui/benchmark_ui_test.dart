@@ -98,8 +98,15 @@ void main() {
     expect((state() as Running).step, BenchStep.calibrate);
     expect((state() as Running).config, BenchConfig.smoke);
 
-    // The widget runs the calibration scroll and reports back: the next step
-    // is the hand-speed scroll after the 2 s of the smoke calibration.
+    // Calibration runs an empty animation: frames come at the display's rate
+    // while the grid stays still.
+    await tester.pump(const Duration(milliseconds: 500));
+    expect((state() as Running).step, BenchStep.calibrate);
+    expect(gridKey.currentState!.verticalController.offset, 0);
+    expect(gridKey.currentState!.horizontalController.offset, 0);
+
+    // The widget reports back: the next step is the hand-speed scroll after
+    // the 2 s of the smoke calibration.
     for (var i = 0; i < 40; i++) {
       if ((state() as Running).step != BenchStep.calibrate) break;
       await tester.pump(const Duration(milliseconds: 100));

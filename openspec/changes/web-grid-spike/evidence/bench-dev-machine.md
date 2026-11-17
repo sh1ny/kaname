@@ -3,14 +3,14 @@
 - **Machine:** the owner's development PC, Intel Core i7-13700K, through WSL2 (Linux 6.18, 6 logical CPUs and 23 GB visible to WSL).
 - **Browser:** Chrome for Testing 157.0.8103.78, headless, viewport 1600×900 at device pixel ratio 1.
 - **GPU path:** software. WebGL reports `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)`. This is Chrome's own WebGL renderer string, recorded by the runner, not a copy of the `chrome://gpu` page. The runner launches Chrome with `--enable-unsafe-swiftshader` because WSL exposes no GPU to headless Chrome (A3).
-- **Load state:** the owner confirmed the machine idle ("i am done gaming", 2026-11-17); load average 0.05 before the first run and 0.58 before the second (the preceding build).
+- **Load state:** the owner confirmed the machine idle ("i am done gaming", 2026-11-17); load average 0.05 before the earlier run and 0.58 before the current one (the preceding build).
 - **Serving:** `kaname_tools serve` on loopback with COOP/COEP.
 
 The JSON below is the runner's output as written, except that the Chrome executable's absolute path is shortened to its path under the spike.
 
-## Current run (2026-11-18, about 00:40 local time)
+## Current run (2026-11-18, about 01:01 local time)
 
-`mise run bench:spike` after the pre-ship review fix that matches frame timings to their frames by frame number. The report quotes this run.
+`mise run bench:spike` after pre-ship review round 2: frame timings matched to their frames by frame number, calibration on an empty animation, and the full-set sort and group steps. The report quotes this run.
 
 ### skwasm multi-threaded
 
@@ -25,8 +25,8 @@ The JSON below is the runner's output as written, except that the Chrome executa
   "status": "done",
   "reason": null,
   "smoke": false,
-  "url": "http://127.0.0.1:37831/?bench=1&renderer=skwasm&threads=multi",
-  "elapsedSeconds": 94.978,
+  "url": "http://127.0.0.1:44793/?bench=1&renderer=skwasm&threads=multi",
+  "elapsedSeconds": 96.105,
   "environment": {
     "chromeExecutable": "build/chrome-for-testing/chrome-linux64/chrome",
     "chromeVersion": "Chrome/157.0.8103.78",
@@ -74,67 +74,67 @@ The JSON below is the runner's output as written, except that the Chrome executa
       "devicePixelRatio": 1
     },
     "refreshPeriodMs": 16.665,
-    "seedMs": 43.226,
+    "seedMs": 43.885,
     "droppedSamples": 0,
     "segments": {
       "handSpeed": {
         "judged": true,
         "plannedSeconds": 20,
-        "intervals": 1198,
-        "missedFrames": 3,
-        "missedRatio": 0.002497918401332223,
+        "intervals": 1200,
+        "missedFrames": 1,
+        "missedRatio": 0.0008326394671107411,
         "p50Ms": 16.665,
         "p90Ms": 16.67,
         "p99Ms": 16.67,
-        "maxMs": 66.66,
+        "maxMs": 33.33,
         "work": {
-          "samples": 1198,
-          "p90Ms": 12.154
+          "samples": 1200,
+          "p90Ms": 12.845
         }
       },
       "stressDown": {
         "judged": false,
         "plannedSeconds": 30,
-        "intervals": 939,
+        "intervals": 940,
         "missedFrames": 863,
-        "missedRatio": 0.47891231964483905,
+        "missedRatio": 0.4786466999445369,
         "p50Ms": 33.33,
-        "p90Ms": 49.995,
+        "p90Ms": 33.34,
         "p99Ms": 50,
         "maxMs": 66.665,
         "work": {
-          "samples": 939,
-          "p90Ms": 83.826
+          "samples": 940,
+          "p90Ms": 81.125
         }
       },
       "stressUp": {
         "judged": false,
         "plannedSeconds": 30,
-        "intervals": 938,
-        "missedFrames": 864,
-        "missedRatio": 0.4794672586015538,
+        "intervals": 934,
+        "missedFrames": 868,
+        "missedRatio": 0.4816870144284129,
         "p50Ms": 33.33,
         "p90Ms": 49.995,
         "p99Ms": 50,
-        "maxMs": 50,
+        "maxMs": 66.665,
         "work": {
-          "samples": 938,
-          "p90Ms": 82.506
+          "samples": 935,
+          "p90Ms": 84.83
         }
       },
       "horizontalOut": {
         "judged": false,
         "plannedSeconds": 5,
-        "intervals": 298,
-        "missedFrames": 3,
-        "missedRatio": 0.009966777408637873,
+        "intervals": 301,
+        "missedFrames": 0,
+        "missedRatio": 0,
         "p50Ms": 16.665,
         "p90Ms": 16.67,
         "p99Ms": 16.67,
-        "maxMs": 66.665,
+        "maxMs": 16.67,
         "work": {
-          "samples": 295,
-          "p90Ms": 13.699
+          "samples": 301,
+          "p90Ms": 11.82
         }
       },
       "horizontalBack": {
@@ -146,90 +146,125 @@ The JSON below is the runner's output as written, except that the Chrome executa
         "p50Ms": 16.665,
         "p90Ms": 16.67,
         "p99Ms": 16.67,
-        "maxMs": 33.33,
+        "maxMs": 33.335,
         "work": {
-          "samples": 300,
-          "p90Ms": 12.55
+          "samples": 297,
+          "p90Ms": 13.2
         }
       }
     },
     "operations": [
       {
         "step": "filter",
-        "engineMs": 1.674,
-        "untilFrameMs": 56.704,
-        "rasterMs": 47.04,
-        "untilOnScreenMs": 103.744
+        "engineMs": 1.64,
+        "untilFrameMs": 53.83,
+        "rasterMs": 47.9,
+        "untilOnScreenMs": 101.72999999999999
       },
       {
         "step": "category",
-        "engineMs": 2.056,
-        "untilFrameMs": 44.735,
-        "rasterMs": 28.864,
-        "untilOnScreenMs": 73.599
+        "engineMs": 5.67,
+        "untilFrameMs": 49.38,
+        "rasterMs": 32.805,
+        "untilOnScreenMs": 82.185
       },
       {
         "step": "sortText",
-        "engineMs": 3.43,
-        "untilFrameMs": 27.26,
-        "rasterMs": 24.5,
-        "untilOnScreenMs": 51.760000000000005
+        "engineMs": 3.845,
+        "untilFrameMs": 32.75,
+        "rasterMs": 25.54,
+        "untilOnScreenMs": 58.29
       },
       {
         "step": "sortInteger",
-        "engineMs": 5.505,
-        "untilFrameMs": 27.37,
-        "rasterMs": 26,
-        "untilOnScreenMs": 53.370000000000005
+        "engineMs": 3.07,
+        "untilFrameMs": 24.62,
+        "rasterMs": 24.12,
+        "untilOnScreenMs": 48.74
       },
       {
         "step": "sortFloat",
-        "engineMs": 3.271,
-        "untilFrameMs": 25,
-        "rasterMs": 24.51,
-        "untilOnScreenMs": 49.510000000000005
+        "engineMs": 5.11,
+        "untilFrameMs": 26.7,
+        "rasterMs": 26.36,
+        "untilOnScreenMs": 53.06
       },
       {
         "step": "groupFirst",
-        "engineMs": 4.61,
-        "untilFrameMs": 26.425,
-        "rasterMs": 21.724,
-        "untilOnScreenMs": 48.149
+        "engineMs": 3.18,
+        "untilFrameMs": 26.346,
+        "rasterMs": 21.13,
+        "untilOnScreenMs": 47.476
       },
       {
         "step": "groupSecond",
-        "engineMs": 3.245,
-        "untilFrameMs": 25.271,
-        "rasterMs": 10.32,
-        "untilOnScreenMs": 35.591
+        "engineMs": 3.49,
+        "untilFrameMs": 25.059,
+        "rasterMs": 10.12,
+        "untilOnScreenMs": 35.179
       },
       {
         "step": "collapseAll",
         "engineMs": 0.005,
-        "untilFrameMs": 10.889,
-        "rasterMs": 23.555,
-        "untilOnScreenMs": 34.444
+        "untilFrameMs": 10.57,
+        "rasterMs": 22.79,
+        "untilOnScreenMs": 33.36
       },
       {
         "step": "expandAll",
-        "engineMs": 0.03,
-        "untilFrameMs": 23.519,
-        "rasterMs": 64.52,
-        "untilOnScreenMs": 88.03899999999999
+        "engineMs": 0.035,
+        "untilFrameMs": 22.705,
+        "rasterMs": 133.855,
+        "untilOnScreenMs": 156.56
       },
       {
         "step": "clear",
-        "engineMs": 0.224,
-        "untilFrameMs": 64,
+        "engineMs": 0.23,
+        "untilFrameMs": 66.745,
+        "rasterMs": 120.365,
+        "untilOnScreenMs": 187.11
+      },
+      {
+        "step": "sortTextFull",
+        "engineMs": 66.625,
+        "untilFrameMs": 121.965,
+        "rasterMs": 130.141,
+        "untilOnScreenMs": 252.106
+      },
+      {
+        "step": "sortIntegerFull",
+        "engineMs": 64.65,
+        "untilFrameMs": 127.1,
+        "rasterMs": 125.35,
+        "untilOnScreenMs": 252.45
+      },
+      {
+        "step": "sortFloatFull",
+        "engineMs": 68.695,
+        "untilFrameMs": 117.03,
+        "rasterMs": 132.59,
+        "untilOnScreenMs": 249.62
+      },
+      {
+        "step": "groupFirstFull",
+        "engineMs": 77.62,
+        "untilFrameMs": 129.77,
         "rasterMs": null,
-        "untilOnScreenMs": 64
+        "untilOnScreenMs": 129.77
+      },
+      {
+        "step": "groupSecondFull",
+        "engineMs": 80.845,
+        "untilFrameMs": 135.395,
+        "rasterMs": null,
+        "untilOnScreenMs": 135.395
       },
       {
         "step": "resize",
         "engineMs": null,
-        "untilFrameMs": 42.83,
+        "untilFrameMs": 46.445,
         "rasterMs": null,
-        "untilOnScreenMs": 42.83
+        "untilOnScreenMs": 46.445
       }
     ],
     "verdict": {
@@ -256,8 +291,8 @@ The JSON below is the runner's output as written, except that the Chrome executa
   "status": "done",
   "reason": null,
   "smoke": false,
-  "url": "http://127.0.0.1:40367/?bench=1&renderer=skwasm&threads=single",
-  "elapsedSeconds": 95.189,
+  "url": "http://127.0.0.1:40177/?bench=1&renderer=skwasm&threads=single",
+  "elapsedSeconds": 96.271,
   "environment": {
     "chromeExecutable": "build/chrome-for-testing/chrome-linux64/chrome",
     "chromeVersion": "Chrome/157.0.8103.78",
@@ -305,55 +340,70 @@ The JSON below is the runner's output as written, except that the Chrome executa
       "devicePixelRatio": 1
     },
     "refreshPeriodMs": 16.7,
-    "seedMs": 43.8,
+    "seedMs": 43,
     "droppedSamples": 0,
     "segments": {
       "handSpeed": {
         "judged": true,
         "plannedSeconds": 20,
-        "intervals": 1197,
-        "missedFrames": 4,
-        "missedRatio": 0.0033305578684429643,
+        "intervals": 1199,
+        "missedFrames": 2,
+        "missedRatio": 0.0016652789342214821,
         "p50Ms": 16.7,
         "p90Ms": 16.7,
         "p99Ms": 16.8,
-        "maxMs": 83.3,
+        "maxMs": 50,
         "work": {
-          "samples": 1198,
-          "p90Ms": 12.2
+          "samples": 1200,
+          "p90Ms": 12.6
         }
       },
       "stressDown": {
         "judged": false,
         "plannedSeconds": 30,
-        "intervals": 765,
-        "missedFrames": 1037,
-        "missedRatio": 0.5754716981132075,
+        "intervals": 771,
+        "missedFrames": 1030,
+        "missedRatio": 0.5719044975013882,
         "p50Ms": 33.4,
         "p90Ms": 50,
-        "p99Ms": 66.7,
+        "p99Ms": 66.6,
         "maxMs": 66.7,
         "work": {
-          "samples": 766,
-          "p90Ms": 36.501
+          "samples": 772,
+          "p90Ms": 37
         }
       },
       "stressUp": {
         "judged": false,
         "plannedSeconds": 30,
-        "intervals": 752,
-        "missedFrames": 1049,
-        "missedRatio": 0.5824541921154914,
+        "intervals": 756,
+        "missedFrames": 1046,
+        "missedRatio": 0.5804661487236404,
         "p50Ms": 33.4,
         "p90Ms": 50,
-        "p99Ms": 66.699,
+        "p99Ms": 66.6,
         "maxMs": 66.7,
         "work": {
-          "samples": 753,
-          "p90Ms": 36.601
+          "samples": 757,
+          "p90Ms": 37.299
         }
       },
       "horizontalOut": {
+        "judged": false,
+        "plannedSeconds": 5,
+        "intervals": 288,
+        "missedFrames": 13,
+        "missedRatio": 0.04318936877076412,
+        "p50Ms": 16.7,
+        "p90Ms": 16.7,
+        "p99Ms": 33.4,
+        "maxMs": 33.5,
+        "work": {
+          "samples": 289,
+          "p90Ms": 11.401000000000002
+        }
+      },
+      "horizontalBack": {
         "judged": false,
         "plannedSeconds": 5,
         "intervals": 299,
@@ -362,105 +412,125 @@ The JSON below is the runner's output as written, except that the Chrome executa
         "p50Ms": 16.7,
         "p90Ms": 16.7,
         "p99Ms": 16.8,
-        "maxMs": 50,
+        "maxMs": 50.1,
         "work": {
           "samples": 300,
-          "p90Ms": 11.8
-        }
-      },
-      "horizontalBack": {
-        "judged": false,
-        "plannedSeconds": 5,
-        "intervals": 296,
-        "missedFrames": 5,
-        "missedRatio": 0.016611295681063124,
-        "p50Ms": 16.7,
-        "p90Ms": 16.7,
-        "p99Ms": 33.3,
-        "maxMs": 50,
-        "work": {
-          "samples": 297,
-          "p90Ms": 11.8
+          "p90Ms": 11.7
         }
       }
     },
     "operations": [
       {
         "step": "filter",
-        "engineMs": 1.599,
-        "untilFrameMs": 60.401,
-        "rasterMs": 9.101,
-        "untilOnScreenMs": 69.50200000000001
+        "engineMs": 1.8,
+        "untilFrameMs": 65.6,
+        "rasterMs": 9.8,
+        "untilOnScreenMs": 75.39999999999999
       },
       {
         "step": "category",
-        "engineMs": 2,
-        "untilFrameMs": 55.5,
-        "rasterMs": 9.2,
-        "untilOnScreenMs": 64.7
+        "engineMs": 2.1,
+        "untilFrameMs": 53.801,
+        "rasterMs": 9.9,
+        "untilOnScreenMs": 63.701
       },
       {
         "step": "sortText",
-        "engineMs": 3.5,
-        "untilFrameMs": 36.7,
-        "rasterMs": 8.3,
-        "untilOnScreenMs": 45
+        "engineMs": 7.1,
+        "untilFrameMs": 42.801,
+        "rasterMs": 9.3,
+        "untilOnScreenMs": 52.101
       },
       {
         "step": "sortInteger",
-        "engineMs": 4.8,
-        "untilFrameMs": 34,
-        "rasterMs": 9.101,
-        "untilOnScreenMs": 43.101
+        "engineMs": 3.4,
+        "untilFrameMs": 36.801,
+        "rasterMs": 9.6,
+        "untilOnScreenMs": 46.401
       },
       {
         "step": "sortFloat",
-        "engineMs": 3.2,
-        "untilFrameMs": 33.801,
-        "rasterMs": 9,
-        "untilOnScreenMs": 42.801
+        "engineMs": 3.6,
+        "untilFrameMs": 36.1,
+        "rasterMs": 8.401,
+        "untilOnScreenMs": 44.501000000000005
       },
       {
         "step": "groupFirst",
-        "engineMs": 3.101,
-        "untilFrameMs": 34.6,
-        "rasterMs": 10.299,
-        "untilOnScreenMs": 44.899
+        "engineMs": 5.8,
+        "untilFrameMs": 37,
+        "rasterMs": 9.5,
+        "untilOnScreenMs": 46.5
       },
       {
         "step": "groupSecond",
-        "engineMs": 3.401,
-        "untilFrameMs": 33.101,
-        "rasterMs": 9.4,
-        "untilOnScreenMs": 42.501
+        "engineMs": 3.4,
+        "untilFrameMs": 35.3,
+        "rasterMs": 9,
+        "untilOnScreenMs": 44.3
       },
       {
         "step": "collapseAll",
         "engineMs": 0,
-        "untilFrameMs": 19,
-        "rasterMs": 6.899,
-        "untilOnScreenMs": 25.899
+        "untilFrameMs": 19.201,
+        "rasterMs": 7.401,
+        "untilOnScreenMs": 26.602
       },
       {
         "step": "expandAll",
-        "engineMs": 0.101,
-        "untilFrameMs": 26.7,
-        "rasterMs": 7.801,
-        "untilOnScreenMs": 34.501
+        "engineMs": 0,
+        "untilFrameMs": 28.7,
+        "rasterMs": 9.1,
+        "untilOnScreenMs": 37.8
       },
       {
         "step": "clear",
-        "engineMs": 0.3,
-        "untilFrameMs": 72.8,
-        "rasterMs": 8.7,
-        "untilOnScreenMs": 81.5
+        "engineMs": 0.199,
+        "untilFrameMs": 80.4,
+        "rasterMs": 10,
+        "untilOnScreenMs": 90.4
+      },
+      {
+        "step": "sortTextFull",
+        "engineMs": 74.4,
+        "untilFrameMs": 137.5,
+        "rasterMs": 9.3,
+        "untilOnScreenMs": 146.8
+      },
+      {
+        "step": "sortIntegerFull",
+        "engineMs": 72,
+        "untilFrameMs": 146.2,
+        "rasterMs": 9.6,
+        "untilOnScreenMs": 155.79999999999998
+      },
+      {
+        "step": "sortFloatFull",
+        "engineMs": 72.9,
+        "untilFrameMs": 139.4,
+        "rasterMs": 8.799,
+        "untilOnScreenMs": 148.199
+      },
+      {
+        "step": "groupFirstFull",
+        "engineMs": 82.6,
+        "untilFrameMs": 155.8,
+        "rasterMs": 9.9,
+        "untilOnScreenMs": 165.70000000000002
+      },
+      {
+        "step": "groupSecondFull",
+        "engineMs": 80.1,
+        "untilFrameMs": 156.6,
+        "rasterMs": null,
+        "untilOnScreenMs": 156.6
       },
       {
         "step": "resize",
         "engineMs": null,
-        "untilFrameMs": 44.299,
+        "untilFrameMs": 50.699,
         "rasterMs": null,
-        "untilOnScreenMs": 44.299
+        "untilOnScreenMs": 50.699
       }
     ],
     "verdict": {
@@ -487,8 +557,8 @@ The JSON below is the runner's output as written, except that the Chrome executa
   "status": "done",
   "reason": null,
   "smoke": false,
-  "url": "http://127.0.0.1:46733/?bench=1&renderer=canvaskit&threads=na",
-  "elapsedSeconds": 96.324,
+  "url": "http://127.0.0.1:43799/?bench=1&renderer=canvaskit&threads=na",
+  "elapsedSeconds": 96.088,
   "environment": {
     "chromeExecutable": "build/chrome-for-testing/chrome-linux64/chrome",
     "chromeVersion": "Chrome/157.0.8103.78",
@@ -536,162 +606,197 @@ The JSON below is the runner's output as written, except that the Chrome executa
       "devicePixelRatio": 1
     },
     "refreshPeriodMs": 16.665,
-    "seedMs": 50.784,
+    "seedMs": 54.074,
     "droppedSamples": 0,
     "segments": {
       "handSpeed": {
         "judged": true,
         "plannedSeconds": 20,
-        "intervals": 1079,
-        "missedFrames": 123,
-        "missedRatio": 0.10232945091514144,
+        "intervals": 1074,
+        "missedFrames": 127,
+        "missedRatio": 0.10574521232306411,
         "p50Ms": 16.665,
         "p90Ms": 33.33,
         "p99Ms": 33.335,
-        "maxMs": 99.995,
+        "maxMs": 50,
         "work": {
-          "samples": 1080,
-          "p90Ms": 18.652
+          "samples": 1075,
+          "p90Ms": 19.802
         }
       },
       "stressDown": {
         "judged": false,
         "plannedSeconds": 30,
-        "intervals": 474,
-        "missedFrames": 1328,
-        "missedRatio": 0.7369589345172031,
+        "intervals": 456,
+        "missedFrames": 1346,
+        "missedRatio": 0.7469478357380688,
         "p50Ms": 66.665,
-        "p90Ms": 66.665,
+        "p90Ms": 66.67,
         "p99Ms": 83.335,
-        "maxMs": 99.995,
+        "maxMs": 83.335,
         "work": {
-          "samples": 475,
-          "p90Ms": 60.825
+          "samples": 457,
+          "p90Ms": 64.865
         }
       },
       "stressUp": {
         "judged": false,
         "plannedSeconds": 30,
-        "intervals": 479,
-        "missedFrames": 1322,
-        "missedRatio": 0.7340366463076069,
+        "intervals": 473,
+        "missedFrames": 1329,
+        "missedRatio": 0.7375138734739178,
         "p50Ms": 66.665,
         "p90Ms": 66.67,
         "p99Ms": 83.33,
-        "maxMs": 83.335,
+        "maxMs": 99.995,
         "work": {
-          "samples": 480,
-          "p90Ms": 59.801
+          "samples": 474,
+          "p90Ms": 61.55
         }
       },
       "horizontalOut": {
         "judged": false,
         "plannedSeconds": 5,
-        "intervals": 287,
-        "missedFrames": 14,
-        "missedRatio": 0.046511627906976744,
+        "intervals": 294,
+        "missedFrames": 7,
+        "missedRatio": 0.023255813953488372,
         "p50Ms": 16.665,
         "p90Ms": 16.67,
-        "p99Ms": 33.335,
-        "maxMs": 66.66,
+        "p99Ms": 33.33,
+        "maxMs": 49.995,
         "work": {
-          "samples": 288,
-          "p90Ms": 16.739
+          "samples": 295,
+          "p90Ms": 16.326
         }
       },
       "horizontalBack": {
         "judged": false,
         "plannedSeconds": 5,
-        "intervals": 286,
-        "missedFrames": 15,
-        "missedRatio": 0.04983388704318937,
+        "intervals": 291,
+        "missedFrames": 10,
+        "missedRatio": 0.03322259136212625,
         "p50Ms": 16.665,
         "p90Ms": 16.67,
-        "p99Ms": 33.335,
+        "p99Ms": 33.33,
         "maxMs": 66.665,
         "work": {
-          "samples": 287,
-          "p90Ms": 17.13
+          "samples": 292,
+          "p90Ms": 16.325
         }
       }
     },
     "operations": [
       {
         "step": "filter",
-        "engineMs": 1.696,
-        "untilFrameMs": 69.155,
-        "rasterMs": 12.969,
-        "untilOnScreenMs": 82.124
+        "engineMs": 1.885,
+        "untilFrameMs": 69.095,
+        "rasterMs": 13.985,
+        "untilOnScreenMs": 83.08
       },
       {
         "step": "category",
-        "engineMs": 1.609,
-        "untilFrameMs": 62.505,
-        "rasterMs": 14.06,
-        "untilOnScreenMs": 76.565
+        "engineMs": 1.49,
+        "untilFrameMs": 63.945,
+        "rasterMs": 14.051,
+        "untilOnScreenMs": 77.996
       },
       {
         "step": "sortText",
-        "engineMs": 2.675,
-        "untilFrameMs": 50.765,
-        "rasterMs": 13.786,
-        "untilOnScreenMs": 64.551
+        "engineMs": 2.685,
+        "untilFrameMs": 52.535,
+        "rasterMs": 14.545,
+        "untilOnScreenMs": 67.08
       },
       {
         "step": "sortInteger",
-        "engineMs": 2.764,
-        "untilFrameMs": 53.659,
-        "rasterMs": 14.271,
-        "untilOnScreenMs": 67.93
+        "engineMs": 3.029,
+        "untilFrameMs": 50.765,
+        "rasterMs": 14.3,
+        "untilOnScreenMs": 65.065
       },
       {
         "step": "sortFloat",
-        "engineMs": 2.879,
-        "untilFrameMs": 48.164,
-        "rasterMs": 13.325,
-        "untilOnScreenMs": 61.489000000000004
+        "engineMs": 3.174,
+        "untilFrameMs": 57.366,
+        "rasterMs": 14.406,
+        "untilOnScreenMs": 71.772
       },
       {
         "step": "groupFirst",
-        "engineMs": 2.591,
-        "untilFrameMs": 52.031,
-        "rasterMs": 14.216,
-        "untilOnScreenMs": 66.247
+        "engineMs": 3.06,
+        "untilFrameMs": 52.884,
+        "rasterMs": 14.985,
+        "untilOnScreenMs": 67.869
       },
       {
         "step": "groupSecond",
-        "engineMs": 2.971,
-        "untilFrameMs": 50.656,
-        "rasterMs": 23.016,
-        "untilOnScreenMs": 73.672
+        "engineMs": 3.164,
+        "untilFrameMs": 54.81,
+        "rasterMs": 25.55,
+        "untilOnScreenMs": 80.36
       },
       {
         "step": "collapseAll",
-        "engineMs": 0.044,
-        "untilFrameMs": 45.765,
-        "rasterMs": 10.119,
-        "untilOnScreenMs": 55.884
+        "engineMs": 0.059,
+        "untilFrameMs": 50.67,
+        "rasterMs": 10.776,
+        "untilOnScreenMs": 61.446
       },
       {
         "step": "expandAll",
         "engineMs": 0.01,
-        "untilFrameMs": 59.98,
-        "rasterMs": 11.604,
-        "untilOnScreenMs": 71.584
+        "untilFrameMs": 60.981,
+        "rasterMs": 11.62,
+        "untilOnScreenMs": 72.601
       },
       {
         "step": "clear",
-        "engineMs": 0.285,
-        "untilFrameMs": 78.96,
+        "engineMs": 0.324,
+        "untilFrameMs": 79.656,
+        "rasterMs": 60.96,
+        "untilOnScreenMs": 140.616
+      },
+      {
+        "step": "sortTextFull",
+        "engineMs": 48.245,
+        "untilFrameMs": 140.169,
+        "rasterMs": 52.41,
+        "untilOnScreenMs": 192.579
+      },
+      {
+        "step": "sortIntegerFull",
+        "engineMs": 40.275,
+        "untilFrameMs": 133.255,
+        "rasterMs": 54.93,
+        "untilOnScreenMs": 188.185
+      },
+      {
+        "step": "sortFloatFull",
+        "engineMs": 44.215,
+        "untilFrameMs": 116.8,
+        "rasterMs": 60.72,
+        "untilOnScreenMs": 177.51999999999998
+      },
+      {
+        "step": "groupFirstFull",
+        "engineMs": 50.506,
+        "untilFrameMs": 126.595,
+        "rasterMs": 56.75,
+        "untilOnScreenMs": 183.345
+      },
+      {
+        "step": "groupSecondFull",
+        "engineMs": 44.975,
+        "untilFrameMs": 125.195,
         "rasterMs": null,
-        "untilOnScreenMs": 78.96
+        "untilOnScreenMs": 125.195
       },
       {
         "step": "resize",
         "engineMs": null,
-        "untilFrameMs": 83.005,
+        "untilFrameMs": 52.995,
         "rasterMs": null,
-        "untilOnScreenMs": 83.005
+        "untilOnScreenMs": 52.995
       }
     ],
     "verdict": {
@@ -743,7 +848,7 @@ The JSON below is the runner's output as written, except that the Chrome executa
 
 ## Earlier run (2026-11-17, about 23:20 to 23:35 local time)
 
-The first `mise run bench:spike`, before that fix: raster times could be credited to the wrong frame, and work timings that arrived late were counted to the step running when they arrived. The multi-threaded row crashed; `mise run bench:spike:run -- --row skwasm-threaded --out build/grid-bench-retry<n>` re-ran it twice. Kept for the crash record.
+The first `mise run bench:spike`, before the pre-ship review fixes: raster times could be credited to the wrong frame, and work timings that arrived late were counted to the step running when they arrived. The multi-threaded row crashed; `mise run bench:spike:run -- --row skwasm-threaded --out build/grid-bench-retry<n>` re-ran it twice. Kept for the crash record.
 
 ### Full run, skwasm multi-threaded (failed)
 

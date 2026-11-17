@@ -67,6 +67,21 @@ enum BenchStep {
   /// Clears the query.
   clear(BenchStepKind.operation),
 
+  /// Sorts all rows by the text column of [sortText].
+  sortTextFull(BenchStepKind.operation),
+
+  /// Sorts all rows by the integer column of [sortInteger].
+  sortIntegerFull(BenchStepKind.operation),
+
+  /// Sorts all rows by the float column of [sortFloat].
+  sortFloatFull(BenchStepKind.operation),
+
+  /// Groups all rows by the column of [groupFirst].
+  groupFirstFull(BenchStepKind.operation),
+
+  /// Groups all rows by the column of [groupSecond].
+  groupSecondFull(BenchStepKind.operation),
+
   /// Resizes one column.
   resize(BenchStepKind.operation);
 
