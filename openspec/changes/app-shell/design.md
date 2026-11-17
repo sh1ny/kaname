@@ -115,11 +115,11 @@ TIER: FULL
 
 ### D11: The segmented control lives in kaname_ember_ui
 
-- **Choice:** the System/Dark/Light control is a generic `EmberSegmentedControl<T>` in `app_packages/kaname_ember_ui`, exported from the package and drawn as DESIGN.md's "Segmented controls": a pill track of 24px pill options, the selected one with the segment fill, Ink and the Seated shadow, and the 2-pixel Focus outline 2 pixels outside the focused option through `EmberFocusBorder.pill`. Options take focus in order with Tab and activate with Enter or Space. The package's focus test covers it in both themes, which the existing ember-ui requirement "Keyboard focus is always visible" already asks of every styled control, so no requirement changes. The package's theme doc comment, which says the first change that needs one builds it in the package with its own focus test, is updated. The app's Appearance section uses it, and `app/lib/settings/ui/theme_segmented.dart` is removed. Found during apply: group 6 built the control inside the app, against that package note.
+- **Choice:** the System/Dark/Light control is a generic `EmberSegmentedControl<T>` in `app_packages/kaname_ember_ui`, exported from the package and drawn as DESIGN.md's "Segmented controls": a pill track of 24px pill options, the selected one with the segment fill, Ink and the Seated shadow, and the 2-pixel Focus outline 2 pixels outside the focused option through `EmberFocusBorder.pill`. The focused option's ring is painted above its neighbours, so a selected or hovered neighbour cannot cover it. Options take focus in order with Tab and activate with Enter or Space. Each option carries a screen-reader label, the selected state and mutual exclusion, and the whole control a group label; the caller gives each option's key, so the app keeps `SettingsKeys.themeOption`. The ember-ui requirement "Keyboard focus is always visible" is modified to name segmented-control options beside buttons, icon buttons and chips, with a scenario for an option next to the selected one; the package's focus test covers it in both themes. Unlike D4's shell widgets, the control carries no routing or slot behaviour, and DESIGN.md already names a second consumer (the inspector's tabbed header). The package's theme doc comment, which says the first change that needs one builds it in the package with its own focus test, is updated. The app's Appearance section uses it, and `app/lib/settings/ui/theme_segmented.dart` is removed. Found during apply: group 6 built the control inside the app, against that package note.
 - **Rejected:** keeping it in the app (the package note names this case, and a second screen would copy it); Material `SegmentedButton` themed toward Ember (it clips rectangular segments, so neither pills nor the focus ring can come from a theme).
 - **Reversal cost:** low
-- **Important:** no. Users see the same control.
-- **Chosen by:** user (decided by the owner during apply, after group 6)
+- **Important:** yes. It adds a public design-system API that later screens bind to, and modifies a main spec.
+- **Chosen by:** user (decided by the owner during apply, after group 6; the spec delta chosen after the design re-review)
 
 ### Decision summary
 
@@ -144,7 +144,7 @@ TIER: FULL
 | D8 | Stack proof | `[evidence]` task with headless browser | CI e2e job; widget tests only | low | no | user |
 | D9 | App version | `package_info_plus` behind `AppVersionSource`, read before `runApp` | Build define; generated constant | low | yes | user |
 | D10 | SDK package licences | Every `source: sdk` package except `sky_engine` is BSD-3-Clause; `dependency-licences` modified | Name the two packages; policy exceptions | low | yes | user |
-| D11 | Segmented control | `EmberSegmentedControl` in `kaname_ember_ui` with a focus test; app uses it | Keep in app; themed `SegmentedButton` | low | no | user |
+| D11 | Segmented control | `EmberSegmentedControl` in `kaname_ember_ui` with a focus test; app uses it; `ember-ui` modified | Keep in app; themed `SegmentedButton` | low | yes | user |
 
 ## Assumptions
 

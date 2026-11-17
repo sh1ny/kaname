@@ -44,7 +44,7 @@ Non-goals (S8): sign-in or SSO, a server-address UI, a command palette, any modu
 
 ### Modified Capabilities
 - `dependency-licences`: every package taken from the Flutter SDK, not only `flutter` and `flutter_test`, takes the Flutter SDK's licence (BSD-3-Clause), as the notices check already treats them. The app's new SDK dependencies `flutter_localizations` and `flutter_web_plugins` have no licence file of their own, so the licence check failed on them (D10).
-- The `ember-ui` requirement already allows a user theme choice ("while the user has not chosen a theme"), and `server-health` is unchanged.
+- `ember-ui`: "Keyboard focus is always visible" names segmented-control options beside buttons, icon buttons and chips, and adds a scenario for an option next to the selected one (D11). The requirement already allowing a user theme choice ("while the user has not chosen a theme") is unchanged, and so is `server-health`.
 
 ## Impact
 
