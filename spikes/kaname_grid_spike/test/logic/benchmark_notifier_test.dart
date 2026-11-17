@@ -134,6 +134,68 @@ void main() {
     expect((rig.state as Aborted).reason, 'cancelled');
   });
 
+  test('late, batched frame timings go to their own frames', () async {
+    // The web engine reports frame timings in batches at least 100 ms
+    // apart, so a timing usually arrives after its step has moved on.
+    final rig = await benchRig();
+    rig.notifier.run(config: BenchConfig.smoke);
+    rig.finishScroll(frameCount: 11);
+
+    // Hand-speed frames whose timings arrive only during the next step.
+    final handFrames = <int>[];
+    for (var i = 0; i < 5; i++) {
+      rig.frames(1);
+      handFrames.add(rig.lastFrame);
+    }
+    rig.notifier.stepDone(BenchStep.handSpeed);
+    expect(rig.step, BenchStep.stressDown);
+    rig.frames(3);
+    final stressFrame = rig.lastFrame;
+    for (final frame in handFrames) {
+      rig.notifier.recordWork(frameNumber: frame, buildMs: 2, rasterMs: 3);
+    }
+    rig.notifier.recordWork(
+      frameNumber: stressFrame,
+      buildMs: 20,
+      rasterMs: 30,
+    );
+    rig.notifier.stepDone(BenchStep.stressDown);
+    while (rig.step!.isScroll) {
+      rig.finishScroll();
+    }
+
+    // Two operations end on their frames; both timings arrive in one batch
+    // after the second, oldest first.
+    expect(rig.step, BenchStep.filter);
+    rig.frames(1);
+    final filterFrame = rig.lastFrame;
+    await Future<void>.value();
+    expect(rig.step, BenchStep.category);
+    rig.frames(1);
+    final categoryFrame = rig.lastFrame;
+    await Future<void>.value();
+    rig.notifier
+      ..recordWork(frameNumber: filterFrame, buildMs: 1, rasterMs: 7)
+      ..recordWork(frameNumber: categoryFrame, buildMs: 1, rasterMs: 9);
+    await rig.playAll();
+
+    final result = (rig.state as Done).result;
+    final hand = result.segments.firstWhere(
+      (s) => s.step == BenchStep.handSpeed,
+    );
+    final stress = result.segments.firstWhere(
+      (s) => s.step == BenchStep.stressDown,
+    );
+    expect(hand.workSamples, 5);
+    expect(hand.workP90Ms, 5);
+    expect(stress.workSamples, 1);
+    expect(stress.workP90Ms, 50);
+    final raster = {for (final op in result.operations) op.step: op.rasterMs};
+    expect(raster[BenchStep.filter], 7);
+    expect(raster[BenchStep.category], 9);
+    expect(raster[BenchStep.sortText], isNull);
+  });
+
   test('a run needs a ready grid', () async {
     final rig = await benchRig(seed: false);
     expect(rig.container.read(gridProvider), isA<Seeding>());

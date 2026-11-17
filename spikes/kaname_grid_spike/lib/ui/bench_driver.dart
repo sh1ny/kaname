@@ -9,6 +9,7 @@
 library;
 
 import 'dart:async';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -58,7 +59,12 @@ class _BenchDriverState extends ConsumerState<BenchDriver> {
 
   void _onFrame(Duration timeStamp) {
     if (!mounted) return;
-    ref.read(benchmarkProvider.notifier).recordFrame(timeStamp);
+    ref
+        .read(benchmarkProvider.notifier)
+        .recordFrame(
+          timeStamp,
+          frameNumber: PlatformDispatcher.instance.frameData.frameNumber,
+        );
   }
 
   void _onTimings(List<FrameTiming> timings) {
@@ -66,6 +72,7 @@ class _BenchDriverState extends ConsumerState<BenchDriver> {
     final notifier = ref.read(benchmarkProvider.notifier);
     for (final timing in timings) {
       notifier.recordWork(
+        frameNumber: timing.frameNumber,
         buildMs: timing.buildDuration.inMicroseconds / 1000,
         rasterMs: timing.rasterDuration.inMicroseconds / 1000,
       );

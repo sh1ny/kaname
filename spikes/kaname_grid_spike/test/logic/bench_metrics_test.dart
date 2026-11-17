@@ -91,4 +91,16 @@ void main() {
     expect(empty.missedOk, isFalse);
     expect(empty.passed, isFalse);
   });
+
+  test('frame sample buffer keeps samples by frame and counts overflow', () {
+    final buffer = FrameSampleBuffer(3)
+      ..add(10, 1)
+      ..add(12, 2)
+      ..add(11, 3)
+      ..add(13, 4);
+    expect(buffer.length, 3);
+    expect(buffer.dropped, 1);
+    expect(buffer.forFrames(11, 12), [2, 3]);
+    expect(buffer.forFrames(13, 20), isEmpty);
+  });
 }

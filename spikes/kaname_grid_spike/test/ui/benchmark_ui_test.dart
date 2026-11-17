@@ -23,9 +23,10 @@ void main() {
 
     // Without ?bench the benchmark waits for the button.
     final quiet = FakeBenchHost();
+    final quietKey = GlobalKey<GridTableState>();
     await tester.pumpWidget(
       gridApp(
-        const GridScreen(),
+        GridScreen(gridKey: quietKey),
         columns: bigGrid(rows: 5000),
         overrides: [
           benchHostProvider.overrideWithValue(quiet),
@@ -35,7 +36,44 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
-    expect(containerOf(tester).read(benchmarkProvider), isA<Idle>());
+    final quietContainer = containerOf(tester);
+    expect(quietContainer.read(benchmarkProvider), isA<Idle>());
+
+    // A grouped grid with focus: Collapse all and the arrow keys work.
+    quietContainer
+        .read(gridProvider.notifier)
+        .groupBy(
+          (quietContainer.read(gridProvider) as Ready).columns.categoryIndex,
+        );
+    quietKey.currentState!.focusNode.requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    final ready = quietContainer.read(gridProvider) as Ready;
+    expect(ready.currentRow, isNotNull, reason: 'the grid has focus');
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.widgetWithText(OutlinedButton, 'Collapse all'),
+          )
+          .onPressed,
+      isNotNull,
+      reason: 'Collapse all is enabled',
+    );
+
+    // While running, the grid and the toolbar ignore the user.
+    await tester.tap(find.text('Benchmark'));
+    await tester.pump();
+    expect(quietContainer.read(benchmarkProvider), isA<Running>());
+    await tester.tap(find.text('Name'), warnIfMissed: false);
+    await tester.tap(find.text('Collapse all'), warnIfMissed: false);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pump();
+    final during = quietContainer.read(gridProvider) as Ready;
+    expect(during.query.sortColumn, ready.query.sortColumn);
+    expect(during.query.collapsed, isEmpty);
+    expect(during.currentRow, ready.currentRow);
+    quietContainer.read(benchmarkProvider.notifier).cancel();
 
     // ?bench=smoke starts by itself once the grid is ready.
     final gridKey = GlobalKey<GridTableState>();
@@ -59,16 +97,6 @@ void main() {
     expect(state(), isA<Running>());
     expect((state() as Running).step, BenchStep.calibrate);
     expect((state() as Running).config, BenchConfig.smoke);
-
-    // While running, the grid and the toolbar ignore the user.
-    final before = (container.read(gridProvider) as Ready).query;
-    await tester.tap(find.text('Name'), warnIfMissed: false);
-    await tester.tap(find.text('Collapse all'), warnIfMissed: false);
-    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
-    await tester.pump();
-    final during = container.read(gridProvider) as Ready;
-    expect(during.query.sortColumn, before.sortColumn);
-    expect(during.currentRow, isNull);
 
     // The widget runs the calibration scroll and reports back: the next step
     // is the hand-speed scroll after the 2 s of the smoke calibration.

@@ -1,16 +1,751 @@
 # Benchmark evidence: development machine
 
-- **Date:** 2026-11-17, about 23:20 to 23:35 local time.
-- **Command:** `mise run bench:spike` (build, then all three rows), then `mise run bench:spike:run -- --row skwasm-threaded --out build/grid-bench-retry<n>` twice, because the multi-threaded row crashed in the full run.
 - **Machine:** the owner's development PC, Intel Core i7-13700K, through WSL2 (Linux 6.18, 6 logical CPUs and 23 GB visible to WSL).
 - **Browser:** Chrome for Testing 157.0.8103.78, headless, viewport 1600×900 at device pixel ratio 1.
 - **GPU path:** software. WebGL reports `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)`. This is Chrome's own WebGL renderer string, recorded by the runner, not a copy of the `chrome://gpu` page. The runner launches Chrome with `--enable-unsafe-swiftshader` because WSL exposes no GPU to headless Chrome (A3).
-- **Load state:** the owner confirmed the machine idle ("i am done gaming"); load average 0.05 just before the run.
+- **Load state:** the owner confirmed the machine idle ("i am done gaming", 2026-11-17); load average 0.05 before the first run and 0.58 before the second (the preceding build).
 - **Serving:** `kaname_tools serve` on loopback with COOP/COEP.
 
 The JSON below is the runner's output as written, except that the Chrome executable's absolute path is shortened to its path under the spike.
 
-## Full run, skwasm multi-threaded (failed)
+## Current run (2026-11-18, about 00:40 local time)
+
+`mise run bench:spike` after the pre-ship review fix that matches frame timings to their frames by frame number. The report quotes this run.
+
+### skwasm multi-threaded
+
+`build/grid-bench/skwasm-multi.json`
+
+```json
+{
+  "runnerSchemaVersion": 1,
+  "row": "skwasm-threaded",
+  "renderer": "skwasm",
+  "threads": "multi",
+  "status": "done",
+  "reason": null,
+  "smoke": false,
+  "url": "http://127.0.0.1:37831/?bench=1&renderer=skwasm&threads=multi",
+  "elapsedSeconds": 94.978,
+  "environment": {
+    "chromeExecutable": "build/chrome-for-testing/chrome-linux64/chrome",
+    "chromeVersion": "Chrome/157.0.8103.78",
+    "launchArgs": [
+      "--enable-unsafe-swiftshader",
+      "--disable-background-timer-throttling",
+      "--disable-renderer-backgrounding",
+      "--disable-backgrounding-occluded-windows"
+    ],
+    "viewport": {
+      "width": 1600,
+      "height": 900,
+      "deviceScaleFactor": 1
+    },
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+    "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "crossOriginIsolated": true
+  },
+  "consoleErrors": [],
+  "result": {
+    "schemaVersion": 1,
+    "config": {
+      "name": "full",
+      "plannedSeconds": {
+        "calibrate": 2,
+        "handSpeed": 20,
+        "stressDown": 30,
+        "stressUp": 30,
+        "horizontalOut": 5,
+        "horizontalBack": 5
+      },
+      "handSpeedPixelsPerSecond": 3000,
+      "stepTimeoutSlackSeconds": 10
+    },
+    "environment": {
+      "renderer": "skwasm",
+      "requestedRenderer": "skwasm",
+      "threadMode": "multi",
+      "wasm": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+      "window": {
+        "width": 1600,
+        "height": 900
+      },
+      "devicePixelRatio": 1
+    },
+    "refreshPeriodMs": 16.665,
+    "seedMs": 43.226,
+    "droppedSamples": 0,
+    "segments": {
+      "handSpeed": {
+        "judged": true,
+        "plannedSeconds": 20,
+        "intervals": 1198,
+        "missedFrames": 3,
+        "missedRatio": 0.002497918401332223,
+        "p50Ms": 16.665,
+        "p90Ms": 16.67,
+        "p99Ms": 16.67,
+        "maxMs": 66.66,
+        "work": {
+          "samples": 1198,
+          "p90Ms": 12.154
+        }
+      },
+      "stressDown": {
+        "judged": false,
+        "plannedSeconds": 30,
+        "intervals": 939,
+        "missedFrames": 863,
+        "missedRatio": 0.47891231964483905,
+        "p50Ms": 33.33,
+        "p90Ms": 49.995,
+        "p99Ms": 50,
+        "maxMs": 66.665,
+        "work": {
+          "samples": 939,
+          "p90Ms": 83.826
+        }
+      },
+      "stressUp": {
+        "judged": false,
+        "plannedSeconds": 30,
+        "intervals": 938,
+        "missedFrames": 864,
+        "missedRatio": 0.4794672586015538,
+        "p50Ms": 33.33,
+        "p90Ms": 49.995,
+        "p99Ms": 50,
+        "maxMs": 50,
+        "work": {
+          "samples": 938,
+          "p90Ms": 82.506
+        }
+      },
+      "horizontalOut": {
+        "judged": false,
+        "plannedSeconds": 5,
+        "intervals": 298,
+        "missedFrames": 3,
+        "missedRatio": 0.009966777408637873,
+        "p50Ms": 16.665,
+        "p90Ms": 16.67,
+        "p99Ms": 16.67,
+        "maxMs": 66.665,
+        "work": {
+          "samples": 295,
+          "p90Ms": 13.699
+        }
+      },
+      "horizontalBack": {
+        "judged": false,
+        "plannedSeconds": 5,
+        "intervals": 300,
+        "missedFrames": 1,
+        "missedRatio": 0.0033222591362126247,
+        "p50Ms": 16.665,
+        "p90Ms": 16.67,
+        "p99Ms": 16.67,
+        "maxMs": 33.33,
+        "work": {
+          "samples": 300,
+          "p90Ms": 12.55
+        }
+      }
+    },
+    "operations": [
+      {
+        "step": "filter",
+        "engineMs": 1.674,
+        "untilFrameMs": 56.704,
+        "rasterMs": 47.04,
+        "untilOnScreenMs": 103.744
+      },
+      {
+        "step": "category",
+        "engineMs": 2.056,
+        "untilFrameMs": 44.735,
+        "rasterMs": 28.864,
+        "untilOnScreenMs": 73.599
+      },
+      {
+        "step": "sortText",
+        "engineMs": 3.43,
+        "untilFrameMs": 27.26,
+        "rasterMs": 24.5,
+        "untilOnScreenMs": 51.760000000000005
+      },
+      {
+        "step": "sortInteger",
+        "engineMs": 5.505,
+        "untilFrameMs": 27.37,
+        "rasterMs": 26,
+        "untilOnScreenMs": 53.370000000000005
+      },
+      {
+        "step": "sortFloat",
+        "engineMs": 3.271,
+        "untilFrameMs": 25,
+        "rasterMs": 24.51,
+        "untilOnScreenMs": 49.510000000000005
+      },
+      {
+        "step": "groupFirst",
+        "engineMs": 4.61,
+        "untilFrameMs": 26.425,
+        "rasterMs": 21.724,
+        "untilOnScreenMs": 48.149
+      },
+      {
+        "step": "groupSecond",
+        "engineMs": 3.245,
+        "untilFrameMs": 25.271,
+        "rasterMs": 10.32,
+        "untilOnScreenMs": 35.591
+      },
+      {
+        "step": "collapseAll",
+        "engineMs": 0.005,
+        "untilFrameMs": 10.889,
+        "rasterMs": 23.555,
+        "untilOnScreenMs": 34.444
+      },
+      {
+        "step": "expandAll",
+        "engineMs": 0.03,
+        "untilFrameMs": 23.519,
+        "rasterMs": 64.52,
+        "untilOnScreenMs": 88.03899999999999
+      },
+      {
+        "step": "clear",
+        "engineMs": 0.224,
+        "untilFrameMs": 64,
+        "rasterMs": null,
+        "untilOnScreenMs": 64
+      },
+      {
+        "step": "resize",
+        "engineMs": null,
+        "untilFrameMs": 42.83,
+        "rasterMs": null,
+        "untilOnScreenMs": 42.83
+      }
+    ],
+    "verdict": {
+      "missedOk": true,
+      "p99Ok": true,
+      "workOk": true,
+      "operationsOk": true,
+      "passed": true
+    }
+  }
+}
+```
+
+### skwasm single-threaded
+
+`build/grid-bench/skwasm-single.json`
+
+```json
+{
+  "runnerSchemaVersion": 1,
+  "row": "skwasm-single",
+  "renderer": "skwasm",
+  "threads": "single",
+  "status": "done",
+  "reason": null,
+  "smoke": false,
+  "url": "http://127.0.0.1:40367/?bench=1&renderer=skwasm&threads=single",
+  "elapsedSeconds": 95.189,
+  "environment": {
+    "chromeExecutable": "build/chrome-for-testing/chrome-linux64/chrome",
+    "chromeVersion": "Chrome/157.0.8103.78",
+    "launchArgs": [
+      "--enable-unsafe-swiftshader",
+      "--disable-background-timer-throttling",
+      "--disable-renderer-backgrounding",
+      "--disable-backgrounding-occluded-windows"
+    ],
+    "viewport": {
+      "width": 1600,
+      "height": 900,
+      "deviceScaleFactor": 1
+    },
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+    "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "crossOriginIsolated": false
+  },
+  "consoleErrors": [],
+  "result": {
+    "schemaVersion": 1,
+    "config": {
+      "name": "full",
+      "plannedSeconds": {
+        "calibrate": 2,
+        "handSpeed": 20,
+        "stressDown": 30,
+        "stressUp": 30,
+        "horizontalOut": 5,
+        "horizontalBack": 5
+      },
+      "handSpeedPixelsPerSecond": 3000,
+      "stepTimeoutSlackSeconds": 10
+    },
+    "environment": {
+      "renderer": "skwasm",
+      "requestedRenderer": "skwasm",
+      "threadMode": "single",
+      "wasm": true,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+      "window": {
+        "width": 1600,
+        "height": 900
+      },
+      "devicePixelRatio": 1
+    },
+    "refreshPeriodMs": 16.7,
+    "seedMs": 43.8,
+    "droppedSamples": 0,
+    "segments": {
+      "handSpeed": {
+        "judged": true,
+        "plannedSeconds": 20,
+        "intervals": 1197,
+        "missedFrames": 4,
+        "missedRatio": 0.0033305578684429643,
+        "p50Ms": 16.7,
+        "p90Ms": 16.7,
+        "p99Ms": 16.8,
+        "maxMs": 83.3,
+        "work": {
+          "samples": 1198,
+          "p90Ms": 12.2
+        }
+      },
+      "stressDown": {
+        "judged": false,
+        "plannedSeconds": 30,
+        "intervals": 765,
+        "missedFrames": 1037,
+        "missedRatio": 0.5754716981132075,
+        "p50Ms": 33.4,
+        "p90Ms": 50,
+        "p99Ms": 66.7,
+        "maxMs": 66.7,
+        "work": {
+          "samples": 766,
+          "p90Ms": 36.501
+        }
+      },
+      "stressUp": {
+        "judged": false,
+        "plannedSeconds": 30,
+        "intervals": 752,
+        "missedFrames": 1049,
+        "missedRatio": 0.5824541921154914,
+        "p50Ms": 33.4,
+        "p90Ms": 50,
+        "p99Ms": 66.699,
+        "maxMs": 66.7,
+        "work": {
+          "samples": 753,
+          "p90Ms": 36.601
+        }
+      },
+      "horizontalOut": {
+        "judged": false,
+        "plannedSeconds": 5,
+        "intervals": 299,
+        "missedFrames": 2,
+        "missedRatio": 0.006644518272425249,
+        "p50Ms": 16.7,
+        "p90Ms": 16.7,
+        "p99Ms": 16.8,
+        "maxMs": 50,
+        "work": {
+          "samples": 300,
+          "p90Ms": 11.8
+        }
+      },
+      "horizontalBack": {
+        "judged": false,
+        "plannedSeconds": 5,
+        "intervals": 296,
+        "missedFrames": 5,
+        "missedRatio": 0.016611295681063124,
+        "p50Ms": 16.7,
+        "p90Ms": 16.7,
+        "p99Ms": 33.3,
+        "maxMs": 50,
+        "work": {
+          "samples": 297,
+          "p90Ms": 11.8
+        }
+      }
+    },
+    "operations": [
+      {
+        "step": "filter",
+        "engineMs": 1.599,
+        "untilFrameMs": 60.401,
+        "rasterMs": 9.101,
+        "untilOnScreenMs": 69.50200000000001
+      },
+      {
+        "step": "category",
+        "engineMs": 2,
+        "untilFrameMs": 55.5,
+        "rasterMs": 9.2,
+        "untilOnScreenMs": 64.7
+      },
+      {
+        "step": "sortText",
+        "engineMs": 3.5,
+        "untilFrameMs": 36.7,
+        "rasterMs": 8.3,
+        "untilOnScreenMs": 45
+      },
+      {
+        "step": "sortInteger",
+        "engineMs": 4.8,
+        "untilFrameMs": 34,
+        "rasterMs": 9.101,
+        "untilOnScreenMs": 43.101
+      },
+      {
+        "step": "sortFloat",
+        "engineMs": 3.2,
+        "untilFrameMs": 33.801,
+        "rasterMs": 9,
+        "untilOnScreenMs": 42.801
+      },
+      {
+        "step": "groupFirst",
+        "engineMs": 3.101,
+        "untilFrameMs": 34.6,
+        "rasterMs": 10.299,
+        "untilOnScreenMs": 44.899
+      },
+      {
+        "step": "groupSecond",
+        "engineMs": 3.401,
+        "untilFrameMs": 33.101,
+        "rasterMs": 9.4,
+        "untilOnScreenMs": 42.501
+      },
+      {
+        "step": "collapseAll",
+        "engineMs": 0,
+        "untilFrameMs": 19,
+        "rasterMs": 6.899,
+        "untilOnScreenMs": 25.899
+      },
+      {
+        "step": "expandAll",
+        "engineMs": 0.101,
+        "untilFrameMs": 26.7,
+        "rasterMs": 7.801,
+        "untilOnScreenMs": 34.501
+      },
+      {
+        "step": "clear",
+        "engineMs": 0.3,
+        "untilFrameMs": 72.8,
+        "rasterMs": 8.7,
+        "untilOnScreenMs": 81.5
+      },
+      {
+        "step": "resize",
+        "engineMs": null,
+        "untilFrameMs": 44.299,
+        "rasterMs": null,
+        "untilOnScreenMs": 44.299
+      }
+    ],
+    "verdict": {
+      "missedOk": true,
+      "p99Ok": true,
+      "workOk": true,
+      "operationsOk": true,
+      "passed": true
+    }
+  }
+}
+```
+
+### CanvasKit
+
+`build/grid-bench/canvaskit-na.json`
+
+```json
+{
+  "runnerSchemaVersion": 1,
+  "row": "canvaskit",
+  "renderer": "canvaskit",
+  "threads": "na",
+  "status": "done",
+  "reason": null,
+  "smoke": false,
+  "url": "http://127.0.0.1:46733/?bench=1&renderer=canvaskit&threads=na",
+  "elapsedSeconds": 96.324,
+  "environment": {
+    "chromeExecutable": "build/chrome-for-testing/chrome-linux64/chrome",
+    "chromeVersion": "Chrome/157.0.8103.78",
+    "launchArgs": [
+      "--enable-unsafe-swiftshader",
+      "--disable-background-timer-throttling",
+      "--disable-renderer-backgrounding",
+      "--disable-backgrounding-occluded-windows"
+    ],
+    "viewport": {
+      "width": 1600,
+      "height": 900,
+      "deviceScaleFactor": 1
+    },
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+    "webglRenderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "crossOriginIsolated": true
+  },
+  "consoleErrors": [],
+  "result": {
+    "schemaVersion": 1,
+    "config": {
+      "name": "full",
+      "plannedSeconds": {
+        "calibrate": 2,
+        "handSpeed": 20,
+        "stressDown": 30,
+        "stressUp": 30,
+        "horizontalOut": 5,
+        "horizontalBack": 5
+      },
+      "handSpeedPixelsPerSecond": 3000,
+      "stepTimeoutSlackSeconds": 10
+    },
+    "environment": {
+      "renderer": "CanvasKit",
+      "requestedRenderer": "canvaskit",
+      "threadMode": "n/a",
+      "wasm": false,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+      "window": {
+        "width": 1600,
+        "height": 900
+      },
+      "devicePixelRatio": 1
+    },
+    "refreshPeriodMs": 16.665,
+    "seedMs": 50.784,
+    "droppedSamples": 0,
+    "segments": {
+      "handSpeed": {
+        "judged": true,
+        "plannedSeconds": 20,
+        "intervals": 1079,
+        "missedFrames": 123,
+        "missedRatio": 0.10232945091514144,
+        "p50Ms": 16.665,
+        "p90Ms": 33.33,
+        "p99Ms": 33.335,
+        "maxMs": 99.995,
+        "work": {
+          "samples": 1080,
+          "p90Ms": 18.652
+        }
+      },
+      "stressDown": {
+        "judged": false,
+        "plannedSeconds": 30,
+        "intervals": 474,
+        "missedFrames": 1328,
+        "missedRatio": 0.7369589345172031,
+        "p50Ms": 66.665,
+        "p90Ms": 66.665,
+        "p99Ms": 83.335,
+        "maxMs": 99.995,
+        "work": {
+          "samples": 475,
+          "p90Ms": 60.825
+        }
+      },
+      "stressUp": {
+        "judged": false,
+        "plannedSeconds": 30,
+        "intervals": 479,
+        "missedFrames": 1322,
+        "missedRatio": 0.7340366463076069,
+        "p50Ms": 66.665,
+        "p90Ms": 66.67,
+        "p99Ms": 83.33,
+        "maxMs": 83.335,
+        "work": {
+          "samples": 480,
+          "p90Ms": 59.801
+        }
+      },
+      "horizontalOut": {
+        "judged": false,
+        "plannedSeconds": 5,
+        "intervals": 287,
+        "missedFrames": 14,
+        "missedRatio": 0.046511627906976744,
+        "p50Ms": 16.665,
+        "p90Ms": 16.67,
+        "p99Ms": 33.335,
+        "maxMs": 66.66,
+        "work": {
+          "samples": 288,
+          "p90Ms": 16.739
+        }
+      },
+      "horizontalBack": {
+        "judged": false,
+        "plannedSeconds": 5,
+        "intervals": 286,
+        "missedFrames": 15,
+        "missedRatio": 0.04983388704318937,
+        "p50Ms": 16.665,
+        "p90Ms": 16.67,
+        "p99Ms": 33.335,
+        "maxMs": 66.665,
+        "work": {
+          "samples": 287,
+          "p90Ms": 17.13
+        }
+      }
+    },
+    "operations": [
+      {
+        "step": "filter",
+        "engineMs": 1.696,
+        "untilFrameMs": 69.155,
+        "rasterMs": 12.969,
+        "untilOnScreenMs": 82.124
+      },
+      {
+        "step": "category",
+        "engineMs": 1.609,
+        "untilFrameMs": 62.505,
+        "rasterMs": 14.06,
+        "untilOnScreenMs": 76.565
+      },
+      {
+        "step": "sortText",
+        "engineMs": 2.675,
+        "untilFrameMs": 50.765,
+        "rasterMs": 13.786,
+        "untilOnScreenMs": 64.551
+      },
+      {
+        "step": "sortInteger",
+        "engineMs": 2.764,
+        "untilFrameMs": 53.659,
+        "rasterMs": 14.271,
+        "untilOnScreenMs": 67.93
+      },
+      {
+        "step": "sortFloat",
+        "engineMs": 2.879,
+        "untilFrameMs": 48.164,
+        "rasterMs": 13.325,
+        "untilOnScreenMs": 61.489000000000004
+      },
+      {
+        "step": "groupFirst",
+        "engineMs": 2.591,
+        "untilFrameMs": 52.031,
+        "rasterMs": 14.216,
+        "untilOnScreenMs": 66.247
+      },
+      {
+        "step": "groupSecond",
+        "engineMs": 2.971,
+        "untilFrameMs": 50.656,
+        "rasterMs": 23.016,
+        "untilOnScreenMs": 73.672
+      },
+      {
+        "step": "collapseAll",
+        "engineMs": 0.044,
+        "untilFrameMs": 45.765,
+        "rasterMs": 10.119,
+        "untilOnScreenMs": 55.884
+      },
+      {
+        "step": "expandAll",
+        "engineMs": 0.01,
+        "untilFrameMs": 59.98,
+        "rasterMs": 11.604,
+        "untilOnScreenMs": 71.584
+      },
+      {
+        "step": "clear",
+        "engineMs": 0.285,
+        "untilFrameMs": 78.96,
+        "rasterMs": null,
+        "untilOnScreenMs": 78.96
+      },
+      {
+        "step": "resize",
+        "engineMs": null,
+        "untilFrameMs": 83.005,
+        "rasterMs": null,
+        "untilOnScreenMs": 83.005
+      }
+    ],
+    "verdict": {
+      "missedOk": false,
+      "p99Ok": false,
+      "workOk": false,
+      "operationsOk": true,
+      "passed": false
+    }
+  }
+}
+```
+
+### Summary
+
+`build/grid-bench/summary.json`
+
+```json
+{
+  "runnerSchemaVersion": 1,
+  "rows": [
+    {
+      "row": "skwasm-threaded",
+      "file": "skwasm-multi.json",
+      "status": "done",
+      "reason": null,
+      "smoke": false,
+      "verdictPassed": true
+    },
+    {
+      "row": "skwasm-single",
+      "file": "skwasm-single.json",
+      "status": "done",
+      "reason": null,
+      "smoke": false,
+      "verdictPassed": true
+    },
+    {
+      "row": "canvaskit",
+      "file": "canvaskit-na.json",
+      "status": "done",
+      "reason": null,
+      "smoke": false,
+      "verdictPassed": false
+    }
+  ]
+}
+```
+
+## Earlier run (2026-11-17, about 23:20 to 23:35 local time)
+
+The first `mise run bench:spike`, before that fix: raster times could be credited to the wrong frame, and work timings that arrived late were counted to the step running when they arrived. The multi-threaded row crashed; `mise run bench:spike:run -- --row skwasm-threaded --out build/grid-bench-retry<n>` re-ran it twice. Kept for the crash record.
+
+### Full run, skwasm multi-threaded (failed)
 
 `build/grid-bench/skwasm-multi.json`
 
@@ -48,7 +783,7 @@ The JSON below is the runner's output as written, except that the Chrome executa
 }
 ```
 
-## Full run, skwasm single-threaded
+### Full run, skwasm single-threaded
 
 `build/grid-bench/skwasm-single.json`
 
@@ -279,7 +1014,7 @@ The JSON below is the runner's output as written, except that the Chrome executa
 }
 ```
 
-## Full run, CanvasKit
+### Full run, CanvasKit
 
 `build/grid-bench/canvaskit-na.json`
 
@@ -510,7 +1245,7 @@ The JSON below is the runner's output as written, except that the Chrome executa
 }
 ```
 
-## Full run, summary
+### Full run, summary
 
 `build/grid-bench/summary.json`
 
@@ -546,7 +1281,7 @@ The JSON below is the runner's output as written, except that the Chrome executa
 }
 ```
 
-## Re-run 1, skwasm multi-threaded only
+### Re-run 1, skwasm multi-threaded only
 
 `build/grid-bench-retry1/skwasm-multi.json`
 
@@ -777,7 +1512,7 @@ The JSON below is the runner's output as written, except that the Chrome executa
 }
 ```
 
-## Re-run 2, skwasm multi-threaded only
+### Re-run 2, skwasm multi-threaded only
 
 `build/grid-bench-retry2/skwasm-multi.json`
 

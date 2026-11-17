@@ -15,12 +15,17 @@
 /// The other rows still run.
 ///
 /// ```sh
-/// mise run build:spike                       # once, or after a change
-/// mise run bench:spike                       # full run
-/// mise run bench:spike -- --smoke            # scaled-down run, not judged
-/// mise run bench:spike -- --row skwasm-threaded \
+/// mise run bench:spike                       # build, then run every row
+///
+/// mise run build:spike                       # build only; then, on that build:
+/// mise run bench:spike:run                   # full run
+/// mise run bench:spike:run -- --smoke        # scaled-down run, not judged
+/// mise run bench:spike:run -- --row skwasm-threaded \
 ///   --extra-chrome-arg=--js-flags=--no-experimental-wasm-gc
 /// ```
+///
+/// Runner arguments go to `bench:spike:run`: `bench:spike` runs its sub-tasks
+/// and passes none on.
 ///
 /// Exit codes: 0 every row produced a result, 1 at least one row failed, 64
 /// usage error, 66 the build directory is missing, 69 Chrome is unavailable.

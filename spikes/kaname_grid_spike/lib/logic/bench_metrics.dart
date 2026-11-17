@@ -192,3 +192,47 @@ final class SampleBuffer {
   /// The stored samples from index [start] up to [end], as a copy.
   List<double> slice(int start, int end) => _data.sublist(start, end);
 }
+
+/// A preallocated buffer of samples, each tagged with the engine's number of
+/// the frame it belongs to.
+///
+/// The web engine reports frame timings in batches, so a timing often arrives
+/// after the step its frame belonged to has ended. Tagging each sample lets
+/// the samples of a step be picked out by its frames instead of by arrival.
+/// Holds at most the capacity it was created with; a sample that does not fit
+/// is counted in [dropped] and discarded.
+final class FrameSampleBuffer {
+  /// Creates a buffer for [capacity] samples.
+  FrameSampleBuffer(int capacity)
+    : _frames = Int32List(capacity),
+      _values = Float64List(capacity);
+
+  final Int32List _frames;
+  final Float64List _values;
+  int _length = 0;
+  int _dropped = 0;
+
+  /// How many samples are stored.
+  int get length => _length;
+
+  /// How many samples did not fit.
+  int get dropped => _dropped;
+
+  /// Stores [value] for frame [frameNumber], or counts it as dropped when the
+  /// buffer is full.
+  void add(int frameNumber, double value) {
+    if (_length == _values.length) {
+      _dropped++;
+      return;
+    }
+    _frames[_length] = frameNumber;
+    _values[_length++] = value;
+  }
+
+  /// The samples of frames [first] to [last], both included, in the order
+  /// they were added.
+  List<double> forFrames(int first, int last) => [
+    for (var at = 0; at < _length; at++)
+      if (_frames[at] >= first && _frames[at] <= last) _values[at],
+  ];
+}

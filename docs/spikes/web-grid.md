@@ -2,7 +2,7 @@
 
 The M0 roadmap names one risky UI assumption: that Flutter web can show a large data grid fast enough. The spike `spikes/kaname_grid_spike` tests it with 200,000 seeded rows and 25 columns in a `TableView`, filtered, sorted and grouped in plain Dart on the main thread. This report gives the numbers from the development machine. The owner's own check decides the M0 exit criterion. The owner chose to make it on the development PC under game load instead of a low-end laptop (task 9.5, amended 2026-11-17); a laptop run stays optional (below).
 
-The raw results, with the machine header, are in [`openspec/changes/web-grid-spike/evidence/bench-dev-machine.md`](../../openspec/changes/web-grid-spike/evidence/bench-dev-machine.md). Every figure here comes from that file.
+The raw results, with the machine header, are in [`openspec/changes/web-grid-spike/evidence/bench-dev-machine.md`](../../openspec/changes/web-grid-spike/evidence/bench-dev-machine.md). Every timing here comes from that file. The row counts after each filter (151,114 and 4,515) come from a separate VM run of the same seed with the same filters (`runGrid` with filter text `a`, then also category code 0); the result JSON does not record them.
 
 ## Method
 
@@ -17,7 +17,7 @@ The script, in order:
 5. **Operations:** filter text `a`, category filter, sort on name, quantity and a float column, group by category then by a second column, collapse all, expand all, clear the query.
 6. **Resize:** one column to 320px.
 
-**Metrics.** Times between frames come from persistent frame callbacks. Missed frames count skipped refreshes: each interval adds `round(interval / period) − 1`. Work time is build plus raster time from `FrameTiming`. For each operation the spike records the engine time (the Dart query) and the time until on screen (from the call to the end of the first frame showing the new view, plus its raster time when reported).
+**Metrics.** Times between frames come from persistent frame callbacks. Missed frames count skipped refreshes: each interval adds `max(0, round(interval / period) − 1)`. Work time is build plus raster time from `FrameTiming`. For each operation the spike records the engine time (the Dart query) and the time until on screen (from the call to the end of the first frame showing the new view, plus its raster time when reported).
 
 **S4 budget**, judged on the hand-speed segment:
 
@@ -33,8 +33,8 @@ The script, in order:
 - **Machine:** the owner's development PC, Intel Core i7-13700K, through WSL2 (6 logical CPUs and 23 GB visible to WSL).
 - **Browser:** Chrome for Testing 157.0.8103.78, headless, 1600×900 at device pixel ratio 1, refresh period 16.7ms (60Hz).
 - **GPU path:** software. WebGL runs on SwiftShader (`ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)`), because WSL gives headless Chrome no GPU.
-- **Load:** idle, confirmed by the owner; load average 0.05 before the run.
-- **Date:** 2026-11-17.
+- **Load:** idle, confirmed by the owner; load average 0.58 before the run (just after the build).
+- **Date:** 2026-11-18. The first full run, on 2026-11-17, is kept in the evidence's "Earlier run" section for the crash below. It is not quoted here: it predates the fix that matches frame timings to their own frames.
 
 ## Results
 
@@ -42,53 +42,49 @@ The script, in order:
 
 | Row | Missed | p99 | Work p90 | Ops ≤300ms | Verdict |
 |---|---|---|---|---|---|
-| skwasm multi-threaded, re-run 1 | 0.2% | 16.67ms | 13.1ms | yes | **pass** |
-| skwasm multi-threaded, re-run 2 | 0.2% | 16.67ms | 12.5ms | yes | **pass** |
-| skwasm single-threaded | 0.4% | 16.8ms | 12.8ms | yes | **pass** |
-| CanvasKit | 15.4% | 33.3ms | 19.8ms | yes | **miss** (missed frames, p99, work) |
-
-In the full run the multi-threaded row crashed (see "Multi-threaded skwasm crash"). Its figures come from two re-runs of that row alone.
+| skwasm multi-threaded | 0.2% | 16.67ms | 12.2ms | yes | **pass** |
+| skwasm single-threaded | 0.3% | 16.8ms | 12.2ms | yes | **pass** |
+| CanvasKit | 10.2% | 33.3ms | 18.7ms | yes | **miss** (missed frames, p99, work) |
 
 ### Stress headroom (not judged)
 
 | Row | Down: missed, p50 | Up: missed, p50 | Work p90 |
 |---|---|---|---|
-| skwasm multi-threaded, re-run 1 | 49.9%, 33.3ms | 49.7%, 33.3ms | 84–86ms |
-| skwasm multi-threaded, re-run 2 | 47.8%, 33.3ms | 48.1%, 33.3ms | 82–83ms |
-| skwasm single-threaded | 59.4%, 33.4ms | 59.9%, 33.4ms | 38ms |
-| CanvasKit | 74.4%, 66.7ms | 74.7%, 66.7ms | 63ms |
+| skwasm multi-threaded | 47.9%, 33.3ms | 47.9%, 33.3ms | 83–84ms |
+| skwasm single-threaded | 57.5%, 33.4ms | 58.2%, 33.4ms | 37ms |
+| CanvasKit | 73.7%, 66.7ms | 73.4%, 66.7ms | 60–61ms |
 
-At about 200,000 px/s every frame shows new rows. skwasm holds 30 fps there and CanvasKit 15 fps. In the multi-threaded rows work time includes waiting on the render thread, so it is not comparable with the single-threaded figure.
+At about 200,000 px/s every frame shows new rows. skwasm holds 30 fps there and CanvasKit 15 fps. In the multi-threaded row, work time includes waiting on the render thread, so it is not comparable with the single-threaded figure.
 
-Horizontal scrolling stayed within budget for skwasm (0.3–1.7% missed). CanvasKit missed 5.3% and 5.6%, just over budget.
+Horizontal scrolling stayed within budget for skwasm (0.3–1.7% missed). CanvasKit missed 4.7% and 5.0%, at the edge of the budget.
 
 ### Operations
 
-Engine time and time until on screen, in milliseconds. The multi-threaded row shows re-run 1.
+Engine time and time until on screen, in milliseconds. A `*` marks an operation whose raster time never arrived. The web engine reports frame timings in batches at least 100ms apart, and the run ends before the last batch, so the last two operations count only to the end of their frame.
 
 | Operation | skwasm multi | skwasm single | CanvasKit |
 |---|---|---|---|
-| Filter text (200,000 → 151,114 rows) | 1.7 / 58 | 1.7 / 57 | 1.9 / 71 |
-| Category (→ 4,515 rows) | 2.2 / 58 | 6.1 / 70 | 1.6 / 77 |
-| Sort text | 3.5 / 29 | 3.9 / 42 | 2.9 / 53 |
-| Sort integer | 5.1 / 27 | 3.2 / 35 | 2.8 / 70 |
-| Sort float | 3.3 / 25 | 4.8 / 46 | 3.0 / 49 |
-| Group first | 4.7 / 58 | 3.6 / 37 | 3.1 / 67 |
-| Group second | 3.1 / 24 | 3.3 / 33 | 3.2 / 52 |
-| Collapse all | 0.0 / 11 | 0.0 / 19 | 0.1 / 48 |
-| Expand all | 0.0 / 20 | 0.0 / 38 | 0.0 / 85 |
-| Clear (→ 200,000 rows) | 0.2 / 83 | 0.2 / 80 | 0.3 / 82 |
-| Resize column | n/a / 41 | n/a / 52 | n/a / 79 |
+| Filter text (200,000 → 151,114 rows) | 1.7 / 104 | 1.6 / 70 | 1.7 / 82 |
+| Category (→ 4,515 rows) | 2.1 / 74 | 2.0 / 65 | 1.6 / 77 |
+| Sort text | 3.4 / 52 | 3.5 / 45 | 2.7 / 65 |
+| Sort integer | 5.5 / 53 | 4.8 / 43 | 2.8 / 68 |
+| Sort float | 3.3 / 50 | 3.2 / 43 | 2.9 / 61 |
+| Group first | 4.6 / 48 | 3.1 / 45 | 2.6 / 66 |
+| Group second | 3.2 / 36 | 3.4 / 43 | 3.0 / 74 |
+| Collapse all | 0.0 / 34 | 0.0 / 26 | 0.0 / 56 |
+| Expand all | 0.0 / 88 | 0.1 / 35 | 0.0 / 72 |
+| Clear (→ 200,000 rows) | 0.2 / 64* | 0.3 / 82 | 0.3 / 79* |
+| Resize column | n/a / 43* | n/a / 44* | n/a / 83* |
 
-The slowest operation in any row took 85ms to reach the screen, against a budget of 300ms. Re-run 2 of the multi-threaded row stayed under 79ms.
+The slowest operation in any row took 104ms to reach the screen, against a budget of 300ms. Multi-threaded raster times (10–65ms) run well above single-threaded ones (7–10ms), which is why its on-screen figures are higher. The cause was not investigated: the render thread may queue frames.
 
 ### Seed time
 
-Generating the 200,000 rows at startup: 44ms and 45ms (skwasm multi-threaded), 47ms (single-threaded), 53ms (CanvasKit).
+Generating the 200,000 rows at startup: 43ms (skwasm multi-threaded), 44ms (single-threaded), 51ms (CanvasKit).
 
 ## Multi-threaded skwasm crash
 
-In the full run the multi-threaded skwasm page threw `RuntimeError: memory access out of bounds` inside `skwasm.wasm`, called from the app's `main.dart.wasm`. It happened about 100s in, around the operations step. Two re-runs of the same row finished and passed, and so did three shorter smoke runs of it earlier that day. So the crash is intermittent: one failure in six multi-threaded runs. The stack sits in the engine, not in spike code, and the spike has no native or unsafe code of its own. Single-threaded skwasm and CanvasKit never crashed. Before the product relies on multi-threaded skwasm, the crash needs a reproduction on the Flutter release in use and an upstream report.
+In the first full run (2026-11-17) the multi-threaded skwasm page threw `RuntimeError: memory access out of bounds` inside `skwasm.wasm`, called from the app's `main.dart.wasm`. It happened about 100s in, around the operations step. Every other multi-threaded run finished: two re-runs of that row, three shorter smoke runs, and the full run quoted above. So the crash is intermittent: one failure in seven multi-threaded runs. The stack sits in the engine, not in spike code, and the spike has no native or unsafe code of its own. Single-threaded skwasm and CanvasKit never crashed. Before the product relies on multi-threaded skwasm, the crash needs a reproduction on the Flutter release in use and an upstream report.
 
 ## Caveats
 
@@ -102,8 +98,8 @@ In the full run the multi-threaded skwasm page threw `RuntimeError: memory acces
 
 **Go for skwasm; adjust for CanvasKit.**
 
-- skwasm passes S4 with a wide margin, single-threaded and multi-threaded, even on a software GPU: under 0.5% missed frames, p99 at one refresh period, and every operation on screen within 85ms.
-- CanvasKit misses S4 on this machine (15.4% missed frames, p99 33.3ms against 33ms, work p90 19.8ms). Operations stay within budget. With work p90 above one refresh period on a software rasteriser, raster cost is the likely cause, and real GPUs could clear it. The fix for this miss: treat CanvasKit as the fallback only for browsers without WasmGC, ship `--wasm` so capable browsers get skwasm, and let the owner's `?renderer=canvaskit` check decide whether the fallback is acceptable or needs work (for example fewer visible columns or lighter cell painting).
+- skwasm passes S4 with a wide margin, single-threaded and multi-threaded, even on a software GPU: under 0.5% missed frames, p99 at one refresh period, and every operation on screen within 104ms.
+- CanvasKit misses S4 on this machine (10.2% missed frames, p99 33.3ms against 33ms, work p90 18.7ms). Operations stay within budget. With work p90 above one refresh period on a software rasteriser, raster cost is the likely cause, and real GPUs could clear it. The fix for this miss: treat CanvasKit as the fallback only for browsers without WasmGC, ship `--wasm` so capable browsers get skwasm, and let the owner's `?renderer=canvaskit` check decide whether the fallback is acceptable or needs work (for example fewer visible columns or lighter cell painting).
 - The multi-threaded crash keeps multi-threaded skwasm from being the default until it is understood (above).
 
 ## Recommendation: move the product web build to `--wasm`

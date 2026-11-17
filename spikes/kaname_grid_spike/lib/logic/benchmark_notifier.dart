@@ -99,19 +99,23 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
   late BenchConfig _config;
   late BenchEnvironment _environment;
   late SampleBuffer _frames;
-  late SampleBuffer _work;
+  late FrameSampleBuffer _work;
   late double _periodMs;
   final Map<BenchStep, List<double>> _segmentIntervals = {};
-  final Map<BenchStep, List<double>> _segmentWork = {};
+  final Map<BenchStep, (int, int)> _segmentFrames = {};
   final List<_OperationRecord> _operations = [];
   Timer? _timer;
   Duration? _lastFrame;
   int _frameStart = 0;
-  int _workStart = 0;
+  int? _firstFrame;
+  int? _lastFrameNumber;
   Duration _operationStart = Duration.zero;
   OperationTiming? _timingBefore;
   bool _operationPending = false;
-  _OperationRecord? _awaitingRaster;
+
+  /// Operations whose frame has ended, by that frame's number, until the
+  /// frame's timing arrives.
+  final Map<int, _OperationRecord> _awaitingRaster = {};
   bool _autostarted = false;
 
   @override
@@ -145,11 +149,11 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
     }
     final capacity = ref.read(benchSampleCapacityProvider);
     _frames = SampleBuffer(capacity);
-    _work = SampleBuffer(capacity);
+    _work = FrameSampleBuffer(capacity);
     _segmentIntervals.clear();
-    _segmentWork.clear();
+    _segmentFrames.clear();
     _operations.clear();
-    _awaitingRaster = null;
+    _awaitingRaster.clear();
     _operationPending = false;
     _periodMs = 1000 / 60;
     _environment = host.readEnvironment();
@@ -168,7 +172,9 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
     final current = state;
     if (current is! Running || current.step != step || !step.isScroll) return;
     _segmentIntervals[step] = _frames.slice(_frameStart, _frames.length);
-    _segmentWork[step] = _work.slice(_workStart, _work.length);
+    if ((_firstFrame, _lastFrameNumber) case (final first?, final last?)) {
+      _segmentFrames[step] = (first, last);
+    }
     if (step == BenchStep.calibrate) {
       final period = calibratedPeriodMs(_segmentIntervals[step]!);
       if (period == null) {
@@ -180,16 +186,20 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
     _advance(step);
   }
 
-  /// Records a frame the scheduler produced at [timestamp].
+  /// Records frame [frameNumber], which the scheduler produced at
+  /// [timestamp]. The number is the engine's, the one its frame timing will
+  /// carry.
   ///
   /// In a scroll step it adds the time since the previous frame of the step;
   /// in an operation step the first frame after the call ends the operation.
-  void recordFrame(Duration timestamp) {
+  void recordFrame(Duration timestamp, {required int frameNumber}) {
     final current = state;
     if (current is! Running) return;
     if (current.step.isScroll) {
       final last = _lastFrame;
       _lastFrame = timestamp;
+      _firstFrame ??= frameNumber;
+      _lastFrameNumber = frameNumber;
       if (last != null) _frames.add((timestamp - last).inMicroseconds / 1000);
     } else if (_operationPending) {
       _operationPending = false;
@@ -198,7 +208,7 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
             (ref.read(benchClockProvider).now() - _operationStart)
                 .inMicroseconds /
             1000;
-      _awaitingRaster = record;
+      _awaitingRaster[frameNumber] = record;
       // This runs inside a frame callback, where a state change schedules no
       // new frame. Start the next step once the frame is over, so its own
       // state change asks for the frame that ends it.
@@ -211,21 +221,27 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
     }
   }
 
-  /// Records the engine's build and raster times of a frame, when it reports
-  /// them.
+  /// Records the engine's build and raster times of frame [frameNumber],
+  /// when it reports them.
   ///
-  /// The raster time of the frame that ended an operation arrives after the
-  /// frame; the first report after an operation ends is taken as that frame's.
-  /// Otherwise the build plus raster time joins the current scroll step.
-  void recordWork({required double buildMs, required double rasterMs}) {
-    if (_awaitingRaster case final record?) {
+  /// The web engine reports timings in batches at least 100 ms apart, so a
+  /// timing usually arrives after its frame's step has moved on. It is
+  /// matched by frame number: the raster time of a frame that ended an
+  /// operation goes to that operation, and any other build plus raster time
+  /// to the scroll step its frame belonged to, sorted out at the end of the
+  /// run. Timings that arrive after the run are dropped, so the last
+  /// operations can lack a raster time.
+  void recordWork({
+    required int frameNumber,
+    required double buildMs,
+    required double rasterMs,
+  }) {
+    if (state is! Running) return;
+    if (_awaitingRaster.remove(frameNumber) case final record?) {
       record.rasterMs = rasterMs;
-      _awaitingRaster = null;
       return;
     }
-    if (state case Running(:final step) when step.isScroll) {
-      _work.add(buildMs + rasterMs);
-    }
+    _work.add(frameNumber, buildMs + rasterMs);
   }
 
   void _begin(BenchStep step) {
@@ -235,7 +251,8 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
         .schedule(_config.timeout(step), () => _abort('timeout:${step.name}'));
     _lastFrame = null;
     _frameStart = _frames.length;
-    _workStart = _work.length;
+    _firstFrame = null;
+    _lastFrameNumber = null;
     state = Running(step, _config);
     if (!step.isScroll) _startOperation(step);
   }
@@ -316,10 +333,15 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
   static const double _resizeWidth = 320;
 
   void _finish() {
+    final segmentWork = {
+      for (final MapEntry(key: step, value: (first, last))
+          in _segmentFrames.entries)
+        step: _work.forFrames(first, last),
+    };
     final segments = <SegmentResult>[];
     for (final step in BenchStep.values) {
       if (!step.isScroll || step == BenchStep.calibrate) continue;
-      final work = [...?_segmentWork[step]]..sort();
+      final work = [...?segmentWork[step]]..sort();
       segments.add(
         SegmentResult(
           step: step,
@@ -338,7 +360,7 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
     final judged = segments.firstWhere((s) => s.judged);
     final verdict = S4Verdict.judge(
       scroll: judged.stats,
-      workMs: _segmentWork[BenchStep.handSpeed] ?? const [],
+      workMs: segmentWork[BenchStep.handSpeed] ?? const [],
       operationMs: [for (final op in operations) op.untilOnScreenMs],
     );
     final result = BenchmarkResult(

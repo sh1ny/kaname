@@ -167,7 +167,7 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 
   Link the report from the roadmap's M0 section only at milestone close, not here. Verify that the report quotes the evidence file's numbers.
 - [x] 9.4 Run `mise run check` and `mise run spec:validate`. Both pass.
-- [ ] 9.5 [user] The owner runs the spike on web on the development PC, under load from gaming (amended 2026-11-17, owner's choice: "This PC counts"; the low-end laptop run becomes optional, see the report's "Owner's laptop" section), (skwasm and `?renderer=canvaskit`). The owner scrolls, groups and filters the grid, optionally presses Benchmark and pastes the JSON into the report, and then accepts the result or asks for a plan change. This checks the M0 exit criterion "The owner scrolls, groups and filters the grid spike on web on a low-end laptop and accepts the result or asks for a plan change".
+- [ ] 9.5 [user] The owner runs the spike on web on the development PC, under load from gaming (amended 2026-11-17, owner's choice: "This PC counts"; the low-end laptop run becomes optional, see the report's "Owner's laptop" section), (skwasm and `?renderer=canvaskit`). The owner scrolls, groups and filters the grid, optionally presses Benchmark and pastes the JSON into the report, and then accepts the result or asks for a plan change. This checks the M0 exit criterion "The owner scrolls, groups and filters the grid spike on web on a low-end laptop and accepts the result or asks for a plan change" as amended: on the development PC instead of a low-end laptop (proposal S7). The M0 close records the changed hardware.
 
 ## Workflow follow-up
 

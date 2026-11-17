@@ -114,12 +114,16 @@ class BenchRig {
   };
 
   Duration _stamp = Duration.zero;
+  int _frameNumber = 0;
+
+  /// The frame number of the last frame fed in, as the engine numbers it.
+  int get lastFrame => _frameNumber;
 
   /// Feeds [count] frames [intervalMs] apart to the current step.
   void frames(int count, {double intervalMs = 16.7}) {
     for (var i = 0; i < count; i++) {
       _stamp += Duration(microseconds: (intervalMs * 1000).round());
-      notifier.recordFrame(_stamp);
+      notifier.recordFrame(_stamp, frameNumber: ++_frameNumber);
     }
   }
 

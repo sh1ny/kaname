@@ -20,11 +20,19 @@ void main() {
     rig.frames(1);
     for (var i = 0; i < 95; i++) {
       rig.frames(1);
-      rig.notifier.recordWork(buildMs: 4, rasterMs: 6);
+      rig.notifier.recordWork(
+        frameNumber: rig.lastFrame,
+        buildMs: 4,
+        rasterMs: 6,
+      );
     }
     for (var i = 0; i < 5; i++) {
       rig.frames(1, intervalMs: 33.0);
-      rig.notifier.recordWork(buildMs: 4, rasterMs: 6);
+      rig.notifier.recordWork(
+        frameNumber: rig.lastFrame,
+        buildMs: 4,
+        rasterMs: 6,
+      );
     }
     rig.notifier.stepDone(BenchStep.handSpeed);
     while (rig.step!.isScroll) {
@@ -36,7 +44,11 @@ void main() {
     await rig.playAll(
       afterOp: (step) {
         if (step == BenchStep.filter) {
-          rig.notifier.recordWork(buildMs: 1, rasterMs: 7);
+          rig.notifier.recordWork(
+            frameNumber: rig.lastFrame,
+            buildMs: 1,
+            rasterMs: 7,
+          );
         }
       },
     );

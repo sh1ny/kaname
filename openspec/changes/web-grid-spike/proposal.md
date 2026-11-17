@@ -96,6 +96,7 @@ DECISION_MAKING: all
 
 - **Choice:** a `[user]` task in this change: the owner scrolls, groups and filters the spike on web on a low-end laptop and accepts it or asks for a plan change before archive.
 - **Rejected:** judging it only at the M0 close (an "adjust" verdict would surface only after the change merged).
+- **Amended 2026-11-17 (owner's choice, "This PC counts"):** the owner's check runs on the development PC under game load instead of a low-end laptop; the laptop run is optional. The M0 close must record that the roadmap criterion was checked on this hardware, not a low-end laptop.
 - **Reversal cost:** low
 - **Important:** yes. It changes how the change completes: archive waits on the owner.
 - **Chosen by:** user
