@@ -4,7 +4,8 @@
 /// For each row (`skwasm-threaded`, `skwasm-single`, `canvaskit`) the runner
 /// serves `build/web` with `kaname_tools serve` (adding `--no-isolation` for
 /// the single-threaded row), opens headless Chrome at
-/// `/?bench=1&renderer=<renderer>&threads=<threads>`, polls
+/// `/?bench=1&renderer=<renderer>` (plus `&threads=single` for the
+/// single-threaded row), polls
 /// `window.gridBenchResult` and writes
 /// `build/grid-bench/<renderer>-<threads>.json` (`skwasm-multi.json`,
 /// `skwasm-single.json`, `canvaskit-na.json`) plus `summary.json`.

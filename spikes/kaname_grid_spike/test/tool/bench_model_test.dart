@@ -20,7 +20,7 @@ void main() {
       expect(benchRows.map((r) => r.isolation), [true, false, true]);
     });
 
-    test('the page path carries bench, renderer and threads', () {
+    test('the page path carries bench, renderer and threads=single only', () {
       final row = selectRows(['skwasm-single']).single;
       expect(
         row.path(smoke: false),
@@ -29,6 +29,15 @@ void main() {
       expect(
         row.path(smoke: true),
         '/?bench=smoke&renderer=skwasm&threads=single',
+      );
+      // The bootstrap knows only `threads=single`; the other rows send none.
+      expect(
+        selectRows(['skwasm-threaded']).single.path(smoke: false),
+        '/?bench=1&renderer=skwasm',
+      );
+      expect(
+        selectRows(['canvaskit']).single.path(smoke: false),
+        '/?bench=1&renderer=canvaskit',
       );
     });
 

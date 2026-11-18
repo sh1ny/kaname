@@ -26,7 +26,9 @@ final class BenchRow {
   /// The `?renderer=` value: `skwasm` or `canvaskit`.
   final String renderer;
 
-  /// The `?threads=` value: `multi`, `single` or `na` (CanvasKit).
+  /// The thread mode: `multi`, `single` or `na` (CanvasKit). Only `single`
+  /// reaches the page, as `?threads=single`: the bootstrap knows no other
+  /// value.
   final String threads;
 
   /// Whether `kaname_tools serve` sends the COOP/COEP headers (`false` adds
@@ -37,9 +39,10 @@ final class BenchRow {
   String get fileStem => '$renderer-$threads';
 
   /// The page path with its query for a full run or, with [smoke], the
-  /// scaled-down one.
+  /// scaled-down one. Adds `&threads=single` for the single-threaded row only.
   String path({required bool smoke}) =>
-      '/?bench=${smoke ? 'smoke' : '1'}&renderer=$renderer&threads=$threads';
+      '/?bench=${smoke ? 'smoke' : '1'}&renderer=$renderer'
+      '${threads == 'single' ? '&threads=single' : ''}';
 }
 
 /// The rows in run order.

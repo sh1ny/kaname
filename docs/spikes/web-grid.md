@@ -57,7 +57,7 @@ The script, in order:
 
 At about 200,000 px/s every frame shows new rows. skwasm holds 30 fps there and CanvasKit 15 fps. In the multi-threaded row, work time includes waiting on the render thread, so it is not comparable with the single-threaded figure.
 
-Horizontal scrolling (not judged) missed under 1% of frames on skwasm, with p99 at one refresh period. CanvasKit missed 1.0% on the way out and 7.3% on the way back, with p99 33.3ms.
+Horizontal scrolling (not judged) missed under 1% of frames on skwasm, with p99 at about one refresh period (16.67ms multi-threaded, 16.8ms single-threaded). CanvasKit missed 1.0% on the way out, with p99 16.67ms, and 7.3% on the way back, with p99 33.3ms.
 
 ### Operations
 

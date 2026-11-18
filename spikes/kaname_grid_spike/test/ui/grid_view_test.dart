@@ -106,9 +106,20 @@ void main() {
     const rows = 2000;
     const columns = 30;
 
+    Set<int> builtColumns() => tester
+        .widgetList<GridTableCell>(find.byType(GridTableCell))
+        .map((c) => c.column)
+        .toSet();
+
     final first = tester.widgetList(find.byType(GridTableCell)).length;
     expect(first, greaterThan(0));
     expect(first, lessThan(rows * columns ~/ 50));
+    // Both axes are virtualised: the columns past the viewport and its cache
+    // are not built, so no row holds a cell for every column.
+    final before = builtColumns();
+    expect(before, contains(1));
+    expect(before, isNot(contains(columns - 1)));
+    expect(before.length, lessThan(columns ~/ 2));
 
     gridOf(tester).verticalController.jumpTo(30000);
     gridOf(tester).horizontalController.jumpTo(1500);
@@ -116,6 +127,10 @@ void main() {
     final scrolled = tester.widgetList(find.byType(GridTableCell)).length;
     expect(scrolled, greaterThan(0));
     expect(scrolled, lessThan(rows * columns ~/ 50));
+    // The horizontal jump drops the first scrolling column from every row.
+    final after = builtColumns();
+    expect(after, contains(0));
+    expect(after, isNot(contains(1)));
     expect(cell(1, 1), findsNothing);
     expect(cell(rows, columns - 1), findsNothing);
   });
