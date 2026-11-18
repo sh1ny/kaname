@@ -36,6 +36,7 @@ The first real user is expected to be the owner's own corp; until then trials us
 ## Decision summary
 
 - init 2026-11-14: all (source: setting)
+- close M0 2026-11-18: all (source: setting)
 
 | # | Run | Decision | Choice | Rejected | Reason | Important | Chosen by |
 |---|---|---|---|---|---|---|---|
@@ -96,3 +97,8 @@ The first real user is expected to be the owner's own corp; until then trials us
 | R55 | init | Fit-engine rejection reason (review M11) | ADR 0011 rejects other engines because D5 chose EVEShipFit's first and an own Dart engine later; no licence claim | The incorrect licence and no-copy reason | Owner, 2026-11-14: "We already settled on the choice of engine" | no | user |
 | R56 | init | Worker isolate access to Postgres, Redis, vault, privacy scope and bus (review round 2 M1) | Open, settle in the first change that adds a worker isolate | — | Serverpod's ORM and messages need a Session | yes | pending |
 | R57 | init | Static-data source for mobile solo-lite (review round 2 M3) | Open, settle with the mobile scope (R40); M1's bundle format keeps both options | — | No server to fetch a bundle from | yes | pending |
+| R58 | close M0 | Hardware for the owner's grid-spike check (M0 user exit criterion) | The development PC under gaming load | A low-end laptop (now optional) | Owner, 2026-11-17: "This PC counts"; accepted 2026-11-18 (web-grid-spike task 9.5) | yes | user |
+| R59 | close M0 | Pending rows R35–R47, R56, R57 | All stay open until their milestone or event | Settling some at this close | None is due yet | no | user |
+| R60 | close M0 | M1 split | Four changes: `sde-import`, `sde-build-switch`, `client-data-bundle`, `static-data-settings` | Three changes with the build switch folded into the import | Smaller PRs along ADR 0004's seams | yes | user |
+| R61 | close M0 | Product web build renderer | `--wasm` (skwasm, without COOP/COEP headers at first) as a small `web-wasm-build` change, first in M1 | A later milestone; keeping the CanvasKit-only build | The grid spike: CanvasKit missed S4, skwasm passed with margin | yes | user |
+| R62 | close M0 | New Next (M2) | One paragraph; split at M1's close | Agreeing M2's split now | Only Now is split | no | user |
