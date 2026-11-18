@@ -138,4 +138,46 @@ void main() {
       reason: 'input works again',
     );
   });
+
+  testWidgets('a run starts from the top-left cell', (tester) async {
+    tester.view.physicalSize = const Size(1400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final gridKey = GlobalKey<GridTableState>();
+    await tester.pumpWidget(
+      gridApp(
+        GridScreen(gridKey: gridKey),
+        columns: bigGrid(rows: 5000),
+        overrides: [
+          benchHostProvider.overrideWithValue(FakeBenchHost()),
+          benchClockProvider.overrideWithValue(FakeBenchClock()),
+        ],
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    final container = containerOf(tester);
+    BenchmarkState state() => container.read(benchmarkProvider);
+
+    // The user scrolled sideways and down before pressing Benchmark.
+    final grid = gridKey.currentState!;
+    grid.horizontalController.jumpTo(600);
+    grid.verticalController.jumpTo(900);
+    await tester.pump();
+    expect(grid.horizontalController.offset, 600);
+
+    // Every segment measures the same cells as an autostarted run: the
+    // horizontal offset is back at 0 from calibration on, not only from
+    // the horizontal segment.
+    await tester.tap(find.text('Benchmark'));
+    await tester.pump();
+    await tester.pump();
+    expect((state() as Running).step, BenchStep.calibrate);
+    expect(grid.horizontalController.offset, 0);
+    expect(grid.verticalController.offset, 0);
+    container.read(benchmarkProvider.notifier).cancel();
+    // Let the cancelled calibration's timer run out.
+    await tester.pump(const Duration(seconds: 3));
+  });
 }

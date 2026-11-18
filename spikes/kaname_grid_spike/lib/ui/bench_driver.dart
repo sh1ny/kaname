@@ -127,8 +127,19 @@ class _BenchDriverState extends ConsumerState<BenchDriver> {
     final horizontal = grid.horizontalController;
     final maxY = vertical.position.maxScrollExtent;
     final maxX = horizontal.position.maxScrollExtent;
+    // Every vertical segment and calibration start at the left edge, so a
+    // run started from a grid the user scrolled sideways measures the same
+    // columns as an autostarted one.
+    if (step
+        case BenchStep.calibrate ||
+            BenchStep.handSpeed ||
+            BenchStep.stressDown ||
+            BenchStep.stressUp) {
+      horizontal.jumpTo(0);
+    }
     switch (step) {
       case BenchStep.calibrate:
+        vertical.jumpTo(0);
         await _stillFrames(config.calibrate);
       case BenchStep.settle:
         await _stillFrames(BenchConfig.settle);
