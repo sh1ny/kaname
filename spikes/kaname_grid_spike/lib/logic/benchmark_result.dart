@@ -6,7 +6,7 @@ import 'bench_metrics.dart';
 import 'bench_script.dart';
 
 /// The version of the result JSON.
-const int benchmarkSchemaVersion = 1;
+const int benchmarkSchemaVersion = 2;
 
 /// The figures of one scroll segment.
 final class SegmentResult {
@@ -95,13 +95,15 @@ final class OperationResult {
 
 /// What a finished benchmark run measured.
 ///
-/// **C6.** The benchmark result JSON is `schemaVersion: 1`. Any change to its
-/// fields bumps the version, so reruns compare only like with like.
+/// **C6.** The benchmark result JSON is `schemaVersion: 2`. Any change to its
+/// fields or to a verdict rule bumps the version, so reruns compare only like
+/// with like. Version 2 judges p99 as `round(p99 / period) <= 2` (S4, amended
+/// 2026-11-18); version 1 judged it against 33 ms.
 ///
 /// [toJson] is the document the runner reads from `window.gridBenchResult`:
 ///
 /// ```text
-/// schemaVersion  1
+/// schemaVersion  2
 /// config         the planned durations (see BenchConfig.toJson)
 /// environment    renderer, thread mode, user agent, window size, pixel ratio
 /// refreshPeriodMs  the calibrated refresh period

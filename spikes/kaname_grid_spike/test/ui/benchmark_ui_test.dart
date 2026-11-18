@@ -61,18 +61,28 @@ void main() {
       reason: 'Collapse all is enabled',
     );
 
-    // While running, the grid and the toolbar ignore the user.
+    // A filter still being typed when Benchmark is pressed is dropped, and
+    // the run starts from the full view: no filter, group or collapse.
+    await tester.enterText(find.byType(TextField), 'zzz');
     await tester.tap(find.text('Benchmark'));
     await tester.pump();
     expect(quietContainer.read(benchmarkProvider), isA<Running>());
+    await tester.pump(const Duration(milliseconds: 300));
+    final started = quietContainer.read(gridProvider) as Ready;
+    expect(started.query.isEmpty, isTrue);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      '',
+    );
+
+    // While running, the grid and the toolbar ignore the user.
     await tester.tap(find.text('Name'), warnIfMissed: false);
     await tester.tap(find.text('Collapse all'), warnIfMissed: false);
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
     await tester.pump();
     final during = quietContainer.read(gridProvider) as Ready;
-    expect(during.query.sortColumn, ready.query.sortColumn);
-    expect(during.query.collapsed, isEmpty);
-    expect(during.currentRow, ready.currentRow);
+    expect(during.query.isEmpty, isTrue);
+    expect(during.currentRow, started.currentRow);
     quietContainer.read(benchmarkProvider.notifier).cancel();
 
     // ?bench=smoke starts by itself once the grid is ready.
@@ -119,7 +129,7 @@ void main() {
     await tester.tap(find.widgetWithText(OutlinedButton, 'Cancel'));
     await tester.pump();
     expect((state() as Aborted).reason, 'cancelled');
-    expect(host.published.last, {'schemaVersion': 1, 'aborted': 'cancelled'});
+    expect(host.published.last, {'schemaVersion': 2, 'aborted': 'cancelled'});
     await tester.tap(find.text('Name'));
     await tester.pump();
     expect(

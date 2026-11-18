@@ -164,7 +164,10 @@ class GridTableState extends ConsumerState<GridTable> {
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    if (event is KeyUpEvent) return KeyEventResult.ignored;
+    // Under an ExcludeFocus the node can keep primary focus; it must not act.
+    if (event is KeyUpEvent || !node.canRequestFocus) {
+      return KeyEventResult.ignored;
+    }
     final key = event.logicalKey;
     final rows = widget.ready.view.view.length;
     final delta =

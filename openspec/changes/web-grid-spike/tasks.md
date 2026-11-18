@@ -41,7 +41,7 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 | spike → ui | filter input is debounced; `Seeding`, `SeedFailed` and `lastError` are shown | `spikes/kaname_grid_spike/test/ui/grid_screen_test.dart` | filter debounce and visible states | green |
 | spike → bench | missed frames (skipped refreshes), p50/p90/p99, verdict per S4 | `spikes/kaname_grid_spike/test/logic/bench_metrics_test.dart` | metrics and S4 verdict | green |
 | spike → bench | step order, `stepDone` handshake, timeouts → `Aborted`, cancel | `spikes/kaname_grid_spike/test/logic/benchmark_notifier_test.dart` | benchmark state machine | green |
-| spike → bench | result JSON v2 fields (v1 until task 9.6); abort published through `BenchHost` | `spikes/kaname_grid_spike/test/logic/benchmark_result_test.dart` | result JSON v1 and abort publication | green |
+| spike → bench | result JSON v2 fields (v1 until task 9.6); abort published through `BenchHost` | `spikes/kaname_grid_spike/test/logic/benchmark_result_test.dart` | result JSON v2 and abort publication | green |
 | spike → bench | `?bench=1` autostarts; grid input disabled while running | `spikes/kaname_grid_spike/test/ui/benchmark_ui_test.dart` | autostart and input lock | green |
 | spike → web build | `build:spike` output passes `webbuild --check` | n/a (mechanical: `mise run build:spike`) | n/a | green |
 
@@ -167,7 +167,7 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 
   Link the report from the roadmap's M0 section only at milestone close, not here. Verify that the report quotes the evidence file's numbers.
 - [x] 9.4 Run `mise run check` and `mise run spec:validate`. Both pass.
-- [ ] 9.6 Carry the amended p99 rule into the code and report (S4 amended 2026-11-18; design review round 3, Required Changes 2 and 3):
+- [x] 9.6 Carry the amended p99 rule into the code and report (S4 amended 2026-11-18; design review round 3, Required Changes 2 and 3):
   - `bench_metrics.dart`: `S4Verdict` judges p99 as `round(p99 / period) ≤ 2` against the calibrated period, with the `p99Ok` doc comment to match;
   - `result_panel.dart` shows the p99 limit in refresh periods, with the millisecond equivalent from the run's period;
   - `bench_metrics_test.dart`: the boundary cases, at exactly 2.5 periods and at a 144Hz period as well as 60Hz;

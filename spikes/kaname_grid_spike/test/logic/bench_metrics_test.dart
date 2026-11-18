@@ -67,10 +67,36 @@ void main() {
     expect(missed.missedOk, isFalse);
     expect(missed.passed, isFalse);
 
-    // Two 40 ms intervals out of 100 put p99 at 40 ms.
-    final slowTail = judge(scroll: intervals(fast: 98, slow: 2, slowMs: 40));
+    // p99 may skip one refresh: it is judged as `round(p99 / period) <= 2`,
+    // so 33.4 ms (two periods of 16.7 ms) and 41.7 ms (2.497 periods) pass,
+    // and 42 ms (2.51 periods) fails.
+    final oneSkip = judge(scroll: intervals(fast: 98, slow: 2, slowMs: 33.4));
+    expect(oneSkip.p99Ok, isTrue);
+    final justUnder = judge(scroll: intervals(fast: 98, slow: 2, slowMs: 41.7));
+    expect(justUnder.p99Ok, isTrue);
+    final slowTail = judge(scroll: intervals(fast: 98, slow: 2, slowMs: 42));
     expect(slowTail.p99Ok, isFalse);
     expect(slowTail.passed, isFalse);
+
+    // Exactly 2.5 periods rounds up to 3 and fails.
+    bool p99OkAt(double p99Ms, double periodMs) => S4Verdict.judge(
+      scroll: FrameStats.of([
+        for (var i = 0; i < 98; i++) periodMs,
+        p99Ms,
+        p99Ms,
+      ], periodMs: periodMs),
+      workMs: const [],
+      operationMs: const [100],
+    ).p99Ok;
+    expect(p99OkAt(40, 16), isFalse);
+    expect(p99OkAt(39.9, 16), isTrue);
+
+    // The limit follows the period, not a fixed time: at 144 Hz one skipped
+    // refresh (13.9 ms) passes, and 33.3 ms (4.8 periods) fails.
+    const period144 = 1000 / 144;
+    expect(p99OkAt(13.9, period144), isTrue);
+    expect(p99OkAt(17.4, period144), isFalse);
+    expect(p99OkAt(33.3, period144), isFalse);
 
     // Work p90 over 16.7 ms fails; no work timings means not judged.
     final heavy = judge(

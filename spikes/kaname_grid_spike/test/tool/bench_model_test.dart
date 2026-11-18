@@ -55,10 +55,10 @@ void main() {
       }
     });
 
-    test('schema 1 with a verdict is done', () {
+    test('schema 2 with a verdict is done', () {
       final poll = classifyResult(
         jsonEncode({
-          'schemaVersion': 1,
+          'schemaVersion': 2,
           'verdict': {'passed': false},
         }),
       );
@@ -67,7 +67,7 @@ void main() {
 
     test('an abort document is aborted with its reason', () {
       final poll = classifyResult(
-        jsonEncode({'schemaVersion': 1, 'aborted': 'no frames'}),
+        jsonEncode({'schemaVersion': 2, 'aborted': 'no frames'}),
       );
       expect(poll, isA<BenchAborted>());
       expect((poll as BenchAborted).reason, contains('no frames'));
@@ -75,8 +75,9 @@ void main() {
 
     test('other schema versions, shapes and invalid JSON fail the row', () {
       for (final json in [
-        jsonEncode({'schemaVersion': 2, 'verdict': <String, Object?>{}}),
-        jsonEncode({'schemaVersion': 1}),
+        jsonEncode({'schemaVersion': 1, 'verdict': <String, Object?>{}}),
+        jsonEncode({'schemaVersion': 3, 'verdict': <String, Object?>{}}),
+        jsonEncode({'schemaVersion': 2}),
         jsonEncode([1]),
         '{oops',
       ]) {
@@ -100,7 +101,7 @@ void main() {
       smoke: true,
       elapsed: const Duration(seconds: 3),
       result: {
-        'schemaVersion': 1,
+        'schemaVersion': 2,
         'verdict': {'passed': true},
       },
     );

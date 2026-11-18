@@ -87,6 +87,15 @@ class _GridScreenState extends ConsumerState<GridScreen> {
         _filter.text = next.query.filterText;
       }
     });
+    // A run starts from the full view: drop a filter still being typed, and
+    // the focus, so no input reaches the grid or the toolbar while it runs.
+    ref.listen<BenchmarkState>(benchmarkProvider, (previous, next) {
+      if (next is Running && previous is! Running) {
+        _debounce?.cancel();
+        _filter.clear();
+        FocusManager.instance.primaryFocus?.unfocus();
+      }
+    });
     final colors = EmberColors.of(context);
     final running = ref.watch(benchmarkProvider) is Running;
     return Scaffold(

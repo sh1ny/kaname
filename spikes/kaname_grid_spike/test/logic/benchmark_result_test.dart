@@ -7,7 +7,7 @@ import 'package:kaname_grid_spike/logic/benchmark_notifier.dart';
 import 'bench_fakes.dart';
 
 void main() {
-  test('result JSON v1 and abort publication', () async {
+  test('result JSON v2 and abort publication', () async {
     final rig = await benchRig();
     rig.notifier.run(config: BenchConfig.smoke);
 
@@ -58,7 +58,7 @@ void main() {
     expect(json, done.result.toJson());
     expect(jsonDecode(jsonEncode(json)), json, reason: 'plain JSON');
 
-    expect(json['schemaVersion'], 1);
+    expect(json['schemaVersion'], 2);
     expect(json['refreshPeriodMs'], closeTo(16.7, 1e-9));
     expect(json['seedMs'], 3.0);
     expect(json['droppedSamples'], 0);
@@ -115,13 +115,13 @@ void main() {
     rig.notifier.run();
     rig.notifier.cancel();
     expect(rig.host.published.last, {
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'aborted': 'cancelled',
     });
     rig.notifier.run();
     rig.clock.advance(const Duration(seconds: 14));
     expect(rig.host.published.last, {
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'aborted': 'timeout:calibrate',
     });
 

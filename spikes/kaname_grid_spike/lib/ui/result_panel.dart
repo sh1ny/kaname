@@ -185,7 +185,8 @@ class _ResultViewState extends State<_ResultView> {
       _Figure(
         'Time between frames, p99',
         _ms(judged.stats.p99Ms),
-        '≤ ${_ms(maxP99Ms)}',
+        '≤ $maxP99Periods refresh periods '
+            '(< ${_ms((maxP99Periods + 0.5) * judged.stats.periodMs)})',
         verdict.p99Ok,
       ),
       _Figure(

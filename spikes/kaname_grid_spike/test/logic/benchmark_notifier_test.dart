@@ -247,13 +247,32 @@ void main() {
     ], isNot(contains(BenchStep.settle)));
   });
 
+  test('a run starts from the full view, whatever the user left', () async {
+    final rig = await benchRig();
+    final grid = rig.container.read(gridProvider.notifier);
+    final columns = (rig.container.read(gridProvider) as Ready).columns;
+    grid.setFilter('a');
+    grid.sortBy(columns.quantityIndex);
+    grid.groupBy(columns.categoryIndex);
+    grid.collapseAll();
+    final left = rig.container.read(gridProvider) as Ready;
+    expect(left.query.isEmpty, isFalse);
+    expect(left.view.view.length, lessThan(left.columns.rowCount));
+
+    rig.notifier.run();
+    expect(rig.step, BenchStep.calibrate);
+    final start = rig.container.read(gridProvider) as Ready;
+    expect(start.query.isEmpty, isTrue);
+    expect(start.view.view.length, start.columns.rowCount);
+  });
+
   test('a run needs a ready grid', () async {
     final rig = await benchRig(seed: false);
     expect(rig.container.read(gridProvider), isA<Seeding>());
     rig.notifier.run();
     expect((rig.state as Aborted).reason, 'grid-not-ready');
     expect(rig.host.published.single, {
-      'schemaVersion': 1,
+      'schemaVersion': 2,
       'aborted': 'grid-not-ready',
     });
   });

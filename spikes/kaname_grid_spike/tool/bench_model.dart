@@ -7,8 +7,12 @@ library;
 import 'dart:convert';
 
 /// The schema version of the runner's own row and summary files (separate from
-/// the page's `schemaVersion`, which is C6).
+/// the page's `schemaVersion`, which is C6 and [pageSchemaVersion]).
 const runnerSchemaVersion = 1;
+
+/// The page's result `schemaVersion` the runner accepts (C6). It must match
+/// `benchmarkSchemaVersion` in `lib/logic/benchmark_result.dart`.
+const pageSchemaVersion = 2;
 
 /// One benchmark combination: a renderer with a thread mode.
 final class BenchRow {
@@ -98,7 +102,7 @@ final class BenchPending extends BenchPoll {
   const BenchPending();
 }
 
-/// The page published a complete result: `schemaVersion` 1 with a `verdict`.
+/// The page published a complete result: [pageSchemaVersion] with a `verdict`.
 final class BenchDone extends BenchPoll {
   /// Creates a done state around the published [document].
   const BenchDone(this.document);
@@ -122,8 +126,8 @@ final class BenchAborted extends BenchPoll {
 /// Classifies the JSON text that the page's `JSON.stringify(gridBenchResult)`
 /// returned: `null` or empty while pending.
 ///
-/// An abort document is `{schemaVersion: 1, aborted: <reason>}`. A complete
-/// document has `schemaVersion` 1 and a `verdict`. Anything else (invalid JSON,
+/// An abort document is `{schemaVersion: 2, aborted: <reason>}`. A complete
+/// document has `schemaVersion` 2 and a `verdict` ([pageSchemaVersion]). Anything else (invalid JSON,
 /// another schema version, neither key) is [BenchAborted] with the reason, so
 /// the row fails instead of waiting for the timeout.
 BenchPoll classifyResult(String? json) {
@@ -137,10 +141,11 @@ BenchPoll classifyResult(String? json) {
     return BenchAborted('Published result is not JSON: ${e.message}');
   }
   return switch (decoded) {
-    {'schemaVersion': 1, 'aborted': final Object reason} &&
+    {'schemaVersion': pageSchemaVersion, 'aborted': final Object reason} &&
         final Map<String, Object?> document =>
       BenchAborted('Benchmark aborted: $reason', document: document),
-    {'schemaVersion': 1, 'verdict': _} && final Map<String, Object?> document =>
+    {'schemaVersion': pageSchemaVersion, 'verdict': _} &&
+        final Map<String, Object?> document =>
       BenchDone(document),
     {'schemaVersion': final Object? version} &&
         final Map<String, Object?> document =>

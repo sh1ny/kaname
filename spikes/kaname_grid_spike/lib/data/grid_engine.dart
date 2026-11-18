@@ -61,6 +61,14 @@ final class GridQuery {
   /// The dictionary codes of the collapsed groups of [groupColumn].
   final Set<int> collapsed;
 
+  /// Whether this query shows every row in row order, as `GridQuery()` does.
+  bool get isEmpty =>
+      filterText.isEmpty &&
+      categoryCode == null &&
+      sortColumn == null &&
+      groupColumn == null &&
+      collapsed.isEmpty;
+
   /// Returns this query with [filterText] replaced.
   GridQuery withFilterText(String text) => _copy(filterText: text);
 

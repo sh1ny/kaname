@@ -6,7 +6,7 @@ The raw results, with the machine header, are in [`openspec/changes/web-grid-spi
 
 ## Method
 
-The spike runs its own benchmark: press **Benchmark** in the toolbar, or open the page with `?bench=1`. `mise run bench:spike` builds the spike with `--wasm`, serves it with `kaname_tools serve` (COOP/COEP headers, loopback) and opens it in headless Chrome for Testing once per row: skwasm multi-threaded, skwasm single-threaded (`?threads=single`) and CanvasKit (`?renderer=canvaskit`). Each row writes one JSON file (schema version 1).
+The spike runs its own benchmark: press **Benchmark** in the toolbar, or open the page with `?bench=1`. `mise run bench:spike` builds the spike with `--wasm`, serves it with `kaname_tools serve` (COOP/COEP headers, loopback) and opens it in headless Chrome for Testing once per row: skwasm multi-threaded, skwasm single-threaded (`?threads=single`) and CanvasKit (`?renderer=canvaskit`). Each row writes one JSON file (schema version 2 since the p99 rule was amended on 2026-11-18). The committed evidence is schema version 1: its `p99Ok` and `passed` fields were judged against the old 33ms limit, and this report re-judges them from the recorded p99 and refresh period. A pressed **Benchmark** first clears any filter, sort, group or collapse, so every run measures the full 200,000-row view.
 
 The script, in order:
 
@@ -25,7 +25,7 @@ The script, in order:
 | Criterion | Budget |
 |---|---|
 | Missed frames | ≤5% |
-| p99 time between frames | ≤33ms |
+| p99 time between frames | ≤2 refresh periods: `round(p99 / period) ≤ 2`, about 33.3ms at 60Hz (amended 2026-11-18 from ≤33ms) |
 | Work p90 (build + raster) | ≤16.7ms |
 | Every operation on screen | ≤300ms |
 
@@ -45,7 +45,7 @@ The script, in order:
 |---|---|---|---|---|---|
 | skwasm multi-threaded | 0.08% | 16.67ms | 12.5ms | yes | **pass** |
 | skwasm single-threaded | 0.25% | 16.8ms | 12.4ms | yes | **pass** |
-| CanvasKit | 12.0% | 33.3ms | 19.3ms | yes | **miss** (missed frames, p99, work) |
+| CanvasKit | 12.0% | 33.3ms | 19.3ms | yes | **miss** (missed frames, work) |
 
 ### Stress headroom (not judged)
 
@@ -106,8 +106,8 @@ In the first full run (2026-11-17) the multi-threaded skwasm page threw `Runtime
 
 **Go for skwasm; adjust for CanvasKit.**
 
-- skwasm passes S4 with a wide margin, single-threaded and multi-threaded, even on a software GPU: under 0.5% missed frames, p99 at one refresh period, and every operation on screen within 300ms, including sorting and grouping all 200,000 rows. Single-threaded skwasm keeps the most margin (at most 156ms); multi-threaded reaches 285ms.
-- CanvasKit misses S4 on this machine (12.0% missed frames, p99 33.3ms against 33ms, work p90 19.3ms). Operations stay within budget. With work p90 above one refresh period on a software rasteriser, raster cost is the likely cause, and real GPUs could clear it. The fix for this miss: treat CanvasKit as the fallback only for browsers without WasmGC, ship `--wasm` so capable browsers get skwasm, and let the owner's `?renderer=canvaskit` check decide whether the fallback is acceptable or needs work (for example fewer visible columns or lighter cell painting).
+- skwasm passes S4 with a wide margin, single-threaded and multi-threaded, even on a software GPU: under 0.5% missed frames, p99 at about one refresh period, and every operation on screen within 300ms, including sorting and grouping all 200,000 rows. Single-threaded skwasm keeps the most margin (at most 156ms); multi-threaded reaches 285ms.
+- CanvasKit misses S4 on this machine (12.0% missed frames, work p90 19.3ms). Its p99 of 33.3ms is two refresh periods, within the amended limit; under the original 33ms limit it also failed p99, as the evidence JSON records. Operations stay within budget. With work p90 above one refresh period on a software rasteriser, raster cost is the likely cause, and real GPUs could clear it. The fix for this miss: treat CanvasKit as the fallback only for browsers without WasmGC, ship `--wasm` so capable browsers get skwasm, and let the owner's `?renderer=canvaskit` check decide whether the fallback is acceptable or needs work (for example fewer visible columns or lighter cell painting).
 - The multi-threaded crash keeps multi-threaded skwasm from being the default until it is understood (above).
 - Multi-threaded full-set sorts leave 15ms of headroom here, most of their time spent outside the Dart engine. On a slower machine they could miss. If they do, the fix is the one S4 names: run the query in a web worker, or page from the server (C5).
 

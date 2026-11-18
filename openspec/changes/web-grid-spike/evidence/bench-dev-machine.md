@@ -8,6 +8,8 @@
 
 The JSON below is the runner's output as written, except that the Chrome executable's absolute path is shortened to its path under the spike.
 
+The `p99Ok` and `passed` fields in this JSON were computed under S4's original p99 limit of 33ms. The owner amended the limit on 2026-11-18 to two refresh periods (`round(p99 / period) ≤ 2`). Re-judged from the recorded figures, the current run's CanvasKit p99 (33.335ms over a period of 16.665ms, 2.0 periods) passes the amended limit; that row's verdict stays a miss, on missed frames and work. The earlier run's CanvasKit p99 (33.335ms over 16.67ms) also passes the amended limit, and that row stays a miss as well. No other verdict changes.
+
 ## Current run (2026-11-18, about 01:17 local time)
 
 `mise run bench:spike` after pre-ship review round 3: frame timings matched to their frames by frame number, calibration on an empty animation, the full-set sort and group steps, and a closing 0.5s settle so the last operations get their raster time. The report quotes this run.

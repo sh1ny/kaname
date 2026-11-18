@@ -11,8 +11,10 @@ import 'dart:typed_data';
 /// The most skipped refreshes S4 allows, as a share of all refreshes.
 const double maxMissedRatio = 0.05;
 
-/// The longest time between frames at the 99th percentile that S4 allows.
-const double maxP99Ms = 33;
+/// The most refresh periods the 99th percentile time between frames may
+/// span, rounded as [missedFrames] rounds: p99 may skip one refresh (S4, as
+/// amended 2026-11-18).
+const int maxP99Periods = 2;
 
 /// The longest build plus raster time at the 90th percentile that S4 allows
 /// when the engine reports frame timings.
@@ -51,6 +53,7 @@ double percentile(List<double> sorted, double fraction) {
 /// Figures for the times between frames of one segment.
 final class FrameStats {
   const FrameStats._({
+    required this.periodMs,
     required this.intervals,
     required this.missedFrames,
     required this.missedRatio,
@@ -63,7 +66,8 @@ final class FrameStats {
   /// Computes the figures for [intervalsMs] against the refresh [periodMs].
   factory FrameStats.of(List<double> intervalsMs, {required double periodMs}) {
     if (intervalsMs.isEmpty) {
-      return const FrameStats._(
+      return FrameStats._(
+        periodMs: periodMs,
         intervals: 0,
         missedFrames: 0,
         missedRatio: 0,
@@ -79,6 +83,7 @@ final class FrameStats {
       missed += _missedBy(interval, periodMs);
     }
     return FrameStats._(
+      periodMs: periodMs,
       intervals: intervalsMs.length,
       missedFrames: missed,
       missedRatio: missed / (missed + intervalsMs.length),
@@ -88,6 +93,9 @@ final class FrameStats {
       maxMs: sorted.last,
     );
   }
+
+  /// The refresh period the figures were computed against.
+  final double periodMs;
 
   /// How many times between frames were measured.
   final int intervals;
@@ -135,7 +143,9 @@ final class S4Verdict {
     final sortedWork = [...workMs]..sort();
     return S4Verdict._(
       missedOk: scroll.intervals > 0 && scroll.missedRatio <= maxMissedRatio,
-      p99Ok: scroll.intervals > 0 && scroll.p99Ms <= maxP99Ms,
+      p99Ok:
+          scroll.intervals > 0 &&
+          (scroll.p99Ms / scroll.periodMs).round() <= maxP99Periods,
       workOk: sortedWork.isEmpty
           ? null
           : percentile(sortedWork, 0.9) <= maxWorkP90Ms,
@@ -148,7 +158,8 @@ final class S4Verdict {
   /// Whether at most 5% of the refreshes were skipped.
   final bool missedOk;
 
-  /// Whether the 99th percentile time between frames is within 33 ms.
+  /// Whether the 99th percentile time between frames spans at most
+  /// [maxP99Periods] refresh periods, rounded.
   final bool p99Ok;
 
   /// Whether the 90th percentile build plus raster time is within 16.7 ms, or

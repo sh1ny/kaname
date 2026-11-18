@@ -137,16 +137,19 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
   /// asked for `?bench=smoke` and the full script otherwise.
   ///
   /// Does nothing while a run is going. Aborts with `grid-not-ready` when the
-  /// grid has no data.
+  /// grid has no data. Clears the query first, so the run measures the full
+  /// view whatever filter, sort, group or collapse the user left.
   void run({BenchConfig? config}) {
     if (state is Running) return;
     final host = ref.read(benchHostProvider);
     _config =
         config ?? (host.launch.smoke ? BenchConfig.smoke : BenchConfig.full);
-    if (ref.read(gridProvider) is! Ready) {
+    final grid = ref.read(gridProvider);
+    if (grid is! Ready) {
       _abort('grid-not-ready');
       return;
     }
+    if (!grid.query.isEmpty) ref.read(gridProvider.notifier).clearQuery();
     final capacity = ref.read(benchSampleCapacityProvider);
     _frames = SampleBuffer(capacity);
     _work = FrameSampleBuffer(capacity);
