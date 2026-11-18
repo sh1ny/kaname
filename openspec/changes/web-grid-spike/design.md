@@ -131,7 +131,7 @@ See proposal.md for the why and the scope decisions S1–S8.
 
   **Verdict per S4** (judged on the hand-speed segment; round 2, owner's choice):
   - missed frames ≤5%, counted as skipped refreshes: each time between frames adds `max(0, round(interval / period) − 1)` missed frames, with the period from calibration, and the ratio is missed / (missed + intervals);
-  - p99 time between frames ≤33ms;
+  - p99 time between frames skips at most one refresh: `round(p99 / period) ≤ 2`, with the period from calibration (about 33.3ms at 60Hz; amended 2026-11-18, owner's choice, proposal S4);
   - when frame timings are reported, build plus raster time p90 ≤16.7ms;
   - every operation's time until on screen ≤300ms.
 
@@ -227,7 +227,7 @@ See proposal.md for the why and the scope decisions S1–S8.
 | S1 | Where the spike lives | Separate `spikes/kaname_grid_spike` web app | Hidden route; visible module slot | low | yes | user |
 | S2 | Data locus | 200k seeded rows in the client; pure-Dart engine on the main thread | Server paging via SQL; both | low | yes | user |
 | S3 | Renderer coverage | Spike-only `--wasm` build, both renderers measured | Also switch the product build | low | yes | user |
-| S4 | Go budget | ≤5% missed frames (skipped refreshes), p99 ≤33ms, work p90 ≤16.7ms where reported; ops on screen ≤300ms | 30fps and 1s; no budget; work time only; time between frames + margin | low | yes | user |
+| S4 | Go budget | ≤5% missed frames (skipped refreshes), p99 ≤2 refresh periods (`round(p99 / period) ≤ 2`), work p90 ≤16.7ms where reported; ops on screen ≤300ms | 30fps and 1s; no budget; work time only; time between frames + margin | low | yes | user |
 | S5 | Spec | `skip_specs: true`; the report is the evidence | A grid-spike capability spec | low | no | user |
 | S6 | Lifetime | Keep as a benchmark harness until the first real grid | Delete after acceptance | low | no | user |
 | S7 | Owner check | `[user]` task in this change | Judge at milestone close | low | yes | user |

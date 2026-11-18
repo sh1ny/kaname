@@ -118,7 +118,7 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
   - calibrated refresh period (median);
   - missed frames `max(0, round(interval / period) − 1)` and the ratio missed / (missed + intervals);
   - p50, p90, p99 and max;
-  - the S4 verdict per segment (≤5% missed, p99 ≤33ms, work p90 ≤16.7ms when timings exist, every operation on screen ≤300ms).
+  - the S4 verdict per segment (≤5% missed, p99 ≤2 refresh periods as amended, work p90 ≤16.7ms when timings exist, every operation on screen ≤300ms).
 
   Verify the "metrics and S4 verdict" row is green.
 - [x] 7.3 Implement `logic/benchmark_notifier.dart` (sealed `Idle`, `Running(step)`, `Done(result)`, `Aborted(reason)`) and `logic/benchmark_result.dart`.
