@@ -40,7 +40,7 @@ final ContentType _octetStream = ContentType('application', 'octet-stream');
 ///
 /// Only `GET` and `HEAD` are answered. `/` serves `index.html`; any other path
 /// that is not a file, directories included, gets a plain 404 with no
-/// fallback page. A path that has a `..` or an encoded separator segment, or a
+/// fallback page, and so does a file that cannot be read when it is served. A path that has a `..` or an encoded separator segment, or a
 /// symbolic link that resolves outside [root], gets a 403.
 ///
 /// Throws a [SocketException] when the address cannot be bound. The caller
@@ -100,13 +100,21 @@ Future<void> _respond(
   if (!p.isWithin(root, real)) {
     return _plain(response, HttpStatus.forbidden, 'Forbidden');
   }
+  // Read before any header goes out: a file that vanishes or cannot be read
+  // after the checks above (a rebuild of the served folder) still gets its
+  // 404 instead of a request that is never answered.
+  final List<int> bytes;
+  try {
+    bytes = await file.readAsBytes();
+  } on FileSystemException {
+    return _plain(response, HttpStatus.notFound, 'Not Found');
+  }
   response
     ..statusCode = HttpStatus.ok
     ..headers.contentType =
         _contentTypes[p.extension(real).toLowerCase()] ?? _octetStream
-    ..contentLength = file.lengthSync();
-  if (method == 'HEAD') return response.close();
-  await response.addStream(file.openRead());
+    ..contentLength = bytes.length;
+  if (method != 'HEAD') response.add(bytes);
   await response.close();
 }
 

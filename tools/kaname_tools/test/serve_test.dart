@@ -164,6 +164,22 @@ void main() {
     }
   });
 
+  test('a file that cannot be read answers 404, not a hang', () async {
+    // Stands in for a file removed between the existence check and the
+    // read: it exists, but opening it fails.
+    final locked = File(p.join(root.path, 'locked.js'))
+      ..writeAsStringSync('1;');
+    Process.runSync('chmod', ['000', locked.path]);
+    addTearDown(() => Process.runSync('chmod', ['644', locked.path]));
+    final server = await start();
+    final got = await fetch(
+      server,
+      '/locked.js',
+    ).timeout(const Duration(seconds: 5));
+    expect(got.status, 404);
+    expect(got.body, 'Not Found');
+  }, testOn: 'posix');
+
   test('paths outside the root are refused', () async {
     final server = await start();
     for (final target in [

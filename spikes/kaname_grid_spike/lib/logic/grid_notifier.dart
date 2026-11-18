@@ -325,6 +325,13 @@ class GridNotifier extends Notifier<GridState> {
     state = _replace(ready, widths: widths);
   }
 
+  /// Puts every column back at its default width. Only span extents change.
+  void resetWidths() {
+    final ready = _ready;
+    if (ready == null) return;
+    state = _replace(ready, widths: _defaultWidths(ready.columns));
+  }
+
   /// Moves the current row by [delta] rows through the view, skipping group
   /// headers and clamping at both ends.
   ///
@@ -390,10 +397,7 @@ class GridNotifier extends Notifier<GridState> {
       columns: columns,
       query: const GridQuery(),
       view: view,
-      widths: [
-        for (var i = 0; i < columns.columns.length; i++)
-          _defaultWidth(columns, i),
-      ],
+      widths: _defaultWidths(columns),
       seedElapsed: result.elapsed,
     );
   }
@@ -488,6 +492,10 @@ class GridNotifier extends Notifier<GridState> {
     }
     return null;
   }
+
+  static List<double> _defaultWidths(GridColumns columns) => [
+    for (var i = 0; i < columns.columns.length; i++) _defaultWidth(columns, i),
+  ];
 
   static double _defaultWidth(GridColumns columns, int index) {
     if (index == columns.nameIndex) return 240;

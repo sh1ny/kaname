@@ -248,24 +248,31 @@ void main() {
     ], isNot(contains(BenchStep.settle)));
   });
 
-  test('a run starts from the full view, whatever the user left', () async {
-    final rig = await benchRig();
-    final grid = rig.container.read(gridProvider.notifier);
-    final columns = (rig.container.read(gridProvider) as Ready).columns;
-    grid.setFilter('a');
-    grid.sortBy(columns.quantityIndex);
-    grid.groupBy(columns.categoryIndex);
-    grid.collapseAll();
-    final left = rig.container.read(gridProvider) as Ready;
-    expect(left.query.isEmpty, isFalse);
-    expect(left.view.view.length, lessThan(left.columns.rowCount));
+  test(
+    'a run starts from the full view at default widths, whatever the user left',
+    () async {
+      final rig = await benchRig();
+      final grid = rig.container.read(gridProvider.notifier);
+      final columns = (rig.container.read(gridProvider) as Ready).columns;
+      grid.setFilter('a');
+      grid.sortBy(columns.quantityIndex);
+      grid.groupBy(columns.categoryIndex);
+      grid.collapseAll();
+      final defaults = (rig.container.read(gridProvider) as Ready).widths;
+      grid.resizeColumn(columns.categoryIndex, 320);
+      final left = rig.container.read(gridProvider) as Ready;
+      expect(left.widths, isNot(defaults));
+      expect(left.query.isEmpty, isFalse);
+      expect(left.view.view.length, lessThan(left.columns.rowCount));
 
-    rig.notifier.run();
-    expect(rig.step, BenchStep.calibrate);
-    final start = rig.container.read(gridProvider) as Ready;
-    expect(start.query.isEmpty, isTrue);
-    expect(start.view.view.length, start.columns.rowCount);
-  });
+      rig.notifier.run();
+      expect(rig.step, BenchStep.calibrate);
+      final start = rig.container.read(gridProvider) as Ready;
+      expect(start.query.isEmpty, isTrue);
+      expect(start.view.view.length, start.columns.rowCount);
+      expect(start.widths, defaults);
+    },
+  );
 
   test('an operation the engine fails aborts the run', () async {
     final rig = await benchRig(

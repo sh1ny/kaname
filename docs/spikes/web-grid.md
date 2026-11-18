@@ -6,7 +6,7 @@ The raw results, with the machine header, are in [`openspec/changes/web-grid-spi
 
 ## Method
 
-The spike runs its own benchmark: press **Benchmark** in the toolbar, or open the page with `?bench=1`. `mise run bench:spike` builds the spike with `--wasm`, serves it with `kaname_tools serve` (COOP/COEP headers, loopback) and opens it in headless Chrome for Testing once per row: skwasm multi-threaded, skwasm single-threaded (`?threads=single`) and CanvasKit (`?renderer=canvaskit`). Each row writes one JSON file (schema version 2 since the p99 rule was amended on 2026-11-18). The committed evidence is schema version 1: its `p99Ok` and `passed` fields were judged against the old 33ms limit, and this report re-judges them from the recorded p99 and refresh period. A pressed **Benchmark** first clears any filter, sort, group or collapse, so every run measures the full 200,000-row view.
+The spike runs its own benchmark: press **Benchmark** in the toolbar, or open the page with `?bench=1`. `mise run bench:spike` builds the spike with `--wasm`, serves it with `kaname_tools serve` (COOP/COEP headers, loopback) and opens it in headless Chrome for Testing once per row: skwasm multi-threaded, skwasm single-threaded (`?threads=single`) and CanvasKit (`?renderer=canvaskit`). Each row writes one JSON file (schema version 2 since the p99 rule was amended on 2026-11-18). The committed evidence is schema version 1: its `p99Ok` and `passed` fields were judged against the old 33ms limit, and this report re-judges them from the recorded p99 and refresh period. A pressed **Benchmark** first clears any filter, sort, group or collapse and puts the columns back at their default widths, so every run measures the full 200,000-row view at the same layout.
 
 The script, in order:
 
