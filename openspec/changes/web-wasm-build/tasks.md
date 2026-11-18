@@ -60,4 +60,4 @@ Implementer packet: read AGENTS.md "Dart and Flutter code" and the skills `dart-
 
 ## 6. Integration
 
-- [ ] 6.1 Run `mise run check` and `mise run spec:validate`. Verify that both exit 0 and that every test-map row is green or n/a.
+- [x] 6.1 Run `mise run check` and `mise run spec:validate`. Verify that both exit 0 and that every test-map row is green or n/a.
