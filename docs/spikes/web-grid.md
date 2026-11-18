@@ -2,7 +2,7 @@
 
 The M0 roadmap names one risky UI assumption: that Flutter web can show a large data grid fast enough. The spike `spikes/kaname_grid_spike` tests it with 200,000 seeded rows and 25 columns in a `TableView`, filtered, sorted and grouped in plain Dart on the main thread. This report gives the numbers from the development machine. The owner's own check decides the M0 exit criterion. The owner chose to make it on the development PC under game load instead of a low-end laptop (task 9.5, amended 2026-11-17); a laptop run stays optional (below).
 
-The raw results, with the machine header, are in [`openspec/changes/web-grid-spike/evidence/bench-dev-machine.md`](../../openspec/changes/web-grid-spike/evidence/bench-dev-machine.md). Every timing here comes from that file. The row counts after each filter (151,114 and 4,515) come from a separate VM run of the same seed with the same filters (`runGrid` with filter text `a`, then also category code 0); the result JSON does not record them.
+The raw results, with the machine header, are in [`openspec/changes/archive/2026-11-18-web-grid-spike/evidence/bench-dev-machine.md`](../../openspec/changes/archive/2026-11-18-web-grid-spike/evidence/bench-dev-machine.md). Every timing here comes from that file. The row counts after each filter (151,114 and 4,515) come from a separate VM run of the same seed with the same filters (`runGrid` with filter text `a`, then also category code 0); the result JSON does not record them.
 
 ## Method
 
