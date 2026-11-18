@@ -25,7 +25,7 @@ The script, in order:
 | Criterion | Budget |
 |---|---|
 | Missed frames | ≤5% |
-| p99 time between frames | ≤2 refresh periods: `round(p99 / period) ≤ 2`, about 33.3ms at 60Hz (amended 2026-11-18 from ≤33ms) |
+| p99 time between frames | ≤2 refresh periods, rounded: `round(p99 / period) ≤ 2`, so p99 passes below 2.5 periods, about 41.7ms at 60Hz (amended 2026-11-18 from ≤33ms) |
 | Work p90 (build + raster) | ≤16.7ms |
 | Every operation on screen | ≤300ms |
 

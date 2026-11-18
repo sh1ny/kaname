@@ -135,6 +135,29 @@ void main() {
     await tester.pump();
     expect(readyOf(tester).query.collapsed, isEmpty);
 
+    // The label counts only the groups in view: collapsed groups that a
+    // category change hid do not make it read "Expand all".
+    final notifier = ProviderScope.containerOf(
+      tester.element(find.byType(GridScreen)),
+    ).read(gridProvider.notifier);
+    notifier.collapseAll();
+    await tester.pump();
+    final hidden = readyOf(tester).query.collapsed;
+    notifier.setCategory(2); // Misc: only Cores, while Ship had Cruisers.
+    await settle(tester);
+    final shown = readyOf(tester);
+    expect(shown.query.collapsed, hidden, reason: 'a filter keeps the set');
+    expect(
+      shown.query.collapsed.length,
+      greaterThanOrEqualTo(shown.view.groups.length),
+    );
+    expect(
+      shown.view.groups.any((g) => !shown.query.collapsed.contains(g.code)),
+      isTrue,
+    );
+    expect(find.text('Collapse all'), findsOneWidget);
+    expect(find.text('Expand all'), findsNothing);
+
     await tester.tap(find.text('Clear'));
     await settle(tester);
     final query = readyOf(tester).query;

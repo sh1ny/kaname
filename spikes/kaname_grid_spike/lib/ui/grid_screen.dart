@@ -284,8 +284,10 @@ class _Toolbar extends ConsumerWidget {
     final columns = ready.columns;
     final query = ready.query;
     final groups = ready.view.groups;
+    // Only the groups in view count: a filter keeps collapsed groups it hid.
     final allCollapsed =
-        groups.isNotEmpty && query.collapsed.length >= groups.length;
+        groups.isNotEmpty &&
+        groups.every((group) => query.collapsed.contains(group.code));
     final start = ref.watch(benchmarkStartProvider);
     final categoryCode = query.categoryCode;
     final sortColumn = query.sortColumn;
