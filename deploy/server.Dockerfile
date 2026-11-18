@@ -46,6 +46,7 @@ COPY pubspec.yaml pubspec.lock ./
 COPY app/pubspec.yaml app/
 COPY app_packages/kaname_ember_ui/pubspec.yaml app_packages/kaname_ember_ui/
 COPY packages/kaname_core/pubspec.yaml packages/kaname_core/
+COPY spikes/kaname_grid_spike/pubspec.yaml spikes/kaname_grid_spike/
 COPY tools/kaname_tools/pubspec.yaml tools/kaname_tools/
 COPY server/kaname_client/pubspec.yaml server/kaname_client/
 COPY server/kaname_server/pubspec.yaml server/kaname_server/
