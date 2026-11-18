@@ -26,7 +26,7 @@ Implementer packet: read AGENTS.md "Dart and Flutter code" and the skills `dart-
 
 ## 1. Settle the build assumptions
 
-- [ ] 1.1 Verify A2, A4 and A6 (heavy, ask first): run `mise exec -C app -- flutter build web --wasm --release --no-web-resources-cdn`. It must exit 0 (A2). `app/build/web/flutter_bootstrap.js` must hold the `builds` layout in design A4. Every `forceSingleThreadedSkwasm` occurrence in it must be a property read (`.forceSingleThreadedSkwasm`) and never an object key (A6). Record the three results in the task's commit message. Any failure is design drift: stop and take it to the owner with the error or the matching loader text.
+- [x] 1.1 Verify A2, A4 and A6 (heavy, ask first): run `mise exec -C app -- flutter build web --wasm --release --no-web-resources-cdn`. It must exit 0 (A2). `app/build/web/flutter_bootstrap.js` must hold the `builds` layout in design A4. Every `forceSingleThreadedSkwasm` occurrence in it must be a property read (`.forceSingleThreadedSkwasm`) and never an object key (A6). Record the three results in the task's commit message. Any failure is design drift: stop and take it to the owner with the error or the matching loader text.
 
 ## 2. Web build check (`kaname_tools webbuild`)
 
