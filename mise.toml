@@ -68,6 +68,16 @@ description = "Run the kaname_ember_ui tests"
 dir = "app_packages/kaname_ember_ui"
 run = "flutter test"
 
+[tasks."test:spike"]
+description = "Run the grid spike's VM tests"
+dir = "spikes/kaname_grid_spike"
+run = "flutter test"
+
+[tasks."test:spike:web"]
+description = "Run the grid spike's web-tagged tests in Chrome (dart2js); not part of check (C7)"
+dir = "spikes/kaname_grid_spike"
+run = "flutter test --platform chrome --tags web test/data"
+
 [tasks.test]
 description = "Run every workspace member's tests"
 run = [
@@ -75,6 +85,7 @@ run = [
   { task = "test:tools" },
   { task = "test:app" },
   { task = "test:ember_ui" },
+  { task = "test:spike" },
 ]
 
 [tasks.workspace]
@@ -137,6 +148,55 @@ run = "flutter build web --release --no-web-resources-cdn"
 [tasks."webbuild:check"]
 description = "Fail unless the built web app in app/build/web loads no engine or font files from other hosts"
 run = "dart run kaname_tools webbuild --check app/build/web"
+
+[tasks."build:spike"]
+description = "Build the grid spike for the web with skwasm (--wasm), engine bundled, and check that the output is self-contained"
+# Runs the dart2js web tests first, then the release build. --wasm builds skwasm
+# with a CanvasKit fallback; webbuild --check fails when the output loads
+# anything from another host. Multi-threaded skwasm needs COOP/COEP headers on
+# the hosting origin (see the doc comment on WebBuildChecker).
+run = [
+  { task = "test:spike:web" },
+  { task = "build:spike:compile" },
+  { task = "build:spike:check" },
+]
+
+[tasks."build:spike:compile"]
+description = "Compile the grid spike for the web in release mode (--wasm) with the engine bundled"
+dir = "spikes/kaname_grid_spike"
+run = "flutter build web --wasm --release --no-web-resources-cdn"
+
+[tasks."build:spike:check"]
+description = "Fail unless the built grid spike loads no engine or font files from other hosts"
+run = "dart run kaname_tools webbuild --check spikes/kaname_grid_spike/build/web"
+
+[tasks."serve:spike"]
+description = "Serve the built grid spike at http://127.0.0.1:8080/ with COOP/COEP headers; stop with Ctrl+C"
+# Pass `--no-isolation` after `--` to serve it without the headers
+# (single-threaded skwasm).
+run = "dart run kaname_tools serve spikes/kaname_grid_spike/build/web"
+
+[tasks."spike:chrome"]
+description = "Download Chrome for Testing into the spike's ignored build/ and print its executable path (for CHROME_EXECUTABLE)"
+# Progress goes to stderr, so `export CHROME_EXECUTABLE="$(mise run spike:chrome 2>/dev/null)"`
+# captures only the path.
+dir = "spikes/kaname_grid_spike"
+run = "dart run tool/fetch_chrome.dart"
+
+[tasks."bench:spike:run"]
+description = "Run the headless benchmark runner on an existing spike build: mise run bench:spike:run -- [--smoke] [--row <name>] [--extra-chrome-arg=<arg>]"
+# mise appends the arguments after `--` to the command, so they reach the runner.
+dir = "spikes/kaname_grid_spike"
+run = "dart run tool/bench.dart"
+
+[tasks."bench:spike"]
+description = "Build the spike, then run it in headless Chrome for every renderer and thread mode; writes spikes/kaname_grid_spike/build/grid-bench/*.json"
+# Runner arguments (--smoke, --row, --extra-chrome-arg) go to `bench:spike:run`:
+# use that task, after `build:spike`, when you need them.
+run = [
+  { task = "build:spike" },
+  { task = "bench:spike:run" },
+]
 
 [tasks."server:generate"]
 description = "Run the package-local Serverpod code generation for the server and its client"

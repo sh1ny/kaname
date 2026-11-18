@@ -82,7 +82,7 @@ Commit `mise.toml`, `mise.lock` and `.mise/locks/` together.
 
 Run `mise run check` before you push. If you change dependencies, run `mise run notices` to regenerate the dependency section of `THIRD_PARTY_NOTICES` and commit the result.
 
-The repository is one pub workspace: the Flutter app in `app/`, pure-Dart shared packages in `packages/kaname_<name>/`, shared Flutter packages in `app_packages/kaname_<name>/`, tooling in `tools/kaname_<name>/`. Packages under `packages/` and `tools/` must not depend on Flutter or Serverpod.
+The repository is one pub workspace: the Flutter app in `app/`, pure-Dart shared packages in `packages/kaname_<name>/`, shared Flutter packages in `app_packages/kaname_<name>/`, tooling in `tools/kaname_<name>/`, and disposable spikes in `spikes/kaname_<name>/`, which nothing else may import. Packages under `packages/` and `tools/` must not depend on Flutter or Serverpod.
 
 ## Branches and pull requests
 

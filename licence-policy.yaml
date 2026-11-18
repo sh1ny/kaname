@@ -33,3 +33,8 @@ exceptions:
     licence: unrecognised
     reason: "Server Side Public License v1 (SSPL); the Serverpod server framework itself, accepted by the owner (ADR 0002; design D13)"
     approved: 2026-11-15
+  - package: puppeteer
+    version: "3.28.0"
+    licence: unrecognised
+    reason: "BSD-3-Clause with the template's <organization> placeholder unfilled; dev-only dependency of the grid spike's headless bench runner"
+    approved: 2026-11-17

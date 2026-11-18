@@ -29,6 +29,36 @@ void main() {
     );
   });
 
+  test('spikes members are outside the purity rule', () async {
+    fs
+      ..writeFile(
+        'spikes/kaname_grid_spike/pubspec.yaml',
+        pubspecSource(
+          'kaname_grid_spike',
+          dependencies: ['  flutter:', '    sdk: flutter'],
+        ),
+      )
+      ..writeFile(
+        'spikes/kaname_grid_spike/lib/main.dart',
+        "import 'package:flutter/material.dart';\n",
+      )
+      ..writeFile(
+        'pubspec.yaml',
+        'name: kaname_workspace\n'
+            'workspace:\n'
+            '  - app\n'
+            '  - packages/kaname_core\n'
+            '  - tools/kaname_tools\n'
+            '  - spikes/kaname_grid_spike\n',
+      );
+
+    final result = await runTool(fs, ['purity']);
+
+    expect(result.err, isEmpty);
+    expect(result.code, 0);
+    expect(result.out, isNot(contains('kaname_grid_spike')));
+  });
+
   test('flutter, sdk flutter or serverpod dependency fails', () async {
     fs
       ..writeFile(

@@ -12,6 +12,7 @@
 !app/pubspec.yaml
 !app_packages/kaname_ember_ui/pubspec.yaml
 !packages/kaname_core/pubspec.yaml
+!spikes/kaname_grid_spike/pubspec.yaml
 !tools/kaname_tools/pubspec.yaml
 
 # The server packages' sources.

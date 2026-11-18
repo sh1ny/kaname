@@ -183,6 +183,22 @@ void main() {
       expect(rules.first, anyOf('*', '**'));
     });
 
+    test('admits and copies every workspace member pubspec', () {
+      // `pub get --enforce-lockfile` resolves the whole workspace, so a
+      // member missing from the image fails the build.
+      final members = Pubspec.parse(_readRepoFile('pubspec.yaml')).workspace;
+      expect(members, isNotEmpty);
+      final build = _stages(_readRepoFile(_dockerfile)).first;
+      for (final member in members) {
+        expect(rules, contains('!$member/pubspec.yaml'), reason: member);
+        expect(
+          build,
+          contains('COPY $member/pubspec.yaml $member/'),
+          reason: member,
+        );
+      }
+    });
+
     test('never admits secrets or generated state', () {
       final first = rules.indexOf('**/config/passwords*.yaml');
       final env = rules.indexOf('**/.env*');

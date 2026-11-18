@@ -14,6 +14,12 @@ import 'file_system.dart';
 /// bootstrap sets `fontFallbackBaseUrl` to a path on the app's own origin.
 /// Searching the output for `gstatic.com` is no substitute: the engine and
 /// loader still carry the default address as a string.
+///
+/// Multi-threaded skwasm needs `Cross-Origin-Opener-Policy` and
+/// `Cross-Origin-Embedder-Policy` headers on the hosting origin. If a report
+/// recommends `--wasm` for the product, that change must either add the headers
+/// to `deploy/Caddyfile` or accept single-threaded skwasm, and it must confirm
+/// that this check passes on the `--wasm` output.
 final class WebBuildChecker {
   /// Creates a checker over [_fileSystem].
   const WebBuildChecker(this._fileSystem);

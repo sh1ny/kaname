@@ -1,0 +1,9 @@
+# The spike matches the app: the shared root options plus flutter_lints.
+include:
+  - ../../analysis_options.yaml
+  - package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+    - web/**

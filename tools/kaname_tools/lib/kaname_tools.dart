@@ -17,6 +17,7 @@ export 'src/pubspec.dart';
 export 'src/purity.dart';
 export 'src/real_file_system.dart';
 export 'src/sbom.dart';
+export 'src/serve.dart';
 export 'src/signoff.dart';
 export 'src/tokens.dart';
 export 'src/tokens_model.dart';
