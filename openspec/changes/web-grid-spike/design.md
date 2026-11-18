@@ -131,11 +131,11 @@ See proposal.md for the why and the scope decisions S1–S8.
 
   **Verdict per S4** (judged on the hand-speed segment; round 2, owner's choice):
   - missed frames ≤5%, counted as skipped refreshes: each time between frames adds `max(0, round(interval / period) − 1)` missed frames, with the period from calibration, and the ratio is missed / (missed + intervals);
-  - p99 time between frames skips at most one refresh: `round(p99 / period) ≤ 2`, with the period from calibration (about 33.3ms at 60Hz; amended 2026-11-18, owner's choice, proposal S4);
+  - p99 time between frames skips at most one refresh: `round(p99 / period) ≤ 2`, with the period from calibration (an interval rounds to two periods up to 2.5 periods, so p99 passes below about 41.7ms at 60Hz; amended 2026-11-18, owner's choice, proposal S4);
   - when frame timings are reported, build plus raster time p90 ≤16.7ms;
   - every operation's time until on screen ≤300ms.
 
-  **Result.** The result panel shows each figure against its budget and a "Copy JSON" button. The JSON carries `schemaVersion: 1`, the refresh period and every figure above for each segment. The spike also stores it in `window.gridBenchResult`.
+  **Result.** The result panel shows each figure against its budget and a "Copy JSON" button. The JSON carries `schemaVersion: 2` (version 1 until the 2026-11-18 amendment of the p99 rule; owner's choice, C6), the refresh period and every figure above for each segment. The spike also stores it in `window.gridBenchResult`.
 
   **Web seam.** Web-only access (`window` and the renderer probe) goes through a `BenchHost` interface injected from `main()` by a conditional import. VM tests use a fake (S-d).
 
@@ -227,7 +227,7 @@ See proposal.md for the why and the scope decisions S1–S8.
 | S1 | Where the spike lives | Separate `spikes/kaname_grid_spike` web app | Hidden route; visible module slot | low | yes | user |
 | S2 | Data locus | 200k seeded rows in the client; pure-Dart engine on the main thread | Server paging via SQL; both | low | yes | user |
 | S3 | Renderer coverage | Spike-only `--wasm` build, both renderers measured | Also switch the product build | low | yes | user |
-| S4 | Go budget | ≤5% missed frames (skipped refreshes), p99 ≤2 refresh periods (`round(p99 / period) ≤ 2`), work p90 ≤16.7ms where reported; ops on screen ≤300ms | 30fps and 1s; no budget; work time only; time between frames + margin | low | yes | user |
+| S4 | Go budget | ≤5% missed frames (skipped refreshes), p99 ≤2 refresh periods (`round(p99 / period) ≤ 2`), work p90 ≤16.7ms where reported; ops on screen ≤300ms | 30fps and 1s; no budget; work time only; time between frames + margin; literal p99 ≤33ms; strict p99 ≤2 × period | low | yes | user |
 | S5 | Spec | `skip_specs: true`; the report is the evidence | A grid-spike capability spec | low | no | user |
 | S6 | Lifetime | Keep as a benchmark harness until the first real grid | Delete after acceptance | low | no | user |
 | S7 | Owner check | `[user]` task in this change | Judge at milestone close | low | yes | user |
@@ -235,7 +235,7 @@ See proposal.md for the why and the scope decisions S1–S8.
 | D1 | Virtualisation | `TableView`; group headers with the label in the pinned cell, totals in their columns, no merges | Own viewport; synced ListViews; merged summary cell | low | yes | user |
 | D2 | Engine | Columnar, web-portable typed lists, dictionary codes, merge sort with row-index tie-break, `Int32List` views | Row objects; new pure package; `List.sort` | low | yes | user |
 | D3 | View state | Riverpod `Notifier` with sealed states, `lastError`, seed after first frame | Widget-local `ValueNotifier` | low | no | user |
-| D4 | Measurement | Benchmark with `?bench=1` autostart, hand-speed + stress segments, widget-run scroll steps, puppeteer runner, JSON v1 | Manual runs only; DevTools; accessibility-tree start; controllers in a provider | low | yes | user |
+| D4 | Measurement | Benchmark with `?bench=1` autostart, hand-speed + stress segments, widget-run scroll steps, puppeteer runner, JSON v2 (v1 until the 2026-11-18 p99 amendment) | Manual runs only; DevTools; accessibility-tree start; controllers in a provider | low | yes | user |
 | D5 | Serving | `kaname_tools serve` with COOP/COEP, loopback default, plain 404 | Caddy in the stack; plain server; extensionless fallback | low | yes | user |
 | D6 | Tooling/CI | `spikes/` root; VM tests in CI; Chrome tests in build/bench tasks; startup self-check | CI wasm build job; Chrome tests in CI | low | yes | user |
 | D7 | Seed | Deterministic generation at startup, 32-bit-masked xorshift32 | Pre-generated binary asset | low | no | user |
@@ -259,7 +259,7 @@ See proposal.md for the why and the scope decisions S1–S8.
 - **C3:** Multi-threaded skwasm needs COOP/COEP on the hosting origin. If the report recommends `--wasm` for the product, that change must add the headers to `deploy/Caddyfile` or accept single-threaded skwasm, and must confirm `webbuild --check` on `--wasm` output (A7). Kind: deliberate gap. Destination: doc comment: tools/kaname_tools/lib/src/webbuild.dart WebBuildChecker
 - **C4:** `serve` is a development server: it binds to loopback by default and must never be used in the deployed stack. Kind: invariant. Destination: doc comment: tools/kaname_tools/lib/src/serve.dart ServeCommand
 - **C5:** Server-side paging and SQL grouping were not measured. A grid over server data must measure them before relying on the client-side numbers. The report's client-side numbers do not move corp-table filtering, grouping or totals off SQL on web (architecture resource bounds; ADR 0005). Kind: rejected alternative. Destination: doc comment: spikes/kaname_grid_spike/lib/data/grid_engine.dart library
-- **C6:** The benchmark result JSON is `schemaVersion: 1`. Any change to its fields bumps the version, so reruns compare only like with like. Kind: invariant. Destination: doc comment: spikes/kaname_grid_spike/lib/logic/benchmark_result.dart BenchmarkResult
+- **C6:** The benchmark result JSON is `schemaVersion: 2`. Any change to its fields or to a verdict rule bumps the version, so reruns compare only like with like (version 2: the p99 rule amended 2026-11-18; version 1 judged p99 against 33ms). Kind: invariant. Destination: doc comment: spikes/kaname_grid_spike/lib/logic/benchmark_result.dart BenchmarkResult
 - **C7:** CI runs only the spike's VM tests. Web-only breakage shows up only in `build:spike` or `bench:spike`, so a rerun or the first real grid change must run them. Kind: deliberate gap. Destination: doc comment: spikes/kaname_grid_spike/lib/main.dart library
 - **C9:** `serve` answers every path that is not a file, and `/font-fallback/*` in particular, with a plain 404, mirroring `deploy/Caddyfile`. A later `index.html` fallback must still answer `/font-fallback/*` with 404. Kind: rejected alternative. Destination: doc comment: tools/kaname_tools/lib/src/serve.dart ServeCommand.run
 - **C8:** Engine columns use only web-portable typed lists with integers below 2^31, and the sort is total (ties broken by row index), so both compilers give identical results. Kind: invariant. Destination: doc comment: spikes/kaname_grid_spike/lib/data/columns.dart library
@@ -326,7 +326,7 @@ sequenceDiagram
       G->>B: stepDone(step)
       B->>B: op steps via GridNotifier
     end
-    B-->>C: Done; window.gridBenchResult = JSON v1
+    B-->>C: Done; window.gridBenchResult = JSON v2
     R->>C: poll window.gridBenchResult (timeout 10 min)
     R->>R: write build/grid-bench/X-Y.json
   end

@@ -41,7 +41,7 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 | spike → ui | filter input is debounced; `Seeding`, `SeedFailed` and `lastError` are shown | `spikes/kaname_grid_spike/test/ui/grid_screen_test.dart` | filter debounce and visible states | green |
 | spike → bench | missed frames (skipped refreshes), p50/p90/p99, verdict per S4 | `spikes/kaname_grid_spike/test/logic/bench_metrics_test.dart` | metrics and S4 verdict | green |
 | spike → bench | step order, `stepDone` handshake, timeouts → `Aborted`, cancel | `spikes/kaname_grid_spike/test/logic/benchmark_notifier_test.dart` | benchmark state machine | green |
-| spike → bench | result JSON v1 fields; abort published through `BenchHost` | `spikes/kaname_grid_spike/test/logic/benchmark_result_test.dart` | result JSON v1 and abort publication | green |
+| spike → bench | result JSON v2 fields (v1 until task 9.6); abort published through `BenchHost` | `spikes/kaname_grid_spike/test/logic/benchmark_result_test.dart` | result JSON v1 and abort publication | green |
 | spike → bench | `?bench=1` autostarts; grid input disabled while running | `spikes/kaname_grid_spike/test/ui/benchmark_ui_test.dart` | autostart and input lock | green |
 | spike → web build | `build:spike` output passes `webbuild --check` | n/a (mechanical: `mise run build:spike`) | n/a | green |
 
@@ -126,7 +126,7 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
   - **Timeouts and cancel:** per-step timeout of 2× planned + 10s, and Cancel.
   - **Handshake:** scroll steps are run by the grid widget through `stepDone(step)`; operation steps call `GridNotifier`.
   - **Recording:** frame samples in a preallocated 100,000-entry `Float64List` with `droppedSamples`; engine time and time until on screen per operation; seed time.
-  - **Result:** JSON `schemaVersion: 1`, with C6 as the doc comment on `BenchmarkResult`. On `Aborted`, publish `{schemaVersion: 1, aborted: reason}` through `BenchHost`, so the runner fails fast (review round 2, S-a).
+  - **Result:** JSON `schemaVersion: 1` (2 since task 9.6), with C6 as the doc comment on `BenchmarkResult`. On `Aborted`, publish `{schemaVersion: 1, aborted: reason}` through `BenchHost`, so the runner fails fast (review round 2, S-a).
 
   Verify the state-machine and JSON rows are green.
 - [x] 7.4 Implement the `BenchHost` seam: an interface in `logic/`, a web implementation (conditional import) that sets `window.gridBenchResult`, reads `Uri.base` for `?bench=1` and reports the renderer, and a VM stub. Also implement the grid widget's scroll-step runner and input lock, and `ui/result_panel.dart` (figures against the budget, "Copy JSON").
@@ -167,6 +167,13 @@ The change sets `skip_specs: true` (proposal S5), so there are no `#### Scenario
 
   Link the report from the roadmap's M0 section only at milestone close, not here. Verify that the report quotes the evidence file's numbers.
 - [x] 9.4 Run `mise run check` and `mise run spec:validate`. Both pass.
+- [ ] 9.6 Carry the amended p99 rule into the code and report (S4 amended 2026-11-18; design review round 3, Required Changes 2 and 3):
+  - `bench_metrics.dart`: `S4Verdict` judges p99 as `round(p99 / period) ≤ 2` against the calibrated period, with the `p99Ok` doc comment to match;
+  - `result_panel.dart` shows the p99 limit in refresh periods, with the millisecond equivalent from the run's period;
+  - `bench_metrics_test.dart`: the boundary cases, at exactly 2.5 periods and at a 144Hz period as well as 60Hz;
+  - the result JSON becomes `schemaVersion: 2` (C6 widened to verdict rules) in `BenchmarkResult`, its doc comment, the aborted-run payload `{schemaVersion: 2, aborted: reason}` and the runner's classification, with their tests (`benchmark_result_test.dart`, `benchmark_notifier_test.dart`, `benchmark_ui_test.dart`, `bench_model_test.dart`; a version-1 document now fails the row);
+  - `docs/spikes/web-grid.md`: the S4 budget row, the CanvasKit verdict row and bullet (p99 now passes; the miss stays on missed frames and work), and a note that the committed evidence is version 1, re-judged in the report;
+  - `mise run check` and `mise run spec:validate` pass.
 - [ ] 9.5 [user] The owner runs the spike on web on the development PC, under load from gaming (amended 2026-11-17, owner's choice: "This PC counts"; the low-end laptop run becomes optional, see the report's "Owner's laptop" section), (skwasm and `?renderer=canvaskit`). The owner scrolls, groups and filters the grid, optionally presses Benchmark and pastes the JSON into the report, and then accepts the result or asks for a plan change. This checks the M0 exit criterion "The owner scrolls, groups and filters the grid spike on web on a low-end laptop and accepts the result or asks for a plan change" as amended: on the development PC instead of a low-end laptop (proposal S7). The M0 close records the changed hardware.
 
 ## Workflow follow-up
