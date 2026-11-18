@@ -76,7 +76,7 @@ flowchart LR
 - **Client data bundle:** versioned by static-data build. Its format is defined in M1.
 - **Server ↔ app:** Serverpod `.spy.yaml` models and endpoints; the generated client is the only contract. Additive-first schema changes; a server refuses to start on a database from a newer version.
 - **Sync protocol:** per-user change log with sequence; field-level merge for personal records (ADR 0008). Defined in M4 and versioned with the server.
-- **Cross-isolate messages:** typed, serializable models (ADR 0009).
+- **Cross-isolate messages:** typed, serializable models (ADR 0009). Workers reach Postgres through their own per-job connections from a typed start message (ADR 0012).
 - **FitEngine:** Kaname's Dart interface. The pinned engine is reached over its C ABI or WASM build (ADR 0011).
 - **Discord:** bring-your-own bot per install; OAuth2 account linking.
 - **Desktop to game client:** read-only log files and window position and size only (ADR 0002).
@@ -112,3 +112,4 @@ Accepted, not superseded. Proposed ADRs are drafts and are not listed.
 | [0009](../docs/adr/0009-server-process-and-isolates.md) | One process; main, realtime, Discord and compute isolates; pure-Dart jobs behind a runner | — |
 | [0010](../docs/adr/0010-flutter-app-state.md) | Riverpod 3 in the presentation layer only, no codegen or persist | — |
 | [0011](../docs/adr/0011-fit-engine-behind-an-interface.md) | Kaname `FitEngine` interface over EVEShipFit's pinned engine | — |
+| [0012](../docs/adr/0012-worker-isolate-access.md) | Workers reach Postgres through their own per-job connections; Redis, vault, privacy scope and bus still open (R56) | — |
