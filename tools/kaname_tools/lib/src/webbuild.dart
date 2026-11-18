@@ -15,11 +15,18 @@ import 'file_system.dart';
 /// Searching the output for `gstatic.com` is no substitute: the engine and
 /// loader still carry the default address as a string.
 ///
-/// Multi-threaded skwasm needs `Cross-Origin-Opener-Policy` and
-/// `Cross-Origin-Embedder-Policy` headers on the hosting origin. If a report
-/// recommends `--wasm` for the product, that change must either add the headers
-/// to `deploy/Caddyfile` or accept single-threaded skwasm, and it must confirm
-/// that this check passes on the `--wasm` output.
+/// The build must also be a WebAssembly build: `_flutter.buildConfig` lists a
+/// skwasm build before a CanvasKit build, and every entry point they name
+/// exists. The loader takes the first build the browser supports, so the
+/// CanvasKit build is the fallback and must come second.
+///
+/// Multi-threaded skwasm stays off until the spike's crash (`RuntimeError:
+/// memory access out of bounds` in `skwasm.wasm`) is reproduced and resolved
+/// upstream. Enabling it means removing `forceSingleThreadedSkwasm` from the
+/// product bootstrap, dropping `--single-threaded` from `webbuild:check` and
+/// adding COOP/COEP to `deploy/Caddyfile`, all together. The spike's check
+/// deliberately omits `--single-threaded`, so its multi-threaded benchmark row
+/// can reproduce the crash.
 final class WebBuildChecker {
   /// Creates a checker over [_fileSystem].
   const WebBuildChecker(this._fileSystem);
@@ -40,7 +47,11 @@ final class WebBuildChecker {
 
   /// Lists what is wrong with the web build in [directory]; empty when it is
   /// self-contained. Each entry names what is missing or the address found.
-  List<String> check(String directory) {
+  ///
+  /// With [singleThreaded], the bootstrap must also force single-threaded
+  /// skwasm: it needs at least one `forceSingleThreadedSkwasm` key, and every
+  /// key must have the literal value `true`.
+  List<String> check(String directory, {bool singleThreaded = false}) {
     final bootstrapPath = p.posix.join(directory, bootstrapName);
     if (_fileSystem.kindOf(bootstrapPath) != FsEntryKind.file) {
       return [
@@ -56,8 +67,10 @@ final class WebBuildChecker {
     }
     return [
       ..._checkLocalEngine(bootstrapPath, bootstrap),
+      ..._checkWasmBuild(directory, bootstrapPath, bootstrap),
       ..._checkEngineFiles(directory),
       ..._checkFallbackAddress(bootstrapPath, bootstrap),
+      if (singleThreaded) ..._checkThreadMode(bootstrapPath, bootstrap),
     ];
   }
 
@@ -78,6 +91,80 @@ final class WebBuildChecker {
             'the CDN; $advice',
       ],
     };
+  }
+
+  List<String> _checkWasmBuild(
+    String directory,
+    String path,
+    String bootstrap,
+  ) {
+    // An unreadable build config is already reported by _checkLocalEngine.
+    final config = _buildConfig(bootstrap);
+    if (config == null) return const [];
+    final builds = switch (config) {
+      {'builds': final List<Object?> builds} => builds,
+      _ => const <Object?>[],
+    };
+    final skwasm = builds.indexWhere(_isSkwasm);
+    final canvaskit = builds.indexWhere(_isCanvasKit);
+    return [
+      if (skwasm < 0)
+        '$path lists no WebAssembly build on skwasm (compileTarget '
+            'dart2wasm, renderer skwasm); build with `--wasm`'
+      else
+        ..._checkEntryPoints(directory, path, builds[skwasm], const [
+          'mainWasmPath',
+          'jsSupportRuntimePath',
+        ], 'skwasm'),
+      if (canvaskit < 0)
+        '$path lists no JavaScript build on CanvasKit (compileTarget dart2js, '
+            'renderer canvaskit): browsers that cannot run skwasm would have '
+            'no build to load; build with `--wasm`'
+      else
+        ..._checkEntryPoints(directory, path, builds[canvaskit], const [
+          'mainJsPath',
+        ], 'CanvasKit'),
+      if (skwasm >= 0 && canvaskit >= 0 && canvaskit < skwasm)
+        '$path lists the CanvasKit build before the skwasm build: the loader '
+            'would never choose skwasm (it takes the first build the browser '
+            'supports)',
+    ];
+  }
+
+  static bool _isSkwasm(Object? build) => switch (build) {
+    {'compileTarget': 'dart2wasm', 'renderer': 'skwasm'} => true,
+    _ => false,
+  };
+
+  static bool _isCanvasKit(Object? build) => switch (build) {
+    {'compileTarget': 'dart2js', 'renderer': 'canvaskit'} => true,
+    _ => false,
+  };
+
+  /// Lists the [keys] that [build] does not name, and the named files that
+  /// are missing from [directory].
+  List<String> _checkEntryPoints(
+    String directory,
+    String path,
+    Object? build,
+    List<String> keys,
+    String label,
+  ) {
+    final entry = build is Map<String, Object?>
+        ? build
+        : const <String, Object?>{};
+    return [
+      for (final key in keys)
+        switch (entry[key]) {
+          final String file
+              when _fileSystem.kindOf(p.posix.join(directory, file)) !=
+                  FsEntryKind.file =>
+            '${p.posix.join(directory, file)} is missing: the $label build '
+                'in $path names it as $key',
+          String() => null,
+          _ => '$path: the $label build names no $key',
+        },
+    ].nonNulls.toList();
   }
 
   List<String> _checkEngineFiles(String directory) {
@@ -105,6 +192,34 @@ final class WebBuildChecker {
       }
     }
     return false;
+  }
+
+  /// A `forceSingleThreadedSkwasm` key: not preceded by `.` or an identifier
+  /// character (so property reads such as `e.forceSingleThreadedSkwasm` are
+  /// not keys), optionally quoted, followed by `:` and the value's first token.
+  static final RegExp _threadSetting = RegExp(
+    r'''(?<![.\w$])["']?forceSingleThreadedSkwasm["']?\s*:\s*([^\s,}]*)''',
+  );
+
+  List<String> _checkThreadMode(String path, String bootstrap) {
+    final values = [
+      for (final setting in _threadSetting.allMatches(bootstrap))
+        setting.group(1)!,
+    ];
+    const advice =
+        'set `forceSingleThreadedSkwasm: true` in the loader config '
+        '(app/web/flutter_bootstrap.js)';
+    if (values.isEmpty) {
+      return [
+        '$path sets no forceSingleThreadedSkwasm key: skwasm could start '
+            'multi-threaded; $advice',
+      ];
+    }
+    return [
+      for (final value in values.where((value) => value != 'true'))
+        '$path sets forceSingleThreadedSkwasm to $value, not the literal '
+            'true: skwasm could start multi-threaded; $advice',
+    ];
   }
 
   List<String> _checkFallbackAddress(String path, String bootstrap) {
@@ -199,8 +314,16 @@ final class WebBuildCommand extends Command<int> {
       'check',
       negatable: false,
       help:
-          'Fail unless the web build in the given directory bundles the '
-          'engine and loads fallback fonts from its own origin.',
+          'Fail unless the web build in the given directory is a wasm build '
+          '(skwasm before a CanvasKit fallback, entry points present), '
+          'bundles the engine and loads fallback fonts from its own origin.',
+    );
+    argParser.addFlag(
+      'single-threaded',
+      negatable: false,
+      help:
+          'Also fail unless the bootstrap sets forceSingleThreadedSkwasm to '
+          'the literal true, so skwasm cannot start multi-threaded.',
     );
   }
 
@@ -212,8 +335,9 @@ final class WebBuildCommand extends Command<int> {
 
   @override
   String get description =>
-      'Check (--check <dir>) that a built web app loads no engine or font '
-      'files from other hosts.';
+      'Check (--check <dir>) that a built web app is a wasm build (skwasm '
+      'with a CanvasKit fallback) that loads no engine or font files from '
+      'other hosts; --single-threaded also checks the thread mode.';
 
   @override
   String get invocation => '${runner!.executableName} webbuild --check <dir>';
@@ -225,12 +349,16 @@ final class WebBuildCommand extends Command<int> {
     final [directory] = results.rest.length == 1
         ? results.rest
         : usageException('Pass exactly one web build directory.');
-    final problems = WebBuildChecker(_fileSystem).check(directory);
+    final problems = WebBuildChecker(_fileSystem)
+        .check(directory, singleThreaded: results.flag('single-threaded'));
     for (final problem in problems) {
       _output.err.writeln(problem);
     }
     if (problems.isNotEmpty) return exitCheckFailed;
-    _output.out.writeln('$directory is a self-contained web build');
+    _output.out.writeln(
+      '$directory is a self-contained wasm web build'
+      '${results.flag('single-threaded') ? ' with single-threaded skwasm' : ''}',
+    );
     return exitSuccess;
   }
 }
