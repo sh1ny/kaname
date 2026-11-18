@@ -197,6 +197,51 @@ void main() {
     }
   }, timeout: _slow);
 
+  test('Given the stack when the web build is requested then no response '
+      'carries COOP or COEP', () async {
+    await waitUntilReady();
+    for (final path in [
+      '/index.html',
+      '/flutter_bootstrap.js',
+      '/main.dart.wasm',
+    ]) {
+      final answer = await httpRaw('GET', path);
+      expect(answer.status, 200, reason: path);
+      expect(
+        answer.headers,
+        isNot(contains('cross-origin-opener-policy')),
+        reason: path,
+      );
+      expect(
+        answer.headers,
+        isNot(contains('cross-origin-embedder-policy')),
+        reason: path,
+      );
+    }
+  }, timeout: _slow);
+
+  test('Given the stack when main.dart.wasm and main.dart.mjs are requested '
+      'then they have wasm and JavaScript types', () async {
+    await waitUntilReady();
+    final wasm = await httpRaw('GET', '/main.dart.wasm');
+    expect(wasm.status, 200);
+    expect(wasm.contentType, 'application/wasm');
+
+    final module = await httpRaw('GET', '/main.dart.mjs');
+    expect(module.status, 200);
+    expect(
+      module.contentType,
+      anyOf('text/javascript', 'application/javascript'),
+    );
+  }, timeout: _slow);
+
+  test('Given the stack when a missing .wasm path is requested then it is '
+      'not served as application/wasm', () async {
+    await waitUntilReady();
+    final answer = await httpRaw('GET', '/does-not-exist.wasm');
+    expect(answer.contentType, isNot('application/wasm'));
+  }, timeout: _slow);
+
   test('Given the stack when an app route without a file is requested then '
       'index.html is served', () async {
     await waitUntilReady();

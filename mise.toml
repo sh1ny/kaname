@@ -131,23 +131,27 @@ description = "Write the CycloneDX SBOM of pubspec.lock to build/sbom/kaname.cdx
 run = "dart run kaname_tools sbom --output build/sbom/kaname.cdx.json"
 
 [tasks."build:web"]
-description = "Build the app for the web (release, engine bundled) and check that the output is self-contained"
-# --no-web-resources-cdn bundles the engine instead of loading it from a CDN;
-# webbuild:check fails the build when the output still depends on another host.
-# The CI web build and the stack build both go through here or repeat the flag.
+description = "Build the app for the web (--wasm, release, engine bundled) and check that it is a self-contained, single-threaded wasm build"
+# --wasm builds skwasm with a CanvasKit fallback; --no-web-resources-cdn bundles
+# the engine instead of loading it from a CDN. webbuild:check fails the build
+# when the output is not a wasm build, still depends on another host, or does
+# not force single-threaded skwasm. The CI web build and the stack build both
+# go through here or repeat the flags.
 run = [
   { task = "build:web:compile" },
   { task = "webbuild:check" },
 ]
 
 [tasks."build:web:compile"]
-description = "Compile the web app in release mode with the engine bundled"
+description = "Compile the web app in release mode (--wasm: skwasm with a CanvasKit fallback) with the engine bundled"
 dir = "app"
-run = "flutter build web --release --no-web-resources-cdn"
+run = "flutter build web --wasm --release --no-web-resources-cdn"
 
 [tasks."webbuild:check"]
-description = "Fail unless the built web app in app/build/web loads no engine or font files from other hosts"
-run = "dart run kaname_tools webbuild --check app/build/web"
+description = "Fail unless the built web app in app/build/web is a wasm build that forces single-threaded skwasm and loads no engine or font files from other hosts"
+# --single-threaded requires forceSingleThreadedSkwasm: true in the bootstrap
+# (see the doc comment on WebBuildChecker before removing it).
+run = "dart run kaname_tools webbuild --check --single-threaded app/build/web"
 
 [tasks."build:spike"]
 description = "Build the grid spike for the web with skwasm (--wasm), engine bundled, and check that the output is self-contained"
@@ -167,7 +171,9 @@ dir = "spikes/kaname_grid_spike"
 run = "flutter build web --wasm --release --no-web-resources-cdn"
 
 [tasks."build:spike:check"]
-description = "Fail unless the built grid spike loads no engine or font files from other hosts"
+description = "Fail unless the built grid spike is a wasm build that loads no engine or font files from other hosts"
+# No --single-threaded: the spike's ?threads= switch keeps its multi-threaded
+# benchmark row, which reproduces the crash noted on WebBuildChecker.
 run = "dart run kaname_tools webbuild --check spikes/kaname_grid_spike/build/web"
 
 [tasks."serve:spike"]

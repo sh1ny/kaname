@@ -49,6 +49,36 @@ mise run stack:down                     # stop and delete the data volumes
 next `up` starts on the existing database and applies no migration twice.
 `mise run stack:down` removes them as well.
 
+## Web app
+
+The web app is one `--wasm` build that holds two builds of the same code, and
+Flutter's loader picks one per browser:
+
+- **Chromium-based browsers** (Chrome, Edge and others) with WasmGC and WebGL
+  get the app compiled to WebAssembly with the skwasm renderer, single-threaded.
+- **Firefox, Safari and browsers without WasmGC or WebGL** get the app compiled
+  to JavaScript with the CanvasKit renderer. Flutter's default allow list keeps
+  skwasm to Chromium, and Kaname keeps that default until skwasm has been
+  measured on the other browsers.
+
+The stack sends no `Cross-Origin-Opener-Policy` or
+`Cross-Origin-Embedder-Policy` header, and the app's bootstrap
+(`app/web/flutter_bootstrap.js`) sets `forceSingleThreadedSkwasm: true`. In the
+grid spike, multi-threaded skwasm crashed intermittently inside the engine,
+while single-threaded skwasm met the same performance budget and never crashed
+(`docs/spikes/web-grid.md`). Because the bootstrap forces single-threaded
+mode, the app stays single-threaded even if your own proxy adds those headers.
+`mise run build:web` checks the setting with
+`kaname_tools webbuild --check --single-threaded`.
+
+To turn on multi-threaded skwasm later, make three changes together: remove
+the setting from the bootstrap, drop `--single-threaded` from the
+`webbuild:check` task, and add both headers to `deploy/Caddyfile`. Do this only
+after the crash has been reproduced and fixed upstream.
+
+Caddy serves the web files uncompressed for now, so the first load downloads
+the full `.wasm` and `.js` files.
+
 ## Checks
 
 `mise run stack:test` runs the stack tests in `server/kaname_client/test/stack/`
