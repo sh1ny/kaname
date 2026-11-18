@@ -9,11 +9,11 @@
 | web-build → The web build is skwasm with a CanvasKit fallback | Browser that gets the fallback | evidence/browser-run.md | D5 headless Chrome run, forced CanvasKit (task 5.3) | red |
 | web-build → The web build is skwasm with a CanvasKit fallback | CI and stack builds | tools/kaname_tools/test/ci_workflow_test.dart | `web build compiles with --wasm, bundles the engine and its output is checked`; existing `stack:up builds the web app through build:web` | green |
 | web-build → The web build is skwasm with a CanvasKit fallback | Code only one compiler accepts | mise.toml (`build:web`) | n/a: the compilers enforce it; mechanical check `mise run build:web` | n/a |
-| web-build → skwasm runs single-threaded | No isolation headers | server/kaname_client/test/stack/stack_test.dart | `Given the stack when the web build is requested then no response carries COOP or COEP` | red |
+| web-build → skwasm runs single-threaded | No isolation headers | server/kaname_client/test/stack/stack_test.dart | `Given the stack when the web build is requested then no response carries COOP or COEP` | green |
 | web-build → skwasm runs single-threaded | No single-threaded warning | evidence/browser-run.md | D5 headless Chrome run, console log (task 5.3) | red |
 | web-build → skwasm runs single-threaded | A proxy adds isolation headers | tools/kaname_tools/test/webbuild_test.dart | `the product bootstrap template forces single-threaded skwasm` | green |
-| web-build → The stack serves wasm files with their types | Wasm and module types | server/kaname_client/test/stack/stack_test.dart | `Given the stack when main.dart.wasm and main.dart.mjs are requested then they have wasm and JavaScript types` | red |
-| web-build → The stack serves wasm files with their types | Missing wasm file | server/kaname_client/test/stack/stack_test.dart | `Given the stack when a missing .wasm path is requested then it is not served as application/wasm` | red |
+| web-build → The stack serves wasm files with their types | Wasm and module types | server/kaname_client/test/stack/stack_test.dart | `Given the stack when main.dart.wasm and main.dart.mjs are requested then they have wasm and JavaScript types` | green |
+| web-build → The stack serves wasm files with their types | Missing wasm file | server/kaname_client/test/stack/stack_test.dart | `Given the stack when a missing .wasm path is requested then it is not served as application/wasm` | green |
 | web-build → The web build check requires a wasm build | A wasm build passes | tools/kaname_tools/test/webbuild_test.dart | `a wasm build with skwasm before its CanvasKit fallback passes` | green |
 | web-build → The web build check requires a wasm build | A JavaScript-only build | tools/kaname_tools/test/webbuild_test.dart | `a JavaScript-only build fails: no WebAssembly build on skwasm` | green |
 | web-build → The web build check requires a wasm build | A named entry point is missing | tools/kaname_tools/test/webbuild_test.dart | `an entry point named by the build config is missing` (one case each for main.dart.wasm, main.dart.mjs, main.dart.js) | green |
@@ -48,9 +48,9 @@ Implementer packet: read AGENTS.md "Dart and Flutter code" and the skills `dart-
 
 ## 4. Stack: headers and content types
 
-- [ ] 4.1 Extend `server/kaname_client/test/stack/support/stack_support.dart` so a request can return the response headers and leave a binary body undecoded (D4). Existing callers keep their current result. Verify with `mise run analyze` and an unchanged existing stack test file that still compiles.
-- [ ] 4.2 Add the stack tests in `stack_test.dart` (tag `stack`): no COOP/COEP on `index.html`, `flutter_bootstrap.js` and `main.dart.wasm`; `main.dart.wasm` is `application/wasm` and `main.dart.mjs` has a JavaScript type; a missing `.wasm` path is not served as `application/wasm`. Verify that they fail before the wasm build exists in `app/build/web` (or against the old build) for the right reason.
-- [ ] 4.3 Verify A1 (heavy, ask first): `mise run stack:up` with the wasm build from 3.6, then `mise run stack:test`. Both must pass, and the rows "No isolation headers", "Wasm and module types" and "Missing wasm file" flip green. A wrong content type disproves A1: stop and take the Caddy header rule to the owner (it changes S5). Finish with `mise run stack:down`.
+- [x] 4.1 Extend `server/kaname_client/test/stack/support/stack_support.dart` so a request can return the response headers and leave a binary body undecoded (D4). Existing callers keep their current result. Verify with `mise run analyze` and an unchanged existing stack test file that still compiles.
+- [x] 4.2 Add the stack tests in `stack_test.dart` (tag `stack`): no COOP/COEP on `index.html`, `flutter_bootstrap.js` and `main.dart.wasm`; `main.dart.wasm` is `application/wasm` and `main.dart.mjs` has a JavaScript type; a missing `.wasm` path is not served as `application/wasm`. Verify that they fail before the wasm build exists in `app/build/web` (or against the old build) for the right reason.
+- [x] 4.3 Verify A1 (heavy, ask first): `mise run stack:up` with the wasm build from 3.6, then `mise run stack:test`. Both must pass, and the rows "No isolation headers", "Wasm and module types" and "Missing wasm file" flip green. A wrong content type disproves A1: stop and take the Caddy header rule to the owner (it changes S5). Finish with `mise run stack:down`.
 
 ## 5. Deploy notes and browser evidence
 

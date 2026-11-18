@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 /// What a finished command wrote, stdout and stderr together.
 typedef CommandResult = ({int exitCode, String output});
@@ -176,6 +177,42 @@ Future<HttpAnswer> http(
       status: response.statusCode,
       contentType: response.headers.contentType?.mimeType ?? '',
       body: await response.transform(utf8.decoder).join(),
+    );
+  } finally {
+    client.close(force: true);
+  }
+}
+
+/// An HTTP answer with its headers and an undecoded body.
+///
+/// [headers] maps each lower-case header name to its values.
+typedef RawHttpAnswer = ({
+  int status,
+  String contentType,
+  Map<String, List<String>> headers,
+  List<int> bytes,
+});
+
+/// Sends [method] to [path] on the stack's origin and returns the answer with
+/// every response header and the body as bytes, so a binary body such as
+/// WebAssembly is never decoded as text.
+Future<RawHttpAnswer> httpRaw(String method, String path) async {
+  final client = HttpClient();
+  try {
+    final request = await client.openUrl(
+      method,
+      Uri.parse('$stackOrigin$path'),
+    );
+    final response = await request.close();
+    final headers = <String, List<String>>{};
+    response.headers.forEach((name, values) => headers[name] = values);
+    final builder = BytesBuilder(copy: false);
+    await response.forEach(builder.add);
+    return (
+      status: response.statusCode,
+      contentType: response.headers.contentType?.mimeType ?? '',
+      headers: headers,
+      bytes: builder.takeBytes(),
     );
   } finally {
     client.close(force: true);
