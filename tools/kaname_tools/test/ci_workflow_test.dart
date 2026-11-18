@@ -296,9 +296,11 @@ void main() {
       }
     });
 
-    test('web build bundles the engine and its output is checked', () {
+    test('web build compiles with --wasm, bundles the engine and its output '
+        'is checked', () {
       final build = job('build');
       final web = build.combinations.firstWhere((c) => c['target'] == 'web');
+      expect(web['command'], contains('--wasm'));
       expect(web['command'], contains('--no-web-resources-cdn'));
       final buildIndex = build.steps.indexWhere(
         (s) => (s['run'] as String?)?.contains('matrix.command') ?? false,
@@ -308,6 +310,30 @@ void main() {
       );
       expect(check, greaterThan(buildIndex));
       expect(build.steps[check]['if'], contains("matrix.target == 'web'"));
+    });
+
+    test('webbuild:check passes --single-threaded and build:spike:check does '
+        'not', () {
+      final mise = _readRepoFile('mise.toml');
+      String run(String task) {
+        final block = RegExp(
+          '\\[tasks\\."${RegExp.escape(task)}"\\][\\s\\S]*?\\n\\n',
+        ).firstMatch(mise)?.group(0);
+        if (block == null) fail('mise.toml has no $task task');
+        final run = RegExp(
+          r'^run = "(.*)"$',
+          multiLine: true,
+        ).firstMatch(block)?.group(1);
+        if (run == null) fail('$task has no single run command');
+        return run;
+      }
+
+      // The product build forces single-threaded skwasm (D2); the spike keeps
+      // its multi-threaded benchmark row, so its check must not ask for it.
+      expect(run('webbuild:check'), contains('webbuild --check'));
+      expect(run('webbuild:check'), contains('--single-threaded'));
+      expect(run('build:spike:check'), contains('webbuild --check'));
+      expect(run('build:spike:check'), isNot(contains('--single-threaded')));
     });
 
     test('ios build passes --no-codesign', () {

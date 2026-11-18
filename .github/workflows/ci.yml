@@ -74,7 +74,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {target: web, os: ubuntu-24.04, command: flutter build web --release --no-web-resources-cdn}
+          - {target: web, os: ubuntu-24.04, command: flutter build web --wasm --release --no-web-resources-cdn}
           - {target: linux, os: ubuntu-24.04, command: flutter build linux --release}
           - {target: android, os: ubuntu-24.04, command: flutter build apk --release}
           - {target: windows, os: windows-2025, command: flutter build windows --release}

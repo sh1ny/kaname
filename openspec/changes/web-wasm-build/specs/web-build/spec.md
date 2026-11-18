@@ -25,6 +25,10 @@ The app's release web build SHALL be a wasm build. A browser that supports WasmG
 - **WHEN** CI's web build job or the stack's build produces the web app
 - **THEN** it produces the same wasm build and runs the web build check on its output, and the job fails if the check fails
 
+#### Scenario: Code only one compiler accepts
+- **WHEN** app code compiles with one of dart2wasm and dart2js but the other rejects it
+- **THEN** the web build task exits non-zero, because both builds ship from one output
+
 ### Requirement: skwasm runs single-threaded
 The web app SHALL run skwasm single-threaded whatever headers the hosting origin sends, and the self-host stack SHALL serve the web app without the `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers. The app SHALL NOT log a warning about running single-threaded.
 
