@@ -163,8 +163,12 @@ class BenchRig {
 }
 
 /// Builds a container with a ready grid, the fake host and the fake clock.
+///
+/// [engine] replaces the default [RecordingEngine], for example one that
+/// fails some queries.
 Future<BenchRig> benchRig({
   FakeBenchHost? host,
+  RecordingEngine? engine,
   bool seed = true,
   List<Override> overrides = const [],
 }) async {
@@ -173,7 +177,7 @@ Future<BenchRig> benchRig({
   final container = ProviderContainer.test(
     overrides: [
       gridSeederProvider.overrideWithValue(FixedSeeder(smallGrid())),
-      gridEngineProvider.overrideWithValue(RecordingEngine()),
+      gridEngineProvider.overrideWithValue(engine ?? RecordingEngine()),
       seedCheckProvider.overrideWithValue((_) => null),
       postFrameSchedulerProvider.overrideWithValue(
         seed ? scheduleMicrotask : (_) {},

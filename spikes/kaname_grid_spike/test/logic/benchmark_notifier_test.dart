@@ -3,6 +3,7 @@ import 'package:kaname_grid_spike/logic/bench_script.dart';
 import 'package:kaname_grid_spike/logic/benchmark_notifier.dart';
 import 'package:kaname_grid_spike/logic/grid_notifier.dart';
 
+import '../ui/ui_harness.dart';
 import 'bench_fakes.dart';
 
 void main() {
@@ -264,6 +265,19 @@ void main() {
     final start = rig.container.read(gridProvider) as Ready;
     expect(start.query.isEmpty, isTrue);
     expect(start.view.view.length, start.columns.rowCount);
+  });
+
+  test('an operation the engine fails aborts the run', () async {
+    final rig = await benchRig(
+      engine: RecordingEngine(failWhen: (query) => query.sortColumn != null),
+    );
+    rig.notifier.run();
+    await rig.playAll();
+    expect((rig.state as Aborted).reason, 'operation-failed:sortText');
+    expect(rig.host.published.last, {
+      'schemaVersion': 2,
+      'aborted': 'operation-failed:sortText',
+    });
   });
 
   test('a run needs a ready grid', () async {

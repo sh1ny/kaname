@@ -64,7 +64,8 @@ final class Done extends BenchmarkState {
 /// The run stopped before the last step.
 final class Aborted extends BenchmarkState {
   /// Creates the state with a short [reason]: `cancelled`,
-  /// `timeout:<step>`, `grid-not-ready` or `calibration-failed`.
+  /// `timeout:<step>`, `operation-failed:<step>`, `grid-not-ready` or
+  /// `calibration-failed`.
   const Aborted(this.reason);
 
   /// Why the run stopped. Carries no exception text.
@@ -93,8 +94,9 @@ final benchmarkProvider = NotifierProvider<BenchmarkNotifier, BenchmarkState>(
 /// Transitions: [Idle], [Done] and [Aborted] go to [Running] by [run] (or by
 /// `?bench=` once the grid is ready); [Running] goes to the next [Running] by
 /// [stepDone] or a finished operation, to [Done] after the last step, and to
-/// [Aborted] by [cancel] or a step timeout of twice the planned duration plus
-/// ten seconds. The samples are cleared by [run].
+/// [Aborted] by [cancel], an operation the grid reports as failed, or a step
+/// timeout of twice the planned duration plus ten seconds. The samples are
+/// cleared by [run].
 class BenchmarkNotifier extends Notifier<BenchmarkState> {
   late BenchConfig _config;
   late BenchEnvironment _environment;
@@ -314,7 +316,14 @@ class BenchmarkNotifier extends Notifier<BenchmarkState> {
           BenchStep.horizontalBack:
         throw StateError('$step is not an operation');
     }
-    final after = (ref.read(gridProvider) as Ready).lastTiming;
+    final afterState = ref.read(gridProvider) as Ready;
+    // A failed operation keeps the previous view, which still redraws: it
+    // would pass as a fast operation, so the run stops instead.
+    if (afterState.lastError != null) {
+      _abort('operation-failed:${step.name}');
+      return;
+    }
+    final after = afterState.lastTiming;
     if (after != null && !identical(after, _timingBefore)) {
       record.engineMs = after.timings.total.inMicroseconds / 1000;
     }
