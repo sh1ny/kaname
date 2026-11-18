@@ -46,7 +46,8 @@ final class WebBuildChecker {
   );
 
   /// Lists what is wrong with the web build in [directory]; empty when it is
-  /// self-contained. Each entry names what is missing or the address found.
+  /// a self-contained wasm build (skwasm before its CanvasKit fallback). Each
+  /// entry names what is missing, out of order or the address found.
   ///
   /// With [singleThreaded], the bootstrap must also force single-threaded
   /// skwasm: it needs at least one `forceSingleThreadedSkwasm` key, and every
@@ -202,9 +203,10 @@ final class WebBuildChecker {
   );
 
   List<String> _checkThreadMode(String path, String bootstrap) {
+    // A commented-out setting never reaches the loader, so it must not count.
+    final code = _withoutComments(bootstrap);
     final values = [
-      for (final setting in _threadSetting.allMatches(bootstrap))
-        setting.group(1)!,
+      for (final setting in _threadSetting.allMatches(code)) setting.group(1)!,
     ];
     const advice =
         'set `forceSingleThreadedSkwasm: true` in the loader config '
@@ -220,6 +222,57 @@ final class WebBuildChecker {
         '$path sets forceSingleThreadedSkwasm to $value, not the literal '
             'true: skwasm could start multi-threaded; $advice',
     ];
+  }
+
+  /// Returns [source] with every JavaScript `//` and `/* */` comment replaced
+  /// by spaces, keeping line breaks.
+  ///
+  /// Comment markers inside single-, double- and backtick-quoted strings are
+  /// not comments. Regular expression literals are not recognised: a `/*` in
+  /// one starts a comment, which can only hide a key and make the thread-mode
+  /// check fail, never pass. A quote or backtick in one can likewise hide
+  /// keys up to its closing match. Quoted strings also end at a line break,
+  /// so an unbalanced quote hides at most the rest of its line.
+  static String _withoutComments(String source) {
+    final out = StringBuffer();
+    String? quote;
+    var i = 0;
+    while (i < source.length) {
+      final char = source[i];
+      final next = i + 1 < source.length ? source[i + 1] : '';
+      switch ((quote, char, next)) {
+        case (null, '/', '/'):
+          final end = source.indexOf('\n', i);
+          final stop = end < 0 ? source.length : end;
+          out.write(' ' * (stop - i));
+          i = stop;
+        case (null, '/', '*'):
+          final end = source.indexOf('*/', i + 2);
+          final stop = end < 0 ? source.length : end + 2;
+          out.write(
+            source.substring(i, stop).replaceAll(RegExp(r'[^\n]'), ' '),
+          );
+          i = stop;
+        case (null, '"' || "'" || '`', _):
+          quote = char;
+          out.write(char);
+          i++;
+        case (String(), r'\', _) when next.isNotEmpty:
+          out
+            ..write(char)
+            ..write(next);
+          i += 2;
+        case (final String open, _, _)
+            when char == open || (char == '\n' && open != '`'):
+          quote = null;
+          out.write(char);
+          i++;
+        case _:
+          out.write(char);
+          i++;
+      }
+    }
+    return out.toString();
   }
 
   List<String> _checkFallbackAddress(String path, String bootstrap) {

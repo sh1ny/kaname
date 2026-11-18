@@ -344,6 +344,47 @@ void main() {
         expect(withoutKey.err, contains('no forceSingleThreadedSkwasm'));
       });
 
+      group(
+        '--single-threaded fails when the only setting is commented out',
+        () {
+          final cases = {
+            'line comment': ',\n    // forceSingleThreadedSkwasm: true,\n',
+            'block comment': ', /* forceSingleThreadedSkwasm: true */',
+            'multi-line block comment':
+                ',\n    /*\n    forceSingleThreadedSkwasm: true,\n    */\n',
+          };
+          for (final MapEntry(:key, :value) in cases.entries) {
+            test(key, () async {
+              final result = await _checkWith(
+                _bootstrap(threadConfig: value),
+                flag,
+              );
+
+              expect(result.code, isNot(0));
+              expect(result.err, contains('no forceSingleThreadedSkwasm'));
+              expect(result.err, contains('multi-threaded'));
+            });
+          }
+        },
+      );
+
+      test('comment markers inside strings do not hide a key', () async {
+        for (final config in [
+          ', note: "a//b", forceSingleThreadedSkwasm: true',
+          ", note: 'a/*b', forceSingleThreadedSkwasm: true",
+          ', note: `a//b`, forceSingleThreadedSkwasm: true',
+          r', note: "a\"//b", forceSingleThreadedSkwasm: true',
+        ]) {
+          final result = await _checkWith(
+            _bootstrap(threadConfig: config),
+            flag,
+          );
+
+          expect(result.err, isEmpty, reason: config);
+          expect(result.code, 0, reason: config);
+        }
+      });
+
       test(
         'without --single-threaded a variable thread setting passes',
         () async {
