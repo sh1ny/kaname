@@ -105,8 +105,8 @@ Abbreviations: `KSD` = `packages/kaname_static_data/test/`, `SRV` = `server/kana
 
 ## 9. Architecture and integration
 
-- [ ] 9.1 Update `openspec/architecture.md`. In State ownership, the static-data builds row becomes "active, previous and at most one staged; at most three at any moment", with the switch and rollback jobs under the lock as writers. Update the Resource bounds row for the static-data import the same way. Verify: the diff shows only those rows changed; `mise run spec:validate` passes.
-- [ ] 9.2 Run `mise run check` (workspace, purity, analyze, format:check, test, notices:check) and confirm every test-map row is green. Verify: the command exits 0 and the map has no `red` row.
+- [x] 9.1 Update `openspec/architecture.md`. In State ownership, the static-data builds row becomes "active, previous and at most one staged; at most three at any moment", with the switch and rollback jobs under the lock as writers. Update the Resource bounds row for the static-data import the same way. Verify: the diff shows only those rows changed; `mise run spec:validate` passes.
+- [x] 9.2 Run `mise run check` (workspace, purity, analyze, format:check, test, notices:check) and confirm every test-map row is green. Verify: the command exits 0 and the map has no `red` row.
 
 ## Workflow follow-up
 
