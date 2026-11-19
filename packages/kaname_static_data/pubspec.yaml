@@ -1,0 +1,17 @@
+name: kaname_static_data
+description: Pure-Dart importer for the EVE static data export (SDE), shared by the server and the solo build.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  archive: ^4.7.1
+  http: ^1.6.0
+  kaname_core:
+    path: ../kaname_core
+  path: ^1.9.1
+
+dev_dependencies:
+  test: ^1.26.0
