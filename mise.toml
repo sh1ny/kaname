@@ -58,6 +58,11 @@ description = "Run the kaname_tools tests"
 dir = "tools/kaname_tools"
 run = "dart test"
 
+[tasks."test:static_data"]
+description = "Run the kaname_static_data tests"
+dir = "packages/kaname_static_data"
+run = "dart test"
+
 [tasks."test:app"]
 description = "Run the app's widget tests"
 dir = "app"
@@ -82,6 +87,7 @@ run = "flutter test --platform chrome --tags web test/data"
 description = "Run every workspace member's tests"
 run = [
   { task = "test:core" },
+  { task = "test:static_data" },
   { task = "test:tools" },
   { task = "test:app" },
   { task = "test:ember_ui" },
@@ -238,6 +244,11 @@ description = "Start the development server and apply pending migrations; needs 
 dir = "server/kaname_server"
 run = "dart run bin/main.dart --apply-migrations"
 
+[tasks."sde:import"]
+description = "Import an SDE build into the development database: mise run sde:import -- <zip>|--latest [--r38-report <path>]; needs the development server running (server:dev starts the embedded Postgres)"
+dir = "server/kaname_server"
+run = "dart run tool/sde_import.dart"
+
 [tasks."test:server"]
 description = "Run the server packages' tests; needs the development Redis up (server:setup, then docker compose up -d in server/kaname_server)"
 # Starts nothing. `check`'s `test` task does not run these: they need Redis.
@@ -250,12 +261,17 @@ run = [
 [tasks."test:server:server"]
 description = "Run the kaname_server tests without the stack tag"
 dir = "server/kaname_server"
-run = "dart test --exclude-tags stack"
+run = "dart test --exclude-tags stack,sde-live"
 
 [tasks."test:server:client"]
 description = "Run the kaname_client tests without the stack tag"
 dir = "server/kaname_client"
 run = "dart test --exclude-tags stack"
+
+[tasks."test:sde-live"]
+description = "Opt-in: import CCP's latest build (downloads about 100 MB) into a scratch database and print the measurements; not in CI; needs the development Redis up. SDE_LIVE_REPORT=<file> also writes the Markdown there"
+dir = "server/kaname_server"
+run = "dart test --tags sde-live"
 
 [tasks."stack:up"]
 description = "Build the web app, then build and start the self-host stack in deploy/ and wait until it is healthy; needs deploy/.env"

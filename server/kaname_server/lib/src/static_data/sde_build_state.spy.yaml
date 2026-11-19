@@ -1,0 +1,5 @@
+### Whether a stored build is the one readers use.
+enum: SdeBuildState
+values:
+  - staged
+  - active

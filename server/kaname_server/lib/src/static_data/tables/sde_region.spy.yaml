@@ -1,0 +1,20 @@
+### A region of space.
+### One row per record of one build.
+### A unique index on (build, sdeId) sits next to Serverpod's own `id` key:
+### Serverpod 4.1.2 tables cannot declare a composite primary key (A3).
+### The `raw` column holds the full record as `SdeJson` (from kaname_core),
+### stored as `jsonb` through `serializationDataType=jsonb` (assumption A8,
+### verified against Serverpod 4.1.2: generation produced a `jsonb` column).
+class: SdeRegion
+table: sde_region
+serverOnly: true
+fields:
+  build: int
+  sdeId: int
+  name: String?
+  factionId: int?
+  raw: SdeJson, serializationDataType=jsonb
+indexes:
+  sde_region_build_sde_id_idx:
+    fields: build, sdeId
+    unique: true

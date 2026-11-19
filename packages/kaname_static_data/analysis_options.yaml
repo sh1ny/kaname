@@ -1,0 +1,6 @@
+# Shared packages document their public API (design D1).
+include: ../../analysis_options.yaml
+
+linter:
+  rules:
+    - public_member_api_docs

@@ -49,6 +49,23 @@ mise run stack:down                     # stop and delete the data volumes
 next `up` starts on the existing database and applies no migration twice.
 `mise run stack:down` removes them as well.
 
+## Static data
+
+On a start with no active static-data build, the server queues an import of
+CCP's latest SDE build on its compute worker. It reads
+`https://developers.eveonline.com/static-data/tranquility/latest.jsonl` and
+downloads the build's JSONL zip (about 95 MiB; about 560 MiB unpacked into the
+container's temporary directory while it imports), so the server needs
+outbound HTTPS to `developers.eveonline.com` on first start. The import runs in
+the background: the server serves requests meanwhile, and the import takes
+about half a minute once the download is done.
+
+When the download fails (no internet access, a firewall, CCP unreachable), the
+import is recorded as failed with its reason in the `sde_import` table, the
+server keeps running with no active build, and the next start tries again.
+There is no import from a local zip for self-hosted installs yet; a later
+change adds one.
+
 ## Web app
 
 The web app is one `--wasm` build that holds two builds of the same code, and

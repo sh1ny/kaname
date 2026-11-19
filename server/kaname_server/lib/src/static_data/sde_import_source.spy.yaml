@@ -1,0 +1,5 @@
+### Where an import read its build from.
+enum: SdeImportSource
+values:
+  - ccp
+  - local

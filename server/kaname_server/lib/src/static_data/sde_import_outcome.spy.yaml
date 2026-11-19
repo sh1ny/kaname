@@ -1,0 +1,7 @@
+### How an import ended, or `running` while it still holds the lock.
+enum: SdeImportOutcome
+values:
+  - running
+  - succeeded
+  - failed
+  - skipped

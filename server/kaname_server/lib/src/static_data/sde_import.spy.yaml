@@ -1,0 +1,26 @@
+### The record of one import attempt.
+### Locking rule: `skipped` rows are inserted without the static-data
+### advisory lock, because a skipped import is one that could not take it.
+### Every update or delete of a row happens while holding that lock, so
+### writes to existing rows never overlap.
+### The four reports and the field check are `SdeJson` stored as `jsonb`
+### (assumption A8, verified against Serverpod 4.1.2); they stay `null` until
+### the import writes them. Only the newest 100 rows are kept.
+class: SdeImport
+table: sde_import
+serverOnly: true
+fields:
+  build: int?
+  source: SdeImportSource
+  startedAt: DateTime
+  finishedAt: DateTime?
+  outcome: SdeImportOutcome
+  failureReason: String?
+  fileCounts: SdeJson?, serializationDataType=jsonb
+  drift: SdeJson?, serializationDataType=jsonb
+  badRecords: SdeJson?, serializationDataType=jsonb
+  knownIds: SdeJson?, serializationDataType=jsonb
+  fieldCheck: SdeJson?, serializationDataType=jsonb
+indexes:
+  sde_import_started_at_idx:
+    fields: startedAt
