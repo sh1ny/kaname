@@ -13,9 +13,11 @@
 import 'package:serverpod_client/serverpod_client.dart' as _isc;
 
 /// Whether a stored build is the one readers use.
+/// `previous` is the build the active one replaced; a rollback swaps them.
 enum SdeBuildState implements _isc.SerializableModel {
   staged,
-  active;
+  active,
+  previous;
 
   static SdeBuildState fromJson(String name) {
     switch (name) {
@@ -23,6 +25,8 @@ enum SdeBuildState implements _isc.SerializableModel {
         return SdeBuildState.staged;
       case 'active':
         return SdeBuildState.active;
+      case 'previous':
+        return SdeBuildState.previous;
       default:
         throw ArgumentError(
           'Value "$name" cannot be converted to "SdeBuildState"',

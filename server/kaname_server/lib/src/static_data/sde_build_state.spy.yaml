@@ -1,5 +1,7 @@
 ### Whether a stored build is the one readers use.
+### `previous` is the build the active one replaced; a rollback swaps them.
 enum: SdeBuildState
 values:
   - staged
   - active
+  - previous

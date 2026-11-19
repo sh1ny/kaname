@@ -20,6 +20,14 @@ final class _BatchRecorder implements StaticDataWriter {
     required int recordId,
     required ImportRecord record,
   }) async {}
+
+  @override
+  Future<void> switchTo(int build, {required DateTime at}) =>
+      throw UnimplementedError('the ingest never switches');
+
+  @override
+  Future<void> rollBack({required DateTime at}) =>
+      throw UnimplementedError('the ingest never rolls back');
 }
 
 Stream<SdeLine> _lines(Iterable<String> texts) async* {

@@ -1,0 +1,5 @@
+### How a switch or a rollback ended.
+enum: SdeSwitchOutcome
+values:
+  - succeeded
+  - failed

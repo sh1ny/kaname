@@ -67,7 +67,7 @@ typedef Delay = Future<void> Function(Duration duration);
 ///
 /// ## Requests
 ///
-/// [runImport] sends a request and completes with the worker's
+/// [runImport] and [runBuildCheck] send a request and complete with the worker's
 /// [WorkerReply]. A request made while no worker is running completes at
 /// once with a [WorkerError]; a request still unanswered when the worker
 /// exits completes with a [WorkerError] saying so.
@@ -157,6 +157,20 @@ final class WorkerSupervisor {
   /// before it answers.
   Future<WorkerReply> runImport(ImportSourceSpec source) {
     final request = RunImport(requestId: _nextRequestId++, source: source);
+    return _send(request);
+  }
+
+  /// Asks the worker to check CCP for a new build, import and switch to it.
+  ///
+  /// Completes with the worker's [BuildCheckFinished], or with a
+  /// [WorkerError] when no worker runs, the worker refuses the request, or
+  /// the worker exits before it answers.
+  Future<WorkerReply> runBuildCheck(ImportSourceSpec source) {
+    final request = RunBuildCheck(requestId: _nextRequestId++, source: source);
+    return _send(request);
+  }
+
+  Future<WorkerReply> _send(WorkerRequest request) {
     final process = _process;
     if (process == null) {
       return Future.value(

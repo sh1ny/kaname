@@ -1,0 +1,6 @@
+### Which way a switch moved the active build.
+### `switch` is a Dart reserved word, so the forward kind is `forward`.
+enum: SdeSwitchKind
+values:
+  - forward
+  - rollback

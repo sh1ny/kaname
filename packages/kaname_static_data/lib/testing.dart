@@ -7,5 +7,6 @@
 /// CCP data is used.
 library;
 
+export 'src/testing/build_diff_fixture.dart';
 export 'src/testing/sde_fixture.dart';
 export 'src/testing/sde_zip.dart';

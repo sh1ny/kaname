@@ -1,0 +1,9 @@
+### How a check for a new build ended.
+enum: SdeCheckOutcome
+values:
+  - upToDate
+  - switched
+  - held
+  - older
+  - staged
+  - failed

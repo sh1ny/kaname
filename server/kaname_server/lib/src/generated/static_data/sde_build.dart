@@ -17,11 +17,17 @@ import 'package:serverpod/serverpod.dart' as _is;
 import '../static_data/sde_build_state.dart' as _iydqbndi;
 
 /// One stored build of the EVE static data export.
-/// At rest there is the active build and at most one staged build (D2).
-/// `activeMarker` is `true` on the active row and `null` on every other row.
-/// Serverpod 4.1.2 indexes accept no `where` clause, so a partial unique
-/// index is not possible (A3); a unique index on the nullable marker gives
+/// At rest there is the active build, at most one previous build and at most
+/// one staged build (D1). The database enforces one active and one previous
+/// build; "at most one staged" is kept by the code, because the import drops
+/// the staged build first (D8).
+/// `activeMarker` is `true` on the active row and `null` on every other row;
+/// `previousMarker` is `true` on the previous row and `null` on every other
+/// row. Serverpod 4.1.2 indexes accept no `where` clause, so a partial unique
+/// index is not possible (A3); a unique index on each nullable marker gives
 /// the same rule, because Postgres treats nulls as distinct.
+/// `held` is `true` on a build that was rolled back from: the check does not
+/// switch to a held build.
 abstract class SdeBuild
     implements _is.TableRow<int?>, _is.ProtocolSerialization {
   SdeBuild._({
@@ -30,7 +36,9 @@ abstract class SdeBuild
     required this.state,
     required this.importedAt,
     this.activeMarker,
-  });
+    this.previousMarker,
+    bool? held,
+  }) : held = held ?? false;
 
   factory SdeBuild({
     int? id,
@@ -38,6 +46,8 @@ abstract class SdeBuild
     required _iydqbndi.SdeBuildState state,
     required DateTime importedAt,
     bool? activeMarker,
+    bool? previousMarker,
+    bool? held,
   }) = _SdeBuildImpl;
 
   factory SdeBuild.fromJson(Map<String, dynamic> jsonSerialization) {
@@ -53,6 +63,12 @@ abstract class SdeBuild
       activeMarker: jsonSerialization['activeMarker'] == null
           ? null
           : _is.BoolJsonExtension.fromJson(jsonSerialization['activeMarker']),
+      previousMarker: jsonSerialization['previousMarker'] == null
+          ? null
+          : _is.BoolJsonExtension.fromJson(jsonSerialization['previousMarker']),
+      held: jsonSerialization['held'] == null
+          ? null
+          : _is.BoolJsonExtension.fromJson(jsonSerialization['held']),
     );
   }
 
@@ -71,6 +87,10 @@ abstract class SdeBuild
 
   bool? activeMarker;
 
+  bool? previousMarker;
+
+  bool held;
+
   @override
   _is.Table<int?> get table => t;
 
@@ -83,6 +103,8 @@ abstract class SdeBuild
     _iydqbndi.SdeBuildState? state,
     DateTime? importedAt,
     bool? activeMarker,
+    bool? previousMarker,
+    bool? held,
   });
   @override
   Map<String, dynamic> toJson() {
@@ -93,6 +115,8 @@ abstract class SdeBuild
       'state': state.toJson(),
       'importedAt': importedAt.toJson(),
       if (activeMarker != null) 'activeMarker': activeMarker,
+      if (previousMarker != null) 'previousMarker': previousMarker,
+      'held': held,
     };
   }
 
@@ -138,12 +162,16 @@ class _SdeBuildImpl extends SdeBuild {
     required _iydqbndi.SdeBuildState state,
     required DateTime importedAt,
     bool? activeMarker,
+    bool? previousMarker,
+    bool? held,
   }) : super._(
          id: id,
          build: build,
          state: state,
          importedAt: importedAt,
          activeMarker: activeMarker,
+         previousMarker: previousMarker,
+         held: held,
        );
 
   /// Returns a shallow copy of this [SdeBuild]
@@ -156,6 +184,8 @@ class _SdeBuildImpl extends SdeBuild {
     _iydqbndi.SdeBuildState? state,
     DateTime? importedAt,
     Object? activeMarker = _Undefined,
+    Object? previousMarker = _Undefined,
+    bool? held,
   }) {
     return SdeBuild(
       id: id is int? ? id : this.id,
@@ -163,6 +193,10 @@ class _SdeBuildImpl extends SdeBuild {
       state: state ?? this.state,
       importedAt: importedAt ?? this.importedAt,
       activeMarker: activeMarker is bool? ? activeMarker : this.activeMarker,
+      previousMarker: previousMarker is bool?
+          ? previousMarker
+          : this.previousMarker,
+      held: held ?? this.held,
     );
   }
 }
@@ -182,6 +216,12 @@ class SdeBuildUpdateTable extends _is.UpdateTable<SdeBuildTable> {
 
   _is.ColumnValue<bool, bool> activeMarker(bool? value) =>
       _is.ColumnValue(table.activeMarker, value);
+
+  _is.ColumnValue<bool, bool> previousMarker(bool? value) =>
+      _is.ColumnValue(table.previousMarker, value);
+
+  _is.ColumnValue<bool, bool> held(bool value) =>
+      _is.ColumnValue(table.held, value);
 }
 
 class SdeBuildTable extends _is.Table<int?> {
@@ -191,6 +231,8 @@ class SdeBuildTable extends _is.Table<int?> {
     state = _is.ColumnEnum('state', this, _is.EnumSerialization.byName);
     importedAt = _is.ColumnDateTime('importedAt', this);
     activeMarker = _is.ColumnBool('activeMarker', this);
+    previousMarker = _is.ColumnBool('previousMarker', this);
+    held = _is.ColumnBool('held', this, hasDefault: true);
   }
 
   late final SdeBuildUpdateTable updateTable;
@@ -203,8 +245,20 @@ class SdeBuildTable extends _is.Table<int?> {
 
   late final _is.ColumnBool activeMarker;
 
+  late final _is.ColumnBool previousMarker;
+
+  late final _is.ColumnBool held;
+
   @override
-  List<_is.Column> get columns => [id, build, state, importedAt, activeMarker];
+  List<_is.Column> get columns => [
+    id,
+    build,
+    state,
+    importedAt,
+    activeMarker,
+    previousMarker,
+    held,
+  ];
 }
 
 class SdeBuildInclude extends _is.IncludeObject {

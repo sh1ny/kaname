@@ -5,8 +5,9 @@ import 'src/static_data/static_data_start.dart';
 ///
 /// After the server has started, the monolith role in the development,
 /// staging and production run modes starts its static-data work: the compute
-/// worker and, with no active build, the first import (design D8). The
-/// import runs detached, so requests are served meanwhile.
+/// worker, the daily build check's schedule and, when one is due (no active
+/// build, say), a check (design D6, D8). The check runs detached, so
+/// requests are served meanwhile.
 Future<void> run(List<String> args) async {
   final pod = Serverpod(args);
   await pod.start();

@@ -16,13 +16,20 @@ import '../support/migrated_database.dart';
 import '../test_tools/serverpod_test_tools.dart';
 
 /// Imports CCP's latest build into a scratch database through the production
-/// path and prints what it measured (design task 8.2).
+/// path, diffs it with a second build derived from it, and prints what it
+/// measured (sde-import task 8.2, sde-build-switch task 5.4).
+///
+/// The second build is a copy of the imported one with about 1% of its
+/// records changed and about 1% removed, made in SQL, so the diff meets a
+/// build the size of a real one with every kind of change. Each statement of
+/// the diff and of the whole-build delete is timed (sde-build-switch A3).
 ///
 /// Opt-in: it downloads the build (about 100 MB) from CCP, so it is tagged
 /// `sde-live` and runs only with `mise run test:sde-live`, never in
 /// `test:server` or in CI. The printed Markdown holds the build number, the
-/// record counts, the sizes, the import and whole-build delete times, the
-/// reports, and a pass or fail per Resource Bounds cap. When the environment
+/// record counts, the sizes, the import time, each diff and delete statement
+/// with its time and rows, the reports, and a pass or fail per Resource
+/// Bounds cap. When the environment
 /// variable `SDE_LIVE_REPORT` names a file, the Markdown is written there as
 /// well.
 void main() {
@@ -58,11 +65,13 @@ void main() {
         if (result is! ImportSucceeded) {
           fail('the import did not succeed: ${_describe(result)}');
         }
+        final diff = await _measureDiff(settings, result.build);
         final delete = await _deleteBuild(settings, result.build);
         final markdown = renderLiveReport(
           result: result,
           measured: source.measured,
           importDuration: importTimer.elapsed,
+          diff: diff,
           delete: delete,
         );
         // The block is the test's output.
@@ -165,56 +174,218 @@ final class _MeasuringArchive implements SdeArchive {
   Future<void> close() => _inner.close();
 }
 
+/// One timed statement.
+final class TimedStatement {
+  /// Creates the measurement of [name].
+  const TimedStatement(this.name, this.duration, this.rows);
+
+  /// What the statement did, for example a file or a table.
+  final String name;
+
+  /// How long it took.
+  final Duration duration;
+
+  /// The rows it returned or affected.
+  final int rows;
+}
+
+/// How the diff went.
+final class DiffMeasurement {
+  /// Creates the measurement.
+  const DiffMeasurement({
+    required this.statements,
+    required this.total,
+    required this.report,
+  });
+
+  /// Every statement of the diff, in order.
+  final List<TimedStatement> statements;
+
+  /// How long the whole comparison took.
+  final Duration total;
+
+  /// The report the comparison gave.
+  final BuildDiffReport report;
+}
+
 /// How the whole-build delete went.
 final class DeleteMeasurement {
   /// Creates the measurement.
-  const DeleteMeasurement({required this.rows, required this.duration});
+  const DeleteMeasurement({required this.statements, required this.duration});
 
-  /// The rows deleted, including the `sde_build` row.
-  final int rows;
+  /// Every delete statement, in order.
+  final List<TimedStatement> statements;
 
   /// How long the single transaction took.
   final Duration duration;
+
+  /// The rows deleted, including the `sde_build` row.
+  int get rows => statements.fold(0, (sum, statement) => sum + statement.rows);
 }
 
-/// Deletes every row of [build] from every table the store writes except the
-/// import records, in one transaction, and times it: the stand-in for
-/// removing a staged build.
+Future<pg.Connection> _open(PostgresConnectionSettings settings) =>
+    pg.Connection.open(
+      pg.Endpoint(
+        host: settings.host,
+        port: settings.port,
+        database: settings.database,
+        username: settings.user,
+        password: settings.password,
+        isUnixSocket: settings.isUnixSocket,
+      ),
+      settings: const pg.ConnectionSettings(sslMode: pg.SslMode.disable),
+    );
+
+/// Copies [build] to [build] + 1 in SQL, changes about 1% of the copy's
+/// records and removes about 1% of them, and stores the copy as staged.
+///
+/// Returns the new build's number.
+Future<int> _deriveBuild(PostgresConnectionSettings settings, int build) async {
+  final next = build + 1;
+  final connection = await _open(settings);
+  try {
+    await connection.execute("SET statement_timeout = '30min'");
+    await connection.runTx((tx) async {
+      for (final MapEntry(:key, :value)
+          in PostgresStaticDataStore.writtenTables.entries) {
+        final typed = value.any((column) => column.name == 'sdeId');
+        if (!typed && key != 'sde_record') continue;
+        final columns = [
+          for (final column in value)
+            if (column.name != 'build') '"${column.name}"',
+        ].join(', ');
+        await tx.execute(
+          'INSERT INTO "$key" ("build", $columns) '
+          'SELECT \$2::bigint, $columns FROM "$key" '
+          'WHERE "build" = \$1::bigint',
+          parameters: [build, next],
+        );
+        final (column, jsonColumn) = typed
+            ? ('"sdeId"', '"raw"')
+            : ('"line"', '"record"');
+        await tx.execute(
+          'UPDATE "$key" SET $jsonColumn = '
+          "jsonb_set($jsonColumn, '{liveProbe}', '1') "
+          'WHERE "build" = \$1::bigint AND $column % 100 = 0',
+          parameters: [next],
+        );
+        await tx.execute(
+          'DELETE FROM "$key" WHERE "build" = \$1::bigint '
+          'AND $column % 100 = 1',
+          parameters: [next],
+        );
+      }
+      await tx.execute(
+        'INSERT INTO "sde_build" ("build", "state", "importedAt", "held") '
+        "VALUES (\$1::bigint, 'staged', now(), false)",
+        parameters: [next],
+      );
+    });
+  } finally {
+    await connection.close();
+  }
+  return next;
+}
+
+/// Diffs [build] with a build derived from it and times each statement.
+Future<DiffMeasurement> _measureDiff(
+  PostgresConnectionSettings settings,
+  int build,
+) async {
+  final next = await _deriveBuild(settings, build);
+  final store = await PostgresStaticDataStore.open(settings);
+  try {
+    final statements = <TimedStatement>[];
+    final explainer = Platform.environment['SDE_LIVE_EXPLAIN'] == '1'
+        ? await _open(settings)
+        : null;
+    if (explainer != null) {
+      final stats = await explainer.execute(
+        'SELECT c.relname, c.relpages, c.reltuples, s.n_live_tup, '
+        's.last_analyze, s.last_autoanalyze FROM pg_class c '
+        'LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid '
+        "WHERE c.relname IN ('sde_record', 'sde_type')",
+      );
+      // ignore: avoid_print
+      print('[stats] relname, pages, reltuples, live, analyze, autoanalyze');
+      for (final row in stats) {
+        // ignore: avoid_print
+        print('[stats] ${row.toList().join(', ')}');
+      }
+    }
+    final timer = Stopwatch()..start();
+    final report = await store
+        .differ(
+          onStatementStart: (name, sql, parameters) async {
+            // A timeout names the statement that ran when it hit.
+            // ignore: avoid_print
+            print('[diff] running $name');
+            if (explainer != null) {
+              await _printPlan(explainer, name, sql, parameters);
+            }
+          },
+          onStatement: (name, elapsed, rows) =>
+              statements.add(TimedStatement(name, elapsed, rows)),
+        )
+        .compare(build, next);
+    timer.stop();
+    await explainer?.close();
+    return DiffMeasurement(
+      statements: statements,
+      total: timer.elapsed,
+      report: report,
+    );
+  } finally {
+    await store.close();
+  }
+}
+
+/// Prints the plan of [sql] (plain `EXPLAIN`, nothing runs) with the
+/// planner's statistics state, when `SDE_LIVE_EXPLAIN=1`.
+Future<void> _printPlan(
+  pg.Connection connection,
+  String name,
+  String sql,
+  List<Object?> parameters,
+) async {
+  final plan = await connection.execute('EXPLAIN $sql', parameters: parameters);
+  // ignore: avoid_print
+  print('[plan] $name\n${plan.map((row) => row.single).join('\n')}');
+}
+
+/// Deletes [build] as a switch deletes a build, in one transaction, and times
+/// each statement: its rows in every typed table and in `sde_record`, its
+/// diff records and its `sde_build` row.
 Future<DeleteMeasurement> _deleteBuild(
   PostgresConnectionSettings settings,
   int build,
 ) async {
-  final connection = await pg.Connection.open(
-    pg.Endpoint(
-      host: settings.host,
-      port: settings.port,
-      database: settings.database,
-      username: settings.user,
-      password: settings.password,
-      isUnixSocket: settings.isUnixSocket,
-    ),
-    settings: const pg.ConnectionSettings(sslMode: pg.SslMode.disable),
-  );
+  final connection = await _open(settings);
   try {
-    // The build row goes last, after every table that holds its rows.
-    final tables = [
-      for (final table in PostgresStaticDataStore.writtenTables.keys)
-        if (table != 'sde_import' && table != 'sde_build') table,
-      'sde_build',
+    final statements = <(String, String)>[
+      for (final file in typedFiles)
+        (file.table, 'DELETE FROM "${file.table}" WHERE "build" = \$1'),
+      ('sde_record', 'DELETE FROM "sde_record" WHERE "build" = \$1'),
+      (
+        'sde_build_diff',
+        'DELETE FROM "sde_build_diff" WHERE "fromBuild" = \$1 '
+            'OR "toBuild" = \$1',
+      ),
+      ('sde_build', 'DELETE FROM "sde_build" WHERE "build" = \$1'),
     ];
+    final timed = <TimedStatement>[];
     final timer = Stopwatch()..start();
-    var rows = 0;
     await connection.runTx((tx) async {
-      for (final table in tables) {
-        final result = await tx.execute(
-          'DELETE FROM "$table" WHERE "build" = \$1',
-          parameters: [build],
+      for (final (name, sql) in statements) {
+        final statementTimer = Stopwatch()..start();
+        final result = await tx.execute(sql, parameters: [build]);
+        timed.add(
+          TimedStatement(name, statementTimer.elapsed, result.affectedRows),
         );
-        rows += result.affectedRows;
       }
     });
     timer.stop();
-    return DeleteMeasurement(rows: rows, duration: timer.elapsed);
+    return DeleteMeasurement(statements: timed, duration: timer.elapsed);
   } finally {
     await connection.close();
   }
@@ -279,6 +450,36 @@ List<CapCheck> capChecks(
 String _seconds(Duration duration) =>
     '${(duration.inMilliseconds / 1000).toStringAsFixed(1)} s';
 
+void _writeStatements(
+  StringBuffer out,
+  List<TimedStatement> statements,
+  Duration total,
+) {
+  for (final TimedStatement(:name, :duration, :rows) in statements) {
+    out.writeln('| $name | ${duration.inMilliseconds} | $rows |');
+  }
+  out.writeln('| **Total** | **${total.inMilliseconds}** | |');
+}
+
+String _describeReport(BuildDiffReport report) {
+  var added = 0;
+  var removed = 0;
+  var changed = 0;
+  var cutOff = 0;
+  for (final file in report.files) {
+    added += file.added.count;
+    removed += file.removed.count;
+    changed += file.changed.count;
+    cutOff += [
+      file.added,
+      file.removed,
+      file.changed,
+    ].where((kind) => kind.truncated).length;
+  }
+  return '${report.files.length} files, $added added, $removed removed, '
+      '$changed changed, $cutOff key lists cut off.';
+}
+
 String _mib(int bytes) =>
     '${(bytes / SdeLimits.mebibyte).toStringAsFixed(1)} MiB';
 
@@ -287,6 +488,7 @@ String renderLiveReport({
   required ImportSucceeded result,
   required Measured measured,
   required Duration importDuration,
+  required DiffMeasurement diff,
   required DeleteMeasurement delete,
 }) {
   final report = result.report;
@@ -306,10 +508,31 @@ String renderLiveReport({
     )
     ..writeln('| Download and open | ${_seconds(measured.openDuration)} |')
     ..writeln('| Whole import | ${_seconds(importDuration)} |')
+    ..writeln('| Whole-build diff | ${_seconds(diff.total)} |')
     ..writeln(
       '| Whole-build delete, one transaction | ${_seconds(delete.duration)} '
       '(${delete.rows} rows) |',
     )
+    ..writeln()
+    ..writeln('### Diff statements')
+    ..writeln()
+    ..writeln(
+      'Each statement must stay within the 5 min `statement_timeout` (A3).',
+    )
+    ..writeln()
+    ..writeln('| Statement | Time (ms) | Rows |')
+    ..writeln('| --- | ---: | ---: |');
+  _writeStatements(out, diff.statements, diff.total);
+  out
+    ..writeln()
+    ..writeln('Report: ${_describeReport(diff.report)}')
+    ..writeln()
+    ..writeln('### Whole-build delete statements')
+    ..writeln()
+    ..writeln('| Statement | Time (ms) | Rows |')
+    ..writeln('| --- | ---: | ---: |');
+  _writeStatements(out, delete.statements, delete.duration);
+  out
     ..writeln()
     ..writeln('### Resource bounds')
     ..writeln()

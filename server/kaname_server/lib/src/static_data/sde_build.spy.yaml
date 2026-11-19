@@ -1,9 +1,15 @@
 ### One stored build of the EVE static data export.
-### At rest there is the active build and at most one staged build (D2).
-### `activeMarker` is `true` on the active row and `null` on every other row.
-### Serverpod 4.1.2 indexes accept no `where` clause, so a partial unique
-### index is not possible (A3); a unique index on the nullable marker gives
+### At rest there is the active build, at most one previous build and at most
+### one staged build (D1). The database enforces one active and one previous
+### build; "at most one staged" is kept by the code, because the import drops
+### the staged build first (D8).
+### `activeMarker` is `true` on the active row and `null` on every other row;
+### `previousMarker` is `true` on the previous row and `null` on every other
+### row. Serverpod 4.1.2 indexes accept no `where` clause, so a partial unique
+### index is not possible (A3); a unique index on each nullable marker gives
 ### the same rule, because Postgres treats nulls as distinct.
+### `held` is `true` on a build that was rolled back from: the check does not
+### switch to a held build.
 class: SdeBuild
 table: sde_build
 serverOnly: true
@@ -12,10 +18,15 @@ fields:
   state: SdeBuildState
   importedAt: DateTime
   activeMarker: bool?
+  previousMarker: bool?
+  held: bool, default=false
 indexes:
   sde_build_build_idx:
     fields: build
     unique: true
   sde_build_active_marker_idx:
     fields: activeMarker
+    unique: true
+  sde_build_previous_marker_idx:
+    fields: previousMarker
     unique: true

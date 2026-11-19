@@ -249,6 +249,16 @@ description = "Import an SDE build into the development database: mise run sde:i
 dir = "server/kaname_server"
 run = "dart run tool/sde_import.dart"
 
+[tasks."sde:rollback"]
+description = "Roll the development database back to its previous SDE build: mise run sde:rollback; fails at once when an import or switch is running or there is no previous build; needs the development server running (server:dev starts the embedded Postgres)"
+dir = "server/kaname_server"
+run = "dart run tool/sde_rollback.dart"
+
+[tasks."sde:diff"]
+description = "Compare two stored SDE builds in the development database and print the report, storing nothing: mise run sde:diff -- <from> <to>; needs the development server running (server:dev starts the embedded Postgres)"
+dir = "server/kaname_server"
+run = "dart run tool/sde_diff.dart"
+
 [tasks."test:server"]
 description = "Run the server packages' tests; needs the development Redis up (server:setup, then docker compose up -d in server/kaname_server)"
 # Starts nothing. `check`'s `test` task does not run these: they need Redis.

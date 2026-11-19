@@ -58,11 +58,11 @@ final class ComputeWorkerBootstrap {
   final SdeSourceFactory? sourceFactory;
 }
 
-/// The worker that runs imports (and, in later changes, other long jobs) on
-/// its own isolate.
+/// The worker that runs imports and build checks (and, in later changes,
+/// other long jobs) on its own isolate.
 ///
 /// The main isolate spawns it with [entryPoint], sends a [WorkerStart], and
-/// then [RunImport] requests. The worker handles every request in its own
+/// then [RunImport] and [RunBuildCheck] requests. The worker handles every request in its own
 /// async task (design D14), opens a Postgres connection of its own for each
 /// import from the start message's settings and closes it with the job, so a
 /// Postgres outage fails only the jobs running at that moment and the next
@@ -159,6 +159,19 @@ final class ComputeWorker {
         } else {
           unawaited(_runImport(request, start));
         }
+      case final RunBuildCheck request:
+        final start = _start;
+        if (start == null) {
+          _log(WorkerLogLevel.warning, 'rejected $request before the start');
+          _reply(
+            WorkerError(
+              requestId: request.requestId,
+              reason: 'the worker has not received its start message',
+            ),
+          );
+        } else {
+          unawaited(_runBuildCheck(request, start));
+        }
       default:
         _log(
           WorkerLogLevel.warning,
@@ -182,20 +195,98 @@ final class ComputeWorker {
     _reply(reply);
   }
 
-  Future<ImportFinished> _importOnce(
-    RunImport request,
-    WorkerStart start,
-  ) async {
+  Future<ImportFinished> _importOnce(RunImport request, WorkerStart start) =>
+      _withJobStore(
+        requestId: request.requestId,
+        start: start,
+        unreachable: () => ImportFinished(
+          requestId: request.requestId,
+          outcome: ImportOutcome.failed,
+          reason: 'Postgres unreachable',
+        ),
+        job: (store, client) async {
+          final scratchRoot = sdeScratchRootFor(start.postgres);
+          final job = ImportSdeJob(
+            store: store,
+            source: _sourceFactory(request.source, client, scratchRoot),
+            scratchRoot: scratchRoot,
+          );
+          return _finished(request.requestId, await job.run());
+        },
+      );
+
+  Future<void> _runBuildCheck(RunBuildCheck request, WorkerStart start) async {
+    BuildCheckResult result;
+    try {
+      result = await _withJobStore(
+        requestId: request.requestId,
+        start: start,
+        unreachable: () => const BuildCheckFailed('Postgres unreachable'),
+        job: (store, client) async {
+          final scratchRoot = sdeScratchRootFor(start.postgres);
+          final job = TakeLatestBuildJob(
+            store: store,
+            source: _sourceFactory(request.source, client, scratchRoot),
+            differ: store.differ(),
+            scratchRoot: scratchRoot,
+          );
+          final result = await job.run();
+          _logCheck(result);
+          return result;
+        },
+      );
+    } on Object catch (error) {
+      _log(WorkerLogLevel.error, 'build check failed unexpectedly: $error');
+      result = BuildCheckFailed('unexpected error: ${error.runtimeType}');
+    }
+    _reply(BuildCheckFinished(requestId: request.requestId, result: result));
+  }
+
+  void _logCheck(BuildCheckResult result) {
+    switch (result) {
+      case BuildSwitched(:final build, :final replacedBuild):
+        _log(
+          WorkerLogLevel.info,
+          'switched to build $build (replaced $replacedBuild)',
+        );
+      case BuildUpToDate(:final build):
+        _log(WorkerLogLevel.info, 'build $build is up to date');
+      case BuildOlder(:final latestBuild, :final activeBuild):
+        _log(
+          WorkerLogLevel.info,
+          'CCP names build $latestBuild, older than the active $activeBuild',
+        );
+      case BuildHeld(:final build):
+        _log(WorkerLogLevel.info, 'build $build is held; not switched');
+      case BuildStaged(:final build, :final reason):
+        _log(WorkerLogLevel.warning, 'build $build stays staged: $reason');
+      case BuildCheckFailed(:final reason):
+        _log(WorkerLogLevel.warning, 'build check failed: $reason');
+    }
+  }
+
+  /// Runs [job] on a Postgres connection of its own and an HTTP client,
+  /// closing both afterwards, or returns [unreachable] when Postgres cannot
+  /// be reached.
+  ///
+  /// The connection's backend is reported to the main isolate while the job
+  /// runs, so it can end the session if this isolate dies before closing it.
+  Future<T> _withJobStore<T>({
+    required int requestId,
+    required WorkerStart start,
+    required T Function() unreachable,
+    required Future<T> Function(
+      PostgresStaticDataStore store,
+      http.Client client,
+    )
+    job,
+  }) async {
     final PostgresStaticDataStore store;
     try {
       store = await PostgresStaticDataStore.open(start.postgres);
     } on Object catch (error) {
-      _log(WorkerLogLevel.error, 'import failed: Postgres unreachable: $error');
-      return ImportFinished(
-        requestId: request.requestId,
-        outcome: ImportOutcome.failed,
-        reason: 'Postgres unreachable',
-      );
+      _log(WorkerLogLevel.error, 'job failed: Postgres unreachable: $error');
+      return unreachable();
     }
     final client = http.Client();
     BackendIdentity? backend;
@@ -207,27 +298,15 @@ final class ComputeWorker {
         pid: identity.pid,
         startMicros: identity.startMicros,
       );
-      _post(
-        JobConnectionOpened(requestId: request.requestId, backend: backend),
-      );
-      final scratchRoot = sdeScratchRootFor(start.postgres);
-      final job = ImportSdeJob(
-        store: store,
-        source: _sourceFactory(request.source, client, scratchRoot),
-        scratchRoot: scratchRoot,
-      );
-      final result = await job.run();
-      return _finished(request.requestId, result);
+      _post(JobConnectionOpened(requestId: requestId, backend: backend));
+      return await job(store, client);
     } finally {
       // The job closes the store itself; this covers a failed construction.
       await store.close();
       client.close();
       if (backend != null) {
         _post(
-          JobConnectionClosed(
-            requestId: request.requestId,
-            backendPid: backend.pid,
-          ),
+          JobConnectionClosed(requestId: requestId, backendPid: backend.pid),
         );
       }
     }

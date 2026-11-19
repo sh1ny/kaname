@@ -75,6 +75,15 @@ final class WorkerHarness {
     return answer;
   }
 
+  /// Sends a [RunBuildCheck] for [source] and completes with the worker's
+  /// answer.
+  Future<WorkerReply> runBuildCheck(ImportSourceSpec source) {
+    final id = _nextId++;
+    final answer = waitFor<WorkerReply>((reply) => reply.requestId == id);
+    sendMessage(RunBuildCheck(requestId: id, source: source));
+    return answer;
+  }
+
   /// Completes with the first message of type [T] that satisfies [test],
   /// whether it arrived before or arrives after the call.
   Future<T> waitFor<T extends WorkerMessage>(

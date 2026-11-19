@@ -1,6 +1,8 @@
 /// The storage interface of the importer.
 library;
 
+import 'package:kaname_core/kaname_core.dart';
+
 import 'import_report.dart';
 import 'sde_rows.dart';
 import 'sde_source.dart';
@@ -27,6 +29,164 @@ enum BuildState {
 
   /// The build is the one readers use.
   active,
+
+  /// The build the active one replaced; a rollback makes it active again.
+  previous,
+}
+
+/// One stored build with its state and its hold.
+final class StoredBuild {
+  /// Creates the pair.
+  const StoredBuild({
+    required this.build,
+    required this.state,
+    this.held = false,
+  });
+
+  /// The build number.
+  final int build;
+
+  /// The build's state.
+  final BuildState state;
+
+  /// Whether the check must not switch to this build.
+  ///
+  /// A rollback sets the hold on the build it rolls back from. A switch
+  /// clears it on every build older than the one it switches to.
+  final bool held;
+}
+
+/// How a check for a new build ended.
+enum CheckOutcome {
+  /// CCP's latest build is the active build.
+  upToDate,
+
+  /// The check imported or found a newer build and switched to it.
+  switched,
+
+  /// The newer build is held, so nothing was switched.
+  held,
+
+  /// CCP's latest build is older than the active build.
+  older,
+
+  /// The build was imported but not switched to.
+  staged,
+
+  /// The check stopped on an error or could not take the lock.
+  failed,
+}
+
+/// The record of one check for a new build.
+final class CheckRecord {
+  /// Creates a record.
+  const CheckRecord({
+    required this.checkedAt,
+    required this.outcome,
+    this.latestBuild,
+    this.failureReason,
+  });
+
+  /// When the check job started.
+  final DateTime checkedAt;
+
+  /// The latest build CCP named, when known.
+  final int? latestBuild;
+
+  /// How the check ended.
+  final CheckOutcome outcome;
+
+  /// Why the check failed; holds no credentials.
+  final String? failureReason;
+}
+
+/// Which way a switch moved the active build.
+enum SwitchKind {
+  /// To a newer build, after its import.
+  forward,
+
+  /// Back to the previous build.
+  rollback,
+}
+
+/// How a switch or a rollback ended.
+enum SwitchOutcome {
+  /// The build states changed.
+  succeeded,
+
+  /// The transaction rolled back and the states are as they were.
+  failed,
+}
+
+/// The record of one switch or rollback.
+final class SwitchRecord {
+  /// Creates a record.
+  const SwitchRecord({
+    required this.kind,
+    required this.toBuild,
+    required this.at,
+    required this.outcome,
+    this.fromBuild,
+    this.failureReason,
+  });
+
+  /// Which way the active build moved.
+  final SwitchKind kind;
+
+  /// The build that was active before; `null` for the first activation.
+  final int? fromBuild;
+
+  /// The build that became, or should have become, active.
+  final int toBuild;
+
+  /// When the switch ran.
+  final DateTime at;
+
+  /// How the switch ended.
+  final SwitchOutcome outcome;
+
+  /// Why the switch failed; holds no credentials.
+  final String? failureReason;
+}
+
+/// How the comparison of two builds ended.
+enum DiffOutcome {
+  /// The comparison finished and its report is stored.
+  succeeded,
+
+  /// The comparison failed; its reason is stored and the switch went ahead.
+  failed,
+}
+
+/// The stored comparison of two builds.
+final class BuildDiffRecord {
+  /// Creates a record.
+  const BuildDiffRecord({
+    required this.fromBuild,
+    required this.toBuild,
+    required this.createdAt,
+    required this.outcome,
+    this.failureReason,
+    this.report,
+  });
+
+  /// The older build of the pair.
+  final int fromBuild;
+
+  /// The newer build of the pair.
+  final int toBuild;
+
+  /// When the comparison ran.
+  final DateTime createdAt;
+
+  /// How the comparison ended.
+  final DiffOutcome outcome;
+
+  /// Why the comparison failed.
+  final String? failureReason;
+
+  /// The report as JSON; `null` when the comparison failed.
+  final SdeJson? report;
 }
 
 /// The record of one import attempt.
@@ -103,7 +263,19 @@ final class ImportRecord {
 /// `InMemoryStaticDataStore` for tests and solo.
 ///
 /// Locking rule: while it holds the lock, a caller may insert, update and
-/// delete anything. Without it, a caller may only insert a `skipped` record.
+/// delete anything. Without it, a caller may only insert a `skipped` import
+/// record or a `failed` check record that says the lock was held.
+///
+/// ## Carried constraints
+///
+/// - **C7:** every switch and rollback takes the static-data advisory lock and
+///   changes build states in one transaction on that lock's connection, inside
+///   a job ([StaticDataWriter.switchTo], [StaticDataWriter.rollBack]). None
+///   runs through the main isolate's ORM, which is the path
+///   `static-data-settings` must not take for "update now" or rollback; the
+///   settings page sends a request to the compute worker instead. This was
+///   rejected because the lock is a session lock on the worker's connection,
+///   so an import could start between an import and a switch made elsewhere.
 abstract interface class StaticDataStore {
   /// Tries to take the static-data lock without waiting.
   ///
@@ -137,6 +309,43 @@ abstract interface class StaticDataStore {
   /// Whether a build is active.
   Future<bool> hasActiveBuild();
 
+  /// Every stored build with its state and hold, oldest build first.
+  Future<List<StoredBuild>> storedBuilds();
+
+  /// Removes the staged build, if any, in a transaction of its own that
+  /// commits before this returns.
+  ///
+  /// Deletes the build's typed rows, untyped records, diff records and build
+  /// row, and returns the build number, or `null` when none was staged. The
+  /// import calls it before its long transaction, so a failed import leaves
+  /// the old staged build gone and never holds more than three builds.
+  /// Never touches the active or the previous build.
+  Future<int?> dropStagedBuild();
+
+  /// Inserts [record] of a check.
+  Future<void> insertCheck(CheckRecord record);
+
+  /// When the newest check started, or `null` when none is recorded.
+  Future<DateTime?> newestCheckedAt();
+
+  /// Deletes every check record but the newest [keep], by check time.
+  Future<void> pruneChecks({required int keep});
+
+  /// Inserts [record] of a switch or rollback that failed.
+  ///
+  /// A successful one is written by the transaction that changes the states
+  /// ([StaticDataWriter.switchTo], [StaticDataWriter.rollBack]).
+  Future<void> insertFailedSwitch(SwitchRecord record);
+
+  /// Deletes every switch record but the newest [keep], by time.
+  Future<void> pruneSwitches({required int keep});
+
+  /// Stores [record] of a comparison, in a transaction of its own.
+  Future<void> insertDiff(BuildDiffRecord record);
+
+  /// The newest stored comparison of [fromBuild] with [toBuild], or `null`.
+  Future<BuildDiffRecord?> diff(int fromBuild, int toBuild);
+
   /// Runs [body] in one transaction.
   ///
   /// The transaction commits when [body] completes and rolls back when it
@@ -157,9 +366,10 @@ abstract interface class StaticDataWriter {
 
   /// Finishes the import in the same transaction as its rows.
   ///
-  /// Stores the build row as [state] with [importedAt], deletes the rows and
-  /// build rows of every other staged build, and replaces the import record
-  /// [recordId] with [record]. It never touches the active build.
+  /// Stores the build row as [state] with [importedAt] and replaces the import
+  /// record [recordId] with [record]. It removes no other build: the import
+  /// drops the staged build before its transaction starts
+  /// ([StaticDataStore.dropStagedBuild], D8).
   Future<void> commitBuild({
     required int build,
     required BuildState state,
@@ -167,4 +377,22 @@ abstract interface class StaticDataWriter {
     required int recordId,
     required ImportRecord record,
   });
+
+  /// Switches to the staged [build] at time [at], as one step of this
+  /// transaction (C7: only inside a job that holds the lock).
+  ///
+  /// In order: clears the active and previous markers; deletes the old
+  /// previous build's rows from every typed table and the untyped records,
+  /// its diff records and its build row; makes the old active build
+  /// `previous`; makes [build] `active`; clears the hold on every build older
+  /// than [build]; and inserts a `succeeded` forward [SwitchRecord].
+  Future<void> switchTo(int build, {required DateTime at});
+
+  /// Swaps the active and the previous build at time [at], as one step of
+  /// this transaction (C7: only inside a job that holds the lock).
+  ///
+  /// Sets the hold on the build it rolls back from, clears the hold on the
+  /// build it makes active, and inserts a `succeeded` [SwitchKind.rollback]
+  /// [SwitchRecord]. Fails when there is no previous build.
+  Future<void> rollBack({required DateTime at});
 }

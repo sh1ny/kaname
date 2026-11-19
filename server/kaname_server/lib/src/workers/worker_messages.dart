@@ -155,6 +155,45 @@ final class RunImport extends WorkerRequest {
   String toString() => 'RunImport(requestId: $requestId, source: $source)';
 }
 
+/// Asks the worker to check CCP for a new build and switch to it.
+///
+/// The worker runs a `TakeLatestBuildJob` on its own connection, with a
+/// source built from [source]; production sends [CcpLatestSource].
+final class RunBuildCheck extends WorkerRequest {
+  /// Creates a request with [requestId] to check the build [source] names.
+  const RunBuildCheck({required int requestId, required this.source})
+    : super(requestId);
+
+  /// The message's type name.
+  static const String typeName = 'build.check.run';
+
+  /// Decodes the payload [json].
+  factory RunBuildCheck.fromJson(Map<String, Object?> json) => RunBuildCheck(
+    requestId: json['requestId']! as int,
+    source: ImportSourceSpec.fromJson(
+      (json['source']! as Map).cast<String, Object?>(),
+    ),
+  );
+
+  /// Where the check reads CCP's build from.
+  final ImportSourceSpec source;
+
+  @override
+  String get type => typeName;
+
+  @override
+  int get version => 1;
+
+  @override
+  Map<String, Object?> payloadToJson() => {
+    'requestId': requestId,
+    'source': source.toJson(),
+  };
+
+  @override
+  String toString() => 'RunBuildCheck(requestId: $requestId, source: $source)';
+}
+
 /// A message the worker sends back for a request.
 sealed class WorkerReply extends WorkerMessage {
   /// Creates a reply.
@@ -226,6 +265,113 @@ final class ImportFinished extends WorkerReply {
       'ImportFinished(requestId: $requestId, outcome: ${outcome.name}, '
       'build: $build, reason: $reason)';
 }
+
+/// The worker's answer to [RunBuildCheck]: how the check ended.
+///
+/// [result] is the job's [BuildCheckResult], encoded with a `kind` and the
+/// fields of that kind, so the main isolate gets the outcome faithfully.
+final class BuildCheckFinished extends WorkerReply {
+  /// Creates the answer for [requestId].
+  const BuildCheckFinished({required int requestId, required this.result})
+    : super(requestId);
+
+  /// The message's type name.
+  static const String typeName = 'build.check.finished';
+
+  /// Decodes the payload [json].
+  ///
+  /// Throws a [FormatException] for a result of an unknown kind.
+  factory BuildCheckFinished.fromJson(Map<String, Object?> json) =>
+      BuildCheckFinished(
+        requestId: json['requestId']! as int,
+        result: switch ((json['result']! as Map).cast<String, Object?>()) {
+          {
+            'kind': 'switched',
+            'build': final int build,
+            'replacedBuild': final int? replacedBuild,
+          } =>
+            BuildSwitched(build, replacedBuild: replacedBuild),
+          {'kind': 'upToDate', 'build': final int build} => BuildUpToDate(
+            build,
+          ),
+          {
+            'kind': 'older',
+            'latestBuild': final int latestBuild,
+            'activeBuild': final int activeBuild,
+          } =>
+            BuildOlder(latestBuild: latestBuild, activeBuild: activeBuild),
+          {'kind': 'held', 'build': final int build} => BuildHeld(build),
+          {
+            'kind': 'staged',
+            'build': final int build,
+            'reason': final String reason,
+          } =>
+            BuildStaged(build, reason),
+          {
+            'kind': 'failed',
+            'reason': final String reason,
+            'latestBuild': final int? latestBuild,
+          } =>
+            BuildCheckFailed(reason, latestBuild: latestBuild),
+          _ => throw const FormatException('unknown build check result'),
+        },
+      );
+
+  /// How the check ended.
+  final BuildCheckResult result;
+
+  @override
+  String get type => typeName;
+
+  @override
+  int get version => 1;
+
+  @override
+  Map<String, Object?> payloadToJson() => {
+    'requestId': requestId,
+    'result': switch (result) {
+      BuildSwitched(:final build, :final replacedBuild) => {
+        'kind': 'switched',
+        'build': build,
+        'replacedBuild': replacedBuild,
+      },
+      BuildUpToDate(:final build) => {'kind': 'upToDate', 'build': build},
+      BuildOlder(:final latestBuild, :final activeBuild) => {
+        'kind': 'older',
+        'latestBuild': latestBuild,
+        'activeBuild': activeBuild,
+      },
+      BuildHeld(:final build) => {'kind': 'held', 'build': build},
+      BuildStaged(:final build, :final reason) => {
+        'kind': 'staged',
+        'build': build,
+        'reason': reason,
+      },
+      BuildCheckFailed(:final reason, :final latestBuild) => {
+        'kind': 'failed',
+        'reason': reason,
+        'latestBuild': latestBuild,
+      },
+    },
+  };
+
+  @override
+  String toString() =>
+      'BuildCheckFinished(requestId: $requestId, '
+      '${_describeResult(result)})';
+}
+
+String _describeResult(BuildCheckResult result) => switch (result) {
+  BuildSwitched(:final build, :final replacedBuild) =>
+    'switched to $build (replaced $replacedBuild)',
+  BuildUpToDate(:final build) => 'up to date at $build',
+  BuildOlder(:final latestBuild, :final activeBuild) =>
+    'CCP names $latestBuild, older than $activeBuild',
+  BuildHeld(:final build) => 'build $build is held',
+  BuildStaged(:final build, :final reason) => 'build $build staged: $reason',
+  BuildCheckFailed(:final reason, :final latestBuild) =>
+    'failed (latest $latestBuild): $reason',
+};
 
 /// The worker could not act on a message; sent when the message expected a
 /// reply.
@@ -456,7 +602,12 @@ WorkerMessageCodec workerInboxCodec() => WorkerMessageCodec()
     version: 1,
     decoder: WorkerStart.fromJson,
   )
-  ..register(type: RunImport.typeName, version: 1, decoder: RunImport.fromJson);
+  ..register(type: RunImport.typeName, version: 1, decoder: RunImport.fromJson)
+  ..register(
+    type: RunBuildCheck.typeName,
+    version: 1,
+    decoder: RunBuildCheck.fromJson,
+  );
 
 /// The codec for the messages the main isolate receives from a worker.
 WorkerMessageCodec workerOutboxCodec() => WorkerMessageCodec()
@@ -464,6 +615,11 @@ WorkerMessageCodec workerOutboxCodec() => WorkerMessageCodec()
     type: ImportFinished.typeName,
     version: 1,
     decoder: ImportFinished.fromJson,
+  )
+  ..register(
+    type: BuildCheckFinished.typeName,
+    version: 1,
+    decoder: BuildCheckFinished.fromJson,
   )
   ..register(
     type: WorkerError.typeName,

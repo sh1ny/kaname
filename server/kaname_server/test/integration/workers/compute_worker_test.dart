@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/static_data/postgres_connection_settings.dart';
 import 'package:kaname_server/src/static_data/postgres_static_data_store.dart';
@@ -90,6 +91,40 @@ final class _BusySource implements SdeSource {
   }
 }
 
+/// Where the check tests write the synthetic zip and the announced build
+/// number that the worker isolate's fake CCP serves. The isolate shares the
+/// process id, so it finds the same files.
+String get _checkDir => '${Directory.systemTemp.path}/kaname_worker_check_$pid';
+
+/// CCP's service as a fake: `latest.jsonl` names the build in `announce` and
+/// the zip is `sde.zip`. Top-level because it crosses into the worker
+/// isolate.
+SdeSource fakeCcpCheckFactory(
+  ImportSourceSpec spec,
+  http.Client client,
+  Directory scratchRoot,
+) {
+  final build = int.parse(File('$_checkDir/announce').readAsStringSync());
+  final zip = File('$_checkDir/sde.zip').readAsBytesSync();
+  return CcpSdeSource(
+    scratchRoot: scratchRoot,
+    client: MockClient((request) async {
+      final path = request.url.path;
+      if (path.endsWith('latest.jsonl')) {
+        return http.Response(
+          '{"_key":"sde","buildNumber":$build,'
+          '"releaseDate":"2026-01-01T00:00:00Z"}\n',
+          200,
+        );
+      }
+      if (path.endsWith('-$build-jsonl.zip')) {
+        return http.Response.bytes(zip, 200);
+      }
+      return http.Response('', 404);
+    }),
+  );
+}
+
 /// A source with two stopping points a test opens by creating files:
 /// `<zip>.download` before the zip opens (the download phase) and `<zip>.txn`
 /// before the last file is read (inside the import transaction, after the
@@ -167,6 +202,19 @@ Future<PostgresConnectionSettings> _unreachableSettings() async {
   );
 }
 
+/// The kind and every field of [result], for comparing results.
+String _describe(BuildCheckResult result) => switch (result) {
+  BuildSwitched(:final build, :final replacedBuild) =>
+    'switched $build from $replacedBuild',
+  BuildUpToDate(:final build) => 'upToDate $build',
+  BuildOlder(:final latestBuild, :final activeBuild) =>
+    'older $latestBuild than $activeBuild',
+  BuildHeld(:final build) => 'held $build',
+  BuildStaged(:final build, :final reason) => 'staged $build: $reason',
+  BuildCheckFailed(:final reason, :final latestBuild) =>
+    'failed $latestBuild: $reason',
+};
+
 Future<List<String>> _sdeTables(Session session) async {
   final rows = await session.db.unsafeQuery(
     "SELECT tablename FROM pg_tables WHERE tablename LIKE 'sde\\_%'",
@@ -175,6 +223,30 @@ Future<List<String>> _sdeTables(Session session) async {
 }
 
 void main() {
+  test('every build check result survives the worker codec', () {
+    final codec = workerOutboxCodec();
+    final results = <BuildCheckResult>[
+      const BuildSwitched(7),
+      const BuildSwitched(8, replacedBuild: 7),
+      const BuildUpToDate(8),
+      const BuildOlder(latestBuild: 6, activeBuild: 8),
+      const BuildHeld(9),
+      const BuildStaged(9, 'switch failed'),
+      const BuildCheckFailed('CCP unreachable'),
+      const BuildCheckFailed('import failed', latestBuild: 9),
+    ];
+    for (final result in results) {
+      final decoded = codec.decode(
+        codec.encode(BuildCheckFinished(requestId: 3, result: result)),
+      );
+
+      expect(decoded, isA<BuildCheckFinished>());
+      final finished = decoded as BuildCheckFinished;
+      expect(finished.requestId, 3);
+      expect(_describe(finished.result), _describe(result));
+    }
+  });
+
   test('start message toString hides the password', () {
     const start = WorkerStart(
       workerName: 'compute',
@@ -471,6 +543,155 @@ void main() {
       expect((await answer as ImportFinished).outcome, ImportOutcome.succeeded);
     });
 
+    /// Writes the files [fakeCcpCheckFactory] serves: CCP announces [build].
+    void ccpAnnounces(int build) {
+      Directory(_checkDir).createSync(recursive: true);
+      File('$_checkDir/announce').writeAsStringSync('$build');
+      File('$_checkDir/sde.zip')
+          .writeAsBytesSync(SdeFixture.complete(build: build).toZip());
+      addTearDown(() {
+        if (Directory(_checkDir).existsSync()) {
+          Directory(_checkDir).deleteSync(recursive: true);
+        }
+      });
+    }
+
+    test('typed build check request gets typed result', () async {
+      ccpAnnounces(2700);
+      final worker = await WorkerHarness.start(
+        postgres: settings,
+        sourceFactory: fakeCcpCheckFactory,
+      );
+      addTearDown(worker.close);
+
+      final reply = await worker.runBuildCheck(const CcpLatestSource());
+
+      expect(reply, isA<BuildCheckFinished>());
+      final result = (reply as BuildCheckFinished).result;
+      expect(_describe(result), 'switched 2700 from null');
+      final check = (await SdeCheck.db.find(session)).single;
+      expect(check.outcome, SdeCheckOutcome.switched);
+      expect(check.latestBuild, 2700);
+      expect(
+        (await SdeBuild.db.find(session)).single.state,
+        SdeBuildState.active,
+      );
+    });
+
+    test('a build check request with an unknown version is refused', () async {
+      final worker = await WorkerHarness.start(postgres: settings);
+      addTearDown(worker.close);
+      worker.sendRaw({
+        'type': RunBuildCheck.typeName,
+        'version': 99,
+        'requestId': 12,
+      });
+
+      final reply = await worker.waitFor<WorkerError>((e) => e.requestId == 12);
+
+      expect(reply.reason, contains('version 99'));
+      expect(await SdeCheck.db.find(session), isEmpty);
+    });
+
+    test('health answers under 1 s during a build comparison', () async {
+      // Build 2800 is active and build 2801 is stored, staged, so the check
+      // only compares and switches.
+      final importer = await WorkerHarness.start(postgres: settings);
+      addTearDown(importer.close);
+      for (final build in [2800, 2801]) {
+        final zip = SdeFixture.complete(build: build).writeTo(scratch);
+        await importer.runImport(LocalZipSource(zip.path));
+      }
+      expect(
+        (await SdeBuild.db.find(session)).map((b) => (b.build, b.state)),
+        unorderedEquals([
+          (2800, SdeBuildState.active),
+          (2801, SdeBuildState.staged),
+        ]),
+      );
+      ccpAnnounces(2801);
+      final worker = await WorkerHarness.start(
+        postgres: settings,
+        sourceFactory: fakeCcpCheckFactory,
+      );
+      addTearDown(worker.close);
+
+      // A transaction of the test holds an exclusive lock on `sde_type`,
+      // which the comparison reads, so the comparison is held mid-statement
+      // while health is called. The lock is the test's only hold on it:
+      // production code has no seam.
+      final release = Completer<void>();
+      final locked = Completer<void>();
+      final holder = session.db.transaction((transaction) async {
+        await session.db.unsafeExecute(
+          'LOCK TABLE sde_type IN ACCESS EXCLUSIVE MODE',
+          transaction: transaction,
+        );
+        locked.complete();
+        await release.future;
+      });
+      addTearDown(() async {
+        if (!release.isCompleted) release.complete();
+        await holder;
+      });
+      await locked.future;
+
+      final answer = worker.runBuildCheck(const CcpLatestSource());
+      var answered = false;
+      unawaited(answer.then((_) => answered = true));
+      // Wait until the worker's connection waits for the lock in a
+      // statement that reads `sde_type`: the comparison is running.
+      final deadline = DateTime.now().add(const Duration(seconds: 30));
+      var comparing = false;
+      while (!comparing && DateTime.now().isBefore(deadline)) {
+        final rows = await session.db.unsafeQuery(
+          'SELECT query FROM pg_stat_activity '
+          "WHERE application_name = 'kaname-static-data' "
+          'AND datname = current_database() '
+          "AND state = 'active' AND wait_event_type = 'Lock'",
+        );
+        comparing = rows.any(
+          (row) => (row.single! as String).contains('"sde_type"'),
+        );
+        if (!comparing) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      }
+      expect(comparing, isTrue, reason: 'the comparison never started');
+      expect(answered, isFalse);
+
+      // Health, while the comparison is held.
+      final latencies = <Duration>[];
+      for (var i = 0; i < 5; i++) {
+        final stopwatch = Stopwatch()..start();
+        final report = await endpoints.health.check(sessionBuilder);
+        latencies.add(stopwatch.elapsed);
+        expect(report.postgres, DependencyStatus.up);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      for (final latency in latencies) {
+        expect(latency, lessThan(const Duration(seconds: 1)));
+      }
+      expect(answered, isFalse, reason: 'the comparison was still held');
+      expect(await SdeBuildDiff.db.find(session), isEmpty);
+
+      // The comparison goes on once the lock is released.
+      release.complete();
+      await holder;
+      final result = (await answer as BuildCheckFinished).result;
+      expect(_describe(result), 'switched 2801 from 2800');
+      final diff = (await SdeBuildDiff.db.find(session)).single;
+      expect((diff.fromBuild, diff.toBuild), (2800, 2801));
+      expect(diff.outcome, SdeBuildDiffOutcome.succeeded);
+      expect(
+        (await SdeBuild.db.find(
+          session,
+          where: (t) => t.state.equals(SdeBuildState.active),
+        )).single.build,
+        2801,
+      );
+    });
+
     test(
       'crash in download and in transaction marks worker crashed and '
       'restarts',
@@ -522,7 +743,14 @@ void main() {
 
         Future<void> expectNothingOfBuild(int build) async {
           final tables = await _sdeTables(session);
-          for (final table in tables.where((t) => t != 'sde_import')) {
+          // The record tables have no `build` column.
+          const recordTables = {
+            'sde_import',
+            'sde_check',
+            'sde_switch',
+            'sde_build_diff',
+          };
+          for (final table in tables.where((t) => !recordTables.contains(t))) {
             final rows = await session.db.unsafeQuery(
               'SELECT count(*) FROM "$table" WHERE "build" = $build',
             );

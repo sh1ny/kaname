@@ -7,6 +7,7 @@ import 'package:postgres/postgres.dart' as pg;
 
 import 'import_record_view.dart';
 import 'postgres_connection_settings.dart';
+import 'postgres_static_data_differ.dart';
 import 'static_data_lock.dart';
 
 /// The SQL type of a column the store writes.
@@ -72,6 +73,36 @@ const _buildColumns = [
   StoredColumn('state', _text),
   StoredColumn('importedAt', _timestamp),
   StoredColumn('activeMarker', StoredColumnType.boolean, nullable: true),
+  StoredColumn('previousMarker', StoredColumnType.boolean, nullable: true),
+  StoredColumn('held', StoredColumnType.boolean),
+];
+
+/// The columns of `sde_check`, without `id`.
+const _checkColumns = [
+  StoredColumn('checkedAt', _timestamp),
+  StoredColumn('latestBuild', _bigint, nullable: true),
+  StoredColumn('outcome', _text),
+  StoredColumn('failureReason', _text, nullable: true),
+];
+
+/// The columns of `sde_switch`, without `id`.
+const _switchColumns = [
+  StoredColumn('kind', _text),
+  StoredColumn('fromBuild', _bigint, nullable: true),
+  StoredColumn('toBuild', _bigint),
+  StoredColumn('at', _timestamp),
+  StoredColumn('outcome', _text),
+  StoredColumn('failureReason', _text, nullable: true),
+];
+
+/// The columns of `sde_build_diff`, without `id`.
+const _diffColumns = [
+  StoredColumn('fromBuild', _bigint),
+  StoredColumn('toBuild', _bigint),
+  StoredColumn('createdAt', _timestamp),
+  StoredColumn('outcome', _text),
+  StoredColumn('failureReason', _text, nullable: true),
+  StoredColumn('report', _jsonb, nullable: true),
 ];
 
 /// The columns of `sde_import`, without `id`.
@@ -114,8 +145,9 @@ List<StoredColumn> _typedColumns(TypedFile file) => [
 /// [open], takes the lock, runs [ImportSdeJob], and closes it. Everything
 /// the job writes goes through this connection: the session advisory lock
 /// ([staticDataAdvisoryLockKey]), the import records, and one transaction for
-/// a build's rows, its `sde_build` row, the removal of every other staged
-/// build and the record's `succeeded` outcome.
+/// a build's rows, its `sde_build` row and the record's `succeeded` outcome.
+/// The staged build is removed before that, in a transaction of its own
+/// ([dropStagedBuild]).
 ///
 /// The connection sets `idle_in_transaction_session_timeout` and
 /// `statement_timeout` to five minutes, and TCP keep-alive (probe after 60 s
@@ -154,8 +186,11 @@ final class PostgresStaticDataStore implements StaticDataStore {
   /// without a table fails the contract test.
   static final Map<String, List<StoredColumn>> writtenTables = {
     'sde_build': _buildColumns,
+    'sde_build_diff': _diffColumns,
+    'sde_check': _checkColumns,
     'sde_import': _importColumns,
     'sde_record': _recordColumns,
+    'sde_switch': _switchColumns,
     for (final file in typedFiles) file.table: _typedColumns(file),
   };
 
@@ -328,6 +363,121 @@ final class PostgresStaticDataStore implements StaticDataStore {
   }
 
   @override
+  Future<List<StoredBuild>> storedBuilds() async {
+    final result = await _connection.execute(
+      'SELECT "build", "state", "held" FROM "sde_build" ORDER BY "build"',
+    );
+    return [
+      for (final row in result)
+        StoredBuild(
+          build: row[0]! as int,
+          state: BuildState.values.byName(row[1]! as String),
+          held: row[2]! as bool,
+        ),
+    ];
+  }
+
+  @override
+  Future<int?> dropStagedBuild() => _connection.runTx((tx) async {
+    final staged = await tx.execute(
+      'SELECT "build" FROM "sde_build" WHERE "state" = \'staged\' '
+      'ORDER BY "build" DESC',
+    );
+    if (staged.isEmpty) return null;
+    // Normally one build; a stale second one goes the same way.
+    final builds = [for (final row in staged) row[0]! as int];
+    await _deleteBuilds(tx, builds);
+    return builds.first;
+  });
+
+  @override
+  Future<void> insertCheck(CheckRecord record) =>
+      _insertRows(_connection, 'sde_check', _checkColumns, [
+        [
+          record.checkedAt,
+          record.latestBuild,
+          record.outcome.name,
+          record.failureReason,
+        ],
+      ]);
+
+  @override
+  Future<DateTime?> newestCheckedAt() async {
+    final result = await _connection.execute(
+      'SELECT max("checkedAt") FROM "sde_check"',
+    );
+    return (result.single.single as DateTime?)?.toUtc();
+  }
+
+  @override
+  Future<void> pruneChecks({required int keep}) =>
+      _pruneNewest(_connection, 'sde_check', '"checkedAt"', keep);
+
+  @override
+  Future<void> insertFailedSwitch(SwitchRecord record) async {
+    if (record.outcome != SwitchOutcome.failed) {
+      throw ArgumentError.value(record, 'record', 'must be a failed switch');
+    }
+    await _insertRows(_connection, 'sde_switch', _switchColumns, [
+      _switchValues(record),
+    ]);
+  }
+
+  @override
+  Future<void> pruneSwitches({required int keep}) =>
+      _pruneNewest(_connection, 'sde_switch', '"at"', keep);
+
+  @override
+  Future<void> insertDiff(BuildDiffRecord record) =>
+      _insertRows(_connection, 'sde_build_diff', _diffColumns, [
+        [
+          record.fromBuild,
+          record.toBuild,
+          record.createdAt,
+          record.outcome.name,
+          record.failureReason,
+          record.report,
+        ],
+      ]);
+
+  @override
+  Future<BuildDiffRecord?> diff(int fromBuild, int toBuild) async {
+    final names = [for (final column in _diffColumns) '"${column.name}"'];
+    final result = await _connection.execute(
+      'SELECT ${names.join(', ')} FROM "sde_build_diff" '
+      r'WHERE "fromBuild" = $1::bigint AND "toBuild" = $2::bigint '
+      'ORDER BY "createdAt" DESC, "id" DESC LIMIT 1',
+      parameters: [fromBuild, toBuild],
+    );
+    if (result.isEmpty) return null;
+    final row = result.single;
+    return BuildDiffRecord(
+      fromBuild: row[0]! as int,
+      toBuild: row[1]! as int,
+      createdAt: (row[2]! as DateTime).toUtc(),
+      outcome: DiffOutcome.values.byName(row[3]! as String),
+      failureReason: row[4] as String?,
+      report: switch (row[5]) {
+        null => null,
+        final Object json => SdeJson.fromJson(json),
+      },
+    );
+  }
+
+  /// A differ that compares stored builds on this store's connection.
+  ///
+  /// [onStatement], when given, sees every statement with its duration, and
+  /// [onStatementStart] sees each one before it runs.
+  StaticDataDiffer differ({
+    DiffStatementObserver? onStatement,
+    DiffStatementStart? onStatementStart,
+  }) => PostgresStaticDataDiffer(
+    _connection,
+    onStatement: onStatement,
+    onStatementStart: onStatementStart,
+  );
+
+  @override
   Future<T> inTransaction<T>(
     Future<T> Function(StaticDataWriter writer) body,
   ) => _connection.runTx((tx) => body(_PostgresWriter(tx)));
@@ -394,35 +544,167 @@ final class _PostgresWriter implements StaticDataWriter {
     required int recordId,
     required ImportRecord record,
   }) async {
-    // Other staged builds go first, found before this build's row exists.
-    // The active build is never matched.
-    const otherStaged =
-        'SELECT "build" FROM "sde_build" '
-        r''' WHERE "state" = 'staged' AND "build" <> $1::bigint''';
-    for (final table in [
-      for (final file in typedFiles) file.table,
-      'sde_record',
-    ]) {
-      await _session.execute(
-        'DELETE FROM "$table" WHERE "build" IN ($otherStaged)',
-        parameters: [build],
-      );
-    }
-    await _session.execute(
-      'DELETE FROM "sde_build" WHERE "build" IN ($otherStaged)',
-      parameters: [build],
-    );
     await _insertRows(_session, 'sde_build', _buildColumns, [
       [
         build,
-        _stateName(state),
+        state.name,
         importedAt,
         state == BuildState.active ? true : null,
+        state == BuildState.previous ? true : null,
+        false,
       ],
     ]);
     await _updateRecord(_session, recordId, record);
   }
+
+  @override
+  Future<void> switchTo(int build, {required DateTime at}) async {
+    final stored = await _buildStates(_session);
+    if (stored[build] != BuildState.staged) {
+      throw StateError('build $build is not staged');
+    }
+    final fromBuild = _buildIn(stored, BuildState.active);
+    final oldPrevious = _buildIn(stored, BuildState.previous);
+    // 1. Clear both markers, so no unique index sees two holders.
+    await _session.execute(
+      'UPDATE "sde_build" SET "activeMarker" = NULL, "previousMarker" = NULL',
+    );
+    // 2. Delete the old previous build, one statement per table.
+    if (oldPrevious != null) await _deleteBuilds(_session, [oldPrevious]);
+    // 3. The old active build becomes previous.
+    await _session.execute(
+      'UPDATE "sde_build" SET "state" = \'previous\', '
+      '"previousMarker" = true WHERE "state" = \'active\'',
+    );
+    // 4. The new build becomes active.
+    await _session.execute(
+      'UPDATE "sde_build" SET "state" = \'active\', "activeMarker" = true '
+      r'WHERE "build" = $1::bigint',
+      parameters: [build],
+    );
+    // 5. A switch to a newer build lifts the hold of every older one.
+    await _session.execute(
+      r'UPDATE "sde_build" SET "held" = false WHERE "build" < $1::bigint',
+      parameters: [build],
+    );
+    // 6. The record, in the same transaction.
+    await _insertRows(_session, 'sde_switch', _switchColumns, [
+      _switchValues(
+        SwitchRecord(
+          kind: SwitchKind.forward,
+          fromBuild: fromBuild,
+          toBuild: build,
+          at: at,
+          outcome: SwitchOutcome.succeeded,
+        ),
+      ),
+    ]);
+  }
+
+  @override
+  Future<void> rollBack({required DateTime at}) async {
+    final stored = await _buildStates(_session);
+    final active = _buildIn(stored, BuildState.active);
+    final previous = _buildIn(stored, BuildState.previous);
+    if (active == null || previous == null) {
+      throw StateError('no previous build to roll back to');
+    }
+    await _session.execute(
+      'UPDATE "sde_build" SET "activeMarker" = NULL, "previousMarker" = NULL',
+    );
+    // The build rolled back from is held, so the next check keeps it staged
+    // out; the build made active is released.
+    await _session.execute(
+      'UPDATE "sde_build" SET "state" = \'previous\', '
+      '"previousMarker" = true, "held" = true '
+      r'WHERE "build" = $1::bigint',
+      parameters: [active],
+    );
+    await _session.execute(
+      'UPDATE "sde_build" SET "state" = \'active\', "activeMarker" = true, '
+      r'"held" = false WHERE "build" = $1::bigint',
+      parameters: [previous],
+    );
+    await _insertRows(_session, 'sde_switch', _switchColumns, [
+      _switchValues(
+        SwitchRecord(
+          kind: SwitchKind.rollback,
+          fromBuild: active,
+          toBuild: previous,
+          at: at,
+          outcome: SwitchOutcome.succeeded,
+        ),
+      ),
+    ]);
+  }
 }
+
+/// The state of every stored build, by build number.
+Future<Map<int, BuildState>> _buildStates(pg.Session session) async {
+  final result = await session.execute(
+    'SELECT "build", "state" FROM "sde_build"',
+  );
+  return {
+    for (final row in result)
+      row[0]! as int: BuildState.values.byName(row[1]! as String),
+  };
+}
+
+int? _buildIn(Map<int, BuildState> stored, BuildState state) {
+  for (final MapEntry(:key, :value) in stored.entries) {
+    if (value == state) return key;
+  }
+  return null;
+}
+
+/// Deletes [builds] completely: their rows in every typed table and in
+/// `sde_record`, their diff records and their `sde_build` rows, one statement
+/// per table so each stays within the statement timeout.
+Future<void> _deleteBuilds(pg.Session session, List<int> builds) async {
+  for (final table in [
+    for (final file in typedFiles) file.table,
+    'sde_record',
+  ]) {
+    await session.execute(
+      'DELETE FROM "$table" WHERE "build" = ANY(\$1::bigint[])',
+      parameters: [builds],
+    );
+  }
+  await session.execute(
+    'DELETE FROM "sde_build_diff" WHERE "fromBuild" = ANY(\$1::bigint[]) '
+    'OR "toBuild" = ANY(\$1::bigint[])',
+    parameters: [builds],
+  );
+  await session.execute(
+    'DELETE FROM "sde_build" WHERE "build" = ANY(\$1::bigint[])',
+    parameters: [builds],
+  );
+}
+
+/// Deletes every row of [table] but the newest [keep], by [timeColumn].
+Future<void> _pruneNewest(
+  pg.Session session,
+  String table,
+  String timeColumn,
+  int keep,
+) async {
+  await session.execute(
+    'DELETE FROM "$table" WHERE "id" NOT IN ('
+    'SELECT "id" FROM "$table" '
+    'ORDER BY $timeColumn DESC, "id" DESC LIMIT \$1::bigint)',
+    parameters: [keep],
+  );
+}
+
+/// The values of an `sde_switch` row, in the order of [_switchColumns].
+List<Object?> _switchValues(SwitchRecord record) => [
+  record.kind.name,
+  record.fromBuild,
+  record.toBuild,
+  record.at,
+  record.outcome.name,
+  record.failureReason,
+];
 
 const int _batch = PostgresStaticDataStore.batchRows;
 
@@ -475,11 +757,6 @@ Object? _parameter(StoredColumn column, Object? value) {
     ),
   };
 }
-
-String _stateName(BuildState state) => switch (state) {
-  BuildState.staged => 'staged',
-  BuildState.active => 'active',
-};
 
 String _outcomeName(ImportOutcome outcome) => switch (outcome) {
   ImportOutcome.running => 'running',

@@ -61,7 +61,7 @@ flowchart LR
 | Character data on a server | Server (the character's one token holder) | Per policy retention | Sync recipes re-pull from ESI | Postgres; ESI upstream |
 | Character data in solo | Device (the character's one token holder) | Until handed over or deleted | Local sync recipes | Device local store; ESI upstream |
 | Refresh tokens | Token vault (server or device), single-flight per character | Until revoked or dead | New token saved as soon as CCP returns it; a crash before the save means re-login (ADR 0007) | Encrypted in Postgres or on the device; key outside the database |
-| Static-data builds | Static-data importer (compute worker) | Active build plus one previous; a third during an import | New build imported side by side, switched atomically (ADR 0004) | Postgres per build; CCP's SDE upstream |
+| Static-data builds | Whichever job holds the static-data lock: the importer, the check job's switch (compute worker) and the rollback job | Active, previous and at most one staged; at most three at any moment | New build imported side by side, switched atomically; rollback swaps active and previous (ADR 0004) | Postgres per build; CCP's SDE upstream |
 | Client data bundle | Server build job (solo: local importer) | One per build | Swapped in at a safe point | Generated from the active build |
 | Rate buckets, governor tier, negative cache | Scheduler code in each calling isolate, through one atomic check-and-spend | Rolling 15-minute window; backoff caps | Reservation before send; response headers correct it | Redis (server) or memory (solo) |
 | Per-user change log | Server sync layer | Bounded by compaction (set in M4) | Clients resync from a snapshot | Postgres |
@@ -88,7 +88,7 @@ flowchart LR
 | ESI calls | Per-group buckets per (app, character) and the per-connection error limit | Governor spaces, then stops; call recorded "not sent" | Error and negative-cache entries; TQ pause | Limits screen and call log (member; admins see totals per ADR 0006) |
 | Hot polling loops | Online, opted-in characters only; a minimum interval per loop; a capped share of each bucket (numbers set in M11 and M17) | Loop slows to its floor; other priorities keep their share | Loop restarts; tracking shows stale | Tracking indicator; admin health page |
 | Dead refresh token | — | — | Token marked dead (revoked, or lost in a crash before save), never retried | Member (in-app and Discord DM if linked); member audit |
-| Static-data import | Active and previous build, plus one being imported | Older builds removed after a switch | Active build untouched; import result recorded | Admin and solo settings page |
+| Static-data import | Active, previous and at most one staged build; at most three at any moment, the one being imported included | The staged build removed before an import writes; the old previous removed by a switch | Active build untouched; import result recorded | Admin and solo settings page |
 | ESI call log | 7 days | Rotated out | — | Admin health page |
 | Corp asset tables | Hundreds of thousands of rows | Filtering, grouping and totals in SQL; virtualised grid (M0 spike) | — | — |
 | Discord queue | Discord's per-route limits; queue cap set in M6 | Queued and retried with dedupe; behaviour at the cap set in M6 | Worker status shown | Admin health page |

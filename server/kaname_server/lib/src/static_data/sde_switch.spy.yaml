@@ -1,0 +1,17 @@
+### The record of one switch to a newer build or one rollback (D5).
+### A successful one is inserted in the transaction that changes the build
+### states; a failed one is inserted after that transaction rolled back. Only
+### the newest 100 rows are kept.
+class: SdeSwitch
+table: sde_switch
+serverOnly: true
+fields:
+  kind: SdeSwitchKind
+  fromBuild: int?
+  toBuild: int
+  at: DateTime
+  outcome: SdeSwitchOutcome
+  failureReason: String?
+indexes:
+  sde_switch_at_idx:
+    fields: at

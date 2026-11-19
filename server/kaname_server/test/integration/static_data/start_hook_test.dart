@@ -5,12 +5,16 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/static_data/postgres_connection_settings.dart';
+import 'package:kaname_server/src/static_data/static_data_check_call.dart';
+import 'package:kaname_server/src/static_data/static_data_runtime.dart';
 import 'package:kaname_server/src/static_data/static_data_start_hook.dart';
 import 'package:kaname_server/src/workers/compute_worker.dart';
 import 'package:kaname_server/src/workers/worker_messages.dart';
 import 'package:kaname_static_data/kaname_static_data.dart';
 import 'package:kaname_static_data/testing.dart';
-import 'package:serverpod/serverpod.dart' show Session;
+import 'package:serverpod/protocol.dart'
+    show CronFutureCallScheduling, FutureCallEntry;
+import 'package:serverpod/serverpod.dart' show Constant, Session;
 import 'package:test/test.dart';
 
 import '../support/migrated_database.dart';
@@ -93,6 +97,9 @@ final class _GatedSource implements SdeSource {
   }
 }
 
+/// The time the hooks of these tests think it is.
+final _afternoon = DateTime.utc(2026, 1, 2, 15);
+
 void main() {
   withServerpod('Given a migrated database', (sessionBuilder, endpoints) {
     late Session session;
@@ -114,12 +121,16 @@ void main() {
       File(_zipPath)
         ..parent.createSync(recursive: true)
         ..writeAsBytesSync(SdeFixture.complete(build: 3000).toZip());
+      await session.db.unsafeExecute('DELETE FROM serverpod_future_call');
+      staticDataRuntime.reset();
       logs = [];
       addTearDown(() async {
         for (final hook in hooks) {
           await hook.stop();
         }
         hooks.clear();
+        staticDataRuntime.reset();
+        await session.db.unsafeExecute('DELETE FROM serverpod_future_call');
         await scratch.delete(recursive: true);
         await File(_zipPath).parent.delete(recursive: true);
       });
@@ -127,13 +138,27 @@ void main() {
 
     /// A hook for the development run mode and monolith role, whose worker
     /// builds sources with [sourceFactory].
-    StaticDataStartHook hook(SdeSourceFactory sourceFactory) {
+    ///
+    /// The hook thinks it is [now] (default: 15:00 UTC on 2026-01-02), or
+    /// whatever [clock] says, which the catch-up rule reads; the future call
+    /// is scheduled for real. The worker starts [spawnDelay] late.
+    StaticDataStartHook hook(
+      SdeSourceFactory sourceFactory, {
+      DateTime? now,
+      DateTime Function()? clock,
+      Duration spawnDelay = Duration.zero,
+    }) {
       final hook = staticDataStartHookFor(
         runMode: 'development',
         role: 'monolith',
         withSession: <T>(action) => action(session),
         log: (level, message) => logs.add((level, message)),
-        spawn: isolateComputeWorkerSpawn(sourceFactory: sourceFactory),
+        scheduleDailyCheck: () => scheduleDailyCheck(session.serverpod),
+        now: clock ?? () => now ?? _afternoon,
+        spawn: (name) async {
+          await Future<void>.delayed(spawnDelay);
+          return isolateComputeWorkerSpawn(sourceFactory: sourceFactory)(name);
+        },
       )!;
       hooks.add(hook);
       return hook;
@@ -149,39 +174,154 @@ void main() {
       ),
     );
 
+    Future<void> checkedAt(DateTime time) => SdeCheck.db.insertRow(
+      session,
+      SdeCheck(
+        checkedAt: time,
+        latestBuild: 5,
+        outcome: SdeCheckOutcome.upToDate,
+      ),
+    );
+
+    Future<List<FutureCallEntry>> dailyCalls() => FutureCallEntry.db.find(
+      session,
+      where: (t) => t.identifier.equals(dailyCheckIdentifier),
+    );
+
     test('no active build queues a CCP import', () async {
       final reply = await hook(fakeCcpFactory).run();
 
-      expect(reply, isA<ImportFinished>());
-      expect((reply! as ImportFinished).outcome, ImportOutcome.succeeded);
+      expect(reply, isA<BuildCheckFinished>());
+      final result = (reply! as BuildCheckFinished).result;
+      expect(result, isA<BuildSwitched>());
+      expect((result as BuildSwitched).build, 3000);
       final builds = await SdeBuild.db.find(session);
       expect(builds.single.build, 3000);
       expect(builds.single.state, SdeBuildState.active);
       final record = (await SdeImport.db.find(session)).single;
       expect(record.source, SdeImportSource.ccp);
       expect(record.outcome, SdeImportOutcome.succeeded);
+      expect(
+        (await SdeCheck.db.find(session)).single.outcome,
+        SdeCheckOutcome.switched,
+      );
     });
 
-    test('unreachable CCP records failure and server serves', () async {
+    test('unreachable CCP on first start writes a failed check and no import '
+        'record', () async {
       final reply = await hook(offlineCcpFactory).run();
 
-      expect((reply! as ImportFinished).outcome, ImportOutcome.failed);
-      final record = (await SdeImport.db.find(session)).single;
-      expect(record.outcome, SdeImportOutcome.failed);
-      expect(record.failureReason, contains('CCP unreachable'));
+      final result = (reply! as BuildCheckFinished).result;
+      expect(result, isA<BuildCheckFailed>());
+      expect(await SdeImport.db.find(session), isEmpty);
+      final check = (await SdeCheck.db.find(session)).single;
+      expect(check.outcome, SdeCheckOutcome.failed);
+      expect(check.failureReason, contains('CCP unreachable'));
       expect(await SdeBuild.db.find(session), isEmpty);
       // The server still answers.
       final report = await endpoints.health.check(sessionBuilder);
       expect(report.postgres, DependencyStatus.up);
     });
 
-    test('active build queues nothing', () async {
-      await activeBuild(5);
-      final reply = await hook(fakeCcpFactory).run();
+    test('an active build imports on start only when the check finds a newer '
+        'one', () async {
+      // CCP names build 3000, which is older than the active build 5000: the
+      // stale check finds nothing newer.
+      await activeBuild(5000);
+      await checkedAt(_afternoon.subtract(const Duration(hours: 30)));
+      final older = await hook(fakeCcpFactory).run();
 
-      expect(reply, isNull);
+      expect(
+        ((older! as BuildCheckFinished).result as BuildOlder).latestBuild,
+        3000,
+      );
       expect(await SdeImport.db.find(session), isEmpty);
-      expect((await SdeBuild.db.find(session)).single.build, 5);
+      expect(
+        (await SdeBuild.db.find(session)).single.state,
+        SdeBuildState.active,
+      );
+      await hooks.removeLast().stop();
+
+      // With build 2999 active, the same CCP names a newer build.
+      await SdeBuild.db.deleteWhere(
+        session,
+        where: (t) => t.build.equals(5000),
+      );
+      await activeBuild(2999);
+      await SdeCheck.db.deleteWhere(session, where: (t) => Constant.bool(true));
+      await checkedAt(_afternoon.subtract(const Duration(hours: 30)));
+      final newer = await hook(fakeCcpFactory).run();
+
+      expect(
+        ((newer! as BuildCheckFinished).result as BuildSwitched).build,
+        3000,
+      );
+      expect(
+        (await SdeImport.db.find(session)).single.outcome,
+        SdeImportOutcome.succeeded,
+      );
+    });
+
+    test('a start 30 hours after the last check runs a check and keeps the '
+        'daily call', () async {
+      await activeBuild(5000);
+      await checkedAt(_afternoon.subtract(const Duration(hours: 30)));
+
+      final running = hook(fakeCcpFactory).run();
+      // The server answers while the check runs.
+      final report = await endpoints.health.check(sessionBuilder);
+      final reply = await running;
+
+      expect(report.postgres, DependencyStatus.up);
+      expect(reply, isA<BuildCheckFinished>());
+      expect(await SdeCheck.db.count(session), 2);
+      final calls = await dailyCalls();
+      expect(calls, hasLength(1));
+      expect(calls.single.scheduling, isA<CronFutureCallScheduling>());
+    });
+
+    test(
+      'a restart after today\'s check runs none and keeps one daily call',
+      () async {
+        await activeBuild(5000);
+        await checkedAt(DateTime.utc(2026, 1, 2, 12));
+
+        final first = await hook(fakeCcpFactory).run();
+        await hooks.removeLast().stop();
+        final second = await hook(fakeCcpFactory).run();
+
+        expect(first, isNull);
+        expect(second, isNull);
+        expect(await SdeCheck.db.count(session), 1);
+        expect(await dailyCalls(), hasLength(1));
+      },
+    );
+
+    // Scenario (PR #14 review, design D6 step 3):
+    // a start just before 12:00 UTC still checks once the worker is ready.
+    test('a start just before 12:00 UTC still checks once the worker is '
+        'ready', () async {
+      await activeBuild(5000);
+      await checkedAt(DateTime.utc(2026, 1, 1, 12));
+      // Before the worker is ready the hook thinks it is 11:59:59, when no
+      // catch-up is due; once it is ready, 12:00:01, when one is. The day's
+      // 12:00 run may come while the worker starts and find none (C9), so
+      // the catch-up must be decided after the worker is ready.
+      var workerReady = false;
+      late final StaticDataStartHook started;
+      started = hook(
+        fakeCcpFactory,
+        spawnDelay: const Duration(seconds: 2),
+        clock: () => workerReady
+            ? DateTime.utc(2026, 1, 2, 12, 0, 1)
+            : DateTime.utc(2026, 1, 2, 11, 59, 59),
+      );
+      unawaited(started.supervisor.ready.then((_) => workerReady = true));
+
+      final reply = await started.run();
+
+      expect(reply, isA<BuildCheckFinished>());
+      expect(await SdeCheck.db.count(session), 2);
     });
 
     test('test mode and maintenance role start no import', () async {
@@ -192,6 +332,7 @@ void main() {
             role: role,
             withSession: <T>(action) => action(session),
             log: (level, message) {},
+            scheduleDailyCheck: () async {},
             spawn: (name) async {
               spawns++;
               throw StateError('must not spawn');
@@ -209,25 +350,49 @@ void main() {
       expect(await SdeImport.db.find(session), isEmpty);
     });
 
+    test('test mode and maintenance role schedule no check', () async {
+      var scheduled = 0;
+      StaticDataStartHook? gate(String runMode, String role) =>
+          staticDataStartHookFor(
+            runMode: runMode,
+            role: role,
+            withSession: <T>(action) => action(session),
+            log: (level, message) {},
+            scheduleDailyCheck: () async => scheduled++,
+            spawn: (name) async => throw StateError('must not spawn'),
+          );
+
+      expect(gate('test', 'monolith'), isNull);
+      expect(gate('production', 'maintenance'), isNull);
+      expect(gate('development', 'serverless'), isNull);
+      expect(scheduled, 0);
+      expect(await dailyCalls(), isEmpty);
+      expect(await SdeCheck.db.find(session), isEmpty);
+      expect(staticDataRuntime.supervisor, isNull);
+    });
+
     test(
       'failed first import leaves none active and requeues on start',
       () async {
         final first = await hook(offlineCcpFactory).run();
-        expect((first! as ImportFinished).outcome, ImportOutcome.failed);
+        expect(
+          ((first! as BuildCheckFinished).result),
+          isA<BuildCheckFailed>(),
+        );
         expect(await SdeBuild.db.find(session), isEmpty);
         await hooks.removeLast().stop();
 
         // The next server start finds no active build and queues it again.
         final second = await hook(fakeCcpFactory).run();
 
-        expect((second! as ImportFinished).outcome, ImportOutcome.succeeded);
-        final records = await SdeImport.db.find(
+        expect((second! as BuildCheckFinished).result, isA<BuildSwitched>());
+        final checks = await SdeCheck.db.find(
           session,
-          orderBy: (t) => t.startedAt,
+          orderBy: (t) => t.checkedAt,
         );
-        expect(records.map((r) => r.outcome), [
-          SdeImportOutcome.failed,
-          SdeImportOutcome.succeeded,
+        expect(checks.map((r) => r.outcome), [
+          SdeCheckOutcome.failed,
+          SdeCheckOutcome.switched,
         ]);
         expect(
           (await SdeBuild.db.find(session)).single.state,
@@ -269,7 +434,8 @@ void main() {
         reason: 'the dead job could not record its own end',
       );
 
-      // The server starts again.
+      // The server starts again; today's check already ran.
+      await checkedAt(_afternoon);
       final reply = await hook(fakeCcpFactory).run();
 
       expect(reply, isNull, reason: 'a build is active');
@@ -296,6 +462,7 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
 
+      await checkedAt(_afternoon);
       await hook(fakeCcpFactory).run();
 
       expect(
