@@ -15,6 +15,7 @@ export 'src/in_memory_static_data_store.dart';
 export 'src/known_files.dart';
 export 'src/known_ids.dart';
 export 'src/local_zip_sde_source.dart';
+export 'src/rollback_job.dart';
 export 'src/sde_ingest.dart';
 export 'src/sde_limits.dart';
 export 'src/sde_rows.dart';

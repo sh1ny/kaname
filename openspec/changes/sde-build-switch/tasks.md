@@ -8,17 +8,17 @@ Abbreviations: `KSD` = `packages/kaname_static_data/test/`, `SRV` = `server/kana
 
 | Requirement | Scenario | Test file | Test name | State |
 |---|---|---|---|---|
-| static-data-builds → Stored builds have one of three states | After a switch | SRV static_data/build_switch_test.dart | after a switch the old active is previous and nothing else is stored | red |
-| static-data-builds → Stored builds have one of three states | Import while active, previous and staged builds exist | SRV static_data/build_switch_test.dart | an import drops the staged build first and never stores more than three | red |
-| static-data-builds → A newer build is switched to after its import | Daily build arrives | SRV static_data/build_switch_test.dart | switch makes the new build active, the old previous and removes the oldest | red |
-| static-data-builds → A newer build is switched to after its import | Switch fails | SRV static_data/build_switch_test.dart | a failing switch statement keeps the active build and leaves the new one staged | red |
+| static-data-builds → Stored builds have one of three states | After a switch | SRV static_data/build_switch_test.dart | after a switch the old active is previous and nothing else is stored | green |
+| static-data-builds → Stored builds have one of three states | Import while active, previous and staged builds exist | SRV static_data/build_switch_test.dart | an import drops the staged build first and never stores more than three | green |
+| static-data-builds → A newer build is switched to after its import | Daily build arrives | SRV static_data/build_switch_test.dart | switch makes the new build active, the old previous and removes the oldest | green |
+| static-data-builds → A newer build is switched to after its import | Switch fails | SRV static_data/build_switch_test.dart | a failing switch statement keeps the active build and leaves the new one staged | green |
 | static-data-builds → A newer build is switched to after its import | Older build imported | KSD take_latest_build_job_test.dart | an older build stays staged and is never switched to | red |
 | static-data-builds → A request reads one build from start to end | Switch during a request | SRV static_data/pinned_reader_test.dart | a pinned request keeps reading the old build across a switch | red |
 | static-data-builds → A request reads one build from start to end | Fixed build removed | SRV static_data/pinned_reader_test.dart | a pinned build removed by two switches fails with build no longer stored | red |
 | static-data-builds → A request reads one build from start to end | No active build | SRV static_data/pinned_reader_test.dart | pinning with no active build fails with no active build | red |
-| static-data-builds → The previous build can be rolled back to | Rollback | SRV static_data/build_switch_test.dart | rollback swaps active and previous and moves the hold | red |
-| static-data-builds → The previous build can be rolled back to | No previous build | SRV static_data/build_switch_test.dart | rollback without a previous build fails with no previous build | red |
-| static-data-builds → The previous build can be rolled back to | Import running | SRV static_data/build_switch_test.dart | rollback while the lock is held fails with import running | red |
+| static-data-builds → The previous build can be rolled back to | Rollback | SRV static_data/build_switch_test.dart | rollback swaps active and previous and moves the hold | green |
+| static-data-builds → The previous build can be rolled back to | No previous build | SRV static_data/build_switch_test.dart | rollback without a previous build fails with no previous build | green |
+| static-data-builds → The previous build can be rolled back to | Import running | SRV static_data/build_switch_test.dart | rollback while the lock is held fails with import running | green |
 | static-data-builds → A rolled-back build is held | Daily check after a rollback | KSD take_latest_build_job_test.dart | a held announced build gives outcome held | red |
 | static-data-builds → A rolled-back build is held | Newer build after a rollback | KSD take_latest_build_job_test.dart | a newer build lifts the hold and makes the rolled-back-to build previous | red |
 | static-data-builds → Each build switched to is compared with the build it replaces | Changed build | SRV static_data/build_diff_test.dart | changed types file reports counts, keys and volume field | red |
@@ -67,9 +67,9 @@ Abbreviations: `KSD` = `packages/kaname_static_data/test/`, `SRV` = `server/kana
 
 ## 3. Switch, rollback and hold
 
-- [ ] 3.1 Verify A4: in `SRV static_data/build_switch_test.dart`, read the active build's rows through a second connection in a loop while a switch transaction deletes a whole seeded build, and assert that no read blocks for longer than one second. Verify: the test passes. If it fails, A4 is disproved: stop and apply the drift rule.
-- [ ] 3.2 Write failing tests for "After a switch", "Daily build arrives", "Switch fails" (inject a failing statement through a test hook in the switch transaction), "Rollback", "No previous build" and "Import running" (map rows). Verify: they fail.
-- [ ] 3.3 Implement the switch transaction (D2 steps 1–6) and `RollbackJob` (swap, hold moves to the rolled-back-from build, `held` cleared on the build made active) in the Postgres store and the in-memory store, each writing an `sde_switch` record. Write C6 in `RollbackJob`'s doc comment (`packages/kaname_static_data/lib/src/rollback_job.dart`). Verify: 3.2 rows green, and the C6 text is present.
+- [x] 3.1 Verify A4: in `SRV static_data/build_switch_test.dart`, read the active build's rows through a second connection in a loop while a switch transaction deletes a whole seeded build, and assert that no read blocks for longer than one second. Verify: the test passes. If it fails, A4 is disproved: stop and apply the drift rule.
+- [x] 3.2 Write failing tests for "After a switch", "Daily build arrives", "Switch fails" (inject a failing statement through a test hook in the switch transaction), "Rollback", "No previous build" and "Import running" (map rows). Verify: they fail.
+- [x] 3.3 Implement the switch transaction (D2 steps 1–6) and `RollbackJob` (swap, hold moves to the rolled-back-from build, `held` cleared on the build made active) in the Postgres store and the in-memory store, each writing an `sde_switch` record. Write C6 in `RollbackJob`'s doc comment (`packages/kaname_static_data/lib/src/rollback_job.dart`). Verify: 3.2 rows green, and the C6 text is present.
 
 ## 4. Pinned reader
 

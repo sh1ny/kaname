@@ -385,24 +385,7 @@ final class PostgresStaticDataStore implements StaticDataStore {
     if (staged.isEmpty) return null;
     // Normally one build; a stale second one goes the same way.
     final builds = [for (final row in staged) row[0]! as int];
-    for (final table in [
-      for (final file in typedFiles) file.table,
-      'sde_record',
-    ]) {
-      await tx.execute(
-        'DELETE FROM "$table" WHERE "build" = ANY(\$1::bigint[])',
-        parameters: [builds],
-      );
-    }
-    await tx.execute(
-      'DELETE FROM "sde_build_diff" WHERE "fromBuild" = ANY(\$1::bigint[]) '
-      'OR "toBuild" = ANY(\$1::bigint[])',
-      parameters: [builds],
-    );
-    await tx.execute(
-      'DELETE FROM "sde_build" WHERE "build" = ANY(\$1::bigint[])',
-      parameters: [builds],
-    );
+    await _deleteBuilds(tx, builds);
     return builds.first;
   });
 
@@ -561,12 +544,127 @@ final class _PostgresWriter implements StaticDataWriter {
   }
 
   @override
-  Future<void> switchTo(int build, {required DateTime at}) =>
-      throw UnimplementedError('switchTo: task group 3 (D2)');
+  Future<void> switchTo(int build, {required DateTime at}) async {
+    final stored = await _buildStates(_session);
+    if (stored[build] != BuildState.staged) {
+      throw StateError('build $build is not staged');
+    }
+    final fromBuild = _buildIn(stored, BuildState.active);
+    final oldPrevious = _buildIn(stored, BuildState.previous);
+    // 1. Clear both markers, so no unique index sees two holders.
+    await _session.execute(
+      'UPDATE "sde_build" SET "activeMarker" = NULL, "previousMarker" = NULL',
+    );
+    // 2. Delete the old previous build, one statement per table.
+    if (oldPrevious != null) await _deleteBuilds(_session, [oldPrevious]);
+    // 3. The old active build becomes previous.
+    await _session.execute(
+      'UPDATE "sde_build" SET "state" = \'previous\', '
+      '"previousMarker" = true WHERE "state" = \'active\'',
+    );
+    // 4. The new build becomes active.
+    await _session.execute(
+      'UPDATE "sde_build" SET "state" = \'active\', "activeMarker" = true '
+      r'WHERE "build" = $1::bigint',
+      parameters: [build],
+    );
+    // 5. A switch to a newer build lifts the hold of every older one.
+    await _session.execute(
+      r'UPDATE "sde_build" SET "held" = false WHERE "build" < $1::bigint',
+      parameters: [build],
+    );
+    // 6. The record, in the same transaction.
+    await _insertRows(_session, 'sde_switch', _switchColumns, [
+      _switchValues(
+        SwitchRecord(
+          kind: SwitchKind.forward,
+          fromBuild: fromBuild,
+          toBuild: build,
+          at: at,
+          outcome: SwitchOutcome.succeeded,
+        ),
+      ),
+    ]);
+  }
 
   @override
-  Future<void> rollBack({required DateTime at}) =>
-      throw UnimplementedError('rollBack: task group 3 (D2)');
+  Future<void> rollBack({required DateTime at}) async {
+    final stored = await _buildStates(_session);
+    final active = _buildIn(stored, BuildState.active);
+    final previous = _buildIn(stored, BuildState.previous);
+    if (active == null || previous == null) {
+      throw StateError('no previous build to roll back to');
+    }
+    await _session.execute(
+      'UPDATE "sde_build" SET "activeMarker" = NULL, "previousMarker" = NULL',
+    );
+    // The build rolled back from is held, so the next check keeps it staged
+    // out; the build made active is released.
+    await _session.execute(
+      'UPDATE "sde_build" SET "state" = \'previous\', '
+      '"previousMarker" = true, "held" = true '
+      r'WHERE "build" = $1::bigint',
+      parameters: [active],
+    );
+    await _session.execute(
+      'UPDATE "sde_build" SET "state" = \'active\', "activeMarker" = true, '
+      r'"held" = false WHERE "build" = $1::bigint',
+      parameters: [previous],
+    );
+    await _insertRows(_session, 'sde_switch', _switchColumns, [
+      _switchValues(
+        SwitchRecord(
+          kind: SwitchKind.rollback,
+          fromBuild: active,
+          toBuild: previous,
+          at: at,
+          outcome: SwitchOutcome.succeeded,
+        ),
+      ),
+    ]);
+  }
+}
+
+/// The state of every stored build, by build number.
+Future<Map<int, BuildState>> _buildStates(pg.Session session) async {
+  final result = await session.execute(
+    'SELECT "build", "state" FROM "sde_build"',
+  );
+  return {
+    for (final row in result)
+      row[0]! as int: BuildState.values.byName(row[1]! as String),
+  };
+}
+
+int? _buildIn(Map<int, BuildState> stored, BuildState state) {
+  for (final MapEntry(:key, :value) in stored.entries) {
+    if (value == state) return key;
+  }
+  return null;
+}
+
+/// Deletes [builds] completely: their rows in every typed table and in
+/// `sde_record`, their diff records and their `sde_build` rows, one statement
+/// per table so each stays within the statement timeout.
+Future<void> _deleteBuilds(pg.Session session, List<int> builds) async {
+  for (final table in [
+    for (final file in typedFiles) file.table,
+    'sde_record',
+  ]) {
+    await session.execute(
+      'DELETE FROM "$table" WHERE "build" = ANY(\$1::bigint[])',
+      parameters: [builds],
+    );
+  }
+  await session.execute(
+    'DELETE FROM "sde_build_diff" WHERE "fromBuild" = ANY(\$1::bigint[]) '
+    'OR "toBuild" = ANY(\$1::bigint[])',
+    parameters: [builds],
+  );
+  await session.execute(
+    'DELETE FROM "sde_build" WHERE "build" = ANY(\$1::bigint[])',
+    parameters: [builds],
+  );
 }
 
 /// Deletes every row of [table] but the newest [keep], by [timeColumn].
