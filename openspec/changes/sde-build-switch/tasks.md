@@ -28,8 +28,8 @@ Abbreviations: `KSD` = `packages/kaname_static_data/test/`, `SRV` = `server/kana
 | static-data-builds → The diff report lists counts, keys and fields | More than 1,000 changes in one file | SRV static_data/build_diff_test.dart | more than 1000 changed keys are cut off and marked | green |
 | static-data-builds → The diff report lists counts, keys and fields | File only in the new build | SRV static_data/build_diff_test.dart | a file only in the new build is listed as new with all records added | green |
 | static-data-builds → The diff report lists counts, keys and fields | Records that differ only in key order | SRV static_data/build_diff_test.dart | key order alone is not a change | green |
-| static-data-builds → Any two stored builds can be compared on demand | Compare active and previous | SRV static_data/dev_tasks_test.dart | sde:diff prints the same report as the stored one | red |
-| static-data-builds → Any two stored builds can be compared on demand | Build not stored | SRV static_data/dev_tasks_test.dart | sde:diff of a missing build exits non-zero with build not stored | red |
+| static-data-builds → Any two stored builds can be compared on demand | Compare active and previous | SRV static_data/dev_tasks_test.dart | sde:diff prints the same report as the stored one | green |
+| static-data-builds → Any two stored builds can be compared on demand | Build not stored | SRV static_data/dev_tasks_test.dart | sde:diff of a missing build exits non-zero with build not stored | green |
 | static-data-builds → The server checks for a new build every day | New build found | KSD take_latest_build_job_test.dart | a newer announced build is imported, compared and switched | green |
 | static-data-builds → The server checks for a new build every day | No new build | KSD take_latest_build_job_test.dart | the active build announced gives up to date | green |
 | static-data-builds → The server checks for a new build every day | CCP unreachable | KSD take_latest_build_job_test.dart | unreachable CCP records a failed check and keeps the active build | green |
@@ -100,8 +100,8 @@ Abbreviations: `KSD` = `packages/kaname_static_data/test/`, `SRV` = `server/kana
 
 ## 8. Development tasks
 
-- [ ] 8.1 Write failing tests in `SRV static_data/dev_tasks_test.dart` for "Compare active and previous" and "Build not stored", for `sde:rollback`'s exit codes on success, "no previous build" and "import running", and unit tests for both tools' argument parsing in `server/kaname_server/test/unit/`. Verify: they fail.
-- [ ] 8.2 Add `server/kaname_server/tool/sde_rollback.dart` and `tool/sde_diff.dart` (the diff in one `REPEATABLE READ READ ONLY` transaction, D7) and the mise tasks `sde:rollback` and `sde:diff` beside `sde:import` in `mise.toml`, each described with its arguments and its need for the development server. Verify: 8.1 green; `mise tasks` lists both.
+- [x] 8.1 Write failing tests in `SRV static_data/dev_tasks_test.dart` for "Compare active and previous" and "Build not stored", for `sde:rollback`'s exit codes on success, "no previous build" and "import running", and unit tests for both tools' argument parsing in `server/kaname_server/test/unit/`. Verify: they fail.
+- [x] 8.2 Add `server/kaname_server/tool/sde_rollback.dart` and `tool/sde_diff.dart` (the diff in one `REPEATABLE READ READ ONLY` transaction, D7) and the mise tasks `sde:rollback` and `sde:diff` beside `sde:import` in `mise.toml`, each described with its arguments and its need for the development server. Verify: 8.1 green; `mise tasks` lists both.
 
 ## 9. Architecture and integration
 
