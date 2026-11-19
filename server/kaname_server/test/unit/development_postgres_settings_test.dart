@@ -30,7 +30,7 @@ void main() {
       configYaml: _embedded,
       passwordsYaml: _passwords,
       serverDirectory: '/srv/kaname_server',
-      postgresConf: _conf,
+      readFile: _confAt('/srv/kaname_server/.serverpod/development/pgdata'),
     );
 
     expect(
@@ -50,7 +50,10 @@ void main() {
       configYaml: _embedded,
       passwordsYaml: _passwords,
       serverDirectory: '/s',
-      postgresConf: "$_conf\nport = 6543\n",
+      readFile: _confAt(
+        '/s/.serverpod/development/pgdata',
+        "$_conf\nport = 6543\n",
+      ),
     );
 
     expect(settings.host, endsWith('.s.PGSQL.6543'));
@@ -62,6 +65,7 @@ void main() {
         configYaml: _embedded,
         passwordsYaml: _passwords,
         serverDirectory: '/s',
+        readFile: _noFiles,
       ),
       throwsA(
         isA<DevelopmentSettingsException>().having(
@@ -79,7 +83,7 @@ void main() {
         configYaml: _embedded,
         passwordsYaml: _passwords,
         serverDirectory: '/s',
-        postgresConf: '# nothing\n',
+        readFile: _confAt('/s/.serverpod/development/pgdata', '# nothing\n'),
       ),
       throwsA(isA<DevelopmentSettingsException>()),
     );
@@ -97,6 +101,7 @@ database:
 ''',
       passwordsYaml: 'shared:\n  database: "only-shared"\n',
       serverDirectory: '/s',
+      readFile: _noFiles,
     );
 
     expect(settings.host, 'db.example');
@@ -111,7 +116,7 @@ database:
       configYaml: _embedded,
       passwordsYaml: '',
       serverDirectory: '/s',
-      postgresConf: _conf,
+      readFile: _confAt('/s/.serverpod/development/pgdata'),
     );
 
     expect(settings.password, isNull);
@@ -119,7 +124,7 @@ database:
       configYaml: _embedded,
       passwordsYaml: _passwords,
       serverDirectory: '/s',
-      postgresConf: _conf,
+      readFile: _confAt('/s/.serverpod/development/pgdata'),
     );
     expect('$withPassword', isNot(contains('from-development')));
   });
@@ -130,8 +135,29 @@ database:
         configYaml: 'redis:\n  enabled: true\n',
         passwordsYaml: _passwords,
         serverDirectory: '/s',
+        readFile: _noFiles,
       ),
       throwsA(isA<DevelopmentSettingsException>()),
     );
   });
+
+  test('postgresql.conf is read from the configured dataPath', () {
+    final settings = developmentPostgresSettings(
+      configYaml: _embedded.replaceFirst(
+        '.serverpod/development/pgdata',
+        'elsewhere/pg',
+      ),
+      passwordsYaml: _passwords,
+      serverDirectory: '/s',
+      readFile: _confAt('/s/elsewhere/pg'),
+    );
+
+    expect(settings.host, '/s/elsewhere/run/.s.PGSQL.5432');
+  });
 }
+
+/// Reads [conf] as the `postgresql.conf` of [dataDirectory] and nothing else.
+String? Function(String path) _confAt(String dataDirectory, [String? conf]) =>
+    (path) => path == '$dataDirectory/postgresql.conf' ? conf ?? _conf : null;
+
+String? _noFiles(String path) => null;

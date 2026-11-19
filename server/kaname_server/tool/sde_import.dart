@@ -59,16 +59,16 @@ Future<int> _run(List<String> args) async {
 
 PostgresConnectionSettings _settings() {
   final directory = Directory.current.path;
-  final conf = File(
-    p.join(directory, '.serverpod', 'development', 'pgdata', 'postgresql.conf'),
-  );
   return developmentPostgresSettings(
     configYaml: File(p.join(directory, 'config', 'development.yaml'))
         .readAsStringSync(),
     passwordsYaml: File(p.join(directory, 'config', 'passwords.yaml'))
         .readAsStringSync(),
     serverDirectory: directory,
-    postgresConf: conf.existsSync() ? conf.readAsStringSync() : null,
+    readFile: (path) {
+      final file = File(path);
+      return file.existsSync() ? file.readAsStringSync() : null;
+    },
   );
 }
 
@@ -111,19 +111,26 @@ Future<int> _import(SdeImportRun request) async {
 
   // The job's own record, and the record that holds the build's reports when
   // the job stored nothing because the build was already there.
-  final reader = await PostgresStaticDataStore.open(settings);
   final ImportRecordView? record;
   final ImportRecordView? reportRecord;
   try {
-    record = await reader.newestImportRecord();
-    reportRecord = switch (result) {
-      ImportSucceeded() => record,
-      ImportSkipped(build: final int build) =>
-        await reader.latestSucceededImportOf(build),
-      _ => null,
-    };
-  } finally {
-    await reader.close();
+    final reader = await PostgresStaticDataStore.open(settings);
+    try {
+      record = await reader.newestImportRecord();
+      reportRecord = switch (result) {
+        ImportSucceeded() => record,
+        ImportSkipped(build: final int build) =>
+          await reader.latestSucceededImportOf(build),
+        _ => null,
+      };
+    } finally {
+      await reader.close();
+    }
+  } on Object catch (error) {
+    stderr
+      ..writeln('The import ended, but its record cannot be read: $error')
+      ..writeln(_precondition);
+    return 1;
   }
   if (record == null) {
     stderr.writeln('The import left no record.');

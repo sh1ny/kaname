@@ -20,20 +20,21 @@ final class DevelopmentSettingsException implements Exception {
 
 /// The settings of the development database for a process of its own.
 ///
-/// Pure: the caller reads the files. [configYaml] is
+/// The caller reads the configuration files. [configYaml] is
 /// `config/development.yaml`, [passwordsYaml] is `config/passwords.yaml`
 /// (the `development` password, else the `shared` one), and [serverDirectory]
 /// is the server package's directory, which relative paths in the
-/// configuration refer to.
+/// configuration refer to. [readFile] returns the content of the file at an
+/// absolute path, or `null` when it does not exist.
 ///
 /// An external database is reached over TCP as configured. With a `dataPath`
 /// the database is Serverpod's embedded Postgres, which listens on a Unix
 /// socket only (checked in Serverpod 4.1.2) and does not publish where. The
 /// socket is found from the `port` and `unix_socket_directories` lines of
-/// the data directory's `postgresql.conf`, given as [postgresConf]; the
-/// directory is relative to the data directory. A `null` [postgresConf] means
-/// the file does not exist, which means the development server never started
-/// the database.
+/// the data directory's `postgresql.conf`, read through [readFile] from the
+/// configured `dataPath`; the socket directory is relative to the data
+/// directory. A missing `postgresql.conf` means the development server never
+/// started the database.
 ///
 /// Throws a [DevelopmentSettingsException] when the configuration has no
 /// database, or the embedded database's files are missing.
@@ -41,7 +42,7 @@ PostgresConnectionSettings developmentPostgresSettings({
   required String configYaml,
   required String passwordsYaml,
   required String serverDirectory,
-  String? postgresConf,
+  required String? Function(String path) readFile,
 }) {
   final database = switch (loadYaml(configYaml)) {
     {'database': final YamlMap database} => database,
@@ -70,6 +71,7 @@ PostgresConnectionSettings developmentPostgresSettings({
     );
   }
   final dataDirectory = p.normalize(p.absolute(serverDirectory, dataPath));
+  final postgresConf = readFile(p.join(dataDirectory, 'postgresql.conf'));
   if (postgresConf == null) {
     throw DevelopmentSettingsException(
       'no embedded Postgres data at $dataDirectory',
