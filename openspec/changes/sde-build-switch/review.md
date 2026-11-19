@@ -2,78 +2,49 @@
 
 ## Metadata
 
-- **Round:** 1
-- **Prior round:** Round 1 (fresh-context subagent) gave APPROVE_WITH_CHANGES with seven Moderate (M1-M7) and Required Changes 1-7; its first re-check found 1 and 3-7 applied, Required Change 2 applied except the "CCP unreachable during a check" Failure row, and added Suggestions S5-S7. This file is the second re-check of those remaining items.
+- **Round:** 2
+- **Prior round:** Round 1 (fresh-context subagent) gave APPROVE_WITH_CHANGES (M1-M7); two re-checks found every Required Change applied (CHANGES_APPLIED: yes). That verdict is void: design.md was amended afterwards in D6, its rejected alternatives, the D6 summary row, one Failure & Visibility row and one Risks bullet (pre-ship review round 2).
 - **Reviewer:** fresh-context subagent (Claude Code)
-- **Reviewed:** openspec/changes/sde-build-switch/review.md (round 1, first re-check and the author's notes), design.md (D2, D4-D6, Carried constraints, State & Ownership, Failure & Visibility, Resource Bounds, Flow & State Gaps, Mechanism Ledger), specs/static-data-builds/spec.md; main specs under openspec/specs/ (searched for conflicting catch-up, rollback and comparison rules). Tracked source checked: server/kaname_server/pubspec.yaml (for S8). No skills were named in the request, so none were loaded.
+- **Reviewed:** openspec/changes/sde-build-switch/proposal.md, design.md (whole file, plus the working-tree diff `git diff -- openspec/changes/sde-build-switch/design.md`), tasks.md, specs/server-workers/spec.md, specs/static-data-builds/spec.md and specs/static-data-import/spec.md (searched for future-call, shutdown and readiness rules), review.md (round 1 and its re-checks); docs/adr/0009-server-process-and-isolates.md. Source at `feat/sde-build-switch` (read with `git show`): server/kaname_server/lib/src/static_data/static_data_check_call.dart, static_data_start.dart, static_data_start_hook.dart, server/kaname_server/lib/server.dart, server/kaname_server/lib/src/workers/worker_supervisor.dart (and its `main...feat/sde-build-switch` diff). Source at `main` for the Context citations: sde_build.spy.yaml, static_data_store.dart, import_sde_job.dart, postgres_static_data_store.dart, pubspec.yaml, mise.toml, static_data_start.dart, static_data_start_hook.dart, worker_supervisor.dart. Skills loaded: serverpod-scheduling, serverpod-overview, codebase-design (all three loaded; no named skill failed to load). The Serverpod 4.1.2 package source is outside the repository and was not opened.
 
 <!-- This verdict covers only the contents reviewed. Editing proposal, specs or design afterward (other than applying Required Changes, or an edit confined to the proposal's `## Release Notes` section) voids it. -->
 
 ## Findings
 
-Claims check (second re-check): no edit since the first re-check added or moved a citation. The citations the first re-check verified are unchanged in design.md. The round-1 claims check also still holds.
+Claims check (round 2). The unchanged Context citations still show their claims at `main`, the base the design was written against: sde_build.spy.yaml:11-21, static_data_store.dart:24-30, import_sde_job.dart:254, :267, :282-284, :101-106, postgres_static_data_store.dart:397-413, :262, :197, pubspec.yaml:18, mise.toml:247-248, static_data_start_hook.dart:124-137 and worker_supervisor.dart:158-164. The two citations in the amended D6 paragraph also hold: server.dart:12-13 (`await pod.start(); startStaticData(pod);`) and static_data_start.dart:44 at `main` (`unawaited(hook.run());`). On the branch that line has moved to :46 (see Suggestion S1). The amendment's new claims are covered under C1 and M2 below.
 
 ### Critical (blocking)
 
-None.
+- **C1. The amended D6 depends on a readiness behaviour that the supervisor does not have and that its restart policy contradicts, so the shutdown hang D6 sets out to remove is still there.** D6 (design.md:93) states: "When the worker cannot start, or the supervisor stops, `ready` and every pending request fail at once with an error, so nothing waits on a worker that will never answer." The Failure & Visibility row (design.md:263) repeats it: "a worker that failed to start or was stopped (its waits fail at once)". The code does not do this:
+  - `ready` never fails. It is a `Completer<void>` that is only ever completed successfully, in `_watch` (worker_supervisor.dart:128, :250), and is documented as "Completes the first time a worker is running … It stays completed through later crashes" (:137-139). `stop()` fails pending requests (:197) but never touches `_ready`.
+  - "The worker cannot start" is not a terminal state. A failed spawn, including a failure to resolve the settings, "is logged the same way and retried on the same schedule … no request is accepted meanwhile", with no limit on attempts (:44-51, loop at :204-228).
+  - The shipped call still awaits `ready` before it does anything else (static_data_check_call.dart:51).
+
+  Consequence, using the design's own premise that Serverpod drains running future calls before it runs the `static-data-compute-worker` shutdown task (static_data_start.dart:42-45 registers `hook.stop` as that task). Suppose a daily call is claimed while the supervisor is in its spawn-retry loop, for example because Postgres settings resolution keeps failing. The call blocks on `ready`. Shutdown waits for the call. The only thing that could release it is `supervisor.stop()`, and that runs only after the drain. Shutdown therefore hangs, which is the failure the rejected alternative names ("a worker that never starts would hang it", design.md:94). The design's mechanism also cannot be built as literally worded without new harm. If `ready` were made to fail on the first failed spawn, it would stay failed for the life of the process, because it is a one-shot completer. Every later daily call that awaits it would then fail at once, even after the retry loop brings the worker up, and the start hook's bootstrap check (static_data_start_hook.dart:190) would be lost until the next 12:00 UTC.
+
+  The design must state exactly what the call does before it hands the request over, and what the supervisor does with a request when no worker runs. Recommended, so that nothing on the call's path waits on the worker: the call does not await `ready`. It invokes a supervisor method that returns synchronously, or completes as soon as the request is queued or sent. The supervisor itself waits for a running worker, logs the reply when it arrives, and fails every queued or pending request on `stop()`. `ready` keeps its current contract (worker_supervisor.dart:137-139), and the "cannot start" wording is dropped or redefined so that it agrees with the restart policy (:44-51) and with the server-workers scenario "Worker fails to start". An alternative is that the call sends only when `isRunning` and otherwise logs and returns, accepting that a call during a restart loses that day until the start catch-up. That is how `_send` already behaves (:173-179). D6 is `Chosen by: user`, so the choice between these goes to the owner.
 
 ### Moderate
 
-- **M1. The main import spec forbids what D6 does at start.** Fixed (first re-check). Accepted.
-- **M2. A restart around 12:00 UTC can miss a day's build.** Fixed. The remaining row is now correct: design.md:258 gives the recovery for "CCP unreachable during a check" as "The next day's check, or a start after the next 12:00 UTC (D6 catch-up)". This matches D6's `catchUpDue` (design.md:88), the spec requirement "The server checks for a new build every day", its scenarios "Restart across 12:00 UTC" and "Restart after today's check", and the Flow & State Gaps "Restart mid-operation" entry. No text in design.md or the delta specs still states the 24-hour rule. The only mention left is S4's rejected alternative, "catch-up after 24 h (review round 1)" (design.md:146), which is correct as a rejected option.
-- **M3. The spec requires a comparison for every import.** Fixed (first re-check). Accepted.
-- **M4. The raw-record diff join does not match how keys are stored.** Fixed (first re-check). Accepted.
-- **M5. Carried constraints miss the rule that the switch runs under the lock.** Fixed (first re-check). Accepted.
-- **M6. The daily schedule sits outside the pure-Dart job package, against ADR 0009.** Fixed (first re-check). Accepted.
-- **M7. The THEN in "Switch fails" cannot be asserted as written.** Fixed (first re-check). Accepted.
+- **M1. No task or test-map row builds or verifies the amended D6, and every task is ticked against code that does what D6 now rejects.** tasks.md 7.3-7.4 are `[x]` and the test map has no row for "the call returns before the job answers", "shutdown does not wait for a running check" or "a pending or queued check fails when the supervisor stops". The branch code implements the rejected alternative. Its doc comment says the call "awaits the supervisor's `ready`, asks it to run the check and returns once the job has answered" (static_data_check_call.dart:32-34), and its body awaits both `ready` and `runBuildCheck` (:51-52). Consequence: once this design is approved, the change can be archived with code and doc comments that contradict D6, the Failure row at design.md:263 and the Risks bullet at :312, and no test would show it. Required: add tasks (and test-map rows or plain verify steps) that rewrite `StaticDataCheckCall.run` and its doc comment, change the supervisor per the resolution of C1, and assert that the call completes while a fake worker has not answered, and that `stop()` fails a queued or pending check at once.
+
+- **M2. The Serverpod shutdown-ordering claim that the amended D6 rests on has neither a citation nor an Assumptions entry.** design.md:93 and :94 state that "Serverpod 4.1.2's shutdown drains running future calls before it runs the shutdown task that stops the worker". This is a claim about existing third-party behaviour. Its source is outside the repository, so it cannot be cited. The only in-repo text on ordering is static_data_start.dart:17-19, which says shutdown tasks run "after the servers stop accepting requests" and says nothing about future calls. A5 shows the expected form: version, file read, what depends on it, and the test that proves it. Required: add an assumption A6 that names Serverpod 4.1.2, the files the author read, "Depends on it: D6 (rejected alternative) and the Risks bullet on shutdown", and the test that proves it (or a statement that none does and why the decision stands without it, for example the concurrency-limit argument alone).
+
+- **M3. Carried constraints do not list the new rejected alternative.** A later change could reintroduce a future call that awaits the worker's answer. The obvious case is `static-data-settings` wanting the check's outcome in the call, or adding "update now" through the same call. That would bring back both the concurrency-limit stall and the shutdown hold. The old Risks bullet that flagged this ("The first change that adds one must … let this call return once the request reaches the worker") was removed, and nothing in `## Carried constraints` (C1-C8) replaces it. Required: add a C9, Kind: rejected alternative, with exactly one destination: "doc comment: server/kaname_server/lib/src/static_data/static_data_check_call.dart StaticDataCheckCall". It should say that no future call awaits a compute-worker job, because Serverpod drains running calls before the shutdown task that stops the worker, and because the default concurrency limit is 1.
 
 ### Suggestions
 
-- **S1.** Applied (kind values `forward` and `rollback`). Accepted.
-- **S2.** Applied (a rollback clears `held` on the build it makes active). Accepted.
-- **S3.** Applied (the diff task reads in one `REPEATABLE READ READ ONLY` transaction). Accepted.
-- **S4.** Noted under Risks / Trade-offs. Accepted.
-- **S5.** Applied. The requirement body now reads "Before a forward switch to a newer build, the server SHALL compare …" (specs/static-data-builds/spec.md:77). This agrees with D2, which gives `RollbackJob` no diff, with D5's `forward` kind, and with the "at most 2" bound on `sde_build_diff` rows. The requirement title, "Each build switched to is compared with the build it replaces", still reads wider than its body, because a rollback also "switches to" a build. The body governs, and the scenarios all describe forward switches, so this has no assertable consequence. If you want an exact match, the title could say "Each build forward-switched to …". This is optional.
-- **S6.** Applied. D6 step 1 (design.md:89) places `staticDataRuntime` in `server/kaname_server/lib/src/static_data/`, not exported, so the hook and the future call can both import it. Tests set the holder and clear it with a `@visibleForTesting` `reset()`. See S8 for a follow-on.
-- **S7.** Applied. C5 (design.md:176) now carries D4's per-record rule. A non-empty key that occurs exactly once on each side is paired. Empty or repeated keys are compared as a multiset of `(key, record)` per file, with added and removed counts only. The two texts agree.
-- **S8 (new).** `@visibleForTesting` needs a direct `meta` dependency in the server package. It comes from `package:meta`, and `server/kaname_server/pubspec.yaml:10-19` does not list `meta` as a direct dependency. With the `lints` package's `depend_on_referenced_packages`, importing it without a direct dependency produces an analyzer warning, and `mise run check` runs analyze. Adding `meta` is a dependency change, so it also needs `mise run notices`. Either name that step in the task that adds the holder, or replace the annotation with a plain doc-commented `reset()`.
-
-No new contradiction: the edits since the first re-check change only design.md:258, C5, D6's holder sentence and the comparison requirement's body. Each now agrees with D2, D4, D5, D6, the Failure, Resource Bounds and Flow tables, and the delta specs. The main specs under openspec/specs/ contain no catch-up, rollback or comparison rule that these edits touch.
+- **S1.** The D6 citation `static_data_start.dart:44` is right at `main` but points at `hook.stop,` on `feat/sde-build-switch`, where `unawaited(hook.run())` is now :46. The paragraph around it was rewritten to describe post-implementation behaviour, so a reader checking it against the branch will find the wrong line. Consider citing it by symbol, or with the branch line.
+- **S2.** Once C1 is resolved, the State & Ownership table could gain a row for any request queue the supervisor holds (owner: supervisor; lifetime: until a worker answers or `stop()`), and the Resource Bounds table could gain its bound. At one call a day the bound is trivially small, but stating it keeps the tables complete.
 
 ## Verdict
 
-VERDICT: APPROVE_WITH_CHANGES
+C1 is a contradicted claim that the amended decision D6 depends on. Resolving it needs a choice about D6, which is `Chosen by: user`, so it cannot be applied as a fixed edit.
+
+VERDICT: REVISE
 
 ## Required Changes
 
-Status after the second re-check: all applied.
-
-1. (M1) Applied.
-2. (M2) Applied. The "CCP unreachable during a check" Failure & Visibility row now states the D6 catch-up rule (design.md:258).
-3. (M3) Applied.
-4. (M4) Applied.
-5. (M5) Applied.
-6. (M6) Applied.
-7. (M7) Applied.
-
-CHANGES_APPLIED: yes
+CHANGES_APPLIED: n/a
 
 ## Rebuttals
-
-- **M1:** fixed. `specs/static-data-import/spec.md` adds a MODIFIED "An import starts when no build is active": the start-up check imports; "Restart with an active build" imports only when the check finds a newer build that is not held; "First start offline" writes no import record and a failed check record. Accepted by reviewer.
-- **M2:** fixed, after the owner agreed to the S4 and D6 changes. The catch-up runs when no build is active or no check has started since the most recent 12:00 UTC (design D6, spec "The server checks for a new build every day", with new scenarios "Restart across 12:00 UTC" and "Restart after today's check"). `checkedAt` is the job's start time. The overdue-row claim is removed from Flow & State Gaps and A2. The future call reaches the supervisor through the `staticDataRuntime` holder, published before scheduling, and awaits `supervisor.ready`. Accepted by reviewer. The remaining row was fixed after the first re-check (see below), and the second re-check accepts it.
-- **M3:** fixed, after the owner agreed to the S3 change ("compare at switch"). The requirement is now "Each build switched to is compared with the build it replaces". A staged build gets no report until it is switched to (new scenario "Build imported by the development task"). The "First build" THEN is "no report is stored". Accepted by reviewer.
-- **M4:** fixed. D4 classifies `sde_record` rows per record (`sde_ingest.dart:169-174`, `:98`, `:154-155`): a key that occurs exactly once on each side is paired, and every other record is compared as a multiset of `(key, record)` per file. Accepted by reviewer.
-- **M5:** fixed. New C7: every switch and rollback takes the lock and changes states in one transaction on its connection, never through the main isolate's ORM (doc comment on `StaticDataStore`). Accepted by reviewer.
-- **M6:** fixed, after the owner agreed to the D6 change. `DailyBuildCheckSchedule` in `kaname_static_data` declares the cron and `catchUpDue`, and the server adapts it into the future call (D6, new C8). Accepted by reviewer.
-- **M7:** fixed. "Switch fails" uses a failing statement with Postgres reachable. The Failure table records the unreachable case in the log only. Accepted by reviewer.
-- **S1:** applied. The kind values are `forward` and `rollback`. Accepted by reviewer.
-- **S2:** applied. A rollback clears `held` on the build it makes active (D2, spec scenario "Rollback"). Accepted by reviewer.
-- **S3:** applied. The diff task reads in one `REPEATABLE READ READ ONLY` transaction (D7). Accepted by reviewer.
-- **S4:** noted under Risks / Trade-offs. The first change that adds another future call raises the concurrency limit, or lets this call return once the request has been handed to the worker. Accepted by reviewer.
-
-Author, after the first re-check:
-- **Required Change 2 (remaining row):** fixed. The "CCP unreachable during a check" row of Failure & Visibility now reads "or a start after the next 12:00 UTC (D6 catch-up)". Accepted by reviewer.
-- **S5:** applied. The requirement text reads "Before a forward switch to a newer build"; a rollback is never compared. Accepted by reviewer (optional title wording noted under S5).
-- **S6:** applied. D6 names the holder's real visibility (in `lib/src/static_data/`, not exported) and its `@visibleForTesting` `reset()`. Accepted by reviewer (dependency follow-on in S8).
-- **S7:** applied. C5 states the per-record rule from D4. Accepted by reviewer.
