@@ -351,7 +351,7 @@ Several components write `sde_import`, but only while holding the static-data lo
 | JSONL line | 16 MiB | The record is skipped as bad (D12) | — | — |
 | Seen-key set per typed file | One int per record of the file (types: about 50k) | — | — | At 100x, a few tens of MB; acceptable, revisit if a typed file grows past 1M records |
 | Skipped-record list in the report | 100 per file, plus a count | Further ones only counted | — | Constant |
-| Insert batch | 500 rows held in memory | Flush, then continue | Statement timeout 5 min | Memory stays constant; time grows linearly |
+| Insert batch | 500 rows, or 32 Mi characters of source lines, held in memory (amended during apply: 500 lines of up to 16 MiB each did not bound memory) | Flush, then continue | Statement timeout 5 min | Memory stays constant; time grows linearly |
 | Whole import | One at a time (lock) | Second request `skipped` | 2 h, then `failed` ("timed out") and rollback | 10x rows: tens of minutes; within the cap |
 | Builds stored | At rest: active plus at most one staged; during an import, one more | Other staged builds deleted in the import's commit | — | Disk use ≈ 3 builds, about 3× A6's size in Postgres |
 | `sde_import` records | Newest 100 | Older ones deleted by the job | — | Constant |
