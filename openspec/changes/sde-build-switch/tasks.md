@@ -13,9 +13,9 @@ Abbreviations: `KSD` = `packages/kaname_static_data/test/`, `SRV` = `server/kana
 | static-data-builds → A newer build is switched to after its import | Daily build arrives | SRV static_data/build_switch_test.dart | switch makes the new build active, the old previous and removes the oldest | green |
 | static-data-builds → A newer build is switched to after its import | Switch fails | SRV static_data/build_switch_test.dart | a failing switch statement keeps the active build and leaves the new one staged | green |
 | static-data-builds → A newer build is switched to after its import | Older build imported | KSD take_latest_build_job_test.dart | an older build stays staged and is never switched to | red |
-| static-data-builds → A request reads one build from start to end | Switch during a request | SRV static_data/pinned_reader_test.dart | a pinned request keeps reading the old build across a switch | red |
-| static-data-builds → A request reads one build from start to end | Fixed build removed | SRV static_data/pinned_reader_test.dart | a pinned build removed by two switches fails with build no longer stored | red |
-| static-data-builds → A request reads one build from start to end | No active build | SRV static_data/pinned_reader_test.dart | pinning with no active build fails with no active build | red |
+| static-data-builds → A request reads one build from start to end | Switch during a request | SRV static_data/pinned_reader_test.dart | a pinned request keeps reading the old build across a switch | green |
+| static-data-builds → A request reads one build from start to end | Fixed build removed | SRV static_data/pinned_reader_test.dart | a pinned build removed by two switches fails with build no longer stored | green |
+| static-data-builds → A request reads one build from start to end | No active build | SRV static_data/pinned_reader_test.dart | pinning with no active build fails with no active build | green |
 | static-data-builds → The previous build can be rolled back to | Rollback | SRV static_data/build_switch_test.dart | rollback swaps active and previous and moves the hold | green |
 | static-data-builds → The previous build can be rolled back to | No previous build | SRV static_data/build_switch_test.dart | rollback without a previous build fails with no previous build | green |
 | static-data-builds → The previous build can be rolled back to | Import running | SRV static_data/build_switch_test.dart | rollback while the lock is held fails with import running | green |
@@ -73,8 +73,8 @@ Abbreviations: `KSD` = `packages/kaname_static_data/test/`, `SRV` = `server/kana
 
 ## 4. Pinned reader
 
-- [ ] 4.1 Write failing tests for "Switch during a request", "Fixed build removed" and "No active build" (map rows), plus in-memory reader tests in `KSD static_data_reader_test.dart`. Verify: they fail.
-- [ ] 4.2 Add the `StaticDataReader`/`PinnedBuild` interface with `type(id)` and `solarSystem(id)`, the `BuildNoLongerStored` and `NoActiveBuild` errors as a sealed error family (D3, D9), an in-memory implementation, and the server implementation through the ORM in `server/kaname_server/lib/src/static_data/`. Check that the spec requirement "A request reads one build from start to end" states C1 (that every server-side static-data read goes through the pinned reader) and reference it from the reader's doc comment. Verify: 4.1 rows green; `mise run analyze` clean.
+- [x] 4.1 Write failing tests for "Switch during a request", "Fixed build removed" and "No active build" (map rows), plus in-memory reader tests in `KSD static_data_reader_test.dart`. Verify: they fail.
+- [x] 4.2 Add the `StaticDataReader`/`PinnedBuild` interface with `type(id)` and `solarSystem(id)`, the `BuildNoLongerStored` and `NoActiveBuild` errors as a sealed error family (D3, D9), an in-memory implementation, and the server implementation through the ORM in `server/kaname_server/lib/src/static_data/`. Check that the spec requirement "A request reads one build from start to end" states C1 (that every server-side static-data read goes through the pinned reader) and reference it from the reader's doc comment. Verify: 4.1 rows green; `mise run analyze` clean.
 
 ## 5. Build diff
 
