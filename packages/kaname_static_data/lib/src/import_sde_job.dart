@@ -10,6 +10,7 @@ import 'import_build.dart';
 import 'known_ids.dart';
 import 'sde_limits.dart';
 import 'sde_source.dart';
+import 'stale_import_work.dart';
 import 'static_data_store.dart';
 import 'zip_sde_archive.dart' show describeFailure;
 
@@ -129,8 +130,11 @@ final class ImportSdeJob implements Job<ImportResult> {
         );
         return const ImportSkipped(reason);
       }
-      await store.failRunningRecords(reason: 'interrupted', at: startedAt);
-      await _removeStaleScratch();
+      await sweepStaleImportWork(
+        store: store,
+        at: startedAt,
+        scratchRoot: scratchRoot,
+      );
       final attempt = await importBuild(
         store: store,
         source: source,
@@ -149,34 +153,6 @@ final class ImportSdeJob implements Job<ImportResult> {
     } finally {
       if (locked) await _quietly(store.unlock);
       await _quietly(store.close);
-    }
-  }
-
-  /// Deletes the temporary directories a killed import left in
-  /// [scratchRoot].
-  ///
-  /// Safe only under the lock, which every import of this database holds
-  /// while it works, and only because the root belongs to this database: no
-  /// directory with the sources' prefix in it belongs to a live import. Best
-  /// effort: nothing is recorded, and no path is logged.
-  Future<void> _removeStaleScratch() async {
-    final root = scratchRoot;
-    if (root == null || !root.existsSync()) return;
-    try {
-      await for (final entity in root.list(followLinks: false)) {
-        if (entity is Directory &&
-            entity.uri.pathSegments
-                .lastWhere((segment) => segment.isNotEmpty)
-                .startsWith(sdeScratchPrefix)) {
-          try {
-            await entity.delete(recursive: true);
-          } on FileSystemException {
-            // Left for the next import.
-          }
-        }
-      }
-    } on FileSystemException {
-      // An unreadable root changes nothing about the import.
     }
   }
 
