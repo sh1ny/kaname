@@ -115,6 +115,9 @@ void main() {
       )..start();
       addTearDown(supervisor.stop);
       staticDataRuntime.supervisor = supervisor;
+      // The call does not wait for the worker (C9); a call made before the
+      // worker runs is answered "worker not running".
+      await supervisor.ready;
 
       await session.serverpod.futureCalls
           .callWithDelay(Duration.zero)
@@ -132,5 +135,34 @@ void main() {
       expect(check.outcome, SdeCheckOutcome.failed);
       expect(check.failureReason, contains('CCP unreachable'));
     }, timeout: const Timeout(Duration(seconds: 90)));
+
+    test('the call returns at once and logs "worker not running" while the '
+        'worker has not started (C9)', () async {
+      // The spawn fails every time, so the supervisor keeps retrying and
+      // `ready` never completes.
+      final supervisor = WorkerSupervisor(
+        name: 'compute',
+        spawn: (name) async => throw StateError('no isolate'),
+        resolveSettings: () async => settings,
+        sweep: (reason) async => true,
+        terminateBackend: (backend) async => false,
+        log: (level, message) {},
+      )..start();
+      addTearDown(supervisor.stop);
+      final lines = <(WorkerLogLevel, String)>[];
+      staticDataRuntime
+        ..supervisor = supervisor
+        ..log = (level, message) => lines.add((level, message));
+
+      await StaticDataCheckCall()
+          .run(session)
+          .timeout(const Duration(seconds: 5));
+
+      await pumpEventQueue();
+      final (level, message) = lines.single;
+      expect(level, WorkerLogLevel.warning);
+      expect(message, contains('daily check answered'));
+      expect(message, contains('worker not running'));
+    });
   }, rollbackDatabase: RollbackDatabase.disabled);
 }

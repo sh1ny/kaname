@@ -86,8 +86,8 @@ StaticDataStartHook? staticDataStartHookFor({
 ///
 /// [run] starts the compute worker's supervisor, then:
 ///
-/// 1. publishes the supervisor to [staticDataRuntime], where the daily
-///    future call finds it.
+/// 1. publishes the supervisor and [log] to [staticDataRuntime], where the
+///    daily future call finds them.
 /// 2. sweeps stale import records: when no import is live (the static-data
 ///    lock is free), every `running` record is a leftover of a stopped
 ///    server and becomes `failed` ("interrupted"). That happens before any
@@ -146,7 +146,9 @@ final class StaticDataStartHook {
   /// check was due or the start-time work failed.
   Future<WorkerReply?> run() async {
     supervisor.start();
-    staticDataRuntime.supervisor = supervisor;
+    staticDataRuntime
+      ..supervisor = supervisor
+      ..log = log;
     try {
       final swept = await withSession(
         (session) => sweepRunningImports(session, reason: 'interrupted'),
