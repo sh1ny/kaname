@@ -108,9 +108,9 @@ Abbreviations: `SD` = `packages/kaname_static_data/test/`; `SI` = `server/kaname
 
 ## 8. Integration
 
-- [ ] 8.1 Run `mise run check`, `mise run test:server` and `mise run spec:validate`. Verify: all pass.
-- [ ] 8.2 [evidence] Run the opt-in `sde-live` test, which imports CCP's latest build into a scratch database. Capture the build number, row counts per file, zip and unpacked sizes, import duration, whole-build delete time and the drift report → evidence/live-import.md. This settles A6 against Resource Bounds' caps. Any A1, A6 or A9 mismatch is fixed before this task is ticked. Ask the owner before running: this is a heavy download and import.
-- [ ] 8.3 Run `mise run sde:import -- --latest --r38-report docs/static-data/r38-field-check.md` and commit the report. Update strategy row R38 with its finding (gap or no gap). Verify: the report names the build number and every declared field with present or missing.
+- [x] 8.1 Run `mise run check`, `mise run test:server` and `mise run spec:validate`. Verify: all pass.
+- [x] 8.2 [evidence] Run the opt-in `sde-live` test, which imports CCP's latest build into a scratch database. Capture the build number, row counts per file, zip and unpacked sizes, import duration, whole-build delete time and the drift report → evidence/live-import.md. This settles A6 against Resource Bounds' caps. Any A1, A6 or A9 mismatch is fixed before this task is ticked. Ask the owner before running: this is a heavy download and import.
+- [x] 8.3 Run `mise run sde:import -- --latest --r38-report docs/static-data/r38-field-check.md` and commit the report. Update strategy row R38 with its finding (gap or no gap). Verify: the report names the build number and every declared field with present or missing.
 
 ## Workflow follow-up
 

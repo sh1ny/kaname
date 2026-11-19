@@ -36,6 +36,28 @@ void main() {
   }
 
   group('LocalZipSdeSource', () {
+    test(
+      'the archive reports the zip size and the declared unpacked size',
+      () async {
+        final bytes = buildZip({
+          'a.jsonl': [
+            {'_key': 1},
+          ],
+          'b.jsonl': [
+            {'_key': 22},
+          ],
+          'readme.txt': [const RawLine('not counted: not an sde file')],
+        });
+        final archive = await sourceOf(bytes).open() as ZipSdeArchive;
+        addTearDown(archive.close);
+
+        expect(archive.zipBytes, bytes.length);
+        // '{"_key":1}\n' is 11 bytes and '{"_key":22}\n' is 12.
+        expect(archive.declaredUnpackedBytes, 23);
+        expect(archive.largestEntryBytes, 12);
+      },
+    );
+
     test('reads lines, skips blank ones and counts every line', () async {
       final source = sourceOf(
         buildZip({

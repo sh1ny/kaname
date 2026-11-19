@@ -23,6 +23,9 @@ import 'sde_source.dart';
 /// cannot grow past the check.
 final class ZipSdeArchive implements SdeArchive {
   ZipSdeArchive._(
+    this.zipBytes,
+    this.declaredUnpackedBytes,
+    this.largestEntryBytes,
     this._input,
     this._entries,
     this._workDir,
@@ -50,6 +53,7 @@ final class ZipSdeArchive implements SdeArchive {
       final archive = ZipDecoder().decodeStream(input, verify: true);
       final entries = <String, ArchiveFile>{};
       var declaredTotal = 0;
+      var largestEntry = 0;
       for (final entry in archive) {
         if (!entry.isFile || !_isTopLevelJsonl(entry.name)) continue;
         if (entry.size > limits.maxEntryBytes) {
@@ -59,6 +63,7 @@ final class ZipSdeArchive implements SdeArchive {
           );
         }
         declaredTotal += entry.size;
+        if (entry.size > largestEntry) largestEntry = entry.size;
         entries[entry.name] = entry;
       }
       if (declaredTotal > limits.maxTotalBytes) {
@@ -67,7 +72,16 @@ final class ZipSdeArchive implements SdeArchive {
           '${SdeLimits.describeBytes(limits.maxTotalBytes)} unpacked',
         );
       }
-      return ZipSdeArchive._(input, entries, workDir, limits, sourceName);
+      return ZipSdeArchive._(
+        zipFile.lengthSync(),
+        declaredTotal,
+        largestEntry,
+        input,
+        entries,
+        workDir,
+        limits,
+        sourceName,
+      );
     } on Object catch (error) {
       try {
         input?.closeSync();
@@ -81,6 +95,17 @@ final class ZipSdeArchive implements SdeArchive {
       );
     }
   }
+
+  /// The size of the zip file, in bytes. Read-only; for measurements.
+  final int zipBytes;
+
+  /// The sum of the declared unpacked sizes of the listed entries, in bytes:
+  /// what the total cap is checked against. Read-only; for measurements.
+  final int declaredUnpackedBytes;
+
+  /// The declared unpacked size of the largest listed entry, in bytes:
+  /// what the entry cap is checked against. Read-only; for measurements.
+  final int largestEntryBytes;
 
   final InputFileStream _input;
   final Map<String, ArchiveFile> _entries;

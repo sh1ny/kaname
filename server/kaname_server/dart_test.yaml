@@ -3,3 +3,6 @@ tags:
   # Tests that need the Compose stack (design D13, group 6) run in their own
   # task, not in `test:server`.
   stack: {}
+  # Imports CCP's latest build (about 100 MB) into a scratch database. Opt-in:
+  # `mise run test:sde-live`; excluded from `test:server:server` and from CI.
+  sde-live: {}

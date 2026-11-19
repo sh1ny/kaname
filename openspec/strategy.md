@@ -77,7 +77,7 @@ The first real user is expected to be the owner's own corp; until then trials us
 | R35 | init | Assistant: read-only SQL over the member's own data only | Open | — | Owner evaluating (2026-11-13) | yes | pending |
 | R36 | init | Assistant: an early M26b-lite after M8, with a minimal read-only game-log reader | Open | — | Owner evaluating (2026-11-13) | yes | pending |
 | R37 | init | Assistant: an OpenAI-compatible endpoint driver as a third route next to ACP and app-server | Open | — | Owner evaluating (2026-11-13) | yes | pending |
-| R38 | init | Optional community overlay of client-extracted game data for fields the SDE lacks right after a patch | Open (lean: only if the M1 check finds a gap) | — | Lean only | no | pending |
+| R38 | init | Optional community overlay of client-extracted game data for fields the SDE lacks right after a patch | Open (lean: only if the M1 check finds a gap). M1 check (`sde-import`): no gap; all 30 declared industry and logistics fields are present in SDE build 3714173 (`docs/static-data/r38-field-check.md`), and every import re-checks them | — | Lean only | no | pending |
 | R39 | init | First real user (Q6) | Open (likely the owner's corp) | — | Needed for user trials from M5 | no | pending |
 | R40 | init | Mobile scope (Q15) | Open, decide at M7 (lean: push plus read-only views and a few one-tap actions) | — | — | yes | pending |
 | R41 | init | Voice service adapter (Q16) | Open (lean: Mumble adapter near M25) | — | — | no | pending |

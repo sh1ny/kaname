@@ -261,12 +261,17 @@ run = [
 [tasks."test:server:server"]
 description = "Run the kaname_server tests without the stack tag"
 dir = "server/kaname_server"
-run = "dart test --exclude-tags stack"
+run = "dart test --exclude-tags stack,sde-live"
 
 [tasks."test:server:client"]
 description = "Run the kaname_client tests without the stack tag"
 dir = "server/kaname_client"
 run = "dart test --exclude-tags stack"
+
+[tasks."test:sde-live"]
+description = "Opt-in: import CCP's latest build (downloads about 100 MB) into a scratch database and print the measurements; not in CI; needs the development Redis up. SDE_LIVE_REPORT=<file> also writes the Markdown there"
+dir = "server/kaname_server"
+run = "dart test --tags sde-live"
 
 [tasks."stack:up"]
 description = "Build the web app, then build and start the self-host stack in deploy/ and wait until it is healthy; needs deploy/.env"
