@@ -92,8 +92,8 @@ Abbreviations: `SD` = `packages/kaname_static_data/test/`; `SI` = `server/kaname
 
 ## 5. Compute worker
 
-- [ ] 5.1 Write the typed messages (`WorkerStart` with a redacting `toString`, `RunImport`, `ImportFinished`, `WorkerError`) and `ComputeWorker`, which handles each request in its own task (D14, carrying C9 in its doc comment). Write the `SI/workers/compute_worker_test.dart` rows for known messages, the start message, own-connection writes, unreachable Postgres, Postgres coming back, and failed spawn first. Verify: those rows are green.
-- [ ] 5.2 Write `WorkerSupervisor`: spawn with `onExit`/`onError`, restart backoff from 1 s to 60 s with a reset after 5 minutes of uptime, and the 30 s lock-retry window for the crash mark (D10). Test it with a fake clock in `SI/workers/worker_supervisor_test.dart`. Verify: that row is green.
+- [x] 5.1 Write the typed messages (`WorkerStart` with a redacting `toString`, `RunImport`, `ImportFinished`, `WorkerError`) and `ComputeWorker`, which handles each request in its own task (D14, carrying C9 in its doc comment). Write the `SI/workers/compute_worker_test.dart` rows for known messages, the start message, own-connection writes, unreachable Postgres, Postgres coming back, and failed spawn first. Verify: those rows are green.
+- [x] 5.2 Write `WorkerSupervisor`: spawn with `onExit`/`onError`, restart backoff from 1 s to 60 s with a reset after 5 minutes of uptime, and the 30 s lock-retry window for the crash mark (D10). Test it with a fake clock in `SI/workers/worker_supervisor_test.dart`. Verify: that row is green.
 
 ## 6. Start hook and run modes
 
