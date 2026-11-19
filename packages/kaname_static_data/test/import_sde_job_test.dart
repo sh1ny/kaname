@@ -676,6 +676,88 @@ void main() {
       },
     );
 
+    test('an import removes the staged build before writing and keeps active '
+        'and previous', () async {
+      store
+        ..seedBuild(1000, BuildState.active)
+        ..seedBuild(999, BuildState.previous)
+        ..seedBuild(1001, BuildState.staged);
+      final seen = <Map<int, BuildState>>[];
+
+      final result = await ImportSdeJob(
+        store: store,
+        source: _HookedSource(
+          LocalZipSdeSource(
+            SdeFixture.complete(build: 1002).writeTo(zips),
+            scratchRoot: scratch,
+          ),
+          (index) {
+            if (index == 0) seen.add(store.builds);
+          },
+        ),
+      ).run();
+
+      succeeded(result);
+      expect(seen, [
+        {1000: BuildState.active, 999: BuildState.previous},
+      ], reason: 'build 1001 is gone before the first file is read');
+      expect(store.builds, {
+        1000: BuildState.active,
+        999: BuildState.previous,
+        1002: BuildState.staged,
+      });
+    });
+
+    test('a failed import leaves the staged build removed and active and '
+        'previous unchanged', () async {
+      store
+        ..seedBuild(1000, BuildState.active)
+        ..seedBuild(999, BuildState.previous)
+        ..seedBuild(1001, BuildState.staged);
+
+      final result = await ImportSdeJob(
+        store: store,
+        source: _HookedSource(
+          LocalZipSdeSource(
+            SdeFixture.complete(build: 1002).writeTo(zips),
+            scratchRoot: scratch,
+          ),
+          (index) {
+            if (index == 2) throw const SdeSourceException('entry broke');
+          },
+        ),
+      ).run();
+
+      expect(result, isA<ImportFailed>(), reason: '$result');
+      expect(store.builds, {1000: BuildState.active, 999: BuildState.previous});
+      expect(store.typedRows(1002, 'sde_category'), isEmpty);
+      expect(store.typedRows(1001, 'sde_type'), isEmpty);
+    });
+
+    test(
+      'an import of the staged build itself skips and removes nothing',
+      () async {
+        store
+          ..seedBuild(1000, BuildState.active)
+          ..seedBuild(1001, BuildState.staged);
+
+        final result = await import(SdeFixture.complete(build: 1001));
+
+        expect(result, isA<ImportSkipped>(), reason: '$result');
+        expect(store.builds, {
+          1000: BuildState.active,
+          1001: BuildState.staged,
+        });
+      },
+    );
+
+    test('first build becomes active with no previous build', () async {
+      final result = succeeded(await import(SdeFixture.complete()));
+
+      expect(result.state, BuildState.active);
+      expect(store.builds, {_build: BuildState.active});
+    });
+
     test(
       'other running records are marked interrupted under the lock',
       () async {
@@ -832,6 +914,46 @@ final class _BreakingArchive implements SdeArchive {
       return Stream.error(const SdeSourceException('entry broke'));
     }
     return inner.lines(fileName);
+  }
+
+  @override
+  Future<void> close() => inner.close();
+}
+
+/// Hands out the inner source's archive, but calls [onRead] before each file
+/// but `_sde` is read, counting from 0. [onRead] may throw.
+final class _HookedSource implements SdeSource {
+  _HookedSource(this.inner, this.onRead);
+
+  final SdeSource inner;
+  final void Function(int index) onRead;
+
+  @override
+  SdeSourceKind get kind => inner.kind;
+
+  @override
+  Future<int?> announcedBuild() => inner.announcedBuild();
+
+  @override
+  Future<SdeArchive> open() async => _HookedArchive(await inner.open(), onRead);
+}
+
+final class _HookedArchive implements SdeArchive {
+  _HookedArchive(this.inner, this.onRead);
+
+  final SdeArchive inner;
+  final void Function(int index) onRead;
+  int _reads = 0;
+
+  @override
+  List<String> get fileNames => inner.fileNames;
+
+  @override
+  Stream<SdeLine> lines(String fileName) {
+    if (fileName == sdeRecordFileName) return inner.lines(fileName);
+    final index = _reads++;
+    return Stream.fromFuture(Future.sync(() => onRead(index)))
+        .asyncExpand((_) => inner.lines(fileName));
   }
 
   @override

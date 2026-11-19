@@ -40,9 +40,9 @@ Abbreviations: `KSD` = `packages/kaname_static_data/test/`, `SRV` = `server/kana
 | static-data-builds → Every check, switch and rollback is recorded | CCP names an older build | KSD take_latest_build_job_test.dart | an older announced build gives outcome older | red |
 | static-data-builds → Every check, switch and rollback is recorded | Check while an import runs | KSD take_latest_build_job_test.dart | a check while the lock is held records import already running | red |
 | static-data-import → Imports run one at a time within a storage bound | Second import requested | SRV static_data/postgres_static_data_store_test.dart | second importer is skipped while the lock is held | green |
-| static-data-import → Imports run one at a time within a storage bound | Another build is staged | SRV static_data/postgres_static_data_store_test.dart | an import removes the staged build before writing and keeps active and previous | red |
-| static-data-import → Imports run one at a time within a storage bound | Import fails after removing the staged build | SRV static_data/postgres_static_data_store_test.dart | a failed import leaves the staged build removed and active and previous unchanged | red |
-| static-data-import → Only the first build is activated by the importer | Bootstrap | SRV static_data/postgres_static_data_store_test.dart | first build becomes active with no previous build | red |
+| static-data-import → Imports run one at a time within a storage bound | Another build is staged | SRV static_data/postgres_static_data_store_test.dart | an import removes the staged build before writing and keeps active and previous | green |
+| static-data-import → Imports run one at a time within a storage bound | Import fails after removing the staged build | SRV static_data/postgres_static_data_store_test.dart | a failed import leaves the staged build removed and active and previous unchanged | green |
+| static-data-import → Only the first build is activated by the importer | Bootstrap | SRV static_data/postgres_static_data_store_test.dart | first build becomes active with no previous build | green |
 | static-data-import → Only the first build is activated by the importer | Later build | KSD take_latest_build_job_test.dart | a later import is staged by the import and then switched to | red |
 | static-data-import → Only the first build is activated by the importer | Failed first import | SRV static_data/start_hook_test.dart | failed first import leaves none active and requeues on start | green |
 | static-data-import → An import starts when no build is active | First start | SRV static_data/start_hook_test.dart | no active build queues a CCP import | green |
@@ -62,8 +62,8 @@ Abbreviations: `KSD` = `packages/kaname_static_data/test/`, `SRV` = `server/kana
 
 ## 2. Import drops the staged build first
 
-- [ ] 2.1 Write failing tests for "Another build is staged", "Import fails after removing the staged build" and "Bootstrap" (map rows; `postgres_static_data_store_test.dart`), and the in-memory equivalents in `KSD import_sde_job_test.dart`. Verify: they fail for the right reason (the staged build is still removed at commit, inside the import transaction).
-- [ ] 2.2 Move the staged-build removal out of `commitBuild` into its own committed transaction under the lock, before the import transaction (D8). Split `ImportSdeJob`'s body into a lock-free `importBuild` step that `ImportSdeJob` (development task) and the later check job both call (D2). Update `ImportSdeJob`'s doc comment: C6 of `sde-import` is now satisfied, so replace it with a pointer to the switch. Verify: 2.1 tests green, all of `KSD import_sde_job_test.dart` passes, and the "Second import requested" row is re-run and still green.
+- [x] 2.1 Write failing tests for "Another build is staged", "Import fails after removing the staged build" and "Bootstrap" (map rows; `postgres_static_data_store_test.dart`), and the in-memory equivalents in `KSD import_sde_job_test.dart`. Verify: they fail for the right reason (the staged build is still removed at commit, inside the import transaction).
+- [x] 2.2 Move the staged-build removal out of `commitBuild` into its own committed transaction under the lock, before the import transaction (D8). Split `ImportSdeJob`'s body into a lock-free `importBuild` step that `ImportSdeJob` (development task) and the later check job both call (D2). Update `ImportSdeJob`'s doc comment: C6 of `sde-import` is now satisfied, so replace it with a pointer to the switch. Verify: 2.1 tests green, all of `KSD import_sde_job_test.dart` passes, and the "Second import requested" row is re-run and still green.
 
 ## 3. Switch, rollback and hold
 

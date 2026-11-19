@@ -21,8 +21,8 @@ final class StoredImportRecord {
 /// It models the lock (one holder at a time across stores that share a
 /// [InMemoryStaticDataStore.lock]), transactions that discard their writes
 /// when the body throws, and the commit rules: a build is `active` only as
-/// given, the other staged builds go in the same commit, and the active
-/// build is never removed.
+/// given and a commit removes no other build (the import drops the staged
+/// build first, with [dropStagedBuild]).
 final class InMemoryStaticDataStore implements StaticDataStore {
   /// Creates a store; stores created with the same [lock] exclude each other.
   InMemoryStaticDataStore({InMemoryLock? lock}) : lock = lock ?? InMemoryLock();
@@ -361,11 +361,6 @@ final class _Transaction implements StaticDataWriter {
     required ImportRecord record,
   }) async {
     _writes.add((store) {
-      final staged = [
-        for (final MapEntry(:key, :value) in store._builds.entries)
-          if (value == BuildState.staged && key != build) key,
-      ];
-      staged.forEach(store._removeBuild);
       store._builds[build] = state;
       store.rowsWritten++;
       final index = store._records.indexWhere((s) => s.id == recordId);

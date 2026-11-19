@@ -8,6 +8,7 @@ library;
 
 export 'src/ccp_sde_source.dart';
 export 'src/field_check.dart';
+export 'src/import_build.dart';
 export 'src/import_report.dart';
 export 'src/import_sde_job.dart';
 export 'src/in_memory_static_data_store.dart';

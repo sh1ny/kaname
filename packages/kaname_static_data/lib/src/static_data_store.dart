@@ -366,9 +366,10 @@ abstract interface class StaticDataWriter {
 
   /// Finishes the import in the same transaction as its rows.
   ///
-  /// Stores the build row as [state] with [importedAt], deletes the rows and
-  /// build rows of every other staged build, and replaces the import record
-  /// [recordId] with [record]. It never touches the active build.
+  /// Stores the build row as [state] with [importedAt] and replaces the import
+  /// record [recordId] with [record]. It removes no other build: the import
+  /// drops the staged build before its transaction starts
+  /// ([StaticDataStore.dropStagedBuild], D8).
   Future<void> commitBuild({
     required int build,
     required BuildState state,

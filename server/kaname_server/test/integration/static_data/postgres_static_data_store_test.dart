@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:kaname_core/kaname_core.dart';
@@ -290,44 +291,125 @@ void main() {
       expect(await third.tryLock(), isTrue);
     });
 
-    test('commit removes every other staged build', () async {
+    /// Imports [fixture] through a source that calls [onRead] before it hands
+    /// out each file but `_sde`, counting from 0.
+    Future<ImportResult> importHooked(
+      SdeFixture fixture,
+      PostgresStaticDataStore store,
+      FutureOr<void> Function(int index) onRead,
+    ) => ImportSdeJob(
+      store: store,
+      source: _HookedSource(
+        LocalZipSdeSource(fixture.writeTo(scratch), scratchRoot: scratch),
+        onRead,
+      ),
+    ).run();
+
+    /// Stores previous build 1, active build 2 and staged build 3, with a
+    /// diff of 2 against 3, as a finished build switch leaves them.
+    Future<PostgresStaticDataStore> threeBuilds() async {
       final store = await open();
-      await store1(store, 1, BuildState.active);
-      // Two staged builds, which only a stale state could leave at rest.
-      for (final build in [2, 3]) {
-        await session.db.unsafeExecute(
-          'INSERT INTO sde_build (build, state, "importedAt") '
-          "VALUES ($build, 'staged', now())",
-        );
-        await session.db.unsafeExecute(
-          'INSERT INTO sde_type (build, "sdeId", raw) '
-          "VALUES ($build, $build, '{}')",
-        );
-        await session.db.unsafeExecute(
-          'INSERT INTO sde_record (build, file, line, key, record) '
-          "VALUES ($build, 'f.jsonl', 1, '', '{}')",
-        );
-      }
+      await store1(store, 1, BuildState.previous);
+      await store1(store, 2, BuildState.active);
+      await store1(store, 3, BuildState.staged);
+      await store.insertDiff(
+        BuildDiffRecord(
+          fromBuild: 2,
+          toBuild: 3,
+          createdAt: _t0,
+          outcome: DiffOutcome.succeeded,
+          report: SdeJson({'files': 0}),
+        ),
+      );
+      return store;
+    }
 
-      await store1(store, 4, BuildState.staged);
+    test('an import removes the staged build before writing and keeps active '
+        'and previous', () async {
+      final store = await threeBuilds();
+      final seenBuilds = <List<int>>[];
+      final seenDiffs = <int>[];
 
-      expect((await builds()).map((b) => b.build), [1, 4]);
-      expect(await typeBuilds(), {1, 4});
+      final result = await importHooked(SdeFixture.complete(build: 4), store, (
+        index,
+      ) async {
+        if (index != 0) return;
+        // Read on another connection, so the removal is committed.
+        seenBuilds.add([for (final b in await builds()) b.build]);
+        seenDiffs.add((await SdeBuildDiff.db.find(session)).length);
+      });
+
+      expect(result, isA<ImportSucceeded>(), reason: '$result');
+      expect(seenBuilds, [
+        [1, 2],
+      ], reason: 'build 3 and its diff are gone before the first file');
+      expect(seenDiffs, [0]);
+      expect((await builds()).map((b) => (b.build, b.state)), [
+        (1, SdeBuildState.previous),
+        (2, SdeBuildState.active),
+        (4, SdeBuildState.staged),
+      ]);
+      expect(await typeBuilds(), containsAll([1, 2, 4]));
+      expect(await typeBuilds(), isNot(contains(3)));
       final rawBuilds = {
         for (final r in await SdeRecord.db.find(session)) r.build,
       };
-      expect(rawBuilds, {1, 4});
+      expect(rawBuilds, {1, 2, 4});
     });
 
-    test('first build becomes active', () async {
+    test('a failed import leaves the staged build removed and active and '
+        'previous unchanged', () async {
+      final store = await threeBuilds();
+
+      final result = await importHooked(SdeFixture.complete(build: 4), store, (
+        index,
+      ) {
+        if (index == 2) throw const SdeSourceException('entry broke');
+      });
+
+      expect(result, isA<ImportFailed>(), reason: '$result');
+      expect((result as ImportFailed).reason, 'entry broke');
+      expect((await builds()).map((b) => (b.build, b.state)), [
+        (1, SdeBuildState.previous),
+        (2, SdeBuildState.active),
+      ]);
+      expect(await typeBuilds(), {1, 2});
+      final rawBuilds = {
+        for (final r in await SdeRecord.db.find(session)) r.build,
+      };
+      expect(rawBuilds, {1, 2});
+      expect(await SdeBuildDiff.db.find(session), isEmpty);
+    });
+
+    test('dropping with no staged build removes nothing', () async {
+      final store = await open();
+      await store1(store, 1, BuildState.active);
+
+      expect(await store.dropStagedBuild(), isNull);
+      expect(await typeBuilds(), {1});
+    });
+
+    test('a commit leaves the other builds to the import that dropped '
+        'them', () async {
+      final store = await threeBuilds();
+
+      await store1(store, 4, BuildState.staged);
+
+      expect((await builds()).map((b) => b.build), [1, 2, 3, 4]);
+    });
+
+    test('first build becomes active with no previous build', () async {
       final store = await open();
 
       final result = await importZip(SdeFixture.complete(build: 1000), store);
 
       expect((result as ImportSucceeded).state, BuildState.active);
-      expect((await builds()).map((b) => (b.build, b.state, b.activeMarker)), [
-        (1000, SdeBuildState.active, true),
-      ]);
+      expect(
+        (await builds()).map(
+          (b) => (b.build, b.state, b.activeMarker, b.previousMarker),
+        ),
+        [(1000, SdeBuildState.active, true, null)],
+      );
     });
 
     test('later build stays staged', () async {
@@ -631,4 +713,44 @@ void main() {
       expect(settings.toString(), contains('<redacted>'));
     });
   });
+}
+
+/// Hands out the inner source's archive, but calls [onRead] before each file
+/// but `_sde` is read, counting from 0. [onRead] may throw.
+final class _HookedSource implements SdeSource {
+  _HookedSource(this.inner, this.onRead);
+
+  final SdeSource inner;
+  final FutureOr<void> Function(int index) onRead;
+
+  @override
+  SdeSourceKind get kind => inner.kind;
+
+  @override
+  Future<int?> announcedBuild() => inner.announcedBuild();
+
+  @override
+  Future<SdeArchive> open() async => _HookedArchive(await inner.open(), onRead);
+}
+
+final class _HookedArchive implements SdeArchive {
+  _HookedArchive(this.inner, this.onRead);
+
+  final SdeArchive inner;
+  final FutureOr<void> Function(int index) onRead;
+  int _reads = 0;
+
+  @override
+  List<String> get fileNames => inner.fileNames;
+
+  @override
+  Stream<SdeLine> lines(String fileName) {
+    if (fileName == sdeRecordFileName) return inner.lines(fileName);
+    final index = _reads++;
+    return Stream.fromFuture(Future.sync(() => onRead(index)))
+        .asyncExpand((_) => inner.lines(fileName));
+  }
+
+  @override
+  Future<void> close() => inner.close();
 }

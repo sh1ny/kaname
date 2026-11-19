@@ -144,8 +144,9 @@ List<StoredColumn> _typedColumns(TypedFile file) => [
 /// [open], takes the lock, runs [ImportSdeJob], and closes it. Everything
 /// the job writes goes through this connection: the session advisory lock
 /// ([staticDataAdvisoryLockKey]), the import records, and one transaction for
-/// a build's rows, its `sde_build` row, the removal of every other staged
-/// build and the record's `succeeded` outcome.
+/// a build's rows, its `sde_build` row and the record's `succeeded` outcome.
+/// The staged build is removed before that, in a transaction of its own
+/// ([dropStagedBuild]).
 ///
 /// The connection sets `idle_in_transaction_session_timeout` and
 /// `statement_timeout` to five minutes, and TCP keep-alive (probe after 60 s
@@ -376,8 +377,34 @@ final class PostgresStaticDataStore implements StaticDataStore {
   }
 
   @override
-  Future<int?> dropStagedBuild() =>
-      throw UnimplementedError('dropStagedBuild: task group 2 (D8)');
+  Future<int?> dropStagedBuild() => _connection.runTx((tx) async {
+    final staged = await tx.execute(
+      'SELECT "build" FROM "sde_build" WHERE "state" = \'staged\' '
+      'ORDER BY "build" DESC',
+    );
+    if (staged.isEmpty) return null;
+    // Normally one build; a stale second one goes the same way.
+    final builds = [for (final row in staged) row[0]! as int];
+    for (final table in [
+      for (final file in typedFiles) file.table,
+      'sde_record',
+    ]) {
+      await tx.execute(
+        'DELETE FROM "$table" WHERE "build" = ANY(\$1::bigint[])',
+        parameters: [builds],
+      );
+    }
+    await tx.execute(
+      'DELETE FROM "sde_build_diff" WHERE "fromBuild" = ANY(\$1::bigint[]) '
+      'OR "toBuild" = ANY(\$1::bigint[])',
+      parameters: [builds],
+    );
+    await tx.execute(
+      'DELETE FROM "sde_build" WHERE "build" = ANY(\$1::bigint[])',
+      parameters: [builds],
+    );
+    return builds.first;
+  });
 
   @override
   Future<void> insertCheck(CheckRecord record) =>
@@ -520,24 +547,6 @@ final class _PostgresWriter implements StaticDataWriter {
     required int recordId,
     required ImportRecord record,
   }) async {
-    // Other staged builds go first, found before this build's row exists.
-    // The active build is never matched.
-    const otherStaged =
-        'SELECT "build" FROM "sde_build" '
-        r''' WHERE "state" = 'staged' AND "build" <> $1::bigint''';
-    for (final table in [
-      for (final file in typedFiles) file.table,
-      'sde_record',
-    ]) {
-      await _session.execute(
-        'DELETE FROM "$table" WHERE "build" IN ($otherStaged)',
-        parameters: [build],
-      );
-    }
-    await _session.execute(
-      'DELETE FROM "sde_build" WHERE "build" IN ($otherStaged)',
-      parameters: [build],
-    );
     await _insertRows(_session, 'sde_build', _buildColumns, [
       [
         build,
