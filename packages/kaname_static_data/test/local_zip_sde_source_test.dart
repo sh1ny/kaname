@@ -1,9 +1,8 @@
 import 'dart:io';
 
 import 'package:kaname_static_data/kaname_static_data.dart';
+import 'package:kaname_static_data/testing.dart';
 import 'package:test/test.dart';
-
-import 'support/sde_zip.dart';
 
 void main() {
   late Directory scratch;

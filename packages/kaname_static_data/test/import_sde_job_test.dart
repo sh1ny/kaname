@@ -2,11 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:kaname_static_data/kaname_static_data.dart';
+import 'package:kaname_static_data/testing.dart';
 import 'package:test/test.dart';
 
 import 'support/fake_http.dart';
-import 'support/sde_fixture.dart';
-import 'support/sde_zip.dart';
 
 const int _build = 1000;
 

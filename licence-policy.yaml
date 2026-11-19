@@ -26,7 +26,7 @@ exceptions:
   - package: postgres
     version: "3.6.0"
     licence: unrecognised
-    reason: "BSD-3-Clause with the template's placeholders unfilled; through serverpod_database"
+    reason: "BSD-3-Clause with the template's placeholders unfilled; through serverpod_database, and a direct dependency of kaname_server since sde-import"
     approved: 2026-11-15
   - package: serverpod
     version: "4.1.2"

@@ -88,7 +88,7 @@ Abbreviations: `SD` = `packages/kaname_static_data/test/`; `SI` = `server/kaname
 
 ## 4. Postgres store in the server
 
-- [ ] 4.1 Write `SI/static_data/postgres_static_data_store_test.dart` rows first. Then implement `PostgresStaticDataStore` on `package:postgres`: per-job connection settings, session advisory lock, `idle_in_transaction_session_timeout` and keepalives, batched multi-row inserts, removal of other staged builds and bootstrap activation in the commit, and record pruning. Add a contract test that compares its columns and types with the generated table definitions (C4). Its doc comment carries C4 and C8. Verify: every row of that file is green under `mise run test:server`.
+- [x] 4.1 Write `SI/static_data/postgres_static_data_store_test.dart` rows first. Then implement `PostgresStaticDataStore` on `package:postgres`: per-job connection settings, session advisory lock, `idle_in_transaction_session_timeout` and keepalives, batched multi-row inserts, removal of other staged builds and bootstrap activation in the commit, and record pruning. Add a contract test that compares its columns and types with the generated table definitions (C4). Its doc comment carries C4 and C8. Verify: every row of that file is green under `mise run test:server`.
 
 ## 5. Compute worker
 
