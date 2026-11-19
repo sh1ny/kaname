@@ -1,0 +1,26 @@
+### A dogma attribute.
+### One row per record of one build.
+### A unique index on (build, sdeId) sits next to Serverpod's own `id` key:
+### Serverpod 4.1.2 tables cannot declare a composite primary key (A3).
+### The `raw` column holds the full record as `SdeJson` (from kaname_core),
+### stored as `jsonb` through `serializationDataType=jsonb` (assumption A8,
+### verified against Serverpod 4.1.2: generation produced a `jsonb` column).
+class: SdeDogmaAttribute
+table: sde_dogma_attribute
+serverOnly: true
+fields:
+  build: int
+  sdeId: int
+  name: String?
+  displayName: String?
+  attributeCategoryId: int?
+  unitId: int?
+  defaultValue: double?
+  published: bool?
+  highIsGood: bool?
+  stackable: bool?
+  raw: SdeJson, serializationDataType=jsonb
+indexes:
+  sde_dogma_attribute_build_sde_id_idx:
+    fields: build, sdeId
+    unique: true

@@ -5,5 +5,9 @@
 /// in `app_packages/` instead.
 library;
 
+export 'src/job.dart';
+export 'src/sde_json.dart';
+export 'src/worker_message.dart';
+
 /// The product name shown to users.
 const String productName = 'Kaname';

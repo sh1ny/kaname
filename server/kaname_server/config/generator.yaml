@@ -2,3 +2,6 @@ type: server
 
 client_package_path: ../kaname_client
 server_test_tools_path: test/integration/test_tools
+
+extraClasses:
+  - package:kaname_core/kaname_core.dart:SdeJson

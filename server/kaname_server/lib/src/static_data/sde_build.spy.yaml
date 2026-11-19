@@ -1,0 +1,21 @@
+### One stored build of the EVE static data export.
+### At rest there is the active build and at most one staged build (D2).
+### `activeMarker` is `true` on the active row and `null` on every other row.
+### Serverpod 4.1.2 indexes accept no `where` clause, so a partial unique
+### index is not possible (A3); a unique index on the nullable marker gives
+### the same rule, because Postgres treats nulls as distinct.
+class: SdeBuild
+table: sde_build
+serverOnly: true
+fields:
+  build: int
+  state: SdeBuildState
+  importedAt: DateTime
+  activeMarker: bool?
+indexes:
+  sde_build_build_idx:
+    fields: build
+    unique: true
+  sde_build_active_marker_idx:
+    fields: activeMarker
+    unique: true

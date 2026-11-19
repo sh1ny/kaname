@@ -1,0 +1,16 @@
+### One record of a build's file that has no typed table.
+### `key` holds the record's `_key` for integer-keyed files and is empty
+### otherwise; `line` is the line in the file. `record` is `SdeJson` stored
+### as `jsonb` (assumption A8, verified against Serverpod 4.1.2).
+class: SdeRecord
+table: sde_record
+serverOnly: true
+fields:
+  build: int
+  file: String
+  line: int
+  key: String
+  record: SdeJson, serializationDataType=jsonb
+indexes:
+  sde_record_build_file_idx:
+    fields: build, file
