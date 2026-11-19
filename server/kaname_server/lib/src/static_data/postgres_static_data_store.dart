@@ -212,6 +212,19 @@ final class PostgresStaticDataStore implements StaticDataStore {
     return result.single.single! as String;
   }
 
+  /// Reads which Postgres backend serves this connection.
+  Future<({int pid, int startMicros})> backend() async {
+    final result = await _connection.execute(
+      'SELECT pg_backend_pid(), backend_start FROM pg_stat_activity '
+      'WHERE pid = pg_backend_pid()',
+    );
+    final row = result.single;
+    return (
+      pid: row[0]! as int,
+      startMicros: (row[1]! as DateTime).microsecondsSinceEpoch,
+    );
+  }
+
   @override
   Future<bool> tryLock() async {
     final result = await _connection.execute(

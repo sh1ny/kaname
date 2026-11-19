@@ -97,10 +97,10 @@ Abbreviations: `SD` = `packages/kaname_static_data/test/`; `SI` = `server/kaname
 
 ## 6. Start hook and run modes
 
-- [ ] 6.1 Write the `SI/static_data/start_hook_test.dart` rows first. Then wire the start hook into `server.dart` after `pod.start()`: the run-mode and role gate (D8, C7), the xact-lock stale sweep, the active-build check through the ORM, and `RunImport(ccpLatest)`. Verify: those rows are green.
-- [ ] 6.2 Write `SI/workers/worker_roles_test.dart`: the maintenance step and the test run mode start no worker, and the maintenance step exits. Verify: the row is green, and `mise run stack:test` still passes (the stack's migration step exits).
-- [ ] 6.3 Write the "health answers under 1 s during an import" test with a slow fake source on an explicitly spawned worker. Verify: the row is green.
-- [ ] 6.4 Verify A5: kill the worker isolate once during the download and once during the transaction, and assert that the lock is released, no row of the build remains, the record reads `failed` ("worker crashed") and a new worker runs. Verify: the crash row is green. If A5 fails, stop and apply the drift rule.
+- [x] 6.1 Write the `SI/static_data/start_hook_test.dart` rows first. Then wire the start hook into `server.dart` after `pod.start()`: the run-mode and role gate (D8, C7), the xact-lock stale sweep, the active-build check through the ORM, and `RunImport(ccpLatest)`. Verify: those rows are green.
+- [x] 6.2 Write `SI/workers/worker_roles_test.dart`: the maintenance step and the test run mode start no worker, and the maintenance step exits. Verify: the row is green, and `mise run stack:test` still passes (the stack's migration step exits).
+- [x] 6.3 Write the "health answers under 1 s during an import" test with a slow fake source on an explicitly spawned worker. Verify: the row is green.
+- [x] 6.4 Verify A5: kill the worker isolate once during the download and once during the transaction, and assert that the lock is released, no row of the build remains, the record reads `failed` ("worker crashed") and a new worker runs. Verify: the crash row is green. If A5 fails, stop and apply the drift rule.
 
 ## 7. Development task
 

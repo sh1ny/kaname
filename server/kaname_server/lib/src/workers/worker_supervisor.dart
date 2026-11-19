@@ -25,6 +25,13 @@ typedef ResolvePostgresSettings = Future<PostgresConnectionSettings> Function();
 /// `false` when an import holds the lock. See `sweepRunningImports`.
 typedef SweepRunningImports = Future<bool> Function(String reason);
 
+/// Ends the Postgres session of [backend] and completes with `true` when a
+/// session matching both its process id and its start time was found and
+/// terminated, `false` when none was (it had already gone).
+///
+/// See `terminateBackend` for the production implementation.
+typedef TerminateBackend = Future<bool> Function(BackendIdentity backend);
+
 /// Waits for a duration.
 typedef Delay = Future<void> Function(Duration duration);
 
@@ -46,8 +53,12 @@ typedef Delay = Future<void> Function(Duration duration);
 /// ## Crashed imports
 ///
 /// A worker that crashed during an import leaves a `running` record and
-/// possibly a Postgres session lock that Postgres frees only when it notices
-/// the closed socket. After an exit the supervisor calls `sweep` with the
+/// a Postgres session (with the static-data lock) that Postgres frees only
+/// when it notices the closed socket, which can take minutes. The worker
+/// therefore reports each Postgres connection a job opens and closes
+/// ([JobConnectionOpened], [JobConnectionClosed]); the supervisor tracks the
+/// open ones, and when the worker exits (or on [stop]) it ends them itself
+/// through `terminateBackend`, logging each. Then it calls `sweep` with the
 /// reason "worker crashed" every [lockRetryInterval] (1 s) for up to
 /// [lockRetryWindow] (30 s). A `true` answer ends the retries: the records
 /// are marked. If the lock stays held for the whole window, the records are
@@ -65,13 +76,15 @@ final class WorkerSupervisor {
   ///
   /// [spawn] starts the worker and [resolveSettings] supplies the settings
   /// for its start message, each time it starts. [sweep] marks crashed
-  /// imports; [log] receives the supervisor's own lines and the worker's.
+  /// imports; [terminateBackend] ends the Postgres sessions a dead worker
+  /// left open; [log] receives the supervisor's own lines and the worker's.
   /// [now] and [delay] are the clock and are replaced in tests.
   WorkerSupervisor({
     required this.name,
     required this._spawn,
     required this._resolveSettings,
     required this._sweep,
+    required this._terminateBackend,
     required this._log,
     DateTime Function()? now,
     Delay? delay,
@@ -103,6 +116,7 @@ final class WorkerSupervisor {
   final SpawnWorker _spawn;
   final ResolvePostgresSettings _resolveSettings;
   final SweepRunningImports _sweep;
+  final TerminateBackend _terminateBackend;
   final WorkerLogSink _log;
   final DateTime Function() _now;
   final Delay _delay;
@@ -110,6 +124,7 @@ final class WorkerSupervisor {
   final WorkerMessageCodec _inbox = workerInboxCodec();
   final WorkerMessageCodec _outbox = workerOutboxCodec();
   final Map<int, Completer<WorkerReply>> _pending = {};
+  final Map<int, BackendIdentity> _backends = {};
   final Completer<void> _ready = Completer<void>();
   final Completer<void> _stopSignal = Completer<void>();
   WorkerProcess? _process;
@@ -168,6 +183,7 @@ final class WorkerSupervisor {
       _failPending('worker stopped');
     }
     await _loop;
+    await _terminateBackends();
     await _sweeping;
   }
 
@@ -189,6 +205,7 @@ final class WorkerSupervisor {
       if (upSince != null) {
         _logLine(WorkerLogLevel.error, 'exited unexpectedly: $reason');
         if (_now().difference(upSince) >= resetAfter) wait = initialDelay;
+        await _terminateBackends();
         _startSweep();
       }
       await _wait(wait);
@@ -199,6 +216,7 @@ final class WorkerSupervisor {
   /// Spawns the worker and sends its start message; `null` when [stop] won
   /// the race.
   Future<WorkerProcess?> _startWorker() async {
+    _backends.clear();
     final settings = await _resolveSettings();
     final process = await _spawn(name);
     if (_stopping) {
@@ -241,6 +259,10 @@ final class WorkerSupervisor {
     switch (message) {
       case WorkerLog(:final workerName, :final level, message: final text):
         _log(level, 'worker "$workerName": $text');
+      case JobConnectionOpened(:final backend):
+        _backends[backend.pid] = backend;
+      case JobConnectionClosed(:final backendPid):
+        _backends.remove(backendPid);
       case final WorkerReply reply:
         final pending = switch (reply.requestId) {
           final int id => _pending.remove(id),
@@ -264,6 +286,28 @@ final class WorkerSupervisor {
     _pending.clear();
     for (final MapEntry(:key, :value) in pending) {
       value.complete(WorkerError(requestId: key, reason: reason));
+    }
+  }
+
+  /// Ends the Postgres sessions the worker left open and forgets them.
+  Future<void> _terminateBackends() async {
+    final backends = _backends.values.toList();
+    _backends.clear();
+    for (final backend in backends) {
+      try {
+        if (await _terminateBackend(backend)) {
+          _logLine(
+            WorkerLogLevel.warning,
+            'ended the Postgres session (pid ${backend.pid}) the worker left '
+            'open',
+          );
+        }
+      } on Object catch (error) {
+        _logLine(
+          WorkerLogLevel.warning,
+          'cannot end the Postgres session (pid ${backend.pid}): $error',
+        );
+      }
     }
   }
 

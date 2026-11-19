@@ -321,6 +321,126 @@ final class WorkerLog extends WorkerMessage {
   String toString() => 'WorkerLog($workerName, ${level.name}: $message)';
 }
 
+/// Which Postgres backend serves a connection: its process id and the time
+/// it started (microseconds since the epoch, UTC).
+///
+/// The start time guards against a reused process id: a backend is the same
+/// one only when both match.
+final class BackendIdentity {
+  /// Creates the identity of the backend [pid] that started at
+  /// [startMicros].
+  const BackendIdentity({required this.pid, required this.startMicros});
+
+  /// The backend's process id (`pg_backend_pid()`).
+  final int pid;
+
+  /// The backend's start time (`backend_start`) in microseconds since the
+  /// epoch.
+  final int startMicros;
+
+  @override
+  bool operator ==(Object other) =>
+      other is BackendIdentity &&
+      other.pid == pid &&
+      other.startMicros == startMicros;
+
+  @override
+  int get hashCode => Object.hash(pid, startMicros);
+
+  @override
+  String toString() => 'BackendIdentity(pid: $pid, startMicros: $startMicros)';
+}
+
+/// Sent by the worker when a job has opened its Postgres connection.
+///
+/// The supervisor remembers the backend so it can end the session itself if
+/// the worker dies before closing it: Postgres frees a dead isolate's session
+/// and its static-data lock only when it notices the closed socket, which can
+/// take minutes.
+final class JobConnectionOpened extends WorkerMessage {
+  /// Creates the message for the job of [requestId] on [backend].
+  const JobConnectionOpened({required this.requestId, required this.backend});
+
+  /// The message's type name.
+  static const String typeName = 'job.connection.opened';
+
+  /// Decodes the payload [json].
+  factory JobConnectionOpened.fromJson(Map<String, Object?> json) =>
+      JobConnectionOpened(
+        requestId: json['requestId']! as int,
+        backend: BackendIdentity(
+          pid: json['backendPid']! as int,
+          startMicros: json['backendStart']! as int,
+        ),
+      );
+
+  /// The request whose job opened the connection.
+  final int requestId;
+
+  /// The backend serving the connection.
+  final BackendIdentity backend;
+
+  @override
+  String get type => typeName;
+
+  @override
+  int get version => 1;
+
+  @override
+  Map<String, Object?> payloadToJson() => {
+    'requestId': requestId,
+    'backendPid': backend.pid,
+    'backendStart': backend.startMicros,
+  };
+
+  @override
+  String toString() =>
+      'JobConnectionOpened(requestId: $requestId, backend: $backend)';
+}
+
+/// Sent by the worker when a job has closed its Postgres connection, so the
+/// supervisor forgets the backend.
+final class JobConnectionClosed extends WorkerMessage {
+  /// Creates the message for the job of [requestId] whose backend was
+  /// [backendPid].
+  const JobConnectionClosed({
+    required this.requestId,
+    required this.backendPid,
+  });
+
+  /// The message's type name.
+  static const String typeName = 'job.connection.closed';
+
+  /// Decodes the payload [json].
+  factory JobConnectionClosed.fromJson(Map<String, Object?> json) =>
+      JobConnectionClosed(
+        requestId: json['requestId']! as int,
+        backendPid: json['backendPid']! as int,
+      );
+
+  /// The request whose job closed the connection.
+  final int requestId;
+
+  /// The process id of the backend that served it.
+  final int backendPid;
+
+  @override
+  String get type => typeName;
+
+  @override
+  int get version => 1;
+
+  @override
+  Map<String, Object?> payloadToJson() => {
+    'requestId': requestId,
+    'backendPid': backendPid,
+  };
+
+  @override
+  String toString() =>
+      'JobConnectionClosed(requestId: $requestId, backendPid: $backendPid)';
+}
+
 /// Finds the value of [values] called [name].
 ///
 /// Throws a [FormatException], which the codec reports as a malformed
@@ -350,4 +470,14 @@ WorkerMessageCodec workerOutboxCodec() => WorkerMessageCodec()
     version: 1,
     decoder: WorkerError.fromJson,
   )
-  ..register(type: WorkerLog.typeName, version: 1, decoder: WorkerLog.fromJson);
+  ..register(type: WorkerLog.typeName, version: 1, decoder: WorkerLog.fromJson)
+  ..register(
+    type: JobConnectionOpened.typeName,
+    version: 1,
+    decoder: JobConnectionOpened.fromJson,
+  )
+  ..register(
+    type: JobConnectionClosed.typeName,
+    version: 1,
+    decoder: JobConnectionClosed.fromJson,
+  );

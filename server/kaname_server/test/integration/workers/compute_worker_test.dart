@@ -4,6 +4,10 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/static_data/postgres_connection_settings.dart';
+import 'package:kaname_server/src/static_data/postgres_static_data_store.dart';
+import 'package:kaname_server/src/static_data/sweep_running_imports.dart';
+import 'package:kaname_server/src/static_data/terminate_backend.dart';
+import 'package:kaname_server/src/workers/compute_worker.dart';
 import 'package:kaname_server/src/workers/worker_messages.dart';
 import 'package:kaname_server/src/workers/worker_process.dart';
 import 'package:kaname_server/src/workers/worker_supervisor.dart';
@@ -48,6 +52,93 @@ final class _GatedSource implements SdeSource {
     }
     return _inner.open();
   }
+}
+
+/// A source that keeps the worker isolate's event loop busy for three
+/// seconds before it opens the zip, as a CPU-bound import would. Top-level
+/// because it crosses into the worker isolate.
+SdeSource busySourceFactory(ImportSourceSpec spec, http.Client client) =>
+    switch (spec) {
+      LocalZipSource(:final path) => _BusySource(LocalZipSdeSource(File(path))),
+      _ => throw ArgumentError('the test factory reads local zips only'),
+    };
+
+final class _BusySource implements SdeSource {
+  _BusySource(this._inner);
+
+  final SdeSource _inner;
+
+  @override
+  SdeSourceKind get kind => _inner.kind;
+
+  @override
+  Future<int?> announcedBuild() => _inner.announcedBuild();
+
+  @override
+  Future<SdeArchive> open() async {
+    final clock = Stopwatch()..start();
+    while (clock.elapsed < const Duration(seconds: 3)) {}
+    return _inner.open();
+  }
+}
+
+/// A source with two stopping points a test opens by creating files:
+/// `<zip>.download` before the zip opens (the download phase) and `<zip>.txn`
+/// before the last file is read (inside the import transaction, after the
+/// earlier files' rows were written).
+SdeSource twoPhaseSourceFactory(ImportSourceSpec spec, http.Client client) =>
+    switch (spec) {
+      LocalZipSource(:final path) => _TwoPhaseSource(
+        LocalZipSdeSource(File(path)),
+        File('$path.download'),
+        File('$path.txn'),
+      ),
+      _ => throw ArgumentError('the test factory reads local zips only'),
+    };
+
+Future<void> _until(File gate) async {
+  while (!gate.existsSync()) {
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  }
+}
+
+final class _TwoPhaseSource implements SdeSource {
+  _TwoPhaseSource(this._inner, this._download, this._txn);
+
+  final SdeSource _inner;
+  final File _download;
+  final File _txn;
+
+  @override
+  SdeSourceKind get kind => _inner.kind;
+
+  @override
+  Future<int?> announcedBuild() => _inner.announcedBuild();
+
+  @override
+  Future<SdeArchive> open() async {
+    await _until(_download);
+    return _TwoPhaseArchive(await _inner.open(), _txn);
+  }
+}
+
+final class _TwoPhaseArchive implements SdeArchive {
+  _TwoPhaseArchive(this._inner, this._txn);
+
+  final SdeArchive _inner;
+  final File _txn;
+
+  @override
+  List<String> get fileNames => _inner.fileNames;
+
+  @override
+  Stream<SdeLine> lines(String fileName) async* {
+    if (fileName == fileNames.last) await _until(_txn);
+    yield* _inner.lines(fileName);
+  }
+
+  @override
+  Future<void> close() => _inner.close();
 }
 
 /// Postgres settings for a port nothing listens on.
@@ -210,6 +301,36 @@ void main() {
       return rows.single.single! as int;
     }
 
+    /// Waits until no worker connection is left: Postgres ends a closed
+    /// connection's backend a moment after the client closes it.
+    Future<void> noWorkerConnections() async {
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      while (await workerConnections() != 0 &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+    }
+
+    test('a job reports its Postgres backend when it opens the connection '
+        'and when it closes it', () async {
+      final worker = await WorkerHarness.start(postgres: settings);
+      addTearDown(worker.close);
+      final zip = SdeFixture.complete(build: 2101).writeTo(scratch);
+
+      await worker.runImport(LocalZipSource(zip.path));
+
+      final opened = worker.received.whereType<JobConnectionOpened>().single;
+      final closed = worker.received.whereType<JobConnectionClosed>().single;
+      expect(closed.backendPid, opened.backend.pid);
+      expect(closed.requestId, opened.requestId);
+      expect(
+        worker.received.indexOf(opened),
+        lessThan(worker.received.indexOf(closed)),
+      );
+      // The reported backend was a live session of this database.
+      expect(opened.backend.startMicros, isPositive);
+    });
+
     test('typed import request gets typed result', () async {
       final worker = await WorkerHarness.start(postgres: settings);
       addTearDown(worker.close);
@@ -231,6 +352,7 @@ void main() {
         sourceFactory: gatedSourceFactory,
       );
       addTearDown(worker.close);
+      await noWorkerConnections();
       final zip = SdeFixture.complete(build: 2200).writeTo(scratch);
 
       final answer = worker.runImport(LocalZipSource(zip.path));
@@ -259,6 +381,7 @@ void main() {
       );
       expect(await SdeType.db.find(session), isNotEmpty);
       // The connection lived for one job.
+      await noWorkerConnections();
       expect(await workerConnections(), 0);
     });
 
@@ -291,6 +414,175 @@ void main() {
       expect((up as ImportFinished).outcome, ImportOutcome.succeeded);
       expect((await SdeBuild.db.find(session)).single.build, 2300);
     });
+
+    test('health answers under 1 s during an import', () async {
+      // The import keeps its isolate busy for 3 s; the endpoint isolate must
+      // not feel it.
+      final worker = await WorkerHarness.start(
+        postgres: settings,
+        sourceFactory: busySourceFactory,
+      );
+      addTearDown(worker.close);
+      final zip = SdeFixture.complete(build: 2400).writeTo(scratch);
+
+      final answer = worker.runImport(LocalZipSource(zip.path));
+      while ((await SdeImport.db.find(session)).isEmpty) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      // Ask for health all the while the import runs.
+      var finished = false;
+      unawaited(answer.then((_) => finished = true));
+      final latencies = <Duration>[];
+      while (!finished) {
+        final stopwatch = Stopwatch()..start();
+        final report = await endpoints.health.check(sessionBuilder);
+        latencies.add(stopwatch.elapsed);
+        expect(report.postgres, DependencyStatus.up);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+
+      expect(latencies.length, greaterThan(3), reason: 'import ended early');
+      for (final latency in latencies) {
+        expect(latency, lessThan(const Duration(seconds: 1)));
+      }
+      // The import went on to its end.
+      expect((await answer as ImportFinished).outcome, ImportOutcome.succeeded);
+    });
+
+    test(
+      'crash in download and in transaction marks worker crashed and '
+      'restarts',
+      timeout: const Timeout(Duration(minutes: 2)),
+      () async {
+        final workers = <WorkerProcess>[];
+        final lines = <(WorkerLogLevel, String)>[];
+        final spawn = isolateComputeWorkerSpawn(
+          sourceFactory: twoPhaseSourceFactory,
+        );
+        final supervisor = WorkerSupervisor(
+          name: 'compute',
+          spawn: (name) async {
+            final worker = await spawn(name);
+            workers.add(worker);
+            return worker;
+          },
+          resolveSettings: () async => settings,
+          sweep: (reason) => sweepRunningImports(session, reason: reason),
+          terminateBackend: (backend) => terminateBackend(session, backend),
+          log: (level, message) => lines.add((level, message)),
+        )..start();
+        addTearDown(supervisor.stop);
+        await supervisor.ready;
+
+        Future<File> zipOf(int build, {bool openGates = false}) async {
+          final zip = SdeFixture.complete(build: build).writeTo(scratch);
+          if (openGates) {
+            File('${zip.path}.download').writeAsStringSync('go');
+            File('${zip.path}.txn').writeAsStringSync('go');
+          }
+          return zip;
+        }
+
+        Future<void> untilRunning(int expectedWorkers) async {
+          while (workers.length < expectedWorkers || !supervisor.isRunning) {
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+          }
+        }
+
+        Future<SdeImport> untilRecordEnds() async {
+          while (true) {
+            final records = await SdeImport.db.find(session);
+            final record = records.single;
+            if (record.outcome != SdeImportOutcome.running) return record;
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+          }
+        }
+
+        Future<void> expectNothingOfBuild(int build) async {
+          final tables = await _sdeTables(session);
+          for (final table in tables.where((t) => t != 'sde_import')) {
+            final rows = await session.db.unsafeQuery(
+              'SELECT count(*) FROM "$table" WHERE "build" = $build',
+            );
+            expect(rows.single.single, 0, reason: '$table holds build $build');
+          }
+        }
+
+        Future<void> expectLockReleased() async {
+          final store = await PostgresStaticDataStore.open(settings);
+          try {
+            expect(await store.tryLock(), isTrue);
+            await store.unlock();
+          } finally {
+            await store.close();
+          }
+        }
+
+        // 1. The worker dies while the import is in its download phase.
+        final inDownload = await zipOf(2);
+        final answer1 = supervisor.runImport(LocalZipSource(inDownload.path));
+        while ((await SdeImport.db.find(session)).isEmpty) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        // The job holds the lock: a sweep cannot take it.
+        expect(
+          await sweepRunningImports(session, reason: 'probe'),
+          isFalse,
+          reason: 'the live import holds the lock',
+        );
+        workers.last.kill();
+
+        expect((await answer1 as WorkerError).reason, 'worker crashed');
+        final record1 = await untilRecordEnds();
+        expect(record1.outcome, SdeImportOutcome.failed);
+        expect(record1.failureReason, 'worker crashed');
+        await expectLockReleased();
+        await expectNothingOfBuild(2);
+        await untilRunning(2);
+
+        // 2. The new worker dies inside the import transaction, with the rows
+        // of the earlier files already written.
+        await session.db.unsafeExecute('TRUNCATE sde_import');
+        final inTransaction = await zipOf(4);
+        File('${inTransaction.path}.download').writeAsStringSync('go');
+        final answer2 = supervisor.runImport(
+          LocalZipSource(inTransaction.path),
+        );
+        while (true) {
+          final open = await session.db.unsafeQuery(
+            'SELECT count(*) FROM pg_stat_activity '
+            "WHERE application_name = 'kaname-static-data' "
+            'AND xact_start IS NOT NULL',
+          );
+          if (open.single.single == 1) break;
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+        workers.last.kill();
+
+        expect((await answer2 as WorkerError).reason, 'worker crashed');
+        final record2 = await untilRecordEnds();
+        expect(record2.outcome, SdeImportOutcome.failed);
+        expect(record2.failureReason, 'worker crashed');
+        expect(record2.build, 4);
+        await expectLockReleased();
+        await expectNothingOfBuild(4);
+        expect(await SdeBuild.db.find(session), isEmpty);
+        await untilRunning(3);
+
+        // 3. The third worker runs: it imports a build.
+        final third = await zipOf(6, openGates: true);
+        final reply = await supervisor.runImport(LocalZipSource(third.path));
+        expect((reply as ImportFinished).outcome, ImportOutcome.succeeded);
+        expect(
+          lines.where(
+            (l) =>
+                l.$1 == WorkerLogLevel.error &&
+                l.$2.contains('exited unexpectedly'),
+          ),
+          hasLength(2),
+        );
+      },
+    );
   }, rollbackDatabase: RollbackDatabase.disabled);
 
   withServerpod('Given a worker that cannot be spawned', (
@@ -308,6 +600,7 @@ void main() {
         },
         resolveSettings: () async => await _unreachableSettings(),
         sweep: (reason) async => true,
+        terminateBackend: (backend) async => false,
         log: (level, message) => lines.add((level, message)),
         // Waits forever: the test wants one attempt, not a retry loop.
         delay: (_) => Completer<void>().future,

@@ -12,6 +12,8 @@ import 'package:kaname_static_data/kaname_static_data.dart';
 
 import '../static_data/postgres_static_data_store.dart';
 import 'worker_messages.dart';
+import 'worker_process.dart';
+import 'worker_supervisor.dart' show SpawnWorker;
 
 /// Builds the [SdeSource] for a requested import.
 ///
@@ -186,7 +188,18 @@ final class ComputeWorker {
       );
     }
     final client = http.Client();
+    BackendIdentity? backend;
     try {
+      // Tell the main isolate which backend this job uses, so it can end the
+      // session if this isolate dies before closing it.
+      final identity = await store.backend();
+      backend = BackendIdentity(
+        pid: identity.pid,
+        startMicros: identity.startMicros,
+      );
+      _post(
+        JobConnectionOpened(requestId: request.requestId, backend: backend),
+      );
       final job = ImportSdeJob(
         store: store,
         source: _sourceFactory(request.source, client),
@@ -197,6 +210,14 @@ final class ComputeWorker {
       // The job closes the store itself; this covers a failed construction.
       await store.close();
       client.close();
+      if (backend != null) {
+        _post(
+          JobConnectionClosed(
+            requestId: request.requestId,
+            backendPid: backend.pid,
+          ),
+        );
+      }
     }
   }
 
@@ -243,3 +264,18 @@ final class ComputeWorker {
     }
   }
 }
+
+/// The production [SpawnWorker]: runs [ComputeWorker.entryPoint] in a new
+/// isolate of this process.
+///
+/// [sourceFactory] is the test hook of [ComputeWorkerBootstrap.sourceFactory];
+/// production passes none.
+SpawnWorker isolateComputeWorkerSpawn({SdeSourceFactory? sourceFactory}) =>
+    (name) => IsolateWorkerProcess.spawn<ComputeWorkerBootstrap>(
+      name: name,
+      entry: ComputeWorker.entryPoint,
+      bootstrap: (replyPort) => ComputeWorkerBootstrap(
+        replyPort: replyPort,
+        sourceFactory: sourceFactory,
+      ),
+    );

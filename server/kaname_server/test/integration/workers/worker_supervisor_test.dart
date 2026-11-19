@@ -75,6 +75,8 @@ void main() {
   late List<(WorkerLogLevel, String)> logs;
   late List<String> sweepReasons;
   late Future<bool> Function(String) sweep;
+  late List<BackendIdentity> terminated;
+  late List<String> events;
   late WorkerSupervisor supervisor;
 
   setUp(() {
@@ -82,6 +84,8 @@ void main() {
     workers = [];
     logs = [];
     sweepReasons = [];
+    terminated = [];
+    events = [];
     sweep = (reason) async => true;
     supervisor = WorkerSupervisor(
       name: 'compute',
@@ -92,8 +96,14 @@ void main() {
       },
       resolveSettings: () async => _settings,
       sweep: (reason) {
+        events.add('sweep');
         sweepReasons.add(reason);
         return sweep(reason);
+      },
+      terminateBackend: (backend) async {
+        events.add('terminate ${backend.pid}');
+        terminated.add(backend);
+        return true;
       },
       log: (level, message) => logs.add((level, message)),
       now: clock.now,
@@ -114,6 +124,101 @@ void main() {
     workers.last.exit(reason);
     await settle();
   }
+
+  const first = BackendIdentity(pid: 4101, startMicros: 1000);
+  const second = BackendIdentity(pid: 4102, startMicros: 2000);
+
+  group('open backends of a dead worker', () {
+    test('are terminated on exit, before the crash mark', () async {
+      supervisor.start();
+      await settle();
+      workers.single
+        ..reply(JobConnectionOpened(requestId: 1, backend: first))
+        ..reply(JobConnectionOpened(requestId: 2, backend: second));
+      await settle();
+
+      await crash('boom');
+
+      expect(terminated, [first, second]);
+      expect(events, ['terminate 4101', 'terminate 4102', 'sweep']);
+      expect(
+        logs.map((l) => l.$2),
+        contains(allOf(contains('"compute"'), contains('4101'))),
+      );
+    });
+
+    test('are not terminated after the job closed its connection', () async {
+      supervisor.start();
+      await settle();
+      workers.single
+        ..reply(JobConnectionOpened(requestId: 1, backend: first))
+        ..reply(JobConnectionClosed(requestId: 1, backendPid: first.pid));
+      await settle();
+
+      await crash('boom');
+
+      expect(terminated, isEmpty);
+    });
+
+    test('are forgotten at restart', () async {
+      supervisor.start();
+      await settle();
+      workers.single.reply(JobConnectionOpened(requestId: 1, backend: first));
+      await settle();
+      await crash('first crash');
+      expect(terminated, [first]);
+
+      await crash('second crash');
+
+      expect(terminated, [first], reason: 'the second worker opened none');
+    });
+
+    test('are terminated when the supervisor stops', () async {
+      supervisor.start();
+      await settle();
+      workers.single.reply(JobConnectionOpened(requestId: 1, backend: first));
+      await settle();
+
+      await supervisor.stop();
+
+      expect(terminated, [first]);
+    });
+
+    test(
+      'a failing termination is logged and the crash is still marked',
+      () async {
+        final failing = WorkerSupervisor(
+          name: 'compute',
+          spawn: (name) async {
+            final worker = FakeWorker();
+            workers.add(worker);
+            return worker;
+          },
+          resolveSettings: () async => _settings,
+          sweep: (reason) async {
+            sweepReasons.add(reason);
+            return true;
+          },
+          terminateBackend: (backend) async => throw StateError('no session'),
+          log: (level, message) => logs.add((level, message)),
+          now: clock.now,
+          delay: clock.delay,
+        )..start();
+        addTearDown(failing.stop);
+        await settle();
+        workers.single.reply(JobConnectionOpened(requestId: 1, backend: first));
+        await settle();
+
+        await crash('boom');
+
+        expect(sweepReasons, ['worker crashed']);
+        expect(
+          logs.map((l) => l.$2),
+          contains(allOf(contains('4101'), contains('no session'))),
+        );
+      },
+    );
+  });
 
   test('restart delay doubles to 60 s', () async {
     supervisor.start();
@@ -184,6 +289,7 @@ void main() {
       },
       resolveSettings: () async => _settings,
       sweep: (reason) async => true,
+      terminateBackend: (backend) async => false,
       log: (level, message) => logs.add((level, message)),
       now: clock.now,
       // Four waits pass at once; the fifth never ends, so the loop yields.
