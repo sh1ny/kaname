@@ -12,7 +12,7 @@ The first worker is the compute worker, and its first job is the static-data imp
 
 ## Decision
 - **Postgres (C1):** a worker isolate reaches Postgres only through connections it opens itself, per job, from a typed start message, behind Kaname interfaces; never through a Serverpod `Session` and never by copying rows through the main isolate.
-  - The main isolate sends the resolved connection settings (host, port, database, user, password, TLS) in the worker's start message. The message's text form never shows the password.
+  - The main isolate sends the resolved connection settings (host, port, database, user, password, TLS; or the Unix socket path, which Serverpod's embedded Postgres in development and test uses instead of TCP) in the worker's start message. The message's text form never shows the password.
   - A job opens its connection when it starts and closes it when it ends, so a Postgres restart affects only the jobs running at that moment, and the next job reconnects.
   - Job code depends only on Kaname interfaces (for the importer, `StaticDataStore`). The server implements them in plain SQL; solo implements them on its local store.
   - Tables stay declared in `.spy.yaml`, so Serverpod migrations own the schema and the main isolate reads them through the ORM. A contract test keeps the worker's SQL in step with the generated tables.

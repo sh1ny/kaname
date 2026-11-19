@@ -16,7 +16,7 @@ TIER: FULL
 ## Context
 
 - **Server today:** `run` constructs `Serverpod` and starts it, with nothing else (`server/kaname_server/lib/server.dart:4-7`). The stack's migration step runs the same `main` in the maintenance role (`server/kaname_server/bin/main.dart:5-10`), so start-time work and the worker must check the role.
-- **Database config:** in development, Postgres is embedded, started by Serverpod and reached on a configured host and port (`server/kaname_server/config/development.yaml:26-33`). A worker that connects to that host and port reaches the same database as the main isolate.
+- **Database config:** in development, Postgres is embedded, started by Serverpod and reached on a configured host and port (`server/kaname_server/config/development.yaml:26-33`). Amended during apply (group 4): Serverpod 4.1.2's embedded Postgres, used in development and test, listens on a Unix socket only, and the configured port names the socket file, not a TCP port. A worker reaches the same database as the main isolate through that socket; staging and production use an external Postgres over TCP.
 - **Why not a Serverpod `Session` in the worker:** see A7 (Serverpod's own source, outside this repository).
 - **Packages:** `kaname_core` is pure Dart and holds only `productName` (`packages/kaname_core/lib/kaname_core.dart:1-9`). Packages under `packages/` must not depend on Flutter or Serverpod (`openspec/specs/workspace-layout/spec.md:46-47`). The server depends only on `serverpod` (`server/kaname_server/pubspec.yaml:10-11`).
 - **Tasks:** `mise run test` runs the pure packages' tests and not the server's (`mise.toml:81-89`). The server's tests need Redis and run through `test:server` (`mise.toml:241-258`).
@@ -30,7 +30,7 @@ TIER: FULL
 
 ### D1: Workers own their Postgres connections, one per job (settles R56's Postgres part; becomes ADR 0012)
 
-- **Choice:** at spawn, the main isolate sends the worker a typed start message with the resolved Postgres settings: host, port, database, user, password and TLS flag. Its `toString` redacts the password. The worker opens its own `package:postgres` connection at the start of each job and closes it at the end, so a Postgres restart affects only the jobs running at that moment.
+- **Choice:** at spawn, the main isolate sends the worker a typed start message with the resolved Postgres settings: host, port, database, user, password and TLS flag (amended during apply: or the Unix socket path, for the embedded Postgres of development and test). Its `toString` redacts the password. The worker opens its own `package:postgres` connection at the start of each job and closes it at the end, so a Postgres restart affects only the jobs running at that moment.
   - Job code depends only on Kaname interfaces, here `StaticDataStore`. The server implements it with plain SQL; solo will implement it on its local store.
   - Tables are still declared in `.spy.yaml`, so Serverpod migrations own the schema, and the main isolate reads them with the ORM.
   - ADR 0012 records the rule for Postgres only: a worker reaches Postgres through connections it opens itself, per job, from a typed start message, behind Kaname interfaces; never through a Serverpod `Session` and never by copying rows through the main isolate.
