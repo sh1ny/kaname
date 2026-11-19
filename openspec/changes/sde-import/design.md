@@ -219,7 +219,7 @@ TIER: FULL
 | D7 | Package | New `kaname_static_data` | Inside `kaname_core` | low | no | user |
 | D8 | Start path and worker start | Typed message; monolith role; non-test run modes | Future call; config key; worker in all modes | low | yes | user |
 | D9 | Test data | Synthetic fixtures plus opt-in live test | Trimmed real build | low | yes | user |
-| D10 | Worker restart | Backoff 1 s to 60 s, unlimited | Give up after 5 | low | no | user |
+| D10 | Worker restart | Backoff 1 s to 60 s, unlimited; the dead worker's Postgres backends are terminated (added during apply) | Give up after 5; accepting "interrupted" after a crash | low | no | user (backoff); agent (backend termination, for owner review) |
 | D11 | Build number | `_sde` record required | File-name fallback | low | yes | user |
 | D12 | Bad records | Skip and report | Fail the import | low | yes | user |
 | D13 | No-codegen check | Source scan test | Review rule only | low | no | user |
