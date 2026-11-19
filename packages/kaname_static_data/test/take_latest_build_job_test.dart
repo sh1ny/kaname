@@ -347,6 +347,25 @@ void main() {
 
       expect(store.checks, hasLength(100));
     });
+
+    test('an importing check keeps the newest 100 import records', () async {
+      for (var i = 0; i < 101; i++) {
+        await store.insertRecord(
+          ImportRecord(
+            source: SdeSourceKind.ccp,
+            startedAt: _t0.subtract(Duration(days: 200 - i)),
+            outcome: ImportOutcome.failed,
+          ),
+        );
+      }
+      ccp.announce(1001);
+
+      final result = await check();
+
+      expect(result, isA<BuildSwitched>());
+      expect(store.records, hasLength(100));
+      expect(store.records.last.record.outcome, ImportOutcome.succeeded);
+    });
   });
 
   group('Given no active build', () {

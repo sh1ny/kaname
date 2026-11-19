@@ -115,7 +115,7 @@ final class BuildCheckFailed extends BuildCheckResult {
 ///    insert a `failed` forward [SwitchRecord]; the build stays staged and the
 ///    check is `staged`.
 /// 7. Insert the check record, with [CheckRecord.checkedAt] the job's start
-///    time and the announced build, prune the check and switch records
+///    time and the announced build, prune the import, check and switch records
 ///    beyond [keepRecords], release the lock and close the store, whatever
 ///    the outcome.
 ///
@@ -166,7 +166,7 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
   /// How many rows the import writes at once.
   final int batchSize;
 
-  /// How many check and switch records are kept.
+  /// How many import, check and switch records are kept.
   final int keepRecords;
 
   /// The per-database directory of the sources' temporary directories.
@@ -196,6 +196,7 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
       final result = await _check(startedAt);
       await store.insertCheck(_recordOf(result, startedAt));
       await _quietly(() async {
+        await store.pruneRecords(keep: keepRecords);
         await store.pruneChecks(keep: keepRecords);
         await store.pruneSwitches(keep: keepRecords);
       });
