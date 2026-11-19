@@ -6,11 +6,13 @@
 /// solo build share it.
 library;
 
+export 'src/build_diff.dart';
 export 'src/ccp_sde_source.dart';
 export 'src/field_check.dart';
 export 'src/import_build.dart';
 export 'src/import_report.dart';
 export 'src/import_sde_job.dart';
+export 'src/in_memory_static_data_differ.dart';
 export 'src/in_memory_static_data_reader.dart';
 export 'src/in_memory_static_data_store.dart';
 export 'src/known_files.dart';

@@ -21,13 +21,13 @@ Abbreviations: `KSD` = `packages/kaname_static_data/test/`, `SRV` = `server/kana
 | static-data-builds → The previous build can be rolled back to | Import running | SRV static_data/build_switch_test.dart | rollback while the lock is held fails with import running | green |
 | static-data-builds → A rolled-back build is held | Daily check after a rollback | KSD take_latest_build_job_test.dart | a held announced build gives outcome held | red |
 | static-data-builds → A rolled-back build is held | Newer build after a rollback | KSD take_latest_build_job_test.dart | a newer build lifts the hold and makes the rolled-back-to build previous | red |
-| static-data-builds → Each build switched to is compared with the build it replaces | Changed build | SRV static_data/build_diff_test.dart | changed types file reports counts, keys and volume field | red |
+| static-data-builds → Each build switched to is compared with the build it replaces | Changed build | SRV static_data/build_diff_test.dart | changed types file reports counts, keys and volume field | green |
 | static-data-builds → Each build switched to is compared with the build it replaces | First build | KSD take_latest_build_job_test.dart | the first build becomes active with no stored report | red |
 | static-data-builds → Each build switched to is compared with the build it replaces | Build imported by the development task | KSD take_latest_build_job_test.dart | a staged development import gets its report when switched to | red |
 | static-data-builds → Each build switched to is compared with the build it replaces | Comparison fails | KSD take_latest_build_job_test.dart | a failed comparison is recorded and the switch still happens | red |
-| static-data-builds → The diff report lists counts, keys and fields | More than 1,000 changes in one file | SRV static_data/build_diff_test.dart | more than 1000 changed keys are cut off and marked | red |
-| static-data-builds → The diff report lists counts, keys and fields | File only in the new build | SRV static_data/build_diff_test.dart | a file only in the new build is listed as new with all records added | red |
-| static-data-builds → The diff report lists counts, keys and fields | Records that differ only in key order | SRV static_data/build_diff_test.dart | key order alone is not a change | red |
+| static-data-builds → The diff report lists counts, keys and fields | More than 1,000 changes in one file | SRV static_data/build_diff_test.dart | more than 1000 changed keys are cut off and marked | green |
+| static-data-builds → The diff report lists counts, keys and fields | File only in the new build | SRV static_data/build_diff_test.dart | a file only in the new build is listed as new with all records added | green |
+| static-data-builds → The diff report lists counts, keys and fields | Records that differ only in key order | SRV static_data/build_diff_test.dart | key order alone is not a change | green |
 | static-data-builds → Any two stored builds can be compared on demand | Compare active and previous | SRV static_data/dev_tasks_test.dart | sde:diff prints the same report as the stored one | red |
 | static-data-builds → Any two stored builds can be compared on demand | Build not stored | SRV static_data/dev_tasks_test.dart | sde:diff of a missing build exits non-zero with build not stored | red |
 | static-data-builds → The server checks for a new build every day | New build found | KSD take_latest_build_job_test.dart | a newer announced build is imported, compared and switched | red |
@@ -78,11 +78,11 @@ Abbreviations: `KSD` = `packages/kaname_static_data/test/`, `SRV` = `server/kana
 
 ## 5. Build diff
 
-- [ ] 5.1 Verify A1: in `SRV static_data/build_diff_test.dart`, assert that `'{"a":1,"b":2}'::jsonb = '{"b":2,"a":1}'::jsonb` holds on the embedded Postgres. Verify: the test passes. If it fails, A1 is disproved: stop and apply the drift rule.
-- [ ] 5.2 Write failing tests for "Changed build", "More than 1,000 changes in one file", "File only in the new build" and "Records that differ only in key order" (map rows). Also write tests for raw files: a raw file with a repeated key and empty-key records gives multiset counts that no join multiplies (D4, review M4). Verify: they fail.
-- [ ] 5.3 Implement `StaticDataDiffer` and `BuildDiffReport` in `kaname_static_data` (`build_diff.dart`), the SQL differ in the server store per D4 and D11 (typed tables on `sdeId` with `jsonb_each` field counts; `sde_record` classified per record; keys capped at 1,000 per file and kind with a `truncated` flag), and an in-memory differ. Write C5 in `BuildDiffReport`'s doc comment. Verify: 5.2 rows green; the C5 text is present.
-- [ ] 5.4 Verify A3 with the opt-in live test: extend `SRV static_data/sde_live_test.dart` to diff two real builds and time each per-table statement and the whole-build delete of a switch. Ask the owner before running it (heavy test). Record the timings. If a statement comes near the five-minute timeout, apply the drift rule (split by key range).
-- [ ] 5.5 [evidence] Capture the live test's timing output from 5.4 → evidence/live-diff-timing.md
+- [x] 5.1 Verify A1: in `SRV static_data/build_diff_test.dart`, assert that `'{"a":1,"b":2}'::jsonb = '{"b":2,"a":1}'::jsonb` holds on the embedded Postgres. Verify: the test passes. If it fails, A1 is disproved: stop and apply the drift rule.
+- [x] 5.2 Write failing tests for "Changed build", "More than 1,000 changes in one file", "File only in the new build" and "Records that differ only in key order" (map rows). Also write tests for raw files: a raw file with a repeated key and empty-key records gives multiset counts that no join multiplies (D4, review M4). Verify: they fail.
+- [x] 5.3 Implement `StaticDataDiffer` and `BuildDiffReport` in `kaname_static_data` (`build_diff.dart`), the SQL differ in the server store per D4 and D11 (typed tables on `sdeId` with `jsonb_each` field counts; `sde_record` classified per record; keys capped at 1,000 per file and kind with a `truncated` flag), and an in-memory differ. Write C5 in `BuildDiffReport`'s doc comment. Verify: 5.2 rows green; the C5 text is present.
+- [x] 5.4 Verify A3 with the opt-in live test: extend `SRV static_data/sde_live_test.dart` to diff two real builds and time each per-table statement and the whole-build delete of a switch. Ask the owner before running it (heavy test). Record the timings. If a statement comes near the five-minute timeout, apply the drift rule (split by key range).
+- [x] 5.5 [evidence] Capture the live test's timing output from 5.4 → evidence/live-diff-timing.md
 
 ## 6. Check job and daily schedule
 

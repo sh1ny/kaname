@@ -7,6 +7,7 @@ import 'package:postgres/postgres.dart' as pg;
 
 import 'import_record_view.dart';
 import 'postgres_connection_settings.dart';
+import 'postgres_static_data_differ.dart';
 import 'static_data_lock.dart';
 
 /// The SQL type of a column the store writes.
@@ -462,6 +463,19 @@ final class PostgresStaticDataStore implements StaticDataStore {
       },
     );
   }
+
+  /// A differ that compares stored builds on this store's connection.
+  ///
+  /// [onStatement], when given, sees every statement with its duration, and
+  /// [onStatementStart] sees each one before it runs.
+  StaticDataDiffer differ({
+    DiffStatementObserver? onStatement,
+    DiffStatementStart? onStatementStart,
+  }) => PostgresStaticDataDiffer(
+    _connection,
+    onStatement: onStatement,
+    onStatementStart: onStatementStart,
+  );
 
   @override
   Future<T> inTransaction<T>(
