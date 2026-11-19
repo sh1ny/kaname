@@ -244,6 +244,11 @@ description = "Start the development server and apply pending migrations; needs 
 dir = "server/kaname_server"
 run = "dart run bin/main.dart --apply-migrations"
 
+[tasks."sde:import"]
+description = "Import an SDE build into the development database: mise run sde:import -- <zip>|--latest [--r38-report <path>]; needs the development server running (server:dev starts the embedded Postgres)"
+dir = "server/kaname_server"
+run = "dart run tool/sde_import.dart"
+
 [tasks."test:server"]
 description = "Run the server packages' tests; needs the development Redis up (server:setup, then docker compose up -d in server/kaname_server)"
 # Starts nothing. `check`'s `test` task does not run these: they need Redis.

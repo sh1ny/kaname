@@ -104,7 +104,7 @@ Abbreviations: `SD` = `packages/kaname_static_data/test/`; `SI` = `server/kaname
 
 ## 7. Development task
 
-- [ ] 7.1 Write `server/kaname_server/tool/sde_import.dart` and `mise run sde:import -- <zip>|--latest [--r38-report <path>]`. It runs `ImportSdeJob` against the development database and prints the import record. Document its precondition (the dev server is running) in the task description and the tool's doc comment. Verify: running it on a synthetic fixture zip against the dev database prints a `succeeded` record, and a second run prints `skipped`.
+- [x] 7.1 Write `server/kaname_server/tool/sde_import.dart` and `mise run sde:import -- <zip>|--latest [--r38-report <path>]`. It runs `ImportSdeJob` against the development database and prints the import record. Document its precondition (the dev server is running) in the task description and the tool's doc comment. Verify: running it on a synthetic fixture zip against the dev database prints a `succeeded` record, and a second run prints `skipped`.
 
 ## 8. Integration
 

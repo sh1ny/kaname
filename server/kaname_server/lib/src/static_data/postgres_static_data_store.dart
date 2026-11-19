@@ -5,6 +5,7 @@ import 'package:kaname_core/kaname_core.dart';
 import 'package:kaname_static_data/kaname_static_data.dart';
 import 'package:postgres/postgres.dart' as pg;
 
+import 'import_record_view.dart';
 import 'postgres_connection_settings.dart';
 import 'static_data_lock.dart';
 
@@ -223,6 +224,35 @@ final class PostgresStaticDataStore implements StaticDataStore {
       pid: row[0]! as int,
       startMicros: (row[1]! as DateTime).microsecondsSinceEpoch,
     );
+  }
+
+  /// The newest import record by start time, or `null` when there is none.
+  ///
+  /// For the development task, which shows what its own import wrote.
+  Future<ImportRecordView?> newestImportRecord() =>
+      _readImportRecord('', const []);
+
+  /// The newest `succeeded` import record of [build], or `null`.
+  ///
+  /// A `skipped` import ("build already stored") has no report of its own;
+  /// the record of the import that stored the build does.
+  Future<ImportRecordView?> latestSucceededImportOf(int build) =>
+      _readImportRecord("WHERE \"outcome\" = 'succeeded' AND \"build\" = \$1", [
+        build,
+      ]);
+
+  Future<ImportRecordView?> _readImportRecord(
+    String where,
+    List<Object?> parameters,
+  ) async {
+    final names = [for (final column in _importColumns) '"${column.name}"'];
+    final result = await _connection.execute(
+      'SELECT ${names.join(', ')} FROM "sde_import" $where '
+      'ORDER BY "startedAt" DESC, "id" DESC LIMIT 1',
+      parameters: parameters,
+    );
+    if (result.isEmpty) return null;
+    return ImportRecordView.fromRow(result.single.toColumnMap());
   }
 
   @override
