@@ -10,9 +10,11 @@
 // ignore_for_file: invalid_use_of_internal_member
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
+import 'package:kaname_server/src/generated/future_calls.dart' as _ibdqg5o2;
 import 'package:serverpod/serverpod.dart' as _is;
 
 import '../health/health_endpoint.dart' as _id9paj9q;
+export 'future_calls.dart' show ServerpodFutureCallsGetter;
 
 class Endpoints extends _is.EndpointDispatch {
   @override
@@ -37,5 +39,10 @@ class Endpoints extends _is.EndpointDispatch {
         ),
       },
     );
+  }
+
+  @override
+  _is.FutureCallDispatch? get futureCalls {
+    return _ibdqg5o2.FutureCalls();
   }
 }

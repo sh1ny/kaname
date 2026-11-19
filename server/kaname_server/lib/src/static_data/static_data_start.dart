@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:serverpod/serverpod.dart';
 
 import '../workers/worker_messages.dart';
+import 'static_data_check_call.dart';
 import 'static_data_start_hook.dart';
 
 /// Starts the static-data work of [pod], which must have started.
@@ -16,7 +17,7 @@ import 'static_data_start_hook.dart';
 /// as a Serverpod shutdown task (`pod.experimental.shutdownTasks`, which runs
 /// after the servers stop accepting requests, whether the process gets a
 /// signal or [Serverpod.shutdown] is called), and runs the hook detached, so
-/// the server answers requests while the import runs. Returns the hook, or
+/// the server answers requests while the check runs. Returns the hook, or
 /// `null` when none was built, after logging that none starts.
 ///
 /// Worker and hook lines go to Serverpod's logging through short sessions, at
@@ -26,6 +27,7 @@ StaticDataStartHook? startStaticData(Serverpod pod) {
     runMode: pod.runMode,
     role: pod.config.role.name,
     withSession: <T>(action) => pod.withSession(action),
+    scheduleDailyCheck: () => scheduleDailyCheck(pod),
     log: (level, message) => _log(pod, level, message),
   );
   if (hook == null) {

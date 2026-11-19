@@ -14,6 +14,7 @@
 import 'dart:async' as _ida;
 import 'dart:io' as _idi;
 
+import 'package:kaname_server/src/generated/future_calls.dart' as _ibdqg5o2;
 import 'package:kaname_server/src/generated/health/health_report.dart'
     as _iaouzw49;
 import 'package:serverpod/serverpod.dart' as _is;
@@ -151,6 +152,8 @@ void withServerpod(
 }
 
 class TestEndpoints {
+  late final futureCalls = _FutureCalls();
+
   late final _HealthEndpoint health;
 }
 
@@ -163,6 +166,10 @@ class _InternalTestEndpoints extends TestEndpoints
   ) {
     health = _HealthEndpoint(endpoints, serializationManager);
   }
+}
+
+class _FutureCalls {
+  late final staticDataCheckCall = _StaticDataCheckCallFutureCall();
 }
 
 class _HealthEndpoint {
@@ -198,5 +205,20 @@ class _HealthEndpoint {
         await _localUniqueSession.close();
       }
     });
+  }
+}
+
+class _StaticDataCheckCallFutureCall {
+  Future<void> run(_ist.TestSessionBuilder sessionBuilder) async {
+    var _localUniqueSession =
+        (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild();
+    try {
+      await _ibdqg5o2.StaticDataCheckCallRunFutureCall().invoke(
+        _localUniqueSession,
+        null,
+      );
+    } finally {
+      await _localUniqueSession.close();
+    }
   }
 }
