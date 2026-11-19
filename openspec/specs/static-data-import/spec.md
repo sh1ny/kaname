@@ -151,18 +151,22 @@ Each import attempt SHALL leave one import record: build number when known, sour
 - **THEN** no data is written and the import record holds build N with outcome `skipped`
 
 ### Requirement: Imports run one at a time within a storage bound
-At most one import SHALL run at a time across every process that imports into the same database. At most one staged build SHALL exist at rest: a successful import SHALL remove every other staged build, older or newer, and SHALL never remove the active build.
+At most one import SHALL run at a time across every process that imports into the same database. At rest there SHALL be at most one active, one previous and one staged build. An import SHALL remove the staged build, if any, before it writes its first row, and SHALL never remove the active or the previous build.
 
 #### Scenario: Second import requested
 - **WHEN** an import is requested while another is running, in the server or the development task
 - **THEN** no second import starts, and the request is recorded with outcome `skipped` and reason "import already running"
 
 #### Scenario: Another build is staged
-- **WHEN** build N is active, build M is staged (older or newer than the new build), and build N+2 is imported successfully
-- **THEN** build M's rows are removed in the same commit that stores build N+2, and build N is still active
+- **WHEN** build N is active, build N-1 is previous, build M is staged (older or newer than the new build), and an import of build N+2 starts
+- **THEN** build M's rows are removed before the import writes its first row, and builds N and N-1 keep their states and rows
+
+#### Scenario: Import fails after removing the staged build
+- **WHEN** build M was staged and the import that removed it then fails
+- **THEN** build M stays removed, no row of the failed import remains, and the active and previous builds are unchanged
 
 ### Requirement: An import starts when no build is active
-On start in the development, staging or production run mode and the monolith role, a server with no active build SHALL queue an import of CCP's latest build. A server with an active build, in the test run mode, or in the maintenance role SHALL start no import on start. A development task SHALL run the same import against a local zip.
+On start in the development, staging or production run mode and the monolith role, a server with no active build SHALL run a build check, which imports CCP's latest build. A server with an active build SHALL import on start only when its start-up check finds a newer build. The test run mode and the maintenance role SHALL start no import on start. A development task SHALL run the same import against a local zip.
 
 #### Scenario: First start
 - **WHEN** the server starts with no stored build and CCP is reachable
@@ -170,26 +174,26 @@ On start in the development, staging or production run mode and the monolith rol
 
 #### Scenario: First start offline
 - **WHEN** the server starts with no stored build and CCP cannot be reached
-- **THEN** the server still starts and serves, and a failed import record names CCP as unreachable
+- **THEN** the server still starts and serves, no import record is written, and a failed check record names CCP as unreachable
 
 #### Scenario: Restart with an active build
 - **WHEN** the server starts with an active build
-- **THEN** no import starts
+- **THEN** no import starts unless the start-up check finds that CCP's latest build is newer than the active build and not held
 
 #### Scenario: Test run mode or migration step
 - **WHEN** the server starts with no stored build in the test run mode, or as the maintenance migration step
 - **THEN** no import starts and no request goes to CCP
 
 ### Requirement: Only the first build is activated by the importer
-The importer SHALL make a build active only when no build is active. Every other successful import SHALL leave the build staged.
+The importer SHALL make a build active only when no build is active. Every other successful import SHALL leave the build staged, for the build switch to take it from there.
 
 #### Scenario: Bootstrap
 - **WHEN** an import of build N succeeds and no build is active
-- **THEN** build N becomes active
+- **THEN** build N becomes active and no build is previous
 
 #### Scenario: Later build
 - **WHEN** an import of build N+1 succeeds while build N is active
-- **THEN** build N stays active and build N+1 is staged
+- **THEN** the import itself leaves build N active and build N+1 staged, and the switch to build N+1 then follows as the build switch requires
 
 #### Scenario: Failed first import
 - **WHEN** the first import fails
