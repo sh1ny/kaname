@@ -1,0 +1,5 @@
+### How the comparison of two builds ended.
+enum: SdeBuildDiffOutcome
+values:
+  - succeeded
+  - failed

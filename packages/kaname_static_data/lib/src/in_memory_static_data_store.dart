@@ -34,6 +34,10 @@ final class InMemoryStaticDataStore implements StaticDataStore {
   final Map<int, Map<String, List<TypedRow>>> _typed = {};
   final Map<int, List<RawRecord>> _raw = {};
   final List<StoredImportRecord> _records = [];
+  final Set<int> _held = {};
+  final List<CheckRecord> _checks = [];
+  final List<SwitchRecord> _switches = [];
+  final List<BuildDiffRecord> _diffs = [];
   int _nextRecordId = 1;
   bool _holdsLock = false;
 
@@ -49,8 +53,20 @@ final class InMemoryStaticDataStore implements StaticDataStore {
   /// The stored builds and their states.
   Map<int, BuildState> get builds => Map.unmodifiable(_builds);
 
+  /// The builds that are held.
+  Set<int> get heldBuilds => Set.unmodifiable(_held);
+
   /// The import records, oldest first.
   List<StoredImportRecord> get records => List.unmodifiable(_records);
+
+  /// The check records, oldest first.
+  List<CheckRecord> get checks => List.unmodifiable(_checks);
+
+  /// The switch and rollback records, oldest first.
+  List<SwitchRecord> get switches => List.unmodifiable(_switches);
+
+  /// The stored comparisons, oldest first.
+  List<BuildDiffRecord> get diffs => List.unmodifiable(_diffs);
 
   /// The typed rows of [table] for [build].
   List<TypedRow> typedRows(int build, String table) =>
@@ -67,7 +83,29 @@ final class InMemoryStaticDataStore implements StaticDataStore {
   ];
 
   /// Puts an already stored build, for tests that start from one.
-  void seedBuild(int build, BuildState state) => _builds[build] = state;
+  void seedBuild(int build, BuildState state, {bool held = false}) {
+    _builds[build] = state;
+    if (held) {
+      _held.add(build);
+    } else {
+      _held.remove(build);
+    }
+  }
+
+  void _removeBuild(int build) {
+    _builds.remove(build);
+    _typed.remove(build);
+    _raw.remove(build);
+    _held.remove(build);
+    _diffs.removeWhere((d) => d.fromBuild == build || d.toBuild == build);
+  }
+
+  int? _buildIn(BuildState state) {
+    for (final MapEntry(:key, :value) in _builds.entries) {
+      if (value == state) return key;
+    }
+    return null;
+  }
 
   @override
   Future<bool> tryLock() async {
@@ -137,10 +175,70 @@ final class InMemoryStaticDataStore implements StaticDataStore {
       _builds.values.any((state) => state == BuildState.active);
 
   @override
+  Future<List<StoredBuild>> storedBuilds() async => [
+    for (final build in _builds.keys.toList()..sort())
+      StoredBuild(
+        build: build,
+        state: _builds[build]!,
+        held: _held.contains(build),
+      ),
+  ];
+
+  @override
+  Future<int?> dropStagedBuild() async {
+    final staged = _buildIn(BuildState.staged);
+    if (staged != null) _removeBuild(staged);
+    return staged;
+  }
+
+  @override
+  Future<void> insertCheck(CheckRecord record) async => _checks.add(record);
+
+  @override
+  Future<DateTime?> newestCheckedAt() async {
+    DateTime? newest;
+    for (final CheckRecord(:checkedAt) in _checks) {
+      if (newest == null || checkedAt.isAfter(newest)) newest = checkedAt;
+    }
+    return newest;
+  }
+
+  @override
+  Future<void> pruneChecks({required int keep}) async =>
+      _keepNewest(_checks, keep, (c) => c.checkedAt);
+
+  @override
+  Future<void> insertFailedSwitch(SwitchRecord record) async {
+    if (record.outcome != SwitchOutcome.failed) {
+      throw ArgumentError.value(record, 'record', 'must be a failed switch');
+    }
+    _switches.add(record);
+  }
+
+  @override
+  Future<void> pruneSwitches({required int keep}) async =>
+      _keepNewest(_switches, keep, (s) => s.at);
+
+  @override
+  Future<void> insertDiff(BuildDiffRecord record) async => _diffs.add(record);
+
+  @override
+  Future<BuildDiffRecord?> diff(int fromBuild, int toBuild) async {
+    BuildDiffRecord? newest;
+    for (final record in _diffs) {
+      if (record.fromBuild != fromBuild || record.toBuild != toBuild) continue;
+      if (newest == null || !record.createdAt.isBefore(newest.createdAt)) {
+        newest = record;
+      }
+    }
+    return newest;
+  }
+
+  @override
   Future<T> inTransaction<T>(
     Future<T> Function(StaticDataWriter writer) body,
   ) async {
-    final transaction = _Transaction();
+    final transaction = _Transaction(this);
     final result = await body(transaction);
     transaction.applyTo(this);
     committedTransactions++;
@@ -161,8 +259,78 @@ final class InMemoryLock {
   bool isHeld = false;
 }
 
+/// Keeps the newest [keep] of [items] by [timeOf], dropping the rest.
+void _keepNewest<T>(List<T> items, int keep, DateTime Function(T) timeOf) {
+  if (items.length <= keep) return;
+  final indexed = [for (final (i, item) in items.indexed) (i, item)]
+    ..sort((a, b) {
+      final byTime = timeOf(b.$2).compareTo(timeOf(a.$2));
+      return byTime != 0 ? byTime : b.$1.compareTo(a.$1);
+    });
+  final kept = indexed.take(keep).map((e) => e.$1).toSet();
+  final survivors = [
+    for (final (i, item) in items.indexed)
+      if (kept.contains(i)) item,
+  ];
+  items
+    ..clear()
+    ..addAll(survivors);
+}
+
 final class _Transaction implements StaticDataWriter {
+  _Transaction(this._store);
+
+  final InMemoryStaticDataStore _store;
   final List<void Function(InMemoryStaticDataStore store)> _writes = [];
+
+  @override
+  Future<void> switchTo(int build, {required DateTime at}) async {
+    if (_store._builds[build] != BuildState.staged) {
+      throw StateError('build $build is not staged');
+    }
+    final fromBuild = _store._buildIn(BuildState.active);
+    _writes.add((store) {
+      final oldPrevious = store._buildIn(BuildState.previous);
+      if (oldPrevious != null) store._removeBuild(oldPrevious);
+      if (fromBuild != null) store._builds[fromBuild] = BuildState.previous;
+      store._builds[build] = BuildState.active;
+      store._held.removeWhere((held) => held < build);
+      store._switches.add(
+        SwitchRecord(
+          kind: SwitchKind.forward,
+          fromBuild: fromBuild,
+          toBuild: build,
+          at: at,
+          outcome: SwitchOutcome.succeeded,
+        ),
+      );
+    });
+  }
+
+  @override
+  Future<void> rollBack({required DateTime at}) async {
+    final active = _store._buildIn(BuildState.active);
+    final previous = _store._buildIn(BuildState.previous);
+    if (active == null || previous == null) {
+      throw StateError('no previous build to roll back to');
+    }
+    _writes.add((store) {
+      store._builds[active] = BuildState.previous;
+      store._builds[previous] = BuildState.active;
+      store._held
+        ..add(active)
+        ..remove(previous);
+      store._switches.add(
+        SwitchRecord(
+          kind: SwitchKind.rollback,
+          fromBuild: active,
+          toBuild: previous,
+          at: at,
+          outcome: SwitchOutcome.succeeded,
+        ),
+      );
+    });
+  }
 
   @override
   Future<void> insertTyped(int build, List<TypedRow> rows) async {
@@ -197,11 +365,7 @@ final class _Transaction implements StaticDataWriter {
         for (final MapEntry(:key, :value) in store._builds.entries)
           if (value == BuildState.staged && key != build) key,
       ];
-      for (final other in staged) {
-        store._builds.remove(other);
-        store._typed.remove(other);
-        store._raw.remove(other);
-      }
+      staged.forEach(store._removeBuild);
       store._builds[build] = state;
       store.rowsWritten++;
       final index = store._records.indexWhere((s) => s.id == recordId);

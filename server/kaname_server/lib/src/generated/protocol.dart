@@ -18,11 +18,18 @@ import 'package:serverpod/serverpod.dart' as _is;
 import 'health/dependency_status.dart' as _iztepymd;
 import 'health/health_report.dart' as _if75m2mz;
 import 'static_data/sde_build.dart' as _iqvvlz0n;
+import 'static_data/sde_build_diff.dart' as _i6rvvlmq;
+import 'static_data/sde_build_diff_outcome.dart' as _iby3hddy;
 import 'static_data/sde_build_state.dart' as _isyk7irp;
+import 'static_data/sde_check.dart' as _ig50l1bg;
+import 'static_data/sde_check_outcome.dart' as _illgk9kj;
 import 'static_data/sde_import.dart' as _iucgsa1v;
 import 'static_data/sde_import_outcome.dart' as _is3f4xcr;
 import 'static_data/sde_import_source.dart' as _ice2slzs;
 import 'static_data/sde_record.dart' as _i9m0mwcw;
+import 'static_data/sde_switch.dart' as _itdhfbzo;
+import 'static_data/sde_switch_kind.dart' as _iqktcwf1;
+import 'static_data/sde_switch_outcome.dart' as _icb88h1v;
 import 'static_data/tables/sde_category.dart' as _ia9vf0pu;
 import 'static_data/tables/sde_constellation.dart' as _i99obepy;
 import 'static_data/tables/sde_dogma_attribute.dart' as _ighsxk4r;
@@ -39,11 +46,18 @@ import 'static_data/tables/sde_type_dogma.dart' as _ib14m8bx;
 export 'health/dependency_status.dart';
 export 'health/health_report.dart';
 export 'static_data/sde_build.dart';
+export 'static_data/sde_build_diff.dart';
+export 'static_data/sde_build_diff_outcome.dart';
 export 'static_data/sde_build_state.dart';
+export 'static_data/sde_check.dart';
+export 'static_data/sde_check_outcome.dart';
 export 'static_data/sde_import.dart';
 export 'static_data/sde_import_outcome.dart';
 export 'static_data/sde_import_source.dart';
 export 'static_data/sde_record.dart';
+export 'static_data/sde_switch.dart';
+export 'static_data/sde_switch_kind.dart';
+export 'static_data/sde_switch_outcome.dart';
 export 'static_data/tables/sde_category.dart';
 export 'static_data/tables/sde_constellation.dart';
 export 'static_data/tables/sde_dogma_attribute.dart';
@@ -74,11 +88,18 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_iztepymd.DependencyStatus>,
           _is.getType<_if75m2mz.HealthReport>,
           _is.getType<_iqvvlz0n.SdeBuild>,
+          _is.getType<_i6rvvlmq.SdeBuildDiff>,
+          _is.getType<_iby3hddy.SdeBuildDiffOutcome>,
           _is.getType<_isyk7irp.SdeBuildState>,
+          _is.getType<_ig50l1bg.SdeCheck>,
+          _is.getType<_illgk9kj.SdeCheckOutcome>,
           _is.getType<_iucgsa1v.SdeImport>,
           _is.getType<_is3f4xcr.SdeImportOutcome>,
           _is.getType<_ice2slzs.SdeImportSource>,
           _is.getType<_i9m0mwcw.SdeRecord>,
+          _is.getType<_itdhfbzo.SdeSwitch>,
+          _is.getType<_iqktcwf1.SdeSwitchKind>,
+          _is.getType<_icb88h1v.SdeSwitchOutcome>,
           _is.getType<_ia9vf0pu.SdeCategory>,
           _is.getType<_i99obepy.SdeConstellation>,
           _is.getType<_ighsxk4r.SdeDogmaAttribute>,
@@ -95,11 +116,18 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_iztepymd.DependencyStatus?>,
           _is.getType<_if75m2mz.HealthReport?>,
           _is.getType<_iqvvlz0n.SdeBuild?>,
+          _is.getType<_i6rvvlmq.SdeBuildDiff?>,
+          _is.getType<_iby3hddy.SdeBuildDiffOutcome?>,
           _is.getType<_isyk7irp.SdeBuildState?>,
+          _is.getType<_ig50l1bg.SdeCheck?>,
+          _is.getType<_illgk9kj.SdeCheckOutcome?>,
           _is.getType<_iucgsa1v.SdeImport?>,
           _is.getType<_is3f4xcr.SdeImportOutcome?>,
           _is.getType<_ice2slzs.SdeImportSource?>,
           _is.getType<_i9m0mwcw.SdeRecord?>,
+          _is.getType<_itdhfbzo.SdeSwitch?>,
+          _is.getType<_iqktcwf1.SdeSwitchKind?>,
+          _is.getType<_icb88h1v.SdeSwitchOutcome?>,
           _is.getType<_ia9vf0pu.SdeCategory?>,
           _is.getType<_i99obepy.SdeConstellation?>,
           _is.getType<_ighsxk4r.SdeDogmaAttribute?>,
@@ -123,11 +151,18 @@ class Protocol extends _is.DatabaseSerializationManager
           'DependencyStatus',
           'HealthReport',
           'SdeBuild',
+          'SdeBuildDiff',
+          'SdeBuildDiffOutcome',
           'SdeBuildState',
+          'SdeCheck',
+          'SdeCheckOutcome',
           'SdeImport',
           'SdeImportOutcome',
           'SdeImportSource',
           'SdeRecord',
+          'SdeSwitch',
+          'SdeSwitchKind',
+          'SdeSwitchOutcome',
           'SdeCategory',
           'SdeConstellation',
           'SdeDogmaAttribute',
@@ -187,6 +222,19 @@ class Protocol extends _is.DatabaseSerializationManager
           isNullable: true,
           dartType: 'bool?',
         ),
+        _isp.ColumnDefinition(
+          name: 'previousMarker',
+          columnType: _isp.ColumnType.boolean,
+          isNullable: true,
+          dartType: 'bool?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'held',
+          columnType: _isp.ColumnType.boolean,
+          isNullable: false,
+          dartType: 'bool',
+          columnDefault: 'false',
+        ),
       ],
       foreignKeys: [],
       indexes: [
@@ -214,6 +262,91 @@ class Protocol extends _is.DatabaseSerializationManager
           ],
           type: 'btree',
           isUnique: true,
+          isPrimary: false,
+        ),
+        _isp.IndexDefinition(
+          indexName: 'sde_build_previous_marker_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'previousMarker',
+            ),
+          ],
+          type: 'btree',
+          isUnique: true,
+          isPrimary: false,
+        ),
+      ],
+      managed: true,
+    ),
+    _isp.TableDefinition(
+      name: 'sde_build_diff',
+      dartName: 'SdeBuildDiff',
+      schema: 'public',
+      module: 'kaname',
+      columns: [
+        _isp.ColumnDefinition(
+          name: 'id',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'serial',
+        ),
+        _isp.ColumnDefinition(
+          name: 'fromBuild',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'toBuild',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'createdAt',
+          columnType: _isp.ColumnType.timestampWithoutTimeZone,
+          isNullable: false,
+          dartType: 'DateTime',
+        ),
+        _isp.ColumnDefinition(
+          name: 'outcome',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'protocol:SdeBuildDiffOutcome',
+        ),
+        _isp.ColumnDefinition(
+          name: 'failureReason',
+          columnType: _isp.ColumnType.text,
+          isNullable: true,
+          dartType: 'String?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'report',
+          columnType: _isp.ColumnType.jsonb,
+          isNullable: true,
+          dartType: 'package:kaname_core/kaname_core.dart:SdeJson?',
+        ),
+      ],
+      foreignKeys: [],
+      indexes: [
+        _isp.IndexDefinition(
+          indexName: 'sde_build_diff_builds_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'fromBuild',
+            ),
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'toBuild',
+            ),
+          ],
+          type: 'btree',
+          isUnique: false,
           isPrimary: false,
         ),
       ],
@@ -286,6 +419,62 @@ class Protocol extends _is.DatabaseSerializationManager
           ],
           type: 'btree',
           isUnique: true,
+          isPrimary: false,
+        ),
+      ],
+      managed: true,
+    ),
+    _isp.TableDefinition(
+      name: 'sde_check',
+      dartName: 'SdeCheck',
+      schema: 'public',
+      module: 'kaname',
+      columns: [
+        _isp.ColumnDefinition(
+          name: 'id',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'serial',
+        ),
+        _isp.ColumnDefinition(
+          name: 'checkedAt',
+          columnType: _isp.ColumnType.timestampWithoutTimeZone,
+          isNullable: false,
+          dartType: 'DateTime',
+        ),
+        _isp.ColumnDefinition(
+          name: 'latestBuild',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: true,
+          dartType: 'int?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'outcome',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'protocol:SdeCheckOutcome',
+        ),
+        _isp.ColumnDefinition(
+          name: 'failureReason',
+          columnType: _isp.ColumnType.text,
+          isNullable: true,
+          dartType: 'String?',
+        ),
+      ],
+      foreignKeys: [],
+      indexes: [
+        _isp.IndexDefinition(
+          indexName: 'sde_check_checked_at_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'checkedAt',
+            ),
+          ],
+          type: 'btree',
+          isUnique: false,
           isPrimary: false,
         ),
       ],
@@ -1224,6 +1413,74 @@ class Protocol extends _is.DatabaseSerializationManager
       managed: true,
     ),
     _isp.TableDefinition(
+      name: 'sde_switch',
+      dartName: 'SdeSwitch',
+      schema: 'public',
+      module: 'kaname',
+      columns: [
+        _isp.ColumnDefinition(
+          name: 'id',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'serial',
+        ),
+        _isp.ColumnDefinition(
+          name: 'kind',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'protocol:SdeSwitchKind',
+        ),
+        _isp.ColumnDefinition(
+          name: 'fromBuild',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: true,
+          dartType: 'int?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'toBuild',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'at',
+          columnType: _isp.ColumnType.timestampWithoutTimeZone,
+          isNullable: false,
+          dartType: 'DateTime',
+        ),
+        _isp.ColumnDefinition(
+          name: 'outcome',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'protocol:SdeSwitchOutcome',
+        ),
+        _isp.ColumnDefinition(
+          name: 'failureReason',
+          columnType: _isp.ColumnType.text,
+          isNullable: true,
+          dartType: 'String?',
+        ),
+      ],
+      foreignKeys: [],
+      indexes: [
+        _isp.IndexDefinition(
+          indexName: 'sde_switch_at_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'at',
+            ),
+          ],
+          type: 'btree',
+          isUnique: false,
+          isPrimary: false,
+        ),
+      ],
+      managed: true,
+    ),
+    _isp.TableDefinition(
       name: 'sde_type',
       dartName: 'SdeType',
       schema: 'public',
@@ -1417,8 +1674,20 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _iqvvlz0n.SdeBuild) {
       return _iqvvlz0n.SdeBuild.fromJson(data) as T;
     }
+    if (t == _i6rvvlmq.SdeBuildDiff) {
+      return _i6rvvlmq.SdeBuildDiff.fromJson(data) as T;
+    }
+    if (t == _iby3hddy.SdeBuildDiffOutcome) {
+      return _iby3hddy.SdeBuildDiffOutcome.fromJson(data) as T;
+    }
     if (t == _isyk7irp.SdeBuildState) {
       return _isyk7irp.SdeBuildState.fromJson(data) as T;
+    }
+    if (t == _ig50l1bg.SdeCheck) {
+      return _ig50l1bg.SdeCheck.fromJson(data) as T;
+    }
+    if (t == _illgk9kj.SdeCheckOutcome) {
+      return _illgk9kj.SdeCheckOutcome.fromJson(data) as T;
     }
     if (t == _iucgsa1v.SdeImport) {
       return _iucgsa1v.SdeImport.fromJson(data) as T;
@@ -1431,6 +1700,15 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (t == _i9m0mwcw.SdeRecord) {
       return _i9m0mwcw.SdeRecord.fromJson(data) as T;
+    }
+    if (t == _itdhfbzo.SdeSwitch) {
+      return _itdhfbzo.SdeSwitch.fromJson(data) as T;
+    }
+    if (t == _iqktcwf1.SdeSwitchKind) {
+      return _iqktcwf1.SdeSwitchKind.fromJson(data) as T;
+    }
+    if (t == _icb88h1v.SdeSwitchOutcome) {
+      return _icb88h1v.SdeSwitchOutcome.fromJson(data) as T;
     }
     if (t == _ia9vf0pu.SdeCategory) {
       return _ia9vf0pu.SdeCategory.fromJson(data) as T;
@@ -1481,8 +1759,24 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _is.getType<_iqvvlz0n.SdeBuild?>()) {
       return (data != null ? _iqvvlz0n.SdeBuild.fromJson(data) : null) as T;
     }
+    if (t == _is.getType<_i6rvvlmq.SdeBuildDiff?>()) {
+      return (data != null ? _i6rvvlmq.SdeBuildDiff.fromJson(data) : null) as T;
+    }
+    if (t == _is.getType<_iby3hddy.SdeBuildDiffOutcome?>()) {
+      return (data != null
+              ? _iby3hddy.SdeBuildDiffOutcome.fromJson(data)
+              : null)
+          as T;
+    }
     if (t == _is.getType<_isyk7irp.SdeBuildState?>()) {
       return (data != null ? _isyk7irp.SdeBuildState.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_ig50l1bg.SdeCheck?>()) {
+      return (data != null ? _ig50l1bg.SdeCheck.fromJson(data) : null) as T;
+    }
+    if (t == _is.getType<_illgk9kj.SdeCheckOutcome?>()) {
+      return (data != null ? _illgk9kj.SdeCheckOutcome.fromJson(data) : null)
           as T;
     }
     if (t == _is.getType<_iucgsa1v.SdeImport?>()) {
@@ -1498,6 +1792,17 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (t == _is.getType<_i9m0mwcw.SdeRecord?>()) {
       return (data != null ? _i9m0mwcw.SdeRecord.fromJson(data) : null) as T;
+    }
+    if (t == _is.getType<_itdhfbzo.SdeSwitch?>()) {
+      return (data != null ? _itdhfbzo.SdeSwitch.fromJson(data) : null) as T;
+    }
+    if (t == _is.getType<_iqktcwf1.SdeSwitchKind?>()) {
+      return (data != null ? _iqktcwf1.SdeSwitchKind.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_icb88h1v.SdeSwitchOutcome?>()) {
+      return (data != null ? _icb88h1v.SdeSwitchOutcome.fromJson(data) : null)
+          as T;
     }
     if (t == _is.getType<_ia9vf0pu.SdeCategory?>()) {
       return (data != null ? _ia9vf0pu.SdeCategory.fromJson(data) : null) as T;
@@ -1574,11 +1879,18 @@ class Protocol extends _is.DatabaseSerializationManager
       _iztepymd.DependencyStatus => 'DependencyStatus',
       _if75m2mz.HealthReport => 'HealthReport',
       _iqvvlz0n.SdeBuild => 'SdeBuild',
+      _i6rvvlmq.SdeBuildDiff => 'SdeBuildDiff',
+      _iby3hddy.SdeBuildDiffOutcome => 'SdeBuildDiffOutcome',
       _isyk7irp.SdeBuildState => 'SdeBuildState',
+      _ig50l1bg.SdeCheck => 'SdeCheck',
+      _illgk9kj.SdeCheckOutcome => 'SdeCheckOutcome',
       _iucgsa1v.SdeImport => 'SdeImport',
       _is3f4xcr.SdeImportOutcome => 'SdeImportOutcome',
       _ice2slzs.SdeImportSource => 'SdeImportSource',
       _i9m0mwcw.SdeRecord => 'SdeRecord',
+      _itdhfbzo.SdeSwitch => 'SdeSwitch',
+      _iqktcwf1.SdeSwitchKind => 'SdeSwitchKind',
+      _icb88h1v.SdeSwitchOutcome => 'SdeSwitchOutcome',
       _ia9vf0pu.SdeCategory => 'SdeCategory',
       _i99obepy.SdeConstellation => 'SdeConstellation',
       _ighsxk4r.SdeDogmaAttribute => 'SdeDogmaAttribute',
@@ -1614,8 +1926,16 @@ class Protocol extends _is.DatabaseSerializationManager
         return 'HealthReport';
       case _iqvvlz0n.SdeBuild():
         return 'SdeBuild';
+      case _i6rvvlmq.SdeBuildDiff():
+        return 'SdeBuildDiff';
+      case _iby3hddy.SdeBuildDiffOutcome():
+        return 'SdeBuildDiffOutcome';
       case _isyk7irp.SdeBuildState():
         return 'SdeBuildState';
+      case _ig50l1bg.SdeCheck():
+        return 'SdeCheck';
+      case _illgk9kj.SdeCheckOutcome():
+        return 'SdeCheckOutcome';
       case _iucgsa1v.SdeImport():
         return 'SdeImport';
       case _is3f4xcr.SdeImportOutcome():
@@ -1624,6 +1944,12 @@ class Protocol extends _is.DatabaseSerializationManager
         return 'SdeImportSource';
       case _i9m0mwcw.SdeRecord():
         return 'SdeRecord';
+      case _itdhfbzo.SdeSwitch():
+        return 'SdeSwitch';
+      case _iqktcwf1.SdeSwitchKind():
+        return 'SdeSwitchKind';
+      case _icb88h1v.SdeSwitchOutcome():
+        return 'SdeSwitchOutcome';
       case _ia9vf0pu.SdeCategory():
         return 'SdeCategory';
       case _i99obepy.SdeConstellation():
@@ -1676,8 +2002,20 @@ class Protocol extends _is.DatabaseSerializationManager
     if (dataClassName == 'SdeBuild') {
       return deserialize<_iqvvlz0n.SdeBuild>(data['data']);
     }
+    if (dataClassName == 'SdeBuildDiff') {
+      return deserialize<_i6rvvlmq.SdeBuildDiff>(data['data']);
+    }
+    if (dataClassName == 'SdeBuildDiffOutcome') {
+      return deserialize<_iby3hddy.SdeBuildDiffOutcome>(data['data']);
+    }
     if (dataClassName == 'SdeBuildState') {
       return deserialize<_isyk7irp.SdeBuildState>(data['data']);
+    }
+    if (dataClassName == 'SdeCheck') {
+      return deserialize<_ig50l1bg.SdeCheck>(data['data']);
+    }
+    if (dataClassName == 'SdeCheckOutcome') {
+      return deserialize<_illgk9kj.SdeCheckOutcome>(data['data']);
     }
     if (dataClassName == 'SdeImport') {
       return deserialize<_iucgsa1v.SdeImport>(data['data']);
@@ -1690,6 +2028,15 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (dataClassName == 'SdeRecord') {
       return deserialize<_i9m0mwcw.SdeRecord>(data['data']);
+    }
+    if (dataClassName == 'SdeSwitch') {
+      return deserialize<_itdhfbzo.SdeSwitch>(data['data']);
+    }
+    if (dataClassName == 'SdeSwitchKind') {
+      return deserialize<_iqktcwf1.SdeSwitchKind>(data['data']);
+    }
+    if (dataClassName == 'SdeSwitchOutcome') {
+      return deserialize<_icb88h1v.SdeSwitchOutcome>(data['data']);
     }
     if (dataClassName == 'SdeCategory') {
       return deserialize<_ia9vf0pu.SdeCategory>(data['data']);
@@ -1750,10 +2097,16 @@ class Protocol extends _is.DatabaseSerializationManager
     switch (t) {
       case _iqvvlz0n.SdeBuild:
         return _iqvvlz0n.SdeBuild.t;
+      case _i6rvvlmq.SdeBuildDiff:
+        return _i6rvvlmq.SdeBuildDiff.t;
+      case _ig50l1bg.SdeCheck:
+        return _ig50l1bg.SdeCheck.t;
       case _iucgsa1v.SdeImport:
         return _iucgsa1v.SdeImport.t;
       case _i9m0mwcw.SdeRecord:
         return _i9m0mwcw.SdeRecord.t;
+      case _itdhfbzo.SdeSwitch:
+        return _itdhfbzo.SdeSwitch.t;
       case _ia9vf0pu.SdeCategory:
         return _ia9vf0pu.SdeCategory.t;
       case _i99obepy.SdeConstellation:

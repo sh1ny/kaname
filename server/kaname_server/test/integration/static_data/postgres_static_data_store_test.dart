@@ -17,6 +17,9 @@ import '../test_tools/serverpod_test_tools.dart';
 /// Every table the store writes, for the reset between tests.
 const _tables = [
   'sde_import',
+  'sde_check',
+  'sde_switch',
+  'sde_build_diff',
   'sde_record',
   'sde_build',
   'sde_category',
@@ -351,6 +354,154 @@ void main() {
         throwsA(isA<pg.ServerException>()),
       );
       expect((await builds()).single.activeMarker, isTrue);
+    });
+
+    test('when a build is stored then its previous marker is null and it is '
+        'not held', () async {
+      final store = await open();
+      await store1(store, 1, BuildState.active);
+
+      final stored = (await builds()).single;
+      expect(stored.previousMarker, isNull);
+      expect(stored.held, isFalse);
+    });
+
+    test('when two builds are previous then only one can exist', () async {
+      final store = await open();
+      await store1(store, 1, BuildState.previous);
+
+      await expectLater(
+        store1(store, 2, BuildState.previous),
+        throwsA(isA<pg.ServerException>()),
+      );
+      final stored = await builds();
+      expect(stored.map((b) => (b.build, b.state, b.previousMarker)), [
+        (1, SdeBuildState.previous, true),
+      ]);
+    });
+
+    test('when builds are stored then their states and holds are read '
+        'back', () async {
+      final store = await open();
+      await store1(store, 1, BuildState.previous);
+      await store1(store, 2, BuildState.active);
+      await store1(store, 3, BuildState.staged);
+      await session.db.unsafeExecute(
+        'UPDATE sde_build SET held = true WHERE build = 3',
+      );
+
+      final stored = await store.storedBuilds();
+
+      expect(stored.map((b) => (b.build, b.state, b.held)), [
+        (1, BuildState.previous, false),
+        (2, BuildState.active, false),
+        (3, BuildState.staged, true),
+      ]);
+    });
+
+    test('when checks are recorded then the newest time is read and pruning '
+        'keeps the newest', () async {
+      final store = await open();
+      expect(await store.newestCheckedAt(), isNull);
+      for (var i = 0; i < 5; i++) {
+        await store.insertCheck(
+          CheckRecord(
+            checkedAt: _t0.add(Duration(days: i)),
+            latestBuild: i == 4 ? null : 1000 + i,
+            outcome: i == 4 ? CheckOutcome.failed : CheckOutcome.upToDate,
+            failureReason: i == 4 ? 'import already running' : null,
+          ),
+        );
+      }
+
+      expect(await store.newestCheckedAt(), _t0.add(const Duration(days: 4)));
+      await store.pruneChecks(keep: 2);
+
+      final rows = await SdeCheck.db.find(session, orderBy: (t) => t.checkedAt);
+      expect(rows.map((r) => (r.outcome, r.latestBuild, r.failureReason)), [
+        (SdeCheckOutcome.upToDate, 1003, null),
+        (SdeCheckOutcome.failed, null, 'import already running'),
+      ]);
+    });
+
+    test('when a failed switch is recorded then it is stored and pruning '
+        'keeps the newest', () async {
+      final store = await open();
+      for (var i = 0; i < 3; i++) {
+        await store.insertFailedSwitch(
+          SwitchRecord(
+            kind: i == 2 ? SwitchKind.rollback : SwitchKind.forward,
+            fromBuild: 1,
+            toBuild: 2 + i,
+            at: _t0.add(Duration(hours: i)),
+            outcome: SwitchOutcome.failed,
+            failureReason: 'boom',
+          ),
+        );
+      }
+      await expectLater(
+        store.insertFailedSwitch(
+          SwitchRecord(
+            kind: SwitchKind.forward,
+            toBuild: 2,
+            at: _t0,
+            outcome: SwitchOutcome.succeeded,
+          ),
+        ),
+        throwsArgumentError,
+      );
+
+      await store.pruneSwitches(keep: 2);
+
+      final rows = await SdeSwitch.db.find(session, orderBy: (t) => t.at);
+      expect(rows.map((r) => (r.kind, r.fromBuild, r.toBuild, r.outcome)), [
+        (SdeSwitchKind.forward, 1, 3, SdeSwitchOutcome.failed),
+        (SdeSwitchKind.rollback, 1, 4, SdeSwitchOutcome.failed),
+      ]);
+    });
+
+    test('when diffs are stored then the newest of the pair is read with its '
+        'report', () async {
+      final store = await open();
+      expect(await store.diff(1, 2), isNull);
+      await store.insertDiff(
+        BuildDiffRecord(
+          fromBuild: 1,
+          toBuild: 2,
+          createdAt: _t0,
+          outcome: DiffOutcome.failed,
+          failureReason: 'timeout',
+        ),
+      );
+      await store.insertDiff(
+        BuildDiffRecord(
+          fromBuild: 1,
+          toBuild: 2,
+          createdAt: _t0.add(const Duration(hours: 1)),
+          outcome: DiffOutcome.succeeded,
+          report: SdeJson({
+            'files': {'types.jsonl': 3},
+          }),
+        ),
+      );
+      await store.insertDiff(
+        BuildDiffRecord(
+          fromBuild: 2,
+          toBuild: 3,
+          createdAt: _t0,
+          outcome: DiffOutcome.failed,
+          failureReason: 'other pair',
+        ),
+      );
+
+      final newest = (await store.diff(1, 2))!;
+      expect(newest.outcome, DiffOutcome.succeeded);
+      expect(newest.failureReason, isNull);
+      expect(newest.report!.value, {
+        'files': {'types.jsonl': 3},
+      });
+      expect((await store.diff(2, 3))!.failureReason, 'other pair');
+      expect(await store.diff(1, 3), isNull);
     });
 
     test('when a store is open then session timeouts are five minutes and '

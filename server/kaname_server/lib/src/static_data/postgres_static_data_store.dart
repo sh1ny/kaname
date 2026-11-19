@@ -72,6 +72,36 @@ const _buildColumns = [
   StoredColumn('state', _text),
   StoredColumn('importedAt', _timestamp),
   StoredColumn('activeMarker', StoredColumnType.boolean, nullable: true),
+  StoredColumn('previousMarker', StoredColumnType.boolean, nullable: true),
+  StoredColumn('held', StoredColumnType.boolean),
+];
+
+/// The columns of `sde_check`, without `id`.
+const _checkColumns = [
+  StoredColumn('checkedAt', _timestamp),
+  StoredColumn('latestBuild', _bigint, nullable: true),
+  StoredColumn('outcome', _text),
+  StoredColumn('failureReason', _text, nullable: true),
+];
+
+/// The columns of `sde_switch`, without `id`.
+const _switchColumns = [
+  StoredColumn('kind', _text),
+  StoredColumn('fromBuild', _bigint, nullable: true),
+  StoredColumn('toBuild', _bigint),
+  StoredColumn('at', _timestamp),
+  StoredColumn('outcome', _text),
+  StoredColumn('failureReason', _text, nullable: true),
+];
+
+/// The columns of `sde_build_diff`, without `id`.
+const _diffColumns = [
+  StoredColumn('fromBuild', _bigint),
+  StoredColumn('toBuild', _bigint),
+  StoredColumn('createdAt', _timestamp),
+  StoredColumn('outcome', _text),
+  StoredColumn('failureReason', _text, nullable: true),
+  StoredColumn('report', _jsonb, nullable: true),
 ];
 
 /// The columns of `sde_import`, without `id`.
@@ -154,8 +184,11 @@ final class PostgresStaticDataStore implements StaticDataStore {
   /// without a table fails the contract test.
   static final Map<String, List<StoredColumn>> writtenTables = {
     'sde_build': _buildColumns,
+    'sde_build_diff': _diffColumns,
+    'sde_check': _checkColumns,
     'sde_import': _importColumns,
     'sde_record': _recordColumns,
+    'sde_switch': _switchColumns,
     for (final file in typedFiles) file.table: _typedColumns(file),
   };
 
@@ -328,6 +361,99 @@ final class PostgresStaticDataStore implements StaticDataStore {
   }
 
   @override
+  Future<List<StoredBuild>> storedBuilds() async {
+    final result = await _connection.execute(
+      'SELECT "build", "state", "held" FROM "sde_build" ORDER BY "build"',
+    );
+    return [
+      for (final row in result)
+        StoredBuild(
+          build: row[0]! as int,
+          state: BuildState.values.byName(row[1]! as String),
+          held: row[2]! as bool,
+        ),
+    ];
+  }
+
+  @override
+  Future<int?> dropStagedBuild() =>
+      throw UnimplementedError('dropStagedBuild: task group 2 (D8)');
+
+  @override
+  Future<void> insertCheck(CheckRecord record) =>
+      _insertRows(_connection, 'sde_check', _checkColumns, [
+        [
+          record.checkedAt,
+          record.latestBuild,
+          record.outcome.name,
+          record.failureReason,
+        ],
+      ]);
+
+  @override
+  Future<DateTime?> newestCheckedAt() async {
+    final result = await _connection.execute(
+      'SELECT max("checkedAt") FROM "sde_check"',
+    );
+    return (result.single.single as DateTime?)?.toUtc();
+  }
+
+  @override
+  Future<void> pruneChecks({required int keep}) =>
+      _pruneNewest(_connection, 'sde_check', '"checkedAt"', keep);
+
+  @override
+  Future<void> insertFailedSwitch(SwitchRecord record) async {
+    if (record.outcome != SwitchOutcome.failed) {
+      throw ArgumentError.value(record, 'record', 'must be a failed switch');
+    }
+    await _insertRows(_connection, 'sde_switch', _switchColumns, [
+      _switchValues(record),
+    ]);
+  }
+
+  @override
+  Future<void> pruneSwitches({required int keep}) =>
+      _pruneNewest(_connection, 'sde_switch', '"at"', keep);
+
+  @override
+  Future<void> insertDiff(BuildDiffRecord record) =>
+      _insertRows(_connection, 'sde_build_diff', _diffColumns, [
+        [
+          record.fromBuild,
+          record.toBuild,
+          record.createdAt,
+          record.outcome.name,
+          record.failureReason,
+          record.report,
+        ],
+      ]);
+
+  @override
+  Future<BuildDiffRecord?> diff(int fromBuild, int toBuild) async {
+    final names = [for (final column in _diffColumns) '"${column.name}"'];
+    final result = await _connection.execute(
+      'SELECT ${names.join(', ')} FROM "sde_build_diff" '
+      r'WHERE "fromBuild" = $1::bigint AND "toBuild" = $2::bigint '
+      'ORDER BY "createdAt" DESC, "id" DESC LIMIT 1',
+      parameters: [fromBuild, toBuild],
+    );
+    if (result.isEmpty) return null;
+    final row = result.single;
+    return BuildDiffRecord(
+      fromBuild: row[0]! as int,
+      toBuild: row[1]! as int,
+      createdAt: (row[2]! as DateTime).toUtc(),
+      outcome: DiffOutcome.values.byName(row[3]! as String),
+      failureReason: row[4] as String?,
+      report: switch (row[5]) {
+        null => null,
+        final Object json => SdeJson.fromJson(json),
+      },
+    );
+  }
+
+  @override
   Future<T> inTransaction<T>(
     Future<T> Function(StaticDataWriter writer) body,
   ) => _connection.runTx((tx) => body(_PostgresWriter(tx)));
@@ -415,14 +541,49 @@ final class _PostgresWriter implements StaticDataWriter {
     await _insertRows(_session, 'sde_build', _buildColumns, [
       [
         build,
-        _stateName(state),
+        state.name,
         importedAt,
         state == BuildState.active ? true : null,
+        state == BuildState.previous ? true : null,
+        false,
       ],
     ]);
     await _updateRecord(_session, recordId, record);
   }
+
+  @override
+  Future<void> switchTo(int build, {required DateTime at}) =>
+      throw UnimplementedError('switchTo: task group 3 (D2)');
+
+  @override
+  Future<void> rollBack({required DateTime at}) =>
+      throw UnimplementedError('rollBack: task group 3 (D2)');
 }
+
+/// Deletes every row of [table] but the newest [keep], by [timeColumn].
+Future<void> _pruneNewest(
+  pg.Session session,
+  String table,
+  String timeColumn,
+  int keep,
+) async {
+  await session.execute(
+    'DELETE FROM "$table" WHERE "id" NOT IN ('
+    'SELECT "id" FROM "$table" '
+    'ORDER BY $timeColumn DESC, "id" DESC LIMIT \$1::bigint)',
+    parameters: [keep],
+  );
+}
+
+/// The values of an `sde_switch` row, in the order of [_switchColumns].
+List<Object?> _switchValues(SwitchRecord record) => [
+  record.kind.name,
+  record.fromBuild,
+  record.toBuild,
+  record.at,
+  record.outcome.name,
+  record.failureReason,
+];
 
 const int _batch = PostgresStaticDataStore.batchRows;
 
@@ -475,11 +636,6 @@ Object? _parameter(StoredColumn column, Object? value) {
     ),
   };
 }
-
-String _stateName(BuildState state) => switch (state) {
-  BuildState.staged => 'staged',
-  BuildState.active => 'active',
-};
 
 String _outcomeName(ImportOutcome outcome) => switch (outcome) {
   ImportOutcome.running => 'running',
