@@ -297,6 +297,8 @@ void main() {
       },
     );
 
+    // Scenario (PR #14 review, design D6 step 3):
+    // a start just before 12:00 UTC still checks once the worker is ready.
     test('a start just before 12:00 UTC still checks once the worker is '
         'ready', () async {
       await activeBuild(5000);
