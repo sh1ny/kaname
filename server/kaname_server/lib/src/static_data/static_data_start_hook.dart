@@ -94,14 +94,17 @@ StaticDataStartHook? staticDataStartHookFor({
 ///    new check starts. A live import keeps its record.
 /// 3. puts the daily check on Serverpod's schedule: cancels the identifier
 ///    `kaname-sde-daily-check` and schedules the cron call once.
-/// 4. runs a check at once when [DailyBuildCheckSchedule.catchUpDue] says so:
-///    no build is active, or no check has started since the latest 12:00 UTC
-///    (read from the newest `sde_check` row). A server with no active build
-///    thus imports CCP's latest build as the check's bootstrap; a server with
-///    an active build imports only when the check finds a newer one. The
-///    check's own record says how it ended; a failed one (CCP unreachable,
-///    say) leaves no active build on a first start, so the next start tries
-///    again.
+/// 4. waits for the worker, then runs a check at once when
+///    [DailyBuildCheckSchedule.catchUpDue] says so: no build is active, or no
+///    check has started since the latest 12:00 UTC (read from the newest
+///    `sde_check` row). The day's 12:00 UTC run does not wait for the
+///    worker and is dropped when it comes while the worker starts, so the
+///    hook decides the catch-up only once the worker is ready. A server with
+///    no active build thus imports CCP's latest build as the check's
+///    bootstrap; a server with an active build imports only when the check
+///    finds a newer one. The check's own record says how it ended; a failed
+///    one (CCP unreachable, say) leaves no active build on a first start, so
+///    the next start tries again.
 ///
 /// ## Carried constraint
 ///
@@ -160,6 +163,10 @@ final class StaticDataStartHook {
         );
       }
       await scheduleDailyCheck();
+      // The catch-up is decided only once the worker is ready: a 12:00 UTC
+      // run that comes while the worker starts finds none and is dropped
+      // (C9 in `StaticDataCheckCall`), so this decision must see that day.
+      await supervisor.ready;
       final (:lastCheckStartedAt, :hasActiveBuild) = await withSession(
         (session) async => (
           lastCheckStartedAt: (await SdeCheck.db.findFirstRow(
@@ -189,7 +196,6 @@ final class StaticDataStartHook {
             : 'static data: no active build; checking CCP for the latest '
                   'build',
       );
-      await supervisor.ready;
       final reply = await supervisor.runBuildCheck(const CcpLatestSource());
       log(switch (reply) {
         BuildCheckFinished(result: BuildCheckFailed() || BuildStaged()) =>

@@ -178,7 +178,7 @@ class _StaticDataCheckCallFutureCallDispatcher {
   }
 }
 
-/// Runs the check.
+/// Sends the check to the worker and returns without waiting for it.
 class StaticDataCheckCallRunFutureCall extends _is.FutureCall
     implements _is.InvokableFutureCall {
   @override

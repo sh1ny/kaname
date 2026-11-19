@@ -139,17 +139,26 @@ void main() {
     /// A hook for the development run mode and monolith role, whose worker
     /// builds sources with [sourceFactory].
     ///
-    /// The hook thinks it is [now] (default: 15:00 UTC on 2026-01-02), which
-    /// the catch-up rule reads; the future call is scheduled for real.
-    StaticDataStartHook hook(SdeSourceFactory sourceFactory, {DateTime? now}) {
+    /// The hook thinks it is [now] (default: 15:00 UTC on 2026-01-02), or
+    /// whatever [clock] says, which the catch-up rule reads; the future call
+    /// is scheduled for real. The worker starts [spawnDelay] late.
+    StaticDataStartHook hook(
+      SdeSourceFactory sourceFactory, {
+      DateTime? now,
+      DateTime Function()? clock,
+      Duration spawnDelay = Duration.zero,
+    }) {
       final hook = staticDataStartHookFor(
         runMode: 'development',
         role: 'monolith',
         withSession: <T>(action) => action(session),
         log: (level, message) => logs.add((level, message)),
         scheduleDailyCheck: () => scheduleDailyCheck(session.serverpod),
-        now: () => now ?? _afternoon,
-        spawn: isolateComputeWorkerSpawn(sourceFactory: sourceFactory),
+        now: clock ?? () => now ?? _afternoon,
+        spawn: (name) async {
+          await Future<void>.delayed(spawnDelay);
+          return isolateComputeWorkerSpawn(sourceFactory: sourceFactory)(name);
+        },
       )!;
       hooks.add(hook);
       return hook;
@@ -287,6 +296,31 @@ void main() {
         expect(await dailyCalls(), hasLength(1));
       },
     );
+
+    test('a start just before 12:00 UTC still checks once the worker is '
+        'ready', () async {
+      await activeBuild(5000);
+      await checkedAt(DateTime.utc(2026, 1, 1, 12));
+      // Before the worker is ready the hook thinks it is 11:59:59, when no
+      // catch-up is due; once it is ready, 12:00:01, when one is. The day's
+      // 12:00 run may come while the worker starts and find none (C9), so
+      // the catch-up must be decided after the worker is ready.
+      var workerReady = false;
+      late final StaticDataStartHook started;
+      started = hook(
+        fakeCcpFactory,
+        spawnDelay: const Duration(seconds: 2),
+        clock: () => workerReady
+            ? DateTime.utc(2026, 1, 2, 12, 0, 1)
+            : DateTime.utc(2026, 1, 2, 11, 59, 59),
+      );
+      unawaited(started.supervisor.ready.then((_) => workerReady = true));
+
+      final reply = await started.run();
+
+      expect(reply, isA<BuildCheckFinished>());
+      expect(await SdeCheck.db.count(session), 2);
+    });
 
     test('test mode and maintenance role start no import', () async {
       var spawns = 0;
