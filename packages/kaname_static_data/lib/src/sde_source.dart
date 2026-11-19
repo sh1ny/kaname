@@ -1,6 +1,14 @@
 /// Where an import reads one SDE build from.
 library;
 
+/// The name prefix of every temporary directory a source creates.
+///
+/// A killed process leaves its directory behind (the download and the
+/// unpacked entry), so the import job removes the directories with this
+/// prefix once it holds the static-data lock, when no other import can be
+/// running. Nothing else may use the prefix.
+const String sdeScratchPrefix = 'kaname_sde_import_';
+
 /// Where a build came from; recorded on the import record.
 enum SdeSourceKind {
   /// Downloaded from CCP's static data service.

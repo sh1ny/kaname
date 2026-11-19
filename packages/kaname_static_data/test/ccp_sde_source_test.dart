@@ -123,7 +123,7 @@ void main() {
       });
       expect(
         await reasonOf(() => sourceFor(client).open()),
-        contains('download cut off'),
+        contains('CCP download cut off'),
       );
 
       // The download breaks off with a network error.
@@ -138,7 +138,7 @@ void main() {
       });
       expect(
         await reasonOf(() => sourceFor(client).open()),
-        contains('download cut off'),
+        contains('CCP download cut off'),
       );
 
       // The download is complete but is not a zip.
@@ -176,7 +176,7 @@ void main() {
             limits: const SdeLimits(maxDownloadBytes: 150),
           ).open(),
         ),
-        'download exceeds 150 bytes',
+        'CCP download exceeds 150 bytes',
       );
 
       // An announced length over the cap fails before a byte is read.
@@ -188,7 +188,7 @@ void main() {
             limits: const SdeLimits(maxDownloadBytes: 150),
           ).open(),
         ),
-        'download exceeds 150 bytes',
+        'CCP download exceeds 150 bytes',
       );
 
       // Bytes arrive but the whole download takes too long.
@@ -207,7 +207,7 @@ void main() {
             ),
           ).open(),
         ),
-        'download exceeds 60 ms',
+        'CCP download exceeds 60 ms',
       );
 
       // Nothing arrives.
@@ -226,7 +226,7 @@ void main() {
             ),
           ).open(),
         ),
-        'download stalled: no bytes for 40 ms',
+        'CCP download stalled: no bytes for 40 ms',
       );
 
       expect(scratch.listSync(), isEmpty);

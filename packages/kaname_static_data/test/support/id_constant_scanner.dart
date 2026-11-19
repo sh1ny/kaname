@@ -30,6 +30,9 @@ const List<String> scannedRoots = [
   'app/lib',
   'tools',
   'server/kaname_server/lib',
+  'server/kaname_server/tool',
+  'server/kaname_server/bin',
+  'server/kaname_client/lib',
 ];
 
 /// A name that reads as the id of a type, group, category, attribute or
@@ -58,10 +61,19 @@ bool _isToolOrHook(String relativePath) {
 }
 
 final RegExp _readsSde = RegExp(r'jsonl|\bsde\b', caseSensitive: false);
-final RegExp _writesFiles = RegExp(
-  r'writeAsString|writeAsBytes|openWrite|\.writeln?\(',
-);
+final RegExp _writesFiles = RegExp(r'writeAsString|writeAsBytes|openWrite');
+
+/// A string literal that ends in `.dart`: the name of a file to write. An
+/// import, export or part directive also ends in one, so those lines (and
+/// comments) are left out before this is matched.
 final RegExp _namesDartFile = RegExp(r'''\.dart['"]''');
+final RegExp _directive = RegExp(r'^\s*(?:import|export|part)\s');
+
+/// [text] without comment lines and import, export and part directives.
+String _codeOnly(String text) => [
+  for (final line in text.split('\n'))
+    if (!line.trimLeft().startsWith('//') && !_directive.hasMatch(line)) line,
+].join('\n');
 
 /// Scans one file's [text]; [relativePath] is only used in the findings and
 /// to tell tools and build hooks apart.
@@ -109,10 +121,11 @@ List<ScanFinding> scanSource(String relativePath, String text) {
       );
     }
   }
+  final code = _codeOnly(text);
   if (_isToolOrHook(relativePath) &&
-      _readsSde.hasMatch(text) &&
-      _writesFiles.hasMatch(text) &&
-      _namesDartFile.hasMatch(text)) {
+      _readsSde.hasMatch(code) &&
+      _writesFiles.hasMatch(code) &&
+      _namesDartFile.hasMatch(code)) {
     findings.add(
       ScanFinding(
         relativePath,
@@ -126,7 +139,8 @@ List<ScanFinding> scanSource(String relativePath, String text) {
 
 /// Scans every `.dart` file under [scannedRoots] in [root].
 ///
-/// Generated protocol code under `src/generated` and `.dart_tool` and `build`
+/// Generated protocol code under `src/generated` (and the client's
+/// `src/protocol`) and `.dart_tool` and `build`
 /// directories are skipped, and so are the files in [exemptPaths] (paths
 /// relative to [root], in `/` form).
 List<ScanFinding> scanWorkspace(
@@ -145,6 +159,9 @@ List<ScanFinding> scanWorkspace(
       final parts = p.posix.split(relative);
       if (parts.contains('.dart_tool') || parts.contains('build')) continue;
       if (relative.contains('src/generated/')) continue;
+      if (relative.startsWith('server/kaname_client/lib/src/protocol/')) {
+        continue;
+      }
       if (exemptPaths.contains(relative)) continue;
       findings.addAll(scanSource(relative, entity.readAsStringSync()));
     }

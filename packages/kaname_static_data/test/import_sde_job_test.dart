@@ -44,6 +44,7 @@ void main() {
     knownIdTable: knownIdTable,
     batchSize: batchSize,
     clock: clock,
+    scratchRoot: scratch,
   ).run();
 
   ImportSucceeded succeeded(ImportResult result) {
@@ -58,6 +59,39 @@ void main() {
 
   TypedRow typeRow(int id) =>
       store.typedRows(_build, 'sde_type').singleWhere((r) => r.sdeId == id);
+
+  group('stale temporary directories', () {
+    Directory stale(String name) {
+      final dir = Directory('${scratch.path}/$name')..createSync();
+      File('${dir.path}/sde.zip').writeAsStringSync('half a download');
+      Directory('${dir.path}/unpacked').createSync();
+      File('${dir.path}/unpacked/types.jsonl').writeAsStringSync('{}');
+      return dir;
+    }
+
+    test('a killed import\'s directory is removed under the lock', () async {
+      final left = stale('kaname_sde_import_killed');
+      final other = Directory('${scratch.path}/someone_elses')..createSync();
+
+      succeeded(await import(SdeFixture.complete()));
+
+      expect(left.existsSync(), isFalse);
+      expect(other.existsSync(), isTrue, reason: 'only the prefix is swept');
+      other.deleteSync();
+    });
+
+    test('nothing is removed when the lock is busy', () async {
+      final left = stale('kaname_sde_import_running');
+      final holder = InMemoryStaticDataStore(lock: store.lock);
+      await holder.tryLock();
+
+      final result = await import(SdeFixture.complete());
+
+      expect(result, isA<ImportSkipped>());
+      expect(left.existsSync(), isTrue);
+      left.deleteSync(recursive: true);
+    });
+  });
 
   group('sources', () {
     test('local zip and CCP source store equal rows', () async {

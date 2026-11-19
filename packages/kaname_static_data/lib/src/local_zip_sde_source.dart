@@ -44,7 +44,7 @@ final class LocalZipSdeSource implements SdeSource {
     if (!zipFile.existsSync()) {
       throw const SdeSourceException('local zip does not exist');
     }
-    final workDir = await scratchRoot.createTemp('kaname_sde_');
+    final workDir = await scratchRoot.createTemp(sdeScratchPrefix);
     return ZipSdeArchive.open(
       zipFile: zipFile,
       workDir: workDir,

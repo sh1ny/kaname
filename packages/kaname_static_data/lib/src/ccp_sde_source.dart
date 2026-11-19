@@ -28,7 +28,8 @@ const int _maxLatestBytes = 64 * 1024;
 /// this process, within the download limits: the byte cap on disk, the
 /// overall time and the time without a byte. The directory is deleted when
 /// the opened archive is closed, or at once when the download or the zip
-/// fails.
+/// fails. A killed process leaves it behind; the next import deletes every
+/// directory with the [sdeScratchPrefix] once it holds the lock.
 ///
 /// See [SdeSource] for what was verified about CCP's layout.
 final class CcpSdeSource implements SdeSource {
@@ -66,7 +67,7 @@ final class CcpSdeSource implements SdeSource {
   @override
   Future<SdeArchive> open() async {
     final build = await announcedBuild();
-    final workDir = await scratchRoot.createTemp('kaname_sde_');
+    final workDir = await scratchRoot.createTemp(sdeScratchPrefix);
     try {
       final zipFile = File(p.join(workDir.path, 'sde.zip'));
       await _download(
@@ -124,19 +125,19 @@ final class CcpSdeSource implements SdeSource {
         written += chunk.length;
         if (written > limits.maxDownloadBytes) {
           throw SdeSourceException(
-            'download exceeds ${SdeLimits.describeBytes(limits.maxDownloadBytes)}',
+            'CCP download exceeds ${SdeLimits.describeBytes(limits.maxDownloadBytes)}',
           );
         }
         sink.writeFromSync(chunk);
       }, maxBytes: limits.maxDownloadBytes);
       if (expected != null && written != expected) {
         throw SdeSourceException(
-          'download cut off after $written of $expected bytes',
+          'CCP download cut off after $written of $expected bytes',
         );
       }
     } on FileSystemException catch (error) {
       throw SdeSourceException(
-        'download cannot be written: ${describeFailure(error)}',
+        'CCP download cannot be written: ${describeFailure(error)}',
       );
     } finally {
       sink.closeSync();
@@ -173,14 +174,14 @@ final class CcpSdeSource implements SdeSource {
     final expected = response.contentLength;
     if (expected != null && expected > maxBytes) {
       throw SdeSourceException(
-        'download exceeds ${SdeLimits.describeBytes(maxBytes)}',
+        'CCP download exceeds ${SdeLimits.describeBytes(maxBytes)}',
       );
     }
     try {
       await for (final chunk in response.stream.timeout(idle)) {
         if (timer.elapsed > limits.downloadTimeout) {
           throw SdeSourceException(
-            'download exceeds '
+            'CCP download exceeds '
             '${SdeLimits.describeDuration(limits.downloadTimeout)}',
           );
         }
@@ -188,13 +189,15 @@ final class CcpSdeSource implements SdeSource {
       }
     } on TimeoutException {
       throw SdeSourceException(
-        'download stalled: no bytes for ${SdeLimits.describeDuration(idle)}',
+        'CCP download stalled: no bytes for ${SdeLimits.describeDuration(idle)}',
       );
     } on SdeSourceException {
       rethrow;
     } on Object catch (error) {
       if (error is FileSystemException) rethrow;
-      throw SdeSourceException('download cut off: ${describeFailure(error)}');
+      throw SdeSourceException(
+        'CCP download cut off: ${describeFailure(error)}',
+      );
     }
     return expected;
   }

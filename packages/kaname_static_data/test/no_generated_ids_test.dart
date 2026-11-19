@@ -117,6 +117,74 @@ void main() {
       expect(scanSource('tools/gen/bin/report.dart', reporter), isEmpty);
     });
 
+    test('a tool that only imports .dart files and prints is not a generator', () {
+      const importer = '''
+/// Run with `dart run tool/sde_import.dart`.
+import 'dart:io';
+import 'package:kaname_server/src/static_data/sde_import_args.dart';
+export 'src/other.dart';
+part 'part.dart';
+void main() {
+  final lines = File('types.jsonl').readAsLinesSync();
+  stdout.writeln('read the sde');
+  File('report.md').writeAsStringSync(lines.join());
+}
+''';
+      expect(
+        scanSource('server/kaname_server/tool/sde_import.dart', importer),
+        isEmpty,
+      );
+      // A generator that names its .dart output in a string literal is flagged
+      // wherever the tool lives, also when it prints too.
+      const generator = '''
+import 'dart:io';
+void main() {
+  final lines = File('types.jsonl').readAsLinesSync();
+  stdout.writeln('writing');
+  File("lib/ids.dart").writeAsStringSync(lines.join());
+}
+''';
+      expect(
+        scanSource('server/kaname_server/tool/gen.dart', generator),
+        hasLength(1),
+      );
+    });
+
+    test('the workspace scan reads the server tool, bin and client roots', () {
+      expect(
+        scannedRoots,
+        containsAll([
+          'server/kaname_server/tool',
+          'server/kaname_server/bin',
+          'server/kaname_client/lib',
+        ]),
+      );
+      final copy = Directory.systemTemp.createTempSync('kaname_scan_roots_');
+      addTearDown(() => copy.deleteSync(recursive: true));
+      for (final dir in [
+        'server/kaname_server/tool',
+        'server/kaname_server/bin',
+        'server/kaname_client/lib',
+      ]) {
+        final directory = Directory(p.join(copy.path, dir))
+          ..createSync(recursive: true);
+        File(p.join(directory.path, 'ids.dart'))
+            .writeAsStringSync('const typeIdSeeded = 34;\n');
+      }
+      // The generated client protocol is not scanned.
+      final protocol = Directory(
+        p.join(copy.path, 'server', 'kaname_client', 'lib', 'src', 'protocol'),
+      )..createSync(recursive: true);
+      File(p.join(protocol.path, 'p.dart'))
+          .writeAsStringSync('const typeIdGenerated = 1;\n');
+
+      expect(scanWorkspace(copy).map((f) => f.file).toList()..sort(), [
+        'server/kaname_client/lib/ids.dart',
+        'server/kaname_server/bin/ids.dart',
+        'server/kaname_server/tool/ids.dart',
+      ]);
+    });
+
     test('a seeded constant in a copy of the workspace fails the scan', () {
       final copy = Directory.systemTemp.createTempSync('kaname_scan_copy_');
       addTearDown(() => copy.deleteSync(recursive: true));

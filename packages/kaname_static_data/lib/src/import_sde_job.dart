@@ -2,6 +2,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:kaname_core/kaname_core.dart';
 
@@ -71,8 +72,9 @@ final class ImportSkipped extends ImportResult {
 /// 1. Take the store's lock without waiting. When another import holds it,
 ///    insert a `skipped` record ("import already running") and stop; that
 ///    insert is the only write made without the lock.
-/// 2. Mark every other `running` record `failed` ("interrupted"): while this
-///    job holds the lock, no other import is live.
+/// 2. Mark every other `running` record `failed` ("interrupted") and delete
+///    the temporary directories a killed import left in the scratch root:
+///    while this job holds the lock, no other import is live.
 /// 3. Insert its own `running` record, then ask the source for the build
 ///    number it announces (CCP's `latest.jsonl`) and stop with a `skipped`
 ///    record when that build is stored.
@@ -119,6 +121,7 @@ final class ImportSdeJob implements Job<ImportResult> {
     this.fieldTable = industryLogisticsFields,
     this.batchSize = 500,
     this.keepRecords = 100,
+    this.scratchRoot,
   }) : _clock = clock ?? DateTime.now;
 
   /// The job's storage.
@@ -141,6 +144,10 @@ final class ImportSdeJob implements Job<ImportResult> {
 
   /// How many import records are kept.
   final int keepRecords;
+
+  /// The directory that holds the sources' temporary directories; defaults to
+  /// the system temporary directory.
+  final Directory? scratchRoot;
 
   final DateTime Function() _clock;
 
@@ -167,6 +174,7 @@ final class ImportSdeJob implements Job<ImportResult> {
         return const ImportSkipped(reason);
       }
       await store.failRunningRecords(reason: 'interrupted', at: startedAt);
+      await _removeStaleScratch();
       var record = ImportRecord(
         source: source.kind,
         startedAt: startedAt,
@@ -182,6 +190,31 @@ final class ImportSdeJob implements Job<ImportResult> {
     } finally {
       if (locked) await _quietly(store.unlock);
       await _quietly(store.close);
+    }
+  }
+
+  /// Deletes the temporary directories a killed import left behind.
+  ///
+  /// Safe only under the lock, which every import holds while it works, so
+  /// no directory with the sources' prefix belongs to a live import. Best
+  /// effort: nothing is recorded, and no path is logged.
+  Future<void> _removeStaleScratch() async {
+    try {
+      final root = scratchRoot ?? Directory.systemTemp;
+      await for (final entity in root.list(followLinks: false)) {
+        if (entity is Directory &&
+            entity.uri.pathSegments
+                .lastWhere((segment) => segment.isNotEmpty)
+                .startsWith(sdeScratchPrefix)) {
+          try {
+            await entity.delete(recursive: true);
+          } on FileSystemException {
+            // Left for the next import.
+          }
+        }
+      }
+    } on FileSystemException {
+      // An unreadable root changes nothing about the import.
     }
   }
 
