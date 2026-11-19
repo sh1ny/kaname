@@ -24,14 +24,17 @@ import '../test_tools/serverpod_test_tools.dart';
 /// A source that waits for the file `<zip>.go` before it opens the zip, so a
 /// test can look at the worker while an import is in progress. It is a
 /// top-level factory because it crosses into the worker isolate.
-SdeSource gatedSourceFactory(ImportSourceSpec spec, http.Client client) =>
-    switch (spec) {
-      LocalZipSource(:final path) => _GatedSource(
-        LocalZipSdeSource(File(path)),
-        File('$path.go'),
-      ),
-      _ => throw ArgumentError('the test factory reads local zips only'),
-    };
+SdeSource gatedSourceFactory(
+  ImportSourceSpec spec,
+  http.Client client,
+  Directory scratchRoot,
+) => switch (spec) {
+  LocalZipSource(:final path) => _GatedSource(
+    LocalZipSdeSource(File(path), scratchRoot: scratchRoot),
+    File('$path.go'),
+  ),
+  _ => throw ArgumentError('the test factory reads local zips only'),
+};
 
 final class _GatedSource implements SdeSource {
   _GatedSource(this._inner, this._gate);
@@ -57,11 +60,16 @@ final class _GatedSource implements SdeSource {
 /// A source that keeps the worker isolate's event loop busy for three
 /// seconds before it opens the zip, as a CPU-bound import would. Top-level
 /// because it crosses into the worker isolate.
-SdeSource busySourceFactory(ImportSourceSpec spec, http.Client client) =>
-    switch (spec) {
-      LocalZipSource(:final path) => _BusySource(LocalZipSdeSource(File(path))),
-      _ => throw ArgumentError('the test factory reads local zips only'),
-    };
+SdeSource busySourceFactory(
+  ImportSourceSpec spec,
+  http.Client client,
+  Directory scratchRoot,
+) => switch (spec) {
+  LocalZipSource(:final path) => _BusySource(
+    LocalZipSdeSource(File(path), scratchRoot: scratchRoot),
+  ),
+  _ => throw ArgumentError('the test factory reads local zips only'),
+};
 
 final class _BusySource implements SdeSource {
   _BusySource(this._inner);
@@ -86,15 +94,18 @@ final class _BusySource implements SdeSource {
 /// `<zip>.download` before the zip opens (the download phase) and `<zip>.txn`
 /// before the last file is read (inside the import transaction, after the
 /// earlier files' rows were written).
-SdeSource twoPhaseSourceFactory(ImportSourceSpec spec, http.Client client) =>
-    switch (spec) {
-      LocalZipSource(:final path) => _TwoPhaseSource(
-        LocalZipSdeSource(File(path)),
-        File('$path.download'),
-        File('$path.txn'),
-      ),
-      _ => throw ArgumentError('the test factory reads local zips only'),
-    };
+SdeSource twoPhaseSourceFactory(
+  ImportSourceSpec spec,
+  http.Client client,
+  Directory scratchRoot,
+) => switch (spec) {
+  LocalZipSource(:final path) => _TwoPhaseSource(
+    LocalZipSdeSource(File(path), scratchRoot: scratchRoot),
+    File('$path.download'),
+    File('$path.txn'),
+  ),
+  _ => throw ArgumentError('the test factory reads local zips only'),
+};
 
 Future<void> _until(File gate) async {
   while (!gate.existsSync()) {
@@ -296,7 +307,8 @@ void main() {
     Future<int> workerConnections() async {
       final rows = await session.db.unsafeQuery(
         'SELECT count(*) FROM pg_stat_activity '
-        "WHERE application_name = 'kaname-static-data'",
+        "WHERE application_name = 'kaname-static-data' "
+        'AND datname = current_database()',
       );
       return rows.single.single! as int;
     }
@@ -344,6 +356,16 @@ void main() {
       expect(finished.build, 2100);
       expect(finished.reason, isNull);
       expect(finished.requestId, isNotNull);
+      // The synthetic build lacks most known files: a warning says so.
+      expect(
+        worker.logs.where(
+          (log) =>
+              log.level == WorkerLogLevel.warning &&
+              log.message.contains('build 2100: import found:') &&
+              log.message.contains('known files missing'),
+        ),
+        hasLength(1),
+      );
     });
 
     test('worker import writes through its own connection', () async {
@@ -552,6 +574,7 @@ void main() {
           final open = await session.db.unsafeQuery(
             'SELECT count(*) FROM pg_stat_activity '
             "WHERE application_name = 'kaname-static-data' "
+            'AND datname = current_database() '
             'AND xact_start IS NOT NULL',
           );
           if (open.single.single == 1) break;

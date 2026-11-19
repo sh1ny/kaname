@@ -5,8 +5,10 @@ library;
 ///
 /// A killed process leaves its directory behind (the download and the
 /// unpacked entry), so the import job removes the directories with this
-/// prefix once it holds the static-data lock, when no other import can be
-/// running. Nothing else may use the prefix.
+/// prefix from its per-database scratch root once it holds the static-data
+/// lock, when no other import of that database can be running. Sources get
+/// that root from the caller (the system temp directory when none is given)
+/// and create the root if it is missing. Nothing else may use the prefix.
 const String sdeScratchPrefix = 'kaname_sde_import_';
 
 /// Where a build came from; recorded on the import record.

@@ -73,7 +73,8 @@ final class ImportSkipped extends ImportResult {
 ///    insert a `skipped` record ("import already running") and stop; that
 ///    insert is the only write made without the lock.
 /// 2. Mark every other `running` record `failed` ("interrupted") and delete
-///    the temporary directories a killed import left in the scratch root:
+///    the temporary directories a killed import left in this database's scratch
+///    root (none when no root is given):
 ///    while this job holds the lock, no other import is live.
 /// 3. Insert its own `running` record, then ask the source for the build
 ///    number it announces (CCP's `latest.jsonl`) and stop with a `skipped`
@@ -145,8 +146,12 @@ final class ImportSdeJob implements Job<ImportResult> {
   /// How many import records are kept.
   final int keepRecords;
 
-  /// The directory that holds the sources' temporary directories; defaults to
-  /// the system temporary directory.
+  /// The per-database directory that holds the sources' temporary
+  /// directories, the one the caller also gives the source.
+  ///
+  /// The job sweeps only inside it, because the static-data lock is per
+  /// database: another database on the same machine has its own lock and its
+  /// own root. With `null` the job sweeps nothing.
   final Directory? scratchRoot;
 
   final DateTime Function() _clock;
@@ -193,14 +198,17 @@ final class ImportSdeJob implements Job<ImportResult> {
     }
   }
 
-  /// Deletes the temporary directories a killed import left behind.
+  /// Deletes the temporary directories a killed import left in
+  /// [scratchRoot].
   ///
-  /// Safe only under the lock, which every import holds while it works, so
-  /// no directory with the sources' prefix belongs to a live import. Best
+  /// Safe only under the lock, which every import of this database holds
+  /// while it works, and only because the root belongs to this database: no
+  /// directory with the sources' prefix in it belongs to a live import. Best
   /// effort: nothing is recorded, and no path is logged.
   Future<void> _removeStaleScratch() async {
+    final root = scratchRoot;
+    if (root == null || !root.existsSync()) return;
     try {
-      final root = scratchRoot ?? Directory.systemTemp;
       await for (final entity in root.list(followLinks: false)) {
         if (entity is Directory &&
             entity.uri.pathSegments

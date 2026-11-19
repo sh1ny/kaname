@@ -29,7 +29,8 @@ const int _maxLatestBytes = 64 * 1024;
 /// overall time and the time without a byte. The directory is deleted when
 /// the opened archive is closed, or at once when the download or the zip
 /// fails. A killed process leaves it behind; the next import deletes every
-/// directory with the [sdeScratchPrefix] once it holds the lock.
+/// directory with the [sdeScratchPrefix] in its scratch root once it holds
+/// the lock; the caller gives source and job the same per-database root.
 ///
 /// See [SdeSource] for what was verified about CCP's layout.
 final class CcpSdeSource implements SdeSource {
@@ -67,6 +68,7 @@ final class CcpSdeSource implements SdeSource {
   @override
   Future<SdeArchive> open() async {
     final build = await announcedBuild();
+    await scratchRoot.create(recursive: true);
     final workDir = await scratchRoot.createTemp(sdeScratchPrefix);
     try {
       final zipFile = File(p.join(workDir.path, 'sde.zip'));

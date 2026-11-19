@@ -25,6 +25,7 @@ import 'package:kaname_server/src/static_data/development_postgres_settings.dart
 import 'package:kaname_server/src/static_data/import_record_view.dart';
 import 'package:kaname_server/src/static_data/postgres_connection_settings.dart';
 import 'package:kaname_server/src/static_data/postgres_static_data_store.dart';
+import 'package:kaname_server/src/static_data/scratch_root.dart';
 import 'package:kaname_server/src/static_data/sde_import_args.dart';
 import 'package:kaname_server/src/static_data/sde_import_render.dart';
 import 'package:kaname_server/src/workers/compute_worker.dart';
@@ -98,9 +99,11 @@ Future<int> _import(SdeImportRun request) async {
   final client = http.Client();
   final ImportResult result;
   try {
+    final scratchRoot = sdeScratchRootFor(settings);
     result = await ImportSdeJob(
       store: store,
-      source: defaultSdeSourceFactory(spec, client),
+      source: defaultSdeSourceFactory(spec, client, scratchRoot),
+      scratchRoot: scratchRoot,
     ).run(); // The job closes the store.
   } finally {
     client.close();

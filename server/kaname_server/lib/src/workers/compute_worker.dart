@@ -11,6 +11,8 @@ import 'package:kaname_core/kaname_core.dart';
 import 'package:kaname_static_data/kaname_static_data.dart';
 
 import '../static_data/postgres_static_data_store.dart';
+import '../static_data/scratch_root.dart';
+import 'import_report_summary.dart';
 import 'worker_messages.dart';
 import 'worker_process.dart';
 import 'worker_supervisor.dart' show SpawnWorker;
@@ -18,20 +20,28 @@ import 'worker_supervisor.dart' show SpawnWorker;
 /// Builds the [SdeSource] for a requested import.
 ///
 /// The worker passes a fresh [client] for the job and closes it when the job
-/// ends. When it is handed to [ComputeWorkerBootstrap], it crosses an isolate
+/// ends, and the per-database [scratchRoot] the source creates its temporary
+/// directories in (see `sdeScratchRootFor`). When it is handed to [ComputeWorkerBootstrap], it crosses an isolate
 /// boundary, so it must be a top-level or static function.
 typedef SdeSourceFactory = SdeSource Function(
   ImportSourceSpec spec,
   http.Client client,
+  Directory scratchRoot,
 );
 
 /// The production [SdeSourceFactory]: CCP's service for [CcpLatestSource], a
 /// zip file for [LocalZipSource].
-SdeSource defaultSdeSourceFactory(ImportSourceSpec spec, http.Client client) =>
-    switch (spec) {
-      CcpLatestSource() => CcpSdeSource(client: client),
-      LocalZipSource(:final path) => LocalZipSdeSource(File(path)),
-    };
+SdeSource defaultSdeSourceFactory(
+  ImportSourceSpec spec,
+  http.Client client,
+  Directory scratchRoot,
+) => switch (spec) {
+  CcpLatestSource() => CcpSdeSource(client: client, scratchRoot: scratchRoot),
+  LocalZipSource(:final path) => LocalZipSdeSource(
+    File(path),
+    scratchRoot: scratchRoot,
+  ),
+};
 
 /// What [ComputeWorker.entryPoint] receives at spawn.
 final class ComputeWorkerBootstrap {
@@ -200,9 +210,11 @@ final class ComputeWorker {
       _post(
         JobConnectionOpened(requestId: request.requestId, backend: backend),
       );
+      final scratchRoot = sdeScratchRootFor(start.postgres);
       final job = ImportSdeJob(
         store: store,
-        source: _sourceFactory(request.source, client),
+        source: _sourceFactory(request.source, client, scratchRoot),
+        scratchRoot: scratchRoot,
       );
       final result = await job.run();
       return _finished(request.requestId, result);
@@ -223,8 +235,11 @@ final class ComputeWorker {
 
   ImportFinished _finished(int requestId, ImportResult result) {
     switch (result) {
-      case ImportSucceeded(:final build, :final state):
+      case ImportSucceeded(:final build, :final state, :final report):
         _log(WorkerLogLevel.info, 'imported build $build as ${state.name}');
+        if (summarizeImportReport(report) case final String summary) {
+          _log(WorkerLogLevel.warning, 'build $build: $summary');
+        }
         return ImportFinished(
           requestId: requestId,
           outcome: ImportOutcome.succeeded,

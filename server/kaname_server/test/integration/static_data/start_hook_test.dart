@@ -24,9 +24,14 @@ String get _zipPath =>
 
 /// CCP's service as a fake: `latest.jsonl` names build 3000 and the zip is
 /// the synthetic one. Top-level because it crosses into the worker isolate.
-SdeSource fakeCcpFactory(ImportSourceSpec spec, http.Client client) {
+SdeSource fakeCcpFactory(
+  ImportSourceSpec spec,
+  http.Client client,
+  Directory scratchRoot,
+) {
   final zip = File(_zipPath).readAsBytesSync();
   return CcpSdeSource(
+    scratchRoot: scratchRoot,
     client: MockClient((request) async {
       final path = request.url.path;
       if (path.endsWith('latest.jsonl')) {
@@ -45,22 +50,27 @@ SdeSource fakeCcpFactory(ImportSourceSpec spec, http.Client client) {
 }
 
 /// CCP with no network.
-SdeSource offlineCcpFactory(ImportSourceSpec spec, http.Client client) =>
-    CcpSdeSource(
-      client: MockClient(
-        (request) async => throw const SocketException('offline'),
-      ),
-    );
+SdeSource offlineCcpFactory(
+  ImportSourceSpec spec,
+  http.Client client,
+  Directory scratchRoot,
+) => CcpSdeSource(
+  scratchRoot: scratchRoot,
+  client: MockClient((request) async => throw const SocketException('offline')),
+);
 
 /// A source that waits for the file `<zip>.go` before it opens the zip.
-SdeSource gatedLocalFactory(ImportSourceSpec spec, http.Client client) =>
-    switch (spec) {
-      LocalZipSource(:final path) => _GatedSource(
-        LocalZipSdeSource(File(path)),
-        File('$path.go'),
-      ),
-      _ => throw ArgumentError('local zips only'),
-    };
+SdeSource gatedLocalFactory(
+  ImportSourceSpec spec,
+  http.Client client,
+  Directory scratchRoot,
+) => switch (spec) {
+  LocalZipSource(:final path) => _GatedSource(
+    LocalZipSdeSource(File(path), scratchRoot: scratchRoot),
+    File('$path.go'),
+  ),
+  _ => throw ArgumentError('local zips only'),
+};
 
 final class _GatedSource implements SdeSource {
   _GatedSource(this._inner, this._gate);
@@ -248,7 +258,8 @@ void main() {
       // ...when its server stops: the connection drops and the process ends.
       await session.db.unsafeExecute(
         'SELECT pg_terminate_backend(pid) FROM pg_stat_activity '
-        "WHERE application_name = 'kaname-static-data'",
+        "WHERE application_name = 'kaname-static-data' "
+        'AND datname = current_database()',
       );
       File('${zip.path}.go').writeAsStringSync('go');
       await worker.close();

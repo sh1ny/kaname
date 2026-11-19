@@ -80,6 +80,53 @@ void main() {
       other.deleteSync();
     });
 
+    test('a sweep leaves the dirs of a sibling root alone', () async {
+      final sibling = Directory.systemTemp.createTempSync('kaname_sibling_');
+      addTearDown(() => sibling.deleteSync(recursive: true));
+      final theirs = Directory('${sibling.path}/kaname_sde_import_theirs')
+        ..createSync();
+      final ours = stale('kaname_sde_import_ours');
+
+      succeeded(await import(SdeFixture.complete()));
+
+      expect(ours.existsSync(), isFalse);
+      expect(theirs.existsSync(), isTrue);
+    });
+
+    test('a job given no scratch root sweeps nothing', () async {
+      // Where a sweep with no root would look: the system temp directory.
+      final foreign = Directory(
+        '${Directory.systemTemp.path}/kaname_sde_import_foreign_$pid',
+      )..createSync();
+      addTearDown(() => foreign.deleteSync(recursive: true));
+      final fixture = SdeFixture.complete();
+
+      final result = await ImportSdeJob(
+        store: store,
+        source: LocalZipSdeSource(fixture.writeTo(zips), scratchRoot: scratch),
+      ).run();
+
+      expect(result, isA<ImportSucceeded>());
+      expect(foreign.existsSync(), isTrue);
+    });
+
+    test('a missing root is created for the sources', () async {
+      final root = Directory('${scratch.path}/nested/db');
+
+      final result = await ImportSdeJob(
+        store: store,
+        source: LocalZipSdeSource(
+          SdeFixture.complete().writeTo(zips),
+          scratchRoot: root,
+        ),
+        scratchRoot: root,
+      ).run();
+
+      expect(result, isA<ImportSucceeded>());
+      expect(root.listSync(), isEmpty);
+      Directory('${scratch.path}/nested').deleteSync(recursive: true);
+    });
+
     test('nothing is removed when the lock is busy', () async {
       final left = stale('kaname_sde_import_running');
       final holder = InMemoryStaticDataStore(lock: store.lock);
