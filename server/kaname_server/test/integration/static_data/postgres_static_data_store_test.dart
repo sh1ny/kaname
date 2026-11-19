@@ -406,6 +406,24 @@ void main() {
       expect(kept.map((r) => r.build!).reduce((a, b) => a < b ? a : b), 5);
     });
 
+    test('when a record is read by id then that record comes back, not the '
+        'newest', () async {
+      final store = await open();
+      final first = await store.insertRecord(_running());
+      await store.insertRecord(
+        _running().finished(
+          ImportOutcome.skipped,
+          at: _t0.add(const Duration(minutes: 1)),
+          failureReason: 'import already running',
+        ),
+      );
+
+      final view = await store.importRecord(first);
+      expect(view?.outcome, 'running');
+      expect(view?.failureReason, isNull);
+      expect(await store.importRecord(first + 1000), isNull);
+    });
+
     test('when records are running then they fail with the reason and '
         'the count comes back', () async {
       final store = await open();

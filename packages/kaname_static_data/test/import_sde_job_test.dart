@@ -604,6 +604,34 @@ void main() {
       ]);
     });
 
+    test('the job names the record it wrote, whatever the outcome', () async {
+      final ok = ImportSdeJob(
+        store: store,
+        source: LocalZipSdeSource(
+          SdeFixture.complete().writeTo(zips),
+          scratchRoot: scratch,
+        ),
+        scratchRoot: scratch,
+      );
+      expect(ok.recordId, isNull);
+      succeeded(await ok.run());
+      expect(ok.recordId, store.records.single.id);
+
+      final other = InMemoryStaticDataStore(lock: store.lock);
+      await other.tryLock();
+      final busy = ImportSdeJob(
+        store: store,
+        source: LocalZipSdeSource(
+          SdeFixture.complete().writeTo(zips),
+          scratchRoot: scratch,
+        ),
+        scratchRoot: scratch,
+      );
+      expect(await busy.run(), isA<ImportSkipped>());
+      expect(busy.recordId, store.records.last.id);
+      expect(busy.recordId, isNot(ok.recordId));
+    });
+
     test('a second importer is skipped while the lock is held', () async {
       final other = InMemoryStaticDataStore(lock: store.lock);
       await other.tryLock();

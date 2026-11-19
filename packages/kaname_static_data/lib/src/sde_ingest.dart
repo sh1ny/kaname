@@ -25,13 +25,17 @@ final class SdeIngest {
   ///
   /// [fieldCheck] sees every parsed record. [checkDeadline] is called every
   /// [deadlineEvery] lines and at the end of each batch, and may throw to
-  /// stop the import. Rows are written in batches of [batchSize].
+  /// stop the import. Rows are written in batches of [batchSize], or sooner
+  /// once the batch's lines add up to [maxBatchBytes]: a line may be as long
+  /// as [SdeLimits.maxLineBytes], so a row count alone does not bound the
+  /// memory a batch holds.
   SdeIngest({
     required this.build,
     required this.writer,
     required this.fieldCheck,
     required this.checkDeadline,
     this.batchSize = 500,
+    this.maxBatchBytes = 32 * 1024 * 1024,
     this.deadlineEvery = 1000,
   });
 
@@ -49,6 +53,11 @@ final class SdeIngest {
 
   /// How many rows are held in memory before they are written.
   final int batchSize;
+
+  /// How long the batch's source lines may grow, counted in UTF-16 code
+  /// units (bytes for ASCII lines), before it is written; the batch that
+  /// reaches it is written at once.
+  final int maxBatchBytes;
 
   /// How many lines pass between two deadline checks.
   final int deadlineEvery;
@@ -91,6 +100,7 @@ final class SdeIngest {
     final rawBatch = <RawRecord>[];
     var stored = 0;
     var sinceCheck = 0;
+    var batchLength = 0;
 
     Future<void> flush() async {
       if (typedBatch.isNotEmpty) {
@@ -101,6 +111,7 @@ final class SdeIngest {
         await writer.insertRaw(build, [...rawBatch]);
         rawBatch.clear();
       }
+      batchLength = 0;
       checkDeadline();
     }
 
@@ -167,7 +178,11 @@ final class SdeIngest {
       }
       fieldCheck.observe(fileName, record);
       stored++;
-      if (typedBatch.length + rawBatch.length >= batchSize) await flush();
+      batchLength += textLine.text.length;
+      if (typedBatch.length + rawBatch.length >= batchSize ||
+          batchLength >= maxBatchBytes) {
+        await flush();
+      }
     }
     await flush();
     _fileCounts[fileName] = stored;

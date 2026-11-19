@@ -226,11 +226,12 @@ final class PostgresStaticDataStore implements StaticDataStore {
     );
   }
 
-  /// The newest import record by start time, or `null` when there is none.
+  /// The import record [id], or `null` when there is none.
   ///
-  /// For the development task, which shows what its own import wrote.
-  Future<ImportRecordView?> newestImportRecord() =>
-      _readImportRecord('', const []);
+  /// For the development task, which shows what its own import wrote
+  /// ([ImportSdeJob.recordId]); the newest record may be another process's.
+  Future<ImportRecordView?> importRecord(int id) =>
+      _readImportRecord(r'WHERE "id" = $1', [id]);
 
   /// The newest `succeeded` import record of [build], or `null`.
   ///

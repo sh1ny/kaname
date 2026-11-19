@@ -156,6 +156,16 @@ final class ImportSdeJob implements Job<ImportResult> {
 
   final DateTime Function() _clock;
 
+  int? _recordId;
+
+  /// The id of the import record this job wrote, once [run] has written it.
+  ///
+  /// The record of a skipped import ("import already running") counts too.
+  /// `null` before [run], or when the job could not write a record. A reader
+  /// that wants this job's outcome reads this record, not the newest one: a
+  /// record of another process can come later.
+  int? get recordId => _recordId;
+
   @override
   String get name => 'import-sde';
 
@@ -167,7 +177,7 @@ final class ImportSdeJob implements Job<ImportResult> {
       locked = await store.tryLock();
       if (!locked) {
         const reason = 'import already running';
-        await store.insertRecord(
+        _recordId = await store.insertRecord(
           ImportRecord(
             source: source.kind,
             startedAt: startedAt,
@@ -185,7 +195,7 @@ final class ImportSdeJob implements Job<ImportResult> {
         startedAt: startedAt,
         outcome: ImportOutcome.running,
       );
-      final id = await store.insertRecord(record);
+      final id = _recordId = await store.insertRecord(record);
       final result = await _import(id, record, (updated) => record = updated);
       if (result is! ImportSucceeded) await _finish(id, record, result);
       await _tryPrune();

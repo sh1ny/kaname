@@ -97,16 +97,25 @@ Future<int> _import(SdeImportRun request) async {
     return 1;
   }
   final client = http.Client();
+  final scratchRoot = sdeScratchRootFor(settings);
+  final job = ImportSdeJob(
+    store: store,
+    source: defaultSdeSourceFactory(spec, client, scratchRoot),
+    scratchRoot: scratchRoot,
+  );
   final ImportResult result;
   try {
-    final scratchRoot = sdeScratchRootFor(settings);
-    result = await ImportSdeJob(
-      store: store,
-      source: defaultSdeSourceFactory(spec, client, scratchRoot),
-      scratchRoot: scratchRoot,
-    ).run(); // The job closes the store.
+    result = await job.run(); // The job closes the store.
   } finally {
     client.close();
+  }
+  final recordId = job.recordId;
+  if (recordId == null) {
+    stderr.writeln(
+      'The import left no record: '
+      '${result is ImportFailed ? result.reason : 'no reason given'}.',
+    );
+    return 1;
   }
 
   // The job's own record, and the record that holds the build's reports when
@@ -116,7 +125,7 @@ Future<int> _import(SdeImportRun request) async {
   try {
     final reader = await PostgresStaticDataStore.open(settings);
     try {
-      record = await reader.newestImportRecord();
+      record = await reader.importRecord(recordId);
       reportRecord = switch (result) {
         ImportSucceeded() => record,
         ImportSkipped(build: final int build) =>
