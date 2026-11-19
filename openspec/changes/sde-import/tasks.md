@@ -15,54 +15,54 @@ Abbreviations: `SD` = `packages/kaname_static_data/test/`; `SI` = `server/kaname
 
 | Requirement | Scenario | Test file | Test name | State |
 |---|---|---|---|---|
-| static-data-import → An import reads a build from CCP or a local zip | Latest build from CCP | SD/ccp_sde_source_test.dart | reads latest.jsonl and downloads that build | red |
-| static-data-import → An import reads a build from CCP or a local zip | Local zip | SD/import_sde_job_test.dart | local zip and CCP source store equal rows | red |
-| static-data-import → An import reads a build from CCP or a local zip | Build number disagrees | SD/import_sde_job_test.dart | fails on build number mismatch | red |
-| static-data-import → An import reads a build from CCP or a local zip | Unreachable or corrupt source | SD/ccp_sde_source_test.dart | unreachable, cut-off and corrupt sources fail with reason | red |
-| static-data-import → A build is imported side by side | New build next to the active one | SI/static_data/postgres_static_data_store_test.dart | new build is staged next to the active one | red |
-| static-data-import → A build is imported side by side | Import fails partway | SI/static_data/postgres_static_data_store_test.dart | failure after rows leaves no rows and active untouched | red |
-| static-data-import → A build is imported side by side | Server stops during an import | SI/static_data/start_hook_test.dart | dropped connection mid-import is swept to interrupted | red |
-| static-data-import → Typed files keep typed columns and the full record | Known fields are typed | SI/static_data/postgres_static_data_store_test.dart | typed columns and raw jsonb round-trip | red |
-| static-data-import → Typed files keep typed columns and the full record | Known field missing from a record | SD/import_sde_job_test.dart | missing optional field stores null | red |
-| static-data-import → Typed files keep typed columns and the full record | Known field with the wrong type | SD/import_sde_job_test.dart | wrong-typed field is null and reported | red |
-| static-data-import → Other files are stored record by record | Known untyped file | SD/import_sde_job_test.dart | known untyped file stored raw, not new | red |
-| static-data-import → Other files are stored record by record | Empty file | SD/import_sde_job_test.dart | empty file listed with zero records | red |
-| static-data-import → A bad record is skipped and reported | Invalid JSON line | SD/import_sde_job_test.dart | invalid JSON line is skipped and reported | red |
-| static-data-import → A bad record is skipped and reported | Duplicate key in a typed file | SD/import_sde_job_test.dart | duplicate key keeps first and reports second | red |
-| static-data-import → A bad record is skipped and reported | Every line bad | SD/import_sde_job_test.dart | required file with every line bad fails as missing | red |
-| static-data-import → Drift is kept and reported | New file | SD/import_sde_job_test.dart | unknown file stored raw and reported new | red |
-| static-data-import → Drift is kept and reported | New field in a typed file | SD/import_sde_job_test.dart | unknown field kept in JSON and reported | red |
-| static-data-import → Only a missing required file stops an import | Typed file missing | SD/import_sde_job_test.dart | missing types file fails and names it | red |
-| static-data-import → Only a missing required file stops an import | Build record missing | SD/import_sde_job_test.dart | zip without _sde fails with no build number | red |
-| static-data-import → Only a missing required file stops an import | Known untyped file missing | SD/import_sde_job_test.dart | missing known untyped file is reported only | red |
-| static-data-import → The known-ids table is checked against each build | All known ids present | SD/import_sde_job_test.dart | known-ids check passes | red |
-| static-data-import → The known-ids table is checked against each build | Known id missing | SD/import_sde_job_test.dart | missing known id is reported | red |
-| static-data-import → No code is generated from SDE content | New build with new content | SI/static_data/postgres_static_data_store_test.dart | build with new types and file imports without code change | red |
-| static-data-import → No code is generated from SDE content | Id constants outside the known-ids table | SD/no_generated_ids_test.dart | no id constants outside knownIds | red |
-| static-data-import → Each import checks the industry and logistics fields | All fields present | SD/import_sde_job_test.dart | field check reports every field present | red |
-| static-data-import → Each import checks the industry and logistics fields | Field missing after a patch | SD/import_sde_job_test.dart | field check reports a missing field | red |
-| static-data-import → Every import is recorded | Successful import | SI/static_data/postgres_static_data_store_test.dart | succeeded record commits with rows and holds four reports | red |
-| static-data-import → Every import is recorded | Build already present | SD/import_sde_job_test.dart | stored build is skipped without writes | red |
-| static-data-import → Imports run one at a time within a storage bound | Second import requested | SI/static_data/postgres_static_data_store_test.dart | second importer is skipped while the lock is held | red |
-| static-data-import → Imports run one at a time within a storage bound | Another build is staged | SI/static_data/postgres_static_data_store_test.dart | commit removes every other staged build | red |
-| static-data-import → An import starts when no build is active | First start | SI/static_data/start_hook_test.dart | no active build queues a CCP import | red |
-| static-data-import → An import starts when no build is active | First start offline | SI/static_data/start_hook_test.dart | unreachable CCP records failure and server serves | red |
-| static-data-import → An import starts when no build is active | Restart with an active build | SI/static_data/start_hook_test.dart | active build queues nothing | red |
-| static-data-import → An import starts when no build is active | Test run mode or migration step | SI/static_data/start_hook_test.dart | test mode and maintenance role start no import | red |
-| static-data-import → Only the first build is activated by the importer | Bootstrap | SI/static_data/postgres_static_data_store_test.dart | first build becomes active | red |
-| static-data-import → Only the first build is activated by the importer | Later build | SI/static_data/postgres_static_data_store_test.dart | later build stays staged | red |
-| static-data-import → Only the first build is activated by the importer | Failed first import | SI/static_data/start_hook_test.dart | failed first import leaves none active and requeues on start | red |
-| server-workers → The server runs a compute worker isolate | Endpoints answer during an import | SI/workers/compute_worker_test.dart | health answers under 1 s during an import | red |
-| server-workers → The server runs a compute worker isolate | Maintenance step | SI/workers/worker_roles_test.dart | maintenance step starts no worker and exits | red |
-| server-workers → The server runs a compute worker isolate | Worker fails to start | SI/workers/compute_worker_test.dart | failed spawn is logged and server serves | red |
-| server-workers → A crashed worker is restarted and reported | Crash during an import | SI/workers/compute_worker_test.dart | crash in download and in transaction marks worker crashed and restarts | red |
-| server-workers → A crashed worker is restarted and reported | Worker fails repeatedly | SI/workers/worker_supervisor_test.dart | restart delay doubles to 60 s | red |
-| server-workers → Workers exchange only typed messages | Known message | SI/workers/compute_worker_test.dart | typed import request gets typed result | red |
-| server-workers → Workers exchange only typed messages | Unknown message | packages/kaname_core/test/worker_message_test.dart | unknown type or version is rejected with typed error | red |
-| server-workers → Workers exchange only typed messages | Start message printed | SI/workers/compute_worker_test.dart | start message toString hides the password | red |
-| server-workers → Workers reach Postgres through their own connections | Import writes to Postgres | SI/workers/compute_worker_test.dart | worker import writes through its own connection | red |
-| server-workers → Workers reach Postgres through their own connections | Postgres unreachable from the worker | SI/workers/compute_worker_test.dart | unreachable Postgres fails the job, worker stays up | red |
-| server-workers → Workers reach Postgres through their own connections | Postgres comes back | SI/workers/compute_worker_test.dart | next job reconnects after Postgres returns | red |
+| static-data-import → An import reads a build from CCP or a local zip | Latest build from CCP | SD/ccp_sde_source_test.dart | reads latest.jsonl and downloads that build | green |
+| static-data-import → An import reads a build from CCP or a local zip | Local zip | SD/import_sde_job_test.dart | local zip and CCP source store equal rows | green |
+| static-data-import → An import reads a build from CCP or a local zip | Build number disagrees | SD/import_sde_job_test.dart | fails on build number mismatch | green |
+| static-data-import → An import reads a build from CCP or a local zip | Unreachable or corrupt source | SD/ccp_sde_source_test.dart | unreachable, cut-off and corrupt sources fail with reason | green |
+| static-data-import → A build is imported side by side | New build next to the active one | SI/static_data/postgres_static_data_store_test.dart | new build is staged next to the active one | green |
+| static-data-import → A build is imported side by side | Import fails partway | SI/static_data/postgres_static_data_store_test.dart | failure after rows leaves no rows and active untouched | green |
+| static-data-import → A build is imported side by side | Server stops during an import | SI/static_data/start_hook_test.dart | dropped connection mid-import is swept to interrupted | green |
+| static-data-import → Typed files keep typed columns and the full record | Known fields are typed | SI/static_data/postgres_static_data_store_test.dart | typed columns and raw jsonb round-trip | green |
+| static-data-import → Typed files keep typed columns and the full record | Known field missing from a record | SD/import_sde_job_test.dart | missing optional field stores null | green |
+| static-data-import → Typed files keep typed columns and the full record | Known field with the wrong type | SD/import_sde_job_test.dart | wrong-typed field is null and reported | green |
+| static-data-import → Other files are stored record by record | Known untyped file | SD/import_sde_job_test.dart | known untyped file stored raw, not new | green |
+| static-data-import → Other files are stored record by record | Empty file | SD/import_sde_job_test.dart | empty file listed with zero records | green |
+| static-data-import → A bad record is skipped and reported | Invalid JSON line | SD/import_sde_job_test.dart | invalid JSON line is skipped and reported | green |
+| static-data-import → A bad record is skipped and reported | Duplicate key in a typed file | SD/import_sde_job_test.dart | duplicate key keeps first and reports second | green |
+| static-data-import → A bad record is skipped and reported | Every line bad | SD/import_sde_job_test.dart | required file with every line bad fails as missing | green |
+| static-data-import → Drift is kept and reported | New file | SD/import_sde_job_test.dart | unknown file stored raw and reported new | green |
+| static-data-import → Drift is kept and reported | New field in a typed file | SD/import_sde_job_test.dart | unknown field kept in JSON and reported | green |
+| static-data-import → Only a missing required file stops an import | Typed file missing | SD/import_sde_job_test.dart | missing types file fails and names it | green |
+| static-data-import → Only a missing required file stops an import | Build record missing | SD/import_sde_job_test.dart | zip without _sde fails with no build number | green |
+| static-data-import → Only a missing required file stops an import | Known untyped file missing | SD/import_sde_job_test.dart | missing known untyped file is reported only | green |
+| static-data-import → The known-ids table is checked against each build | All known ids present | SD/import_sde_job_test.dart | known-ids check passes | green |
+| static-data-import → The known-ids table is checked against each build | Known id missing | SD/import_sde_job_test.dart | missing known id is reported | green |
+| static-data-import → No code is generated from SDE content | New build with new content | SI/static_data/postgres_static_data_store_test.dart | build with new types and file imports without code change | green |
+| static-data-import → No code is generated from SDE content | Id constants outside the known-ids table | SD/no_generated_ids_test.dart | no id constants outside knownIds | green |
+| static-data-import → Each import checks the industry and logistics fields | All fields present | SD/import_sde_job_test.dart | field check reports every field present | green |
+| static-data-import → Each import checks the industry and logistics fields | Field missing after a patch | SD/import_sde_job_test.dart | field check reports a missing field | green |
+| static-data-import → Every import is recorded | Successful import | SI/static_data/postgres_static_data_store_test.dart | succeeded record commits with rows and holds four reports | green |
+| static-data-import → Every import is recorded | Build already present | SD/import_sde_job_test.dart | stored build is skipped without writes | green |
+| static-data-import → Imports run one at a time within a storage bound | Second import requested | SI/static_data/postgres_static_data_store_test.dart | second importer is skipped while the lock is held | green |
+| static-data-import → Imports run one at a time within a storage bound | Another build is staged | SI/static_data/postgres_static_data_store_test.dart | commit removes every other staged build | green |
+| static-data-import → An import starts when no build is active | First start | SI/static_data/start_hook_test.dart | no active build queues a CCP import | green |
+| static-data-import → An import starts when no build is active | First start offline | SI/static_data/start_hook_test.dart | unreachable CCP records failure and server serves | green |
+| static-data-import → An import starts when no build is active | Restart with an active build | SI/static_data/start_hook_test.dart | active build queues nothing | green |
+| static-data-import → An import starts when no build is active | Test run mode or migration step | SI/static_data/start_hook_test.dart | test mode and maintenance role start no import | green |
+| static-data-import → Only the first build is activated by the importer | Bootstrap | SI/static_data/postgres_static_data_store_test.dart | first build becomes active | green |
+| static-data-import → Only the first build is activated by the importer | Later build | SI/static_data/postgres_static_data_store_test.dart | later build stays staged | green |
+| static-data-import → Only the first build is activated by the importer | Failed first import | SI/static_data/start_hook_test.dart | failed first import leaves none active and requeues on start | green |
+| server-workers → The server runs a compute worker isolate | Endpoints answer during an import | SI/workers/compute_worker_test.dart | health answers under 1 s during an import | green |
+| server-workers → The server runs a compute worker isolate | Maintenance step | SI/workers/worker_roles_test.dart | maintenance step starts no worker and exits | green |
+| server-workers → The server runs a compute worker isolate | Worker fails to start | SI/workers/compute_worker_test.dart | failed spawn is logged and server serves | green |
+| server-workers → A crashed worker is restarted and reported | Crash during an import | SI/workers/compute_worker_test.dart | crash in download and in transaction marks worker crashed and restarts | green |
+| server-workers → A crashed worker is restarted and reported | Worker fails repeatedly | SI/workers/worker_supervisor_test.dart | restart delay doubles to 60 s | green |
+| server-workers → Workers exchange only typed messages | Known message | SI/workers/compute_worker_test.dart | typed import request gets typed result | green |
+| server-workers → Workers exchange only typed messages | Unknown message | packages/kaname_core/test/worker_message_test.dart | unknown type or version is rejected with typed error | green |
+| server-workers → Workers exchange only typed messages | Start message printed | SI/workers/compute_worker_test.dart | start message toString hides the password | green |
+| server-workers → Workers reach Postgres through their own connections | Import writes to Postgres | SI/workers/compute_worker_test.dart | worker import writes through its own connection | green |
+| server-workers → Workers reach Postgres through their own connections | Postgres unreachable from the worker | SI/workers/compute_worker_test.dart | unreachable Postgres fails the job, worker stays up | green |
+| server-workers → Workers reach Postgres through their own connections | Postgres comes back | SI/workers/compute_worker_test.dart | next job reconnects after Postgres returns | green |
 
 ## 1. ADR 0012 and planning documents
 
