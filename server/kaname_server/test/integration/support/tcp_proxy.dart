@@ -16,6 +16,10 @@ final class TcpProxy {
   final List<Socket> _sockets = [];
   final List<StreamSubscription<List<int>>> _targetReads = [];
   bool _holdingTargetReads = false;
+  int _bytesFromTarget = 0;
+
+  /// The bytes read from the target so far, on every connection.
+  int get bytesFromTarget => _bytesFromTarget;
 
   /// The loopback port that forwards to the target.
   int get port => _server.port;
@@ -77,7 +81,10 @@ final class TcpProxy {
   /// that [holdTargetReads] can pause.
   void _forwardTargetReads(Socket upstream, Socket client) {
     final reads = upstream.listen(
-      client.add,
+      (data) {
+        _bytesFromTarget += data.length;
+        client.add(data);
+      },
       onError: (Object _) => client.destroy(),
       onDone: () => unawaited(client.close().catchError((_) {})),
       cancelOnError: true,

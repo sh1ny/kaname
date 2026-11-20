@@ -42,6 +42,31 @@ void main() {
       expect(received, hasLength(1));
       expect(received.single, same(changed));
     });
+
+    test('same name and payload type at another version is dropped and '
+        'logged, later messages still arrive', () async {
+      const v2 = Topic<_Changed>(
+        name: 'static-data',
+        version: 2,
+        visibility: TopicVisibility.public,
+      );
+      final logs = <String>[];
+      final logged = InMemoryRealtimeBus(log: logs.add);
+      final received = <_Changed>[];
+      final subscription = logged.subscribe(_staticData).listen(received.add);
+      addTearDown(subscription.cancel);
+
+      await logged.publish(v2, const _Changed(2));
+      await logged.publish(_staticData, const _Changed(1));
+      await pumpEventQueue();
+
+      expect(received.map((c) => c.build), [1]);
+      expect(logs, hasLength(1));
+      expect(
+        logs.single,
+        allOf(contains('static-data'), contains('version 2')),
+      );
+    });
   });
 
   group('Given a public topic', () {

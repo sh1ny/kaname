@@ -64,8 +64,9 @@ final class SearchFound extends QuickSearchState {
 ///
 /// [setQuery] searches after [quickSearchDebounce]; a blank query clears the
 /// state at once. A search is synchronous and captures the index it starts
-/// with, so it never spans a bundle swap; when the static data changes while a
-/// query is shown, the query is searched again at once on the new state.
+/// with, so it never spans a bundle swap; when a bundle is swapped in while
+/// results are shown, they stay as they are until the next query, and only
+/// the notice and the availability follow the new state.
 /// Search reads only the bundle in memory and makes no request. Watching
 /// this provider also keeps [staticDataProvider] alive for the app's run.
 class QuickSearchNotifier extends Notifier<QuickSearchState> {
@@ -76,9 +77,7 @@ class QuickSearchNotifier extends Notifier<QuickSearchState> {
   QuickSearchState build() {
     _query = '';
     ref.onDispose(() => _debounce?.cancel());
-    ref.listen(staticDataProvider, (_, _) {
-      if (_query.trim().isNotEmpty) _search();
-    });
+    ref.listen(staticDataProvider, (_, next) => _onStaticData(next));
     // Reading it here starts the static data's work from the top bar.
     ref.read(staticDataProvider);
     return const SearchBlank();
@@ -95,6 +94,21 @@ class QuickSearchNotifier extends Notifier<QuickSearchState> {
     _debounce = ref.read(quickSearchTimersProvider)(quickSearchDebounce, () {
       if (ref.mounted) _search();
     });
+  }
+
+  /// Follows a change of the static data without replacing shown hits.
+  ///
+  /// Results already shown keep the names and ids of the bundle they were
+  /// searched on until the next query; only availability and the notice
+  /// follow the new state.
+  void _onStaticData(StaticDataState next) {
+    if (_query.trim().isEmpty) return;
+    switch ((state, next)) {
+      case (SearchFound(:final results), BundleReady(:final notice)):
+        state = SearchFound(results, notice: notice);
+      case _:
+        _search();
+    }
   }
 
   /// Forgets the query and shows no list.

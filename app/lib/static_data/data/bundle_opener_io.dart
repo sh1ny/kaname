@@ -18,9 +18,15 @@ final class IsolateBundleOpener implements BundleOpener {
   Future<BundleOpenResult> open(
     Uint8List compressed,
     BundleIdentity identity,
-  ) => Isolate.run(
-    () =>
-        openBundle(compressed, build: identity.build, sha256: identity.sha256),
-    debugName: 'open bundle ${identity.build}',
-  );
+  ) => Isolate.run(() {
+    final opened = openBundle(
+      compressed,
+      build: identity.build,
+      sha256: identity.sha256,
+    );
+    if (opened is! BundleOpened) return opened;
+    // Indexing stays in this isolate operation, so the UI isolate never
+    // builds the index (design D12).
+    return BundleOpened(opened.bundle, index: SearchIndex.of(opened.bundle));
+  }, debugName: 'open bundle ${identity.build}');
 }

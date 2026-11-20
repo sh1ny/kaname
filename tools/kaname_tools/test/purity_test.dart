@@ -314,6 +314,53 @@ void main() {
       expect(result.out, isNot(contains('kaname_core is pure')));
     });
 
+    test('a conditional alternative naming dart:io or dart:ffi fails '
+        'with file', () async {
+      fs
+        ..writeFile(
+          'packages/kaname_core/lib/src/a.dart',
+          "import 'stub.dart' if (dart.library.io) 'dart:io';\n",
+        )
+        ..writeFile(
+          'packages/kaname_static_data_bundle/lib/src/b.dart',
+          "export 'stub.dart'\n"
+              "    if (dart.library.js_interop == 'true') 'web.dart'\n"
+              "    if (dart.library.ffi) 'dart:ffi' show Pointer;\n",
+        );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.code, 1);
+      expect(
+        result.err,
+        allOf(
+          contains('packages/kaname_core/lib/src/a.dart'),
+          contains('"dart:io"'),
+        ),
+      );
+      expect(
+        result.err,
+        allOf(
+          contains('packages/kaname_static_data_bundle/lib/src/b.dart'),
+          contains('"dart:ffi"'),
+        ),
+      );
+    });
+
+    test('a conditional directive with safe alternatives passes', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        "import 'stub.dart'\n"
+            "    if (dart.library.js_interop == 'true') 'web.dart'\n"
+            "    if (dart.library.html) 'html.dart';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.err, isEmpty);
+      expect(result.code, 0);
+    });
+
     test('tests of a web-safe package may use dart:io', () async {
       fs
         ..writeFile(

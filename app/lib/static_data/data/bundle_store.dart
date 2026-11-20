@@ -56,13 +56,20 @@ final class NoKeptBundle extends KeptBundleLoad {
 /// The kept copy passed every check of the reader.
 final class KeptBundleLoaded extends KeptBundleLoad {
   /// Creates the outcome holding [bundle], the bundle [identity] names.
-  const KeptBundleLoaded({required this.identity, required this.bundle});
+  const KeptBundleLoaded({
+    required this.identity,
+    required this.bundle,
+    this.index,
+  });
 
   /// Which bundle was loaded.
   final BundleIdentity identity;
 
   /// The opened bundle.
   final ClientBundle bundle;
+
+  /// The bundle's search index, when the opener built it with the bundle.
+  final SearchIndex? index;
 }
 
 /// The kept copy was refused and is not used.

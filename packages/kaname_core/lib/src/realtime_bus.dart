@@ -3,6 +3,7 @@
 library;
 
 import 'dart:async';
+import 'dart:developer' as developer;
 
 /// Whether a topic's messages may reach every client or need the privacy
 /// scope first.
@@ -112,27 +113,45 @@ DeliveryScopeResolution<T> resolveDeliveryScope<T>(Topic<T> topic) =>
 /// A [RealtimeBus] that delivers inside one process, in memory.
 ///
 /// Delivery is asynchronous, as a broadcast stream's is: a message reaches a
-/// subscriber after the publisher's current event finishes.
+/// subscriber after the publisher's current event finishes. As the Serverpod
+/// bus does, a subscriber drops, and logs, a message published at another
+/// version of its topic, or with a payload that is not its type.
 final class InMemoryRealtimeBus implements RealtimeBus {
   /// Creates an empty bus.
-  InMemoryRealtimeBus();
+  ///
+  /// [log] receives the description of each dropped message; it defaults to
+  /// `dart:developer`'s `log`.
+  InMemoryRealtimeBus({void Function(String message)? log})
+    : _log = log ?? _developerLog;
 
-  final Map<String, Set<void Function(Object?)>> _listeners = {};
+  static void _developerLog(String message) =>
+      developer.log(message, name: 'kaname.realtime_bus');
+
+  final void Function(String message) _log;
+  final Map<String, Set<void Function(int, Object?)>> _listeners = {};
 
   @override
   Future<void> publish<T>(Topic<T> topic, T message) async {
     final listeners = _listeners[topic.name];
     if (listeners == null) return;
     for (final listener in listeners.toList()) {
-      listener(message);
+      listener(topic.version, message);
     }
   }
 
   @override
   Stream<T> subscribe<T>(Topic<T> topic) {
     late final StreamController<T> controller;
-    void listener(Object? message) {
-      if (message is T) controller.add(message);
+    void listener(int version, Object? message) {
+      if (version == topic.version && message is T) {
+        controller.add(message);
+      } else {
+        _log(
+          'Realtime bus dropped a message on topic "${topic.name}": it is '
+          'version $version carrying ${message.runtimeType}, expected '
+          'version ${topic.version} carrying $T.',
+        );
+      }
     }
 
     controller = StreamController<T>(

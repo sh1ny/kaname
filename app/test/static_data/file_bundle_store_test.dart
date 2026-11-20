@@ -203,6 +203,16 @@ void main() {
     final opened = await opener.open(copy.bytes, copy.identity);
     expect(opened, isA<BundleOpened>());
     expect((opened as BundleOpened).bundle.types.single.name.en, 'Rifter');
+    // The index is built in the same isolate operation (design D12).
+    expect(opened.index!.search('rifter').hits.single.id, 587);
+
+    final kept = FileBundleStore(directory: directory, opener: opener);
+    await kept.save(copy);
+    final loaded = await kept.load();
+    expect(
+      (loaded as KeptBundleLoaded).index!.search('rifter').hits,
+      hasLength(1),
+    );
 
     final other = fixtureBundle(buildN + 1).identity;
     final refused = await opener.open(

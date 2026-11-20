@@ -44,6 +44,11 @@ const Set<String> _startRunModes = {
 /// Serverpod does not export the enum).
 const String _monolithRole = 'monolith';
 
+/// Whether the server in [runMode] with [role] runs a compute worker, that
+/// is, gets a start hook from [staticDataStartHookFor].
+bool runsStaticDataWorker({required String runMode, required String role}) =>
+    role == _monolithRole && _startRunModes.contains(runMode);
+
 /// Builds the start hook for a server running in [runMode] with [role], or
 /// returns `null` when this server must do no static-data work.
 ///
@@ -70,7 +75,7 @@ StaticDataStartHook? staticDataStartHookFor({
   SpawnWorker? spawn,
   BundleAnnouncer? announcer,
 }) {
-  if (role != _monolithRole || !_startRunModes.contains(runMode)) return null;
+  if (!runsStaticDataWorker(runMode: runMode, role: role)) return null;
   final supervisor = WorkerSupervisor(
     name: 'compute',
     spawn: spawn ?? isolateComputeWorkerSpawn(),

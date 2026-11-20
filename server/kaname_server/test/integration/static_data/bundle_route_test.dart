@@ -103,6 +103,7 @@ import 'package:test/test.dart';
 
 import '../support/announcer_support.dart';
 import '../support/in_process_pod.dart';
+import '../support/socket_queues.dart';
 import '../support/tcp_proxy.dart';
 
 const _gzip = MimeType('application', 'gzip');
@@ -310,26 +311,39 @@ void main() {
       expect(pump.current.pauses, 0, reason: reason);
     });
 
-    test('when the endpoint ends a stream whose transport is not reading '
-        'then its slot is freed and a replacement subscription is admitted '
-        'while the peer still does not read', () async {
-      final events = _open(heldClient);
-      expect(await events.next(), 'admitted');
-      proxy.holdTargetReads();
-      pump.current.go();
-      await _stablePulls(pump.current);
-      final otherClient = Client(server.baseUrl);
-      addTearDown(otherClient.close);
-      expect(await _open(otherClient).next(), 'refused');
+    test(
+      'when the endpoint ends a stream whose transport is not reading '
+      'then its slot is freed and a replacement subscription is admitted '
+      'while the peer still does not read',
+      skip: canReadSocketQueues
+          ? null
+          : 'needs Linux socket tables (/proc/net/tcp)',
+      () async {
+        final events = _open(heldClient);
+        expect(await events.next(), 'admitted');
+        proxy.holdTargetReads();
+        pump.current.go();
+        final pulls = await _stablePulls(pump.current);
+        // The pulls only show events enqueued; the transport itself must be
+        // seen to be blocked before the stream is ended.
+        await _blockedTransport(
+          server.port,
+          proxy,
+          pulls * _PumpProbe.payload.length,
+        );
+        final otherClient = Client(server.baseUrl);
+        addTearDown(otherClient.close);
+        expect(await _open(otherClient).next(), 'refused');
 
-      pump.current.requestEnd();
+        pump.current.requestEnd();
 
-      await _eventually(
-        () => pump.current.inUse == 0,
-        'slot freed by ending the held stream',
-      );
-      expect(await _open(otherClient).next(), 'admitted');
-    });
+        await _eventually(
+          () => pump.current.inUse == 0,
+          'slot freed by ending the held stream',
+        );
+        expect(await _open(otherClient).next(), 'admitted');
+      },
+    );
   });
 
   _bundleRouteTests();
@@ -776,6 +790,33 @@ Future<int> _stablePulls(_PumpProbe probe) async {
     await Future<void>.delayed(const Duration(milliseconds: 100));
   }
   return probe.pulls;
+}
+
+/// Waits until the transport between the server and the peer on [port] is
+/// observably blocked: the server's events are all enqueued
+/// ([_PumpProbe.cap] pulls) yet the bytes that crossed to the peer, those it
+/// read and those waiting in its full receive buffer, are a small part of
+/// them and have not moved for a second.
+Future<void> _blockedTransport(int port, TcpProxy proxy, int enqueued) async {
+  final deadline = DateTime.now().add(const Duration(seconds: 30));
+  var last = -1;
+  var stableSince = DateTime.now();
+  while (DateTime.now().isBefore(deadline)) {
+    final now = proxy.bytesFromTarget + receiveQueueBytes(port);
+    if (now != last) {
+      last = now;
+      stableSince = DateTime.now();
+    } else if (now > 0 &&
+        now < enqueued ~/ 4 &&
+        DateTime.now().difference(stableSince) > const Duration(seconds: 1)) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+  fail(
+    'the transport never blocked: $last of $enqueued enqueued bytes crossed '
+    'and the count was still moving or too large',
+  );
 }
 
 /// The base path of the real route.

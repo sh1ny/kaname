@@ -14,6 +14,7 @@ import 'dart:io';
 
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/static_data/bundle_announcer.dart';
+import 'package:kaname_server/src/static_data/bundle_announcer_start.dart';
 import 'package:kaname_server/src/static_data/static_data_lock.dart';
 import 'package:kaname_server/src/workers/worker_messages.dart';
 import 'package:kaname_static_data/kaname_static_data.dart'
@@ -29,6 +30,30 @@ import '../support/worker_harness.dart';
 import '../test_tools/serverpod_test_tools.dart';
 
 void main() {
+  group('Given the run modes and roles of a server', () {
+    test('only where the static-data hook runs a worker does the announcer get '
+        'a repair callback', () {
+      expect(
+        bundleRepairRunnerFor(runMode: 'test', role: 'monolith'),
+        isNull,
+        reason: 'no worker runs in the test run mode',
+      );
+      expect(
+        bundleRepairRunnerFor(runMode: 'development', role: 'maintenance'),
+        isNull,
+        reason: 'no worker runs in the maintenance role',
+      );
+      expect(
+        bundleRepairRunnerFor(runMode: 'development', role: 'monolith'),
+        isNotNull,
+      );
+      expect(
+        bundleRepairRunnerFor(runMode: 'production', role: 'monolith'),
+        isNotNull,
+      );
+    });
+  });
+
   withServerpod('Given a migrated database', (sessionBuilder, endpoints) {
     late Session session;
     late FakeClock clock;
@@ -95,6 +120,23 @@ void main() {
       expect(message.revision, greaterThan(bus.published.first.revision));
       expect(message.epoch, 'test-epoch');
       expect(created.heldBundle(101, fresh.sha256), isNotNull);
+    });
+
+    test('without a repair callback an owed repair does not interrupt '
+        'announcement refreshes', () async {
+      await seedBuild(session, 300, SdeBuildState.active);
+      final created = announcer();
+      await startAndSettle(created);
+      expect(namedBuilds([created.installed!]), [null], reason: 'owed');
+
+      await tick(created);
+      await tick(created);
+
+      expect(logged('refresh failed'), isFalse);
+      expect(logged('bundle repair request failed'), isFalse);
+      await seedBundle(session, 300);
+      await tick(created);
+      expect(namedBuilds(bus.published), [null, 300]);
     });
 
     // Scenario: Rollback announced; Rollback during a slow refresh.

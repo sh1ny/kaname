@@ -99,9 +99,10 @@ final class CacheStorageBundleStore implements BundleStore {
     }
     final identity = BundleIdentity(build: build, sha256: sha256);
     return switch (await _opener.open(bytes, identity)) {
-      BundleOpened(:final bundle) => KeptBundleLoaded(
+      BundleOpened(:final bundle, :final index) => KeptBundleLoaded(
         identity: identity,
         bundle: bundle,
+        index: index,
       ),
       BundleRefused(:final refusal) => KeptBundleRejected(refusal),
     };

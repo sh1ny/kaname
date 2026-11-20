@@ -65,6 +65,19 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   bool _searchOpen = false;
 
   @override
+  void didUpdateWidget(ShellTopBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.inlineSearch == widget.inlineSearch) return;
+    // The other kind of field replaces the one that held the text, so the
+    // query and its results end together with it, and the narrow search
+    // starts closed; the provider is changed after this frame builds.
+    _searchOpen = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.read(quickSearchProvider.notifier).clear();
+    });
+  }
+
+  @override
   void dispose() {
     _searchButtonFocus.dispose();
     super.dispose();

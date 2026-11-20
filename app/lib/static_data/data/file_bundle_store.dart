@@ -80,9 +80,10 @@ final class FileBundleStore implements BundleStore {
     final (identity, bundleStart) = header;
     final bytes = Uint8List.sublistView(contents, bundleStart);
     return switch (await _opener.open(bytes, identity)) {
-      BundleOpened(:final bundle) => KeptBundleLoaded(
+      BundleOpened(:final bundle, :final index) => KeptBundleLoaded(
         identity: identity,
         bundle: bundle,
+        index: index,
       ),
       BundleRefused(:final refusal) => KeptBundleRejected(refusal),
     };

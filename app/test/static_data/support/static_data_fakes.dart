@@ -245,6 +245,9 @@ final class FakeBundleStore implements BundleStore {
   /// Whether a load waits for [releaseLoads].
   bool holdLoad = false;
 
+  /// Whether a loaded bundle carries its index, as the native store's does.
+  bool withIndex = false;
+
   /// Whether saves wait for [releaseSaves].
   bool holdSave = false;
 
@@ -297,6 +300,7 @@ final class FakeBundleStore implements BundleStore {
       BundleOpened(:final bundle) => KeptBundleLoaded(
         identity: copy.identity,
         bundle: bundle,
+        index: withIndex ? SearchIndex.of(bundle) : null,
       ),
       BundleRefused(:final refusal) => KeptBundleRejected(refusal),
     };

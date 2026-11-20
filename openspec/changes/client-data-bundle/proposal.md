@@ -6,7 +6,7 @@ The server now imports, switches and rolls back SDE builds, but the apps see non
 
 - The client data bundle: one per build, carrying the dogma data. The change's design names the fit engine's input (ADR 0011) the bundle maps to, and shows the format serves both importing on the device and downloading a prebuilt bundle (R57). Apps fetch it once per build after a server notice, swap it in at a safe point, and search types and systems offline.
 
-It also prepares the user-verified criterion "the owner takes a new SDE build while the server and an app run, sees the change report and the settings page, and searches types and systems offline". That criterion is judged when M1 closes, because the settings page comes with `static-data-settings`. This change adds no `[user]` task.
+It also prepares the user-verified criterion "the owner takes a new SDE build while the server and an app run, sees the change report and the settings page, and searches types and systems offline". That criterion is judged when M1 closes, because the settings page comes with `static-data-settings`. The change's one `[user]` task (11.7, added in apply) is a different check: the owner repeats the browser checks in Edge, Firefox and Safari.
 
 Constraining ADRs: 0004 (static data is data, swapped live), 0005 (connected, solo and solo-lite modes), 0008 (Serverpod streams, fan-out through one `RealtimeBus`), 0009 (compute worker isolate, jobs behind a runner), 0010 (Riverpod in the presentation layer only), 0011 (`FitEngine` reads dogma data from the bundle), 0012 (workers reach Postgres through their own connections). Strategy rows R32 (local store deferred to M4) and R57 (mobile solo-lite's static-data source stays open) bound it.
 

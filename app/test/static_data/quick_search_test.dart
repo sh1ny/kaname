@@ -192,6 +192,77 @@ void main() {
     expect(rig.downloader.started, isEmpty);
   });
 
+  testWidgets('a swap keeps the shown results until the next keystroke', (
+    tester,
+  ) async {
+    final copyN1 = fixtureBundle(
+      101,
+      extraTypes: {600: 'Rifter Navy Issue', 601: 'Drifter', 602: 'Rifter Two'},
+    );
+    final rig = Rig(kept: copyN, target: _server);
+    await rig.pump(tester);
+    rig.source.current.emit(
+      BundleAnnounced(
+        epoch: 'E1',
+        revision: 1,
+        bundle: copyN.identity,
+        size: copyN.bytes.length,
+        formatMajor: bundleFormatMajor,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await typeQuery(tester, 'rifter');
+    expect(inPanel(find.text('Rifter Navy Issue')), findsOneWidget);
+    expect(inPanel(find.text('Rifter Two')), findsNothing);
+
+    // Build N+1 is announced, downloaded and swapped in while the results
+    // of build N are shown.
+    rig.source.current.emit(
+      BundleAnnounced(
+        epoch: 'E1',
+        revision: 2,
+        bundle: copyN1.identity,
+        size: copyN1.bytes.length,
+        formatMajor: bundleFormatMajor,
+      ),
+    );
+    await tester.pumpAndSettle();
+    rig.downloader.last.complete(copyN1.bytes);
+    await tester.pumpAndSettle();
+
+    expect(inPanel(find.text('Rifter Navy Issue')), findsOneWidget);
+    expect(inPanel(find.text('Rifter Two')), findsNothing);
+
+    await typeQuery(tester, 'rifter ');
+    expect(inPanel(find.text('Rifter Two')), findsOneWidget);
+  });
+
+  testWidgets('crossing the breakpoint and back clears the query and its '
+      'results together', (tester) async {
+    await Rig(kept: copyN).pump(tester, size: _narrow);
+    await tester.tap(find.byKey(QuickSearchKeys.openButton));
+    await tester.pumpAndSettle();
+    await typeQuery(tester, 'rifter');
+    expect(inPanel(find.text('Rifter')), findsOneWidget);
+
+    setWindowSize(tester, _wide);
+    await tester.pumpAndSettle();
+    setWindowSize(tester, _narrow);
+    await tester.pumpAndSettle();
+
+    // The narrow search is closed, as every query was cleared with the
+    // field that held it.
+    expect(find.byKey(QuickSearchKeys.openButton), findsOneWidget);
+    expect(find.byKey(QuickSearchKeys.panel), findsNothing);
+    await tester.tap(find.byKey(QuickSearchKeys.openButton));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).controller.text,
+      isEmpty,
+    );
+    expect(find.byKey(QuickSearchKeys.panel), findsNothing);
+  });
+
   testWidgets('keyboard search lists Rifter and arrows move', (tester) async {
     final semantics = tester.ensureSemantics();
     await Rig(kept: copyN).pump(tester);

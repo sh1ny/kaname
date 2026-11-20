@@ -153,9 +153,9 @@ final class StaticDataSync {
         break;
       case KeptBundleRejected(:final refusal):
         _log('The kept bundle was refused and is not used: $refusal');
-      case KeptBundleLoaded(:final identity, :final bundle):
+      case KeptBundleLoaded(:final identity, :final bundle, index: final built):
         try {
-          final index = await _indexer.index(bundle);
+          final index = built ?? await _indexer.index(bundle);
           if (_disposed) return;
           _held = _Held(identity, bundle, index);
         } on Object catch (error) {
@@ -323,14 +323,16 @@ final class StaticDataSync {
       final opened = await _opener.open(bytes, attempt.identity);
       if (!_current(attempt)) return;
       final ClientBundle bundle;
+      final SearchIndex? built;
       switch (opened) {
-        case BundleOpened(bundle: final value):
+        case BundleOpened(bundle: final value, index: final prebuilt):
           bundle = value;
+          built = prebuilt;
         case BundleRefused(:final refusal):
           _failed(attempt, _Failure.refused, '$refusal');
           return;
       }
-      final index = await _indexer.index(bundle);
+      final index = built ?? await _indexer.index(bundle);
       if (!_current(attempt)) return;
       _swapIn(attempt, bundle, index, bytes);
     } on Object catch (error) {

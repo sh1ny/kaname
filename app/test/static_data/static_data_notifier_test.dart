@@ -498,6 +498,21 @@ void main() {
     expect(after.hits.map((hit) => hit.id), [587, 588]);
   });
 
+  test('an index built with the opened bundle is not built again', () async {
+    final h = harnessHolding(copyN);
+    h.fakeStore!.withIndex = true;
+    h.opener.withIndex = true;
+    await h.start();
+    expect(h.state, readyOn(copyN));
+
+    await h.send(announce(copyN1));
+    await h.deliver(copyN1);
+
+    expect(h.state, readyOn(copyN1, updating: false));
+    expect(h.indexer.calls, 0);
+    expect((h.state as BundleReady).index.search('rifter').hits, isNotEmpty);
+  });
+
   test('superseded indexing finishes, is dropped, and only then does the '
       'newer download start', () async {
     final h = harnessHolding(copyN);

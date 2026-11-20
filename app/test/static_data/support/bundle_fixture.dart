@@ -67,6 +67,9 @@ final class FakeBundleOpener implements BundleOpener {
   /// How many opens were asked for.
   int calls = 0;
 
+  /// Whether an opened bundle carries its index, as the native opener's does.
+  bool withIndex = false;
+
   /// Lets every held open go on.
   void release() {
     for (final gate in _held) {
@@ -89,10 +92,14 @@ final class FakeBundleOpener implements BundleOpener {
       _held.add(gate);
       await gate.future;
     }
-    return openBundle(
+    final opened = openBundle(
       compressed,
       build: identity.build,
       sha256: identity.sha256,
     );
+    if (withIndex && opened is BundleOpened) {
+      return BundleOpened(opened.bundle, index: SearchIndex.of(opened.bundle));
+    }
+    return opened;
   }
 }

@@ -9,6 +9,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'bundle_format.dart';
 import 'bundle_models.dart';
 import 'bundle_section.dart';
+import 'search_index.dart';
 
 /// Why a reader refused a bundle.
 sealed class BundleRefusal {
@@ -110,10 +111,15 @@ sealed class BundleOpenResult {
 /// The bundle passed every check.
 final class BundleOpened extends BundleOpenResult {
   /// Creates the result holding [bundle].
-  const BundleOpened(this.bundle);
+  const BundleOpened(this.bundle, {this.index});
 
   /// The opened bundle.
   final ClientBundle bundle;
+
+  /// The search index of [bundle], when the opener built it together with
+  /// the bundle (on the native platforms, in the same isolate operation, so
+  /// the UI isolate does not build it); `null` otherwise.
+  final SearchIndex? index;
 }
 
 /// The bundle was refused and must not be used.

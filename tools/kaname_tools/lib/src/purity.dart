@@ -61,10 +61,27 @@ final class PurityCheck {
 
   static const _skippedDirectories = {'build', '.dart_tool'};
 
+  /// An import or export up to its `;`: the default URI and every
+  /// configurable alternative (`if (dart.library.io) 'x_io.dart'`).
   static final _directive = RegExp(
-    r'''^\s*(import|export)\s+r?['"]([^'"]+)['"]''',
+    r'^\s*(import|export)\s+([^;]*);',
     multiLine: true,
   );
+
+  /// A configuration's test, whose quoted value is not a URI.
+  static final _condition = RegExp(r'\bif\s*\([^)]*\)');
+
+  static final _quoted = RegExp(r'''r?['"]([^'"]+)['"]''');
+
+  /// Every URI of the directives in [source], with the directive's kind.
+  static Iterable<(String kind, String uri)> _uris(String source) sync* {
+    for (final match in _directive.allMatches(source)) {
+      final clauses = match[2]!.replaceAll(_condition, ' ');
+      for (final quoted in _quoted.allMatches(clauses)) {
+        yield (match[1]!, quoted[1]!);
+      }
+    }
+  }
 
   /// Runs the check; [CheckReport.packages] lists the pure members.
   CheckReport run() {
@@ -204,16 +221,16 @@ final class PurityCheck {
   }
 
   List<String> _scan(String path) => [
-    for (final match in _directive.allMatches(_fileSystem.readAsString(path)))
-      if (_isForbidden(match[2]!))
-        '$path: ${match[1]} of "${match[2]}" is not allowed in a pure-Dart '
+    for (final (kind, uri) in _uris(_fileSystem.readAsString(path)))
+      if (_isForbidden(uri))
+        '$path: $kind of "$uri" is not allowed in a pure-Dart '
             'package $_rule',
   ];
 
   List<String> _scanWebSafety(String path) => [
-    for (final match in _directive.allMatches(_fileSystem.readAsString(path)))
-      if (webUnsafeLibraries.contains(match[2]))
-        '$path: ${match[1]} of "${match[2]}" is not allowed in a web-safe '
+    for (final (kind, uri) in _uris(_fileSystem.readAsString(path)))
+      if (webUnsafeLibraries.contains(uri))
+        '$path: $kind of "$uri" is not allowed in a web-safe '
             'package (rule: web-safe packages import no dart:io, dart:ffi or '
             'dart:isolate)',
   ];
