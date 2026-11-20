@@ -18,7 +18,11 @@
 @Timeout(Duration(minutes: 2))
 library;
 
+import 'package:kaname_core/kaname_core.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
+import 'package:kaname_server/src/realtime/serverpod_realtime_bus.dart';
+import 'package:kaname_server/src/workers/worker_messages.dart';
+import 'package:kaname_static_data/kaname_static_data.dart';
 import 'package:serverpod/serverpod.dart';
 // `internalSession` is in an extension that serverpod.dart does not export.
 // ignore: implementation_imports
@@ -35,6 +39,27 @@ HealthReport _message(String version) => HealthReport(
   postgres: DependencyStatus.up,
   redis: DependencyStatus.down,
 );
+
+/// A test-local bus message: the build the server switched to.
+final class _BuildChanged {
+  const _BuildChanged(this.build);
+  final int build;
+}
+
+const _topic = Topic<_BuildChanged>(
+  name: 'test-static-data',
+  version: 2,
+  visibility: TopicVisibility.public,
+);
+
+/// Test-local stand-in for the announcer's glue: what the main isolate does
+/// with a worker reply (ADR 0014). Only a switch is a change.
+_BuildChanged? _changeFromReply(WorkerReply reply) => switch (reply) {
+  BuildCheckFinished(result: BuildSwitched(:final build)) => _BuildChanged(
+    build,
+  ),
+  _ => null,
+};
 
 void main() {
   group('Given a pod with Redis disabled', () {
@@ -93,6 +118,95 @@ void main() {
         scope: MessageScope.local,
       );
       expect(received, ['1', '2']);
+    });
+  });
+
+  group('Given a ServerpodRealtimeBus on a pod with Redis disabled', () {
+    late InProcessPod server;
+    late ServerpodRealtimeBus bus;
+    late List<String> logged;
+    setUp(() async {
+      server = await InProcessPod.start(
+        configOverride: (config) => config.copyWith(
+          redis: RedisConfig(enabled: false, host: 'localhost', port: 8091),
+        ),
+      );
+      logged = [];
+      bus = ServerpodRealtimeBus(server.pod.internalSession, log: logged.add);
+    });
+    tearDown(() async => server.stop());
+
+    test(
+      'unknown version is logged and dropped, later messages delivered',
+      () async {
+        final received = <int>[];
+        final subscription = bus
+            .subscribe(_topic)
+            .listen((message) => received.add(message.build));
+        addTearDown(subscription.cancel);
+
+        // A sender at a version this receiver does not know.
+        await server.pod.server.messageCentral.postMessage(
+          _topic.name,
+          const BusEnvelope(
+            topic: 'test-static-data',
+            version: 99,
+            payload: null,
+          ),
+          scope: MessageScope.local,
+        );
+        await bus.publish(_topic, const _BuildChanged(5));
+        await pumpEventQueue();
+
+        expect(received, [5]);
+        expect(logged, hasLength(1));
+        expect(
+          logged.single,
+          allOf(contains('test-static-data'), contains('99')),
+        );
+      },
+    );
+
+    test('worker switch reply reaches every bus subscription, and each open '
+        'stream ends on it or newer', () async {
+      final streams = [for (var i = 0; i < 3; i++) <int>[]];
+      final subscriptions = [
+        for (final seen in streams)
+          bus.subscribe(_topic).listen((message) => seen.add(message.build)),
+      ];
+      addTearDown(() async {
+        for (final each in subscriptions) {
+          await each.cancel();
+        }
+      });
+
+      // The main isolate receives the worker's replies and publishes.
+      const replies = <WorkerReply>[
+        BuildCheckFinished(requestId: 1, result: BuildUpToDate(6)),
+        BuildCheckFinished(
+          requestId: 2,
+          result: BuildSwitched(7, replacedBuild: 6),
+        ),
+      ];
+      for (final reply in replies) {
+        final change = _changeFromReply(reply);
+        if (change != null) await bus.publish(_topic, change);
+      }
+      await pumpEventQueue();
+
+      for (final seen in streams) {
+        expect(seen, [7]);
+        expect(seen.last, greaterThanOrEqualTo(7));
+      }
+    });
+
+    test('publish with no subscribers does not fail', () async {
+      await bus.publish(_topic, const _BuildChanged(1));
+
+      final subscription = bus.subscribe(_topic).listen((_) {});
+      await subscription.cancel();
+      await bus.publish(_topic, const _BuildChanged(2));
+      expect(logged, isEmpty);
     });
   });
 }

@@ -6,6 +6,7 @@
 library;
 
 export 'src/job.dart';
+export 'src/realtime_bus.dart';
 export 'src/sde_json.dart';
 export 'src/worker_message.dart';
 
