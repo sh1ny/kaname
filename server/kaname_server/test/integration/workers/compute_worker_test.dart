@@ -14,6 +14,8 @@ import 'package:kaname_server/src/workers/worker_process.dart';
 import 'package:kaname_server/src/workers/worker_supervisor.dart';
 import 'package:kaname_static_data/kaname_static_data.dart';
 import 'package:kaname_static_data/testing.dart';
+import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
+    show BuiltBundle;
 import 'package:serverpod/serverpod.dart' show Session;
 import 'package:test/test.dart';
 
@@ -142,6 +144,29 @@ SdeSource twoPhaseSourceFactory(
   ),
   _ => throw ArgumentError('the test factory reads local zips only'),
 };
+
+/// The folder of [heldBundleBuild]'s gate files, one per test process.
+Directory get bundleGate =>
+    Directory('${Directory.systemTemp.path}/kaname_bundle_gate_$pid');
+
+/// A bundle build with a synchronous step a test releases: it builds the
+/// bundle, creates `started` in [bundleGate], then holds its isolate, polling
+/// without yielding, until `release` exists there. Run on the endpoint
+/// isolate, that step would hold every endpoint call until its release; it
+/// gives up after 30 s and throws, so the build fails. Top-level because it
+/// crosses into the worker isolate.
+Future<BuiltBundle> heldBundleBuild(StaticDataStore store, int build) async {
+  final built = await buildStoredBundle(store, build);
+  File('${bundleGate.path}/started').writeAsStringSync('');
+  final release = File('${bundleGate.path}/release');
+  final until = DateTime.now().add(const Duration(seconds: 30));
+  while (!release.existsSync()) {
+    if (DateTime.now().isAfter(until)) {
+      throw StateError('the held bundle step was never released');
+    }
+  }
+  return built;
+}
 
 Future<void> _until(File gate) async {
   while (!gate.existsSync()) {
@@ -695,8 +720,15 @@ void main() {
 
     // Scenario: Bundle builds run on the compute worker (C9).
     test('health answers under 1 s during a bundle build', () async {
-      // Build 2850 is active with no bundle, so the repair builds one.
-      final worker = await WorkerHarness.start(postgres: settings);
+      // Build 2850 is active with no bundle, so the repair builds one, with
+      // a synchronous step this test releases.
+      if (bundleGate.existsSync()) bundleGate.deleteSync(recursive: true);
+      bundleGate.createSync(recursive: true);
+      addTearDown(() => bundleGate.deleteSync(recursive: true));
+      final worker = await WorkerHarness.start(
+        postgres: settings,
+        buildBundle: heldBundleBuild,
+      );
       addTearDown(worker.close);
       final zip = SdeFixture.complete(build: 2850).writeTo(scratch);
       expect(
@@ -765,28 +797,22 @@ void main() {
       expect(answered, isFalse, reason: 'the bundle build was still held');
       expect(await SdeBundle.db.find(session), isEmpty);
 
-      // The build goes on once the lock is released: it reads the build,
-      // then serializes and gzips the bundle. Health is called every 50 ms
-      // from the release until the reply, so the calls overlap that CPU
-      // phase; on the endpoint isolate it would hold them up. The pause keeps
-      // the calls from loading the database the other suites share.
-      final duringCpu = <Duration>[];
-      final calls = () async {
-        while (!answered) {
-          final stopwatch = Stopwatch()..start();
-          final report = await endpoints.health.check(sessionBuilder);
-          duringCpu.add(stopwatch.elapsed);
-          expect(report.postgres, DependencyStatus.up);
-          await Future<void>.delayed(const Duration(milliseconds: 50));
-        }
-      }();
+      // The build goes on once the lock is released, and its synchronous
+      // step then holds the worker isolate until a health call has answered.
+      // On the endpoint isolate that step would hold the call itself: it
+      // would answer only after the step gave up, and the failed build
+      // below would show it.
       release.complete();
       await holder;
-      await calls;
-      expect(duringCpu, isNotEmpty, reason: 'a call overlapped the build');
-      for (final latency in duringCpu) {
-        expect(latency, lessThan(const Duration(seconds: 1)));
-      }
+      await _until(File('${bundleGate.path}/started'))
+          .timeout(const Duration(seconds: 20));
+      expect(answered, isFalse, reason: 'the synchronous step is running');
+      final stopwatch = Stopwatch()..start();
+      final report = await endpoints.health.check(sessionBuilder);
+      final duringStep = stopwatch.elapsed;
+      File('${bundleGate.path}/release').writeAsStringSync('');
+      expect(report.postgres, DependencyStatus.up);
+      expect(duringStep, lessThan(const Duration(seconds: 1)));
       final reply = await answer;
       await announced.reply(reply);
       expect(reply, isA<BundleRepairFinished>(), reason: '$reply');

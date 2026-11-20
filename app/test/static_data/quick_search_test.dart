@@ -458,23 +458,61 @@ void main() {
       expect(location(), '/settings', reason: 'no dead search entry is left');
     });
 
-    testWidgets('a location opened with the marker shows the narrow search, '
-        'and closing it replaces the entry', (tester) async {
-      history = FakeBrowserHistory(tester);
-      harness = await Rig(kept: copyN).pump(
-        tester,
-        size: _narrow,
-        location: '/settings?search=',
-        browserHistory: history,
-      );
+    testWidgets('after Back and Forward reopen the search, closing it steps '
+        'back, so the next Back leaves the page', (tester) async {
+      await openOverLicences(tester);
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      await history.pressForward();
+      await tester.pumpAndSettle();
       expect(find.byKey(QuickSearchKeys.field), findsOneWidget);
 
       await tester.tap(find.byKey(QuickSearchKeys.closeButton));
       await tester.pumpAndSettle();
 
       expect(find.byKey(QuickSearchKeys.field), findsNothing);
-      expect(history.backCalls, 0, reason: 'the entry is not the bar\'s own');
-      expect(history.entries, ['/settings']);
+      expect(history.backCalls, 1);
+      expect(location(), '/settings/licences');
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      expect(location(), '/settings', reason: 'no repeated page entry');
+    });
+
+    testWidgets('widening the window with the search open steps back over '
+        'its entry', (tester) async {
+      await openOverLicences(tester);
+
+      setWindowSize(tester, _wide);
+      await tester.pumpAndSettle();
+
+      expect(history.backCalls, 1);
+      expect(location(), '/settings/licences');
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      expect(location(), '/settings', reason: 'no repeated page entry');
+    });
+
+    testWidgets('a page loaded with the marker shows the narrow search over '
+        'the same page unmarked, and closing it steps back there', (
+      tester,
+    ) async {
+      history = FakeBrowserHistory(tester);
+      harness = await Rig(kept: copyN).pump(
+        tester,
+        size: _narrow,
+        location: '/settings?search',
+        browserHistory: history,
+      );
+      expect(find.byKey(QuickSearchKeys.field), findsOneWidget);
+      expect(history.entries, ['/settings', '/settings?search']);
+
+      await tester.tap(find.byKey(QuickSearchKeys.closeButton));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(QuickSearchKeys.field), findsNothing);
+      expect(history.backCalls, 1);
+      expect(history.current, '/settings');
+      expect(location(), '/settings');
     });
   });
 

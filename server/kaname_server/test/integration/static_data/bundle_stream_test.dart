@@ -136,19 +136,40 @@ void main() {
         await switchTo(session, 101);
         await wait(const Duration(seconds: 70));
         // A dropped connection: every stream ends and the apps resubscribe.
+        final beforeDrop = [for (final feed in feeds) feed.generations.length];
         await rig.client.closeStreamingMethodConnections();
         await wait(const Duration(seconds: 100));
+        for (final (index, count) in beforeDrop.indexed) {
+          expect(
+            feeds[index].generations.length,
+            greaterThan(count),
+            reason: 'the drop made app $index subscribe again',
+          );
+        }
         open(); // During the hold, after the 2-minute deadline.
         await wait(const Duration(seconds: 190));
 
         expect(rig.source.reads, 1, reason: 'no second read while one is held');
         for (final feed in feeds) {
-          expect(feed.events, isNotEmpty);
-          for (final delay in feed.firstEventDelays) {
-            // The announcer installs "none" 19 s after its start, so the
-            // WebSocket's delivery, which a client-side stopwatch counts,
-            // still fits within 20 s.
-            expect(delay, lessThan(const Duration(seconds: 20)));
+          // Every subscription opened during the hold, replacements
+          // included, got its own first event, a "none", in time. The
+          // announcer installs "none" 19 s after its start, so the
+          // WebSocket's delivery, which a client-side stopwatch counts,
+          // still fits within 20 s.
+          for (final (generation, delay) in feed.firstEventDelays.indexed) {
+            expect(
+              delay,
+              isA<Duration>().having(
+                (delay) => delay,
+                'delay',
+                lessThan(const Duration(seconds: 20)),
+              ),
+              reason: 'subscription $generation got its first event in time',
+            );
+            expect(
+              feed.generations[generation].first,
+              isA<wire.BundleAnnouncementNone>(),
+            );
           }
           expect(
             feed.events.every((event) => event is wire.BundleAnnouncementNone),
@@ -830,8 +851,9 @@ final class _AppFeed {
   /// The events of each subscription, in order; revisions rise within one.
   final List<List<wire.BundleAnnouncement>> generations = [];
 
-  /// How long each subscription waited for its first event.
-  final List<Duration> firstEventDelays = [];
+  /// How long each subscription, by its index in [generations], waited for
+  /// its first event; null while it has received none.
+  final List<Duration?> firstEventDelays = [];
 
   StreamSubscription<wire.BundleAnnouncement>? _subscription;
   bool _closed = false;
@@ -840,7 +862,9 @@ final class _AppFeed {
     if (_closed) return;
     final waited = Stopwatch()..start();
     final mine = <wire.BundleAnnouncement>[];
+    final generation = generations.length;
     generations.add(mine);
+    firstEventDelays.add(null);
     var first = true;
     void again() {
       if (_closed) return;
@@ -851,7 +875,7 @@ final class _AppFeed {
       (event) {
         if (first) {
           first = false;
-          firstEventDelays.add(waited.elapsed);
+          firstEventDelays[generation] = waited.elapsed;
         }
         events.add(event);
         mine.add(event);

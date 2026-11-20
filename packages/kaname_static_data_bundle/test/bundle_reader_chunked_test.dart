@@ -160,6 +160,43 @@ void main() {
     expect(counter.turns, greaterThanOrEqualTo(searchLines - 1));
   });
 
+  test(
+    'the scan for sections yields too, over lines search never decodes',
+    () async {
+      // The fixture with a long section this reader passes over: indexing it
+      // is most of the open's work, and none of it is search decoding.
+      const lazyLines = 1000;
+      final inflated = Uint8List.fromList([
+        ...inflatedFixture(),
+        ...utf8.encode('{"section":"zzUnread.jsonl"}\n'),
+        for (var i = 0; i < lazyLines; i++) ...utf8.encode('[$i]\n'),
+      ]);
+      const linesPerChunk = 50;
+      final counter = TurnCounter();
+
+      final chunked = opened(
+        await openInflatedBundleChunked(
+          inflated,
+          build: fixtureBuild,
+          linesPerChunk: linesPerChunk,
+        ),
+      );
+      counter.stop();
+
+      expect(
+        counter.turns,
+        greaterThanOrEqualTo(lazyLines ~/ linesPerChunk - 1),
+        reason: 'the index pauses every $linesPerChunk lines',
+      );
+      expect(
+        snapshot(chunked),
+        equals(
+          snapshot(opened(openInflatedBundle(inflated, build: fixtureBuild))),
+        ),
+      );
+    },
+  );
+
   test('a chunk size larger than the bundle does not yield', () async {
     final counter = TurnCounter();
 

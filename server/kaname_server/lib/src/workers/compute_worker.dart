@@ -46,7 +46,11 @@ SdeSource defaultSdeSourceFactory(
 /// What [ComputeWorker.entryPoint] receives at spawn.
 final class ComputeWorkerBootstrap {
   /// Creates the bootstrap.
-  const ComputeWorkerBootstrap({required this.replyPort, this.sourceFactory});
+  const ComputeWorkerBootstrap({
+    required this.replyPort,
+    this.sourceFactory,
+    this.buildBundle,
+  });
 
   /// The port the worker sends to the main isolate: first its own command
   /// port (the handshake), then encoded [WorkerReply] and [WorkerLog]
@@ -56,6 +60,11 @@ final class ComputeWorkerBootstrap {
   /// The test hook that replaces [defaultSdeSourceFactory]; production
   /// spawns leave it `null`. It must be a top-level or static function.
   final SdeSourceFactory? sourceFactory;
+
+  /// The test hook that replaces [buildStoredBundle] in the worker's jobs;
+  /// production spawns leave it `null`. It must be a top-level or static
+  /// function.
+  final BuildBundle? buildBundle;
 }
 
 /// The worker that runs imports and build checks (and, in later changes,
@@ -94,9 +103,14 @@ final class ComputeWorkerBootstrap {
 final class ComputeWorker {
   /// Creates a worker that sends encoded messages with [send].
   ///
-  /// [sourceFactory] defaults to [defaultSdeSourceFactory].
-  ComputeWorker({required this._send, SdeSourceFactory? sourceFactory})
-    : _sourceFactory = sourceFactory ?? defaultSdeSourceFactory;
+  /// [sourceFactory] defaults to [defaultSdeSourceFactory] and [buildBundle]
+  /// to [buildStoredBundle].
+  ComputeWorker({
+    required this._send,
+    SdeSourceFactory? sourceFactory,
+    BuildBundle? buildBundle,
+  }) : _sourceFactory = sourceFactory ?? defaultSdeSourceFactory,
+       _buildBundle = buildBundle ?? buildStoredBundle;
 
   /// The name used before a [WorkerStart] names the worker.
   static const String defaultName = 'compute';
@@ -108,6 +122,7 @@ final class ComputeWorker {
     final worker = ComputeWorker(
       send: bootstrap.replyPort.send,
       sourceFactory: bootstrap.sourceFactory,
+      buildBundle: bootstrap.buildBundle,
     );
     inbox.listen(worker.handle);
     bootstrap.replyPort.send(inbox.sendPort);
@@ -115,6 +130,7 @@ final class ComputeWorker {
 
   final void Function(Map<String, Object?> message) _send;
   final SdeSourceFactory _sourceFactory;
+  final BuildBundle _buildBundle;
   final WorkerMessageCodec _codec = workerInboxCodec();
   final WorkerMessageCodec _replyCodec = workerOutboxCodec();
   WorkerStart? _start;
@@ -244,6 +260,7 @@ final class ComputeWorker {
             source: _sourceFactory(request.source, client, scratchRoot),
             differ: store.differ(),
             scratchRoot: scratchRoot,
+            buildBundle: _buildBundle,
             onBundle: _logBundleStep,
           );
           final result = await job.run();
@@ -268,7 +285,8 @@ final class ComputeWorker {
         requestId: request.requestId,
         start: start,
         unreachable: () => const BundleRepairFailed('Postgres unreachable'),
-        job: (store, client) => BundleRepairJob(store: store).run(),
+        job: (store, client) =>
+            BundleRepairJob(store: store, buildBundle: _buildBundle).run(),
       );
     } on Object catch (error) {
       _log(WorkerLogLevel.error, 'bundle repair failed unexpectedly: $error');

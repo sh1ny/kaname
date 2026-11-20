@@ -56,8 +56,13 @@ final class FakeBrowserHistory implements BrowserHistory {
   }
 
   /// The browser's Back button.
-  Future<void> pressBack() async {
-    _index--;
+  Future<void> pressBack() => _goTo(_index - 1);
+
+  /// The browser's Forward button.
+  Future<void> pressForward() => _goTo(_index + 1);
+
+  Future<void> _goTo(int index) async {
+    _index = index;
     final entry = _entries[_index];
     await _tester.binding.defaultBinaryMessenger.handlePlatformMessage(
       SystemChannels.navigation.name,

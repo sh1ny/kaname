@@ -70,11 +70,15 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   GoRouteInformationProvider? _locations;
 
   /// Whether the full-width search is open (narrow windows).
+  ///
+  /// It follows the location's [searchMarker], and every marked history
+  /// entry comes right after the same location unmarked: the bar adds marked
+  /// entries only by pushing them from there, and a page loaded with the
+  /// marker is first rewritten to that pair. So closing the search in a
+  /// browser always steps back, onto the same page without the marker, and
+  /// leaves no dead entry, whether the marked entry was reached by opening
+  /// the search or by Forward.
   bool _searchOpen = false;
-
-  /// Whether this bar added the open search's history entry, so closing it
-  /// steps the browser back over that entry rather than leaving a dead one.
-  bool _ownEntry = false;
 
   Uri get _location => _locations!.value.uri;
 
@@ -85,13 +89,14 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     if (identical(locations, _locations)) return;
     _locations?.removeListener(_onLocation);
     _locations = locations..addListener(_onLocation);
-    // A location opened with the marker (a reload, a link) opens the
-    // narrow search; the wide bar has no use for it.
-    if (!hasSearchMarker(_location)) return;
-    if (widget.inlineSearch) {
-      _afterFrame(_dropMarker);
-    } else {
-      _searchOpen = true;
+    // A page loaded with the marker on a narrow window: the entry becomes the
+    // unmarked location with the search pushed over it. The push waits a
+    // frame, so the router reports the replacement before it.
+    if (!widget.inlineSearch && hasSearchMarker(_location)) {
+      _afterFrame(() {
+        _dropMarker();
+        _afterFrame(_openSearch);
+      });
     }
   }
 
@@ -104,10 +109,9 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     // starts closed; the provider and the location are changed after this
     // frame builds.
     _searchOpen = false;
-    _ownEntry = false;
     _afterFrame(() {
       ref.read(quickSearchProvider.notifier).clear();
-      _dropMarker();
+      _leaveMarkedEntry();
     });
   }
 
@@ -123,17 +127,15 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
         if (mounted) run();
       });
 
-  /// Follows the location: the browser's Back or Forward, or a navigation
-  /// made while the search was open.
+  /// Follows the location on narrow windows: the browser's Back or Forward,
+  /// or a navigation made while the search was open. The wide bar has no
+  /// narrow search and ignores the marker.
   void _onLocation() {
-    final marked = hasSearchMarker(_location);
-    switch ((marked, _searchOpen, widget.inlineSearch)) {
-      case (true, _, true):
-        _afterFrame(_dropMarker);
-      case (true, false, false):
+    if (widget.inlineSearch) return;
+    switch ((hasSearchMarker(_location), _searchOpen)) {
+      case (true, false):
         setState(() => _searchOpen = true);
-      case (false, true, _):
-        _ownEntry = false;
+      case (false, true):
         _endSearch();
       case _:
         break;
@@ -141,7 +143,6 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   }
 
   void _openSearch() {
-    _ownEntry = true;
     setState(() => _searchOpen = true);
     GoRouter.of(context).go(withSearchMarker(_location));
   }
@@ -149,18 +150,20 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   /// Closes the search from inside the app: Escape, the close button or the
   /// platform's back.
   void _closeSearch() {
-    if (hasSearchMarker(_location)) {
-      if ((_ownEntry, ref.read(browserHistoryProvider)) case (
-        true,
-        final history?,
-      )) {
-        history.back();
-      } else {
-        _dropMarker();
-      }
-    }
-    _ownEntry = false;
+    _leaveMarkedEntry();
     _endSearch();
+  }
+
+  /// Leaves the marked location: in a browser by stepping back onto the
+  /// unmarked entry before it, elsewhere by removing the marker in place.
+  void _leaveMarkedEntry() {
+    if (!hasSearchMarker(_location)) return;
+    switch (ref.read(browserHistoryProvider)) {
+      case final history?:
+        history.back();
+      case null:
+        _dropMarker();
+    }
   }
 
   /// Removes the marker in place, replacing the current history entry.

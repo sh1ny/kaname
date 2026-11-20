@@ -252,8 +252,10 @@ BundleOpenResult openInflatedBundle(Uint8List inflated, {required int build}) {
     switch (_prepare(inflated, build)) {
       case _Rejected(:final refused):
         return refused;
-      case _Ready(:final bundle):
-        // A chunk no bundle fills, so the decoding never pauses.
+      case _Ready(:final bundle, :final bodyStart):
+        // A chunk no bundle fills, so the open never pauses.
+        bundle._index(bodyStart, _onePass).forEach((_) {});
+        bundle._checkFraming();
         bundle._decodeSearchSections(_onePass).forEach((_) {});
         return BundleOpened(bundle);
     }
@@ -263,8 +265,10 @@ BundleOpenResult openInflatedBundle(Uint8List inflated, {required int build}) {
 }
 
 /// Opens the already inflated bundle [inflated] as [openInflatedBundle]
-/// does, but decodes it in chunks of [linesPerChunk] record lines and yields
-/// to the event loop between chunks.
+/// does, but indexes and decodes it in chunks of [linesPerChunk] lines and
+/// yields to the event loop between chunks: the scan of the whole body that
+/// finds the sections pauses too, not only the decoding of the search
+/// sections.
 ///
 /// The web app's Dart code runs on the browser's main thread (design D12),
 /// where one long synchronous parse would freeze the page. The bundle and
@@ -282,10 +286,14 @@ Future<BundleOpenResult> openInflatedBundleChunked(
     switch (_prepare(inflated, build)) {
       case _Rejected(:final refused):
         return refused;
-      case _Ready(:final bundle):
+      case _Ready(:final bundle, :final bodyStart):
+        // A timer, not a microtask: only a timer lets the browser paint and
+        // handle input.
+        for (final _ in bundle._index(bodyStart, linesPerChunk)) {
+          await Future<void>.delayed(Duration.zero);
+        }
+        bundle._checkFraming();
         for (final _ in bundle._decodeSearchSections(linesPerChunk)) {
-          // A timer, not a microtask: only a timer lets the browser paint
-          // and handle input.
           await Future<void>.delayed(Duration.zero);
         }
         return BundleOpened(bundle);
@@ -311,9 +319,12 @@ sealed class _Prepared {
 }
 
 final class _Ready extends _Prepared {
-  const _Ready(this.bundle);
+  const _Ready(this.bundle, this.bodyStart);
 
   final _Bundle bundle;
+
+  /// Where the body, the lines after the header, starts.
+  final int bodyStart;
 }
 
 final class _Rejected extends _Prepared {
@@ -322,8 +333,7 @@ final class _Rejected extends _Prepared {
   final BundleRefused refused;
 }
 
-/// Checks the header and indexes the sections of [bytes], without decoding a
-/// record line.
+/// Checks the header of [bytes]; the body is still to index.
 _Prepared _prepare(Uint8List bytes, int build) {
   final headerEnd = bytes.indexOf(_lineFeed);
   if (headerEnd < 0) throw const FormatException('no header line');
@@ -358,10 +368,10 @@ _Prepared _prepare(Uint8List bytes, int build) {
       BundleRefused(WrongBuild(expected: build, actual: bundleBuild)),
     );
   }
-  final bundle = _Bundle(bytes, _parseHeader(header, bundleBuild))
-    .._index(headerEnd + 1)
-    .._checkFraming();
-  return _Ready(bundle);
+  return _Ready(
+    _Bundle(bytes, _parseHeader(header, bundleBuild)),
+    headerEnd + 1,
+  );
 }
 
 BundleHeader _parseHeader(Map<String, Object?> header, int build) {
@@ -440,16 +450,19 @@ final class _Bundle implements ClientBundle {
   @override
   late final List<BundleSolarSystem> solarSystems;
 
-  /// Records where each section's record lines start and end, from [start].
+  /// Records where each section's record lines start and end, from [start],
+  /// pausing after every [linesPerChunk] lines.
   ///
   /// Only section marker lines are decoded; record lines start with `[` and
   /// are counted, not decoded. Unknown sections are passed over. Throws a
-  /// [FormatException] when a known section appears twice.
-  void _index(int start) {
+  /// [FormatException] when a known section appears twice. The pauses are the
+  /// iterable's elements, as in [_decodeSearchSections].
+  Iterable<void> _index(int start, int linesPerChunk) sync* {
     BundleSection? current;
     var currentStart = start;
     var currentCount = 0;
     var position = start;
+    var sinceYield = 0;
     void close(int end) {
       if (current == null) return;
       _ranges[current] = (currentStart, end);
@@ -476,6 +489,10 @@ final class _Bundle implements ClientBundle {
         currentCount++;
       }
       position = end + 1;
+      if (++sinceYield >= linesPerChunk) {
+        sinceYield = 0;
+        yield null;
+      }
     }
     close(_bytes.length);
   }
