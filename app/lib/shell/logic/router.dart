@@ -98,19 +98,21 @@ const String searchMarker = 'search';
 bool hasSearchMarker(Uri location) =>
     location.queryParameters.containsKey(searchMarker);
 
-/// [location] with the [searchMarker] added; its path and other query
-/// parameters are kept.
+/// [location] with the [searchMarker] added; its path, other query
+/// parameters and fragment are kept.
 String withSearchMarker(Uri location) => Uri(
   path: location.path,
   queryParameters: {...location.queryParametersAll, searchMarker: ''},
+  fragment: location.hasFragment ? location.fragment : null,
 ).toString();
 
-/// [location] without the [searchMarker]; its path and other query
-/// parameters are kept.
+/// [location] without the [searchMarker]; its path, other query parameters
+/// and fragment are kept.
 String withoutSearchMarker(Uri location) {
   final rest = {...location.queryParametersAll}..remove(searchMarker);
   return Uri(
     path: location.path,
     queryParameters: rest.isEmpty ? null : rest,
+    fragment: location.hasFragment ? location.fragment : null,
   ).toString();
 }

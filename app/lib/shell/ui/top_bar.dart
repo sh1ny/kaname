@@ -93,9 +93,18 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
 
   Uri get _location => _locations!.value.uri;
 
+  /// Holds focus anywhere in the open narrow search: field, close button
+  /// and results.
+  final _searchArea = FocusNode(
+    debugLabel: 'narrow search',
+    skipTraversal: true,
+    canRequestFocus: false,
+  );
+
   @override
   void initState() {
     super.initState();
+    HardwareKeyboard.instance.addHandler(_onKey);
     // The browser history reads the tag of the entry the page loaded on when
     // it is created, which must come before the router's first report.
     ref.read(browserHistoryProvider);
@@ -157,6 +166,8 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
 
   @override
   void dispose() {
+    HardwareKeyboard.instance.removeHandler(_onKey);
+    _searchArea.dispose();
     _locations?.removeListener(_onLocation);
     _searchButtonFocus.dispose();
     super.dispose();
@@ -192,6 +203,24 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
       case _:
         break;
     }
+  }
+
+  /// Escape closes the open narrow search also while focus is elsewhere in
+  /// the shell, such as the page or the bottom navigation. Within the search
+  /// its own shortcuts answer, and a route over the shell, such as a dialog,
+  /// keeps its Escape.
+  bool _onKey(KeyEvent event) {
+    if (event is! KeyDownEvent ||
+        event.logicalKey != LogicalKeyboardKey.escape ||
+        !mounted ||
+        !_searchOpen ||
+        widget.inlineSearch ||
+        _searchArea.hasFocus ||
+        !(ModalRoute.of(context)?.isCurrent ?? true)) {
+      return false;
+    }
+    _closeSearch();
+    return true;
   }
 
   /// Whether the browser reported [location], by Back or Forward.
@@ -310,26 +339,29 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   // included; the field handles its own Escape first.
   Widget _fullWidthSearch(AppLocalizations l10n) => CallbackShortcuts(
     bindings: {const SingleActivator(LogicalKeyboardKey.escape): _closeSearch},
-    child: LayoutBuilder(
-      builder: (context, constraints) => Row(
-        children: [
-          ShellIconButton(
-            key: QuickSearchKeys.closeButton,
-            label: l10n.searchClose,
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _closeSearch,
-          ),
-          const SizedBox(width: EmberSpace.xs),
-          Expanded(
-            child: QuickSearchField(
-              anchor: _searchLink,
-              // The panel spans the window: the bar's width plus its padding.
-              panelWidth: constraints.maxWidth + 2 * EmberSpace.sm,
-              onClose: _closeSearch,
-              autofocus: true,
+    child: Focus(
+      focusNode: _searchArea,
+      child: LayoutBuilder(
+        builder: (context, constraints) => Row(
+          children: [
+            ShellIconButton(
+              key: QuickSearchKeys.closeButton,
+              label: l10n.searchClose,
+              icon: const Icon(Icons.arrow_back),
+              onPressed: _closeSearch,
             ),
-          ),
-        ],
+            const SizedBox(width: EmberSpace.xs),
+            Expanded(
+              child: QuickSearchField(
+                anchor: _searchLink,
+                // The panel spans the window: the bar's width plus its padding.
+                panelWidth: constraints.maxWidth + 2 * EmberSpace.sm,
+                onClose: _closeSearch,
+                autofocus: true,
+              ),
+            ),
+          ],
+        ),
       ),
     ),
   );

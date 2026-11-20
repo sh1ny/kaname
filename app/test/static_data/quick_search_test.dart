@@ -312,6 +312,36 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('arrows scroll the highlighted row fully into view', (
+    tester,
+  ) async {
+    final many = fixtureBundle(
+      100,
+      extraTypes: {for (var i = 0; i < 30; i++) 700 + i: 'Rifter $i'},
+    );
+    await Rig(kept: many).pump(tester, size: _narrow);
+    await tester.tap(find.byKey(QuickSearchKeys.openButton));
+    await tester.pumpAndSettle();
+    await typeQuery(tester, 'rifter');
+
+    for (var i = 0; i < 20; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    final panel = tester.getRect(find.byKey(QuickSearchKeys.panel));
+    final row = tester.getRect(find.byKey(QuickSearchKeys.result(19)));
+    expect(row.bottom, lessThanOrEqualTo(panel.bottom), reason: 'not clipped');
+
+    for (var i = 0; i < 19; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    final first = tester.getRect(find.byKey(QuickSearchKeys.result(0)));
+    expect(first.top, greaterThanOrEqualTo(panel.top));
+  });
+
   testWidgets('narrow window opens full-width search, Escape returns focus', (
     tester,
   ) async {
@@ -368,6 +398,42 @@ void main() {
       reason:
           'every result can be scrolled into the part the keyboard '
           'leaves',
+    );
+  });
+
+  testWidgets('Escape closes the narrow search with focus on the bottom '
+      'navigation too, and returns focus to the button', (tester) async {
+    await Rig(kept: copyN).pump(tester, size: _narrow);
+    await tester.tap(find.byKey(QuickSearchKeys.openButton));
+    await tester.pumpAndSettle();
+    // Focus moves from the search to a bottom-navigation item.
+    final item = tester.element(
+      find
+          .descendant(
+            of: find
+                .descendant(
+                  of: find.byKey(ShellKeys.bar('settings')),
+                  matching: find.byType(Focus),
+                )
+                .last,
+            matching: find.byWidgetPredicate((_) => true),
+          )
+          .first,
+    );
+    Focus.of(item, createDependency: false).requestFocus();
+    await tester.pump();
+    expect(fieldHasFocus(tester), isFalse);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(QuickSearchKeys.field), findsNothing);
+    expect(
+      tester
+          .widget<ShellIconButton>(find.byKey(QuickSearchKeys.openButton))
+          .focusNode!
+          .hasPrimaryFocus,
+      isTrue,
     );
   });
 

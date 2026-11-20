@@ -67,7 +67,8 @@ class _QuickSearchPanelState extends State<QuickSearchPanel> {
   /// Scrolls, without animation, so the highlighted row is in view.
   void _reveal() {
     if (!mounted || !_scroll.hasClients) return;
-    final top = widget.active * QuickSearchPanel.rowHeight;
+    // The row's bounds in the list, which starts with its padding.
+    final top = _listPadding + widget.active * QuickSearchPanel.rowHeight;
     final bottom = top + QuickSearchPanel.rowHeight;
     final position = _scroll.position;
     if (top < position.pixels) {
@@ -131,6 +132,9 @@ class _QuickSearchPanelState extends State<QuickSearchPanel> {
     );
   }
 }
+
+/// The padding around the result list.
+const double _listPadding = 6;
 
 /// The localised message for why the app holds no bundle (design D21).
 String _reasonMessage(AppLocalizations l10n, NoBundleReason reason) =>
@@ -226,7 +230,7 @@ class _Found extends StatelessWidget {
               child: ListView.builder(
                 controller: controller,
                 shrinkWrap: true,
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(_listPadding),
                 itemExtent: QuickSearchPanel.rowHeight,
                 itemCount: hits.length,
                 itemBuilder: (context, index) => _ResultRow(
