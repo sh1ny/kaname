@@ -15,6 +15,7 @@ import 'package:serverpod/src/server/serverpod.dart'
 import '../realtime/server_clock.dart';
 import '../realtime/serverpod_realtime_bus.dart';
 import '../workers/worker_messages.dart';
+import '../workers/worker_supervisor.dart' show WorkerLogSink;
 import 'bundle_announcement_runtime.dart';
 import 'bundle_announcer.dart';
 import 'static_data_runtime.dart';
@@ -31,13 +32,25 @@ import 'static_data_start_hook.dart';
 /// the same supervisor, and the one outstanding repair, as the hook's (C27).
 /// Where no worker runs, the announcer gets no repair request and sends none
 /// ([bundleRepairRunnerFor]).
-BundleAnnouncer buildBundleAnnouncer(Serverpod pod) {
-  final bus = ServerpodRealtimeBus(pod.internalSession);
+///
+/// The announcer and the bus log through [log], by default a short session
+/// of [pod] with logging on. The bus listens on `pod.internalSession`, whose
+/// logging Serverpod turns off, so its own default would drop the warning
+/// for a message of an unknown version.
+BundleAnnouncer buildBundleAnnouncer(
+  Serverpod pod, {
+  @visibleForTesting WorkerLogSink? log,
+}) {
+  final sink = log ?? (level, message) => _log(pod, level, message);
+  final bus = ServerpodRealtimeBus(
+    pod.internalSession,
+    log: (message) => sink(WorkerLogLevel.warning, message),
+  );
   final announcer = BundleAnnouncer(
     source: OrmBundleStateSource(<T>(action) => pod.withSession(action)),
     bus: bus,
     clock: const SystemClock(),
-    log: (level, message) => _log(pod, level, message),
+    log: sink,
     runRepair: bundleRepairRunnerFor(
       runMode: pod.runMode,
       role: pod.config.role.name,

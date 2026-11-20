@@ -660,6 +660,28 @@ void main() {
       },
     );
 
+    // Pre-ship round 4: a read that never answers gathers no callbacks.
+    test('ticks during a held read keep one repair check waiting', () async {
+      await seedBuild(session, 880, SdeBuildState.active);
+      await seedBundle(session, 880);
+      final created = announcer(
+        runRepair: () => Completer<WorkerReply>().future,
+      );
+      await startAndSettle(created);
+      final gate = source.holdReads = Completer<void>();
+
+      for (var i = 0; i < 5; i++) {
+        clock.elapse(const Duration(seconds: 60));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+
+      expect(created.repairChecksWaiting, 1);
+      gate.complete();
+      await created.settled;
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(created.repairChecksWaiting, 0);
+    });
+
     test(
       'repair owed behind another lock holder is sent by the first tick '
       'after release with none outstanding and announced once stored',

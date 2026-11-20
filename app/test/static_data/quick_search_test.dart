@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kaname_app/l10n/generated/app_localizations.dart';
 import 'package:kaname_app/server/data/server_address.dart';
+import 'package:kaname_app/shell/data/browser_history.dart';
 import 'package:kaname_app/shell/ui/shell_icon_button.dart';
 import 'package:kaname_app/shell/ui/shell_keys.dart';
 import 'package:kaname_app/static_data/data/bundle_announcements.dart';
@@ -18,6 +19,7 @@ import 'package:kaname_ember_ui/kaname_ember_ui.dart';
 import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart';
 
 import '../server/fake_server_health.dart';
+import '../support/fake_browser_history.dart';
 import '../support/pump_shell.dart';
 import 'support/bundle_fixture.dart';
 import 'support/static_data_fakes.dart';
@@ -42,10 +44,12 @@ final class Rig {
     WidgetTester tester, {
     Size size = _wide,
     String location = '/home',
+    BrowserHistory? browserHistory,
   }) async {
     final harness = await pumpShell(
       tester,
       location: location,
+      browserHistory: browserHistory,
       size: size,
       target: target,
       health: health,
@@ -375,11 +379,103 @@ void main() {
       isTrue,
     );
     expect(path(), '/settings/licences', reason: 'the page stays');
+    expect(
+      harness.router.routeInformationProvider.value.uri.toString(),
+      '/settings/licences',
+      reason: 'the search marker is gone',
+    );
 
     // With search closed, the next Back pops the page as usual.
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(path(), '/settings');
+  });
+
+  group('in a browser', () {
+    late FakeBrowserHistory history;
+    late ShellHarness harness;
+    String location() =>
+        harness.router.routeInformationProvider.value.uri.toString();
+    bool buttonFocused(WidgetTester tester) => tester
+        .widget<ShellIconButton>(find.byKey(QuickSearchKeys.openButton))
+        .focusNode!
+        .hasPrimaryFocus;
+
+    // Settings, then Licences over it, then the narrow search opened.
+    Future<void> openOverLicences(WidgetTester tester) async {
+      history = FakeBrowserHistory(tester);
+      harness = await Rig(kept: copyN).pump(
+        tester,
+        size: _narrow,
+        location: '/settings',
+        browserHistory: history,
+      );
+      harness.router.go('/settings/licences');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(QuickSearchKeys.openButton));
+      await tester.pumpAndSettle();
+      await typeQuery(tester, 'jita');
+      expect(history.entries, [
+        '/settings',
+        '/settings/licences',
+        '/settings/licences?search',
+      ], reason: 'opening the search adds its own history entry');
+    }
+
+    testWidgets('the first Back closes the narrow search and returns focus, '
+        'the second leaves the page', (tester) async {
+      await openOverLicences(tester);
+
+      await history.pressBack();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(QuickSearchKeys.field), findsNothing);
+      expect(find.byKey(QuickSearchKeys.panel), findsNothing);
+      expect(buttonFocused(tester), isTrue);
+      expect(location(), '/settings/licences', reason: 'the page stays');
+      expect(find.byType(LicensePage), findsOneWidget);
+
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      expect(location(), '/settings');
+    });
+
+    testWidgets('Escape steps back over the search entry, so the next Back '
+        'leaves the page', (tester) async {
+      await openOverLicences(tester);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(QuickSearchKeys.field), findsNothing);
+      expect(buttonFocused(tester), isTrue);
+      expect(history.backCalls, 1);
+      expect(history.current, '/settings/licences');
+      expect(location(), '/settings/licences');
+
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      expect(location(), '/settings', reason: 'no dead search entry is left');
+    });
+
+    testWidgets('a location opened with the marker shows the narrow search, '
+        'and closing it replaces the entry', (tester) async {
+      history = FakeBrowserHistory(tester);
+      harness = await Rig(kept: copyN).pump(
+        tester,
+        size: _narrow,
+        location: '/settings?search=',
+        browserHistory: history,
+      );
+      expect(find.byKey(QuickSearchKeys.field), findsOneWidget);
+
+      await tester.tap(find.byKey(QuickSearchKeys.closeButton));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(QuickSearchKeys.field), findsNothing);
+      expect(history.backCalls, 0, reason: 'the entry is not the bar\'s own');
+      expect(history.entries, ['/settings']);
+    });
   });
 
   testWidgets('Escape on the close button closes the narrow search and '

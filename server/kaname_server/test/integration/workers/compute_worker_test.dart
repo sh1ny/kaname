@@ -765,9 +765,28 @@ void main() {
       expect(answered, isFalse, reason: 'the bundle build was still held');
       expect(await SdeBundle.db.find(session), isEmpty);
 
-      // The build goes on once the lock is released.
+      // The build goes on once the lock is released: it reads the build,
+      // then serializes and gzips the bundle. Health is called every 50 ms
+      // from the release until the reply, so the calls overlap that CPU
+      // phase; on the endpoint isolate it would hold them up. The pause keeps
+      // the calls from loading the database the other suites share.
+      final duringCpu = <Duration>[];
+      final calls = () async {
+        while (!answered) {
+          final stopwatch = Stopwatch()..start();
+          final report = await endpoints.health.check(sessionBuilder);
+          duringCpu.add(stopwatch.elapsed);
+          expect(report.postgres, DependencyStatus.up);
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      }();
       release.complete();
       await holder;
+      await calls;
+      expect(duringCpu, isNotEmpty, reason: 'a call overlapped the build');
+      for (final latency in duringCpu) {
+        expect(latency, lessThan(const Duration(seconds: 1)));
+      }
       final reply = await answer;
       await announced.reply(reply);
       expect(reply, isA<BundleRepairFinished>(), reason: '$reply');

@@ -88,3 +88,29 @@ GoRouter buildRouter({
     ],
   );
 }
+
+/// The query parameter that marks a location where the narrow quick search
+/// is open (design D22). It gives the open search its own browser history
+/// entry, so the browser's Back closes it before it leaves the page.
+const String searchMarker = 'search';
+
+/// Whether [location] carries the [searchMarker].
+bool hasSearchMarker(Uri location) =>
+    location.queryParameters.containsKey(searchMarker);
+
+/// [location] with the [searchMarker] added; its path and other query
+/// parameters are kept.
+String withSearchMarker(Uri location) => Uri(
+  path: location.path,
+  queryParameters: {...location.queryParametersAll, searchMarker: ''},
+).toString();
+
+/// [location] without the [searchMarker]; its path and other query
+/// parameters are kept.
+String withoutSearchMarker(Uri location) {
+  final rest = {...location.queryParametersAll}..remove(searchMarker);
+  return Uri(
+    path: location.path,
+    queryParameters: rest.isEmpty ? null : rest,
+  ).toString();
+}

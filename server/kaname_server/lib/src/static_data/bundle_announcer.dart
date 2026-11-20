@@ -8,6 +8,7 @@ import 'dart:typed_data';
 import 'package:kaname_core/kaname_core.dart';
 import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
     show bundleFormatMajor, bundleFormatMinor, bundleSha256;
+import 'package:meta/meta.dart' show visibleForTesting;
 import 'package:serverpod/serverpod.dart' show Session;
 
 import '../generated/protocol.dart';
@@ -378,8 +379,24 @@ final class BundleAnnouncer {
     // sent on the tick that finds it, not one tick later (D9). At most one
     // is outstanding either way.
     _sendOwedRepair();
-    unawaited(request().then((_) => _sendOwedRepair()));
+    final refreshed = request();
+    // One check waits for the refreshes at a time: while a read hangs, the
+    // ticks that pass add no further callbacks to it (C27).
+    if (_repairChecksWaiting > 0) return;
+    _repairChecksWaiting++;
+    unawaited(
+      refreshed.then((_) {
+        _repairChecksWaiting--;
+        _sendOwedRepair();
+      }),
+    );
   }
+
+  int _repairChecksWaiting = 0;
+
+  /// How many repair checks wait for the refreshes to end: at most one.
+  @visibleForTesting
+  int get repairChecksWaiting => _repairChecksWaiting;
 
   /// Sends a [RunBundleRepair] when the last state read owes one and none is
   /// outstanding.

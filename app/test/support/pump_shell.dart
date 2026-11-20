@@ -11,6 +11,8 @@ import 'package:kaname_app/server/logic/server_status.dart';
 import 'package:kaname_app/settings/data/theme_preference_store.dart';
 import 'package:kaname_app/settings/logic/app_version.dart';
 import 'package:kaname_app/settings/logic/theme_choice_notifier.dart';
+import 'package:kaname_app/shell/data/browser_history.dart';
+import 'package:kaname_app/shell/logic/browser_history_provider.dart';
 import 'package:kaname_app/shell/logic/slot_registry.dart';
 import 'package:kaname_app/static_data/data/bundle_announcements.dart';
 import 'package:kaname_app/static_data/data/bundle_downloader.dart';
@@ -52,7 +54,8 @@ final class ShellHarness {
 /// [checkTimeout]. The static data runs on [bundleStore] (an empty
 /// [FakeBundleStore] when omitted), a [FakeBundleOpener], a
 /// [FakeAnnouncementSource] and a [FakeBundleDownloader] unless given, so no
-/// widget test reaches a network.
+/// widget test reaches a network. [browserHistory] stands in for the
+/// browser's history; without it the app has none, as on native platforms.
 ///
 /// [deviceLocale] sets the platform locale; [disableAnimations] stands in for
 /// the platform's reduced-motion setting. With [settle] false only the first
@@ -72,6 +75,7 @@ Future<ShellHarness> pumpShell(
   BundleStore? bundleStore,
   BundleAnnouncementSource? bundleSource,
   BundleDownloader? bundleDownloader,
+  BrowserHistory? browserHistory,
   bool settle = true,
 }) async {
   setWindowSize(tester, size);
@@ -103,6 +107,7 @@ Future<ShellHarness> pumpShell(
         bundleDownloaderProvider.overrideWithValue(
           bundleDownloader ?? FakeBundleDownloader(),
         ),
+        browserHistoryProvider.overrideWithValue(browserHistory),
       ],
       child: KanameApp(registry: registry, initialLocation: location),
     ),

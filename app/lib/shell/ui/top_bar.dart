@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kaname_ember_ui/kaname_ember_ui.dart';
 
 import '../../l10n/generated/app_localizations.dart';
 import '../../static_data/logic/quick_search.dart';
 import '../../static_data/ui/quick_search_field.dart';
 import '../../static_data/ui/quick_search_keys.dart';
+import '../logic/browser_history_provider.dart';
+import '../logic/router.dart';
 import 'shell_icon_button.dart';
 import 'shell_keys.dart';
 
@@ -15,7 +18,10 @@ import 'shell_keys.dart';
 ///
 /// Quick search is an inline field when [inlineSearch] (wide windows) and,
 /// otherwise, a button that opens a full-width search over the bar; Escape or
-/// back closes it and returns focus to the button (design D22). The bar is
+/// back closes it and returns focus to the button (design D22). The narrow
+/// search is open exactly while the location carries [searchMarker]: opening
+/// it adds a history entry, so the browser's Back closes it first and the next
+/// Back leaves the page. The bar is
 /// always mounted, so it also keeps the static data alive by watching
 /// [quickSearchProvider].
 class ShellTopBar extends ConsumerStatefulWidget {
@@ -61,9 +67,33 @@ class ShellTopBar extends ConsumerStatefulWidget {
 class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   final _searchLink = LayerLink();
   final _searchButtonFocus = FocusNode(debugLabel: 'search button');
+  GoRouteInformationProvider? _locations;
 
   /// Whether the full-width search is open (narrow windows).
   bool _searchOpen = false;
+
+  /// Whether this bar added the open search's history entry, so closing it
+  /// steps the browser back over that entry rather than leaving a dead one.
+  bool _ownEntry = false;
+
+  Uri get _location => _locations!.value.uri;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final locations = GoRouter.of(context).routeInformationProvider;
+    if (identical(locations, _locations)) return;
+    _locations?.removeListener(_onLocation);
+    _locations = locations..addListener(_onLocation);
+    // A location opened with the marker (a reload, a link) opens the
+    // narrow search; the wide bar has no use for it.
+    if (!hasSearchMarker(_location)) return;
+    if (widget.inlineSearch) {
+      _afterFrame(_dropMarker);
+    } else {
+      _searchOpen = true;
+    }
+  }
 
   @override
   void didUpdateWidget(ShellTopBar oldWidget) {
@@ -71,27 +101,79 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     if (oldWidget.inlineSearch == widget.inlineSearch) return;
     // The other kind of field replaces the one that held the text, so the
     // query and its results end together with it, and the narrow search
-    // starts closed; the provider is changed after this frame builds.
+    // starts closed; the provider and the location are changed after this
+    // frame builds.
     _searchOpen = false;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) ref.read(quickSearchProvider.notifier).clear();
+    _ownEntry = false;
+    _afterFrame(() {
+      ref.read(quickSearchProvider.notifier).clear();
+      _dropMarker();
     });
   }
 
   @override
   void dispose() {
+    _locations?.removeListener(_onLocation);
     _searchButtonFocus.dispose();
     super.dispose();
   }
 
-  void _openSearch() => setState(() => _searchOpen = true);
+  void _afterFrame(VoidCallback run) =>
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) run();
+      });
 
+  /// Follows the location: the browser's Back or Forward, or a navigation
+  /// made while the search was open.
+  void _onLocation() {
+    final marked = hasSearchMarker(_location);
+    switch ((marked, _searchOpen, widget.inlineSearch)) {
+      case (true, _, true):
+        _afterFrame(_dropMarker);
+      case (true, false, false):
+        setState(() => _searchOpen = true);
+      case (false, true, _):
+        _ownEntry = false;
+        _endSearch();
+      case _:
+        break;
+    }
+  }
+
+  void _openSearch() {
+    _ownEntry = true;
+    setState(() => _searchOpen = true);
+    GoRouter.of(context).go(withSearchMarker(_location));
+  }
+
+  /// Closes the search from inside the app: Escape, the close button or the
+  /// platform's back.
   void _closeSearch() {
+    if (hasSearchMarker(_location)) {
+      if ((_ownEntry, ref.read(browserHistoryProvider)) case (
+        true,
+        final history?,
+      )) {
+        history.back();
+      } else {
+        _dropMarker();
+      }
+    }
+    _ownEntry = false;
+    _endSearch();
+  }
+
+  /// Removes the marker in place, replacing the current history entry.
+  void _dropMarker() {
+    if (!hasSearchMarker(_location)) return;
+    final router = GoRouter.of(context);
+    Router.neglect(context, () => router.go(withoutSearchMarker(_location)));
+  }
+
+  void _endSearch() {
     ref.read(quickSearchProvider.notifier).clear();
     setState(() => _searchOpen = false);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _searchButtonFocus.requestFocus();
-    });
+    _afterFrame(_searchButtonFocus.requestFocus);
   }
 
   @override
