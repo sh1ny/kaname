@@ -14,7 +14,13 @@
 library;
 
 import 'dart:async';
+import 'dart:typed_data';
 
+import 'package:kaname_app/static_data/data/bundle_downloader.dart';
+import 'package:kaname_app/static_data/data/bundle_indexer.dart';
+import 'package:kaname_app/static_data/data/bundle_store.dart';
+import 'package:kaname_app/static_data/data/client_bundle_announcement_source.dart';
+import 'package:kaname_app/static_data/logic/static_data_sync.dart';
 import 'package:kaname_client/kaname_client.dart' as wire;
 import 'package:kaname_core/kaname_core.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
@@ -23,6 +29,8 @@ import 'package:kaname_server/src/realtime/serverpod_realtime_bus.dart';
 import 'package:kaname_server/src/static_data/bundle_announcement_runtime.dart';
 import 'package:kaname_server/src/static_data/bundle_announcer.dart';
 import 'package:kaname_server/src/static_data/static_data_bundle_topic.dart';
+import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
+    show BundleOpenResult, ClientBundle, SearchIndex;
 import 'package:serverpod/serverpod.dart' show MessageScope, Session;
 // `internalSession` is in an extension that serverpod.dart does not export.
 // ignore: implementation_imports
@@ -880,15 +888,31 @@ final class _Feed {
   Future<void> close() => _subscription.cancel();
 }
 
-/// An app's subscription with its reconnect loop: whenever the stream ends or
-/// fails, it subscribes again, and it records how long each subscription took
-/// to deliver its first event.
+/// An app following the announcements: the app's own [StaticDataSync], with
+/// its reconnect loop (design D15), over the real generated client. It
+/// records each subscription the loop opens and how long that subscription
+/// took to deliver its first event.
+///
+/// The app keeps no bundle and its downloads never end, so the run does
+/// nothing but follow the stream.
 final class _AppFeed {
   _AppFeed(this._client) {
-    _subscribe();
+    _sync = StaticDataSync(
+      server: BundleServer(
+        source: ClientBundleAnnouncementSource(_open),
+        downloader: const _EndlessDownloads(),
+      ),
+      store: const _NoStore(),
+      opener: const _NoOpener(),
+      indexer: const _NoIndexer(),
+      timers: Timer.new,
+      onState: (_) {},
+      log: (_) {},
+    )..start();
   }
 
   final wire.Client _client;
+  late final StaticDataSync _sync;
 
   /// Every event received over all subscriptions, in order.
   final List<wire.BundleAnnouncement> events = [];
@@ -900,35 +924,19 @@ final class _AppFeed {
   /// its first event; null while it has received none.
   final List<Duration?> firstEventDelays = [];
 
-  StreamSubscription<wire.BundleAnnouncement>? _subscription;
-  bool _closed = false;
-
-  void _subscribe() {
-    if (_closed) return;
+  /// Opens one subscription for the sync, recording what it delivers.
+  Stream<wire.BundleAnnouncement> _open() {
     final waited = Stopwatch()..start();
     final mine = <wire.BundleAnnouncement>[];
     final generation = generations.length;
     generations.add(mine);
     firstEventDelays.add(null);
-    var first = true;
-    void again() {
-      if (_closed) return;
-      Timer(const Duration(milliseconds: 100), _subscribe);
-    }
-
-    _subscription = _client.staticData.bundleAnnouncements().listen(
-      (event) {
-        if (first) {
-          first = false;
-          firstEventDelays[generation] = waited.elapsed;
-        }
-        events.add(event);
-        mine.add(event);
-      },
-      onError: (Object _) => again(),
-      onDone: again,
-      cancelOnError: true,
-    );
+    return _client.staticData.bundleAnnouncements().map((event) {
+      firstEventDelays[generation] ??= waited.elapsed;
+      events.add(event);
+      mine.add(event);
+      return event;
+    });
   }
 
   /// Waits until [condition] holds for the events.
@@ -941,9 +949,58 @@ final class _AppFeed {
     timeout: const Duration(seconds: 30),
   );
 
-  /// Stops the loop.
-  Future<void> close() async {
-    _closed = true;
-    await _subscription?.cancel();
+  /// Ends the app's run: its subscription and reconnect timer.
+  Future<void> close() async => _sync.dispose();
+}
+
+/// A store that keeps nothing.
+final class _NoStore implements BundleStore {
+  const _NoStore();
+
+  @override
+  Future<KeptBundleLoad> load() async => const NoKeptBundle();
+
+  @override
+  Future<BundleSaveOutcome> save(BundleCopy copy) async =>
+      const BundleNotSaved('the stream tests keep no bundle');
+}
+
+/// Downloads that never end, so no bundle is opened or indexed.
+final class _EndlessDownloads implements BundleDownloader {
+  const _EndlessDownloads();
+
+  @override
+  BundleTransfer start(BundleIdentity bundle) => _EndlessTransfer();
+}
+
+final class _EndlessTransfer implements BundleTransfer {
+  final _result = Completer<BundleDownloadResult>();
+
+  @override
+  Future<BundleDownloadResult> get result => _result.future;
+
+  @override
+  void cancel() {
+    if (!_result.isCompleted) {
+      _result.complete(const BundleDownloadCancelled());
+    }
   }
+}
+
+final class _NoOpener implements BundleOpener {
+  const _NoOpener();
+
+  @override
+  Future<BundleOpenResult> open(
+    Uint8List compressed,
+    BundleIdentity identity,
+  ) => throw StateError('no download ends in the stream tests');
+}
+
+final class _NoIndexer implements BundleIndexer {
+  const _NoIndexer();
+
+  @override
+  Future<SearchIndex> index(ClientBundle bundle) =>
+      throw StateError('no download ends in the stream tests');
 }

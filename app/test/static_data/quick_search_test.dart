@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kaname_app/l10n/generated/app_localizations.dart';
@@ -378,6 +379,27 @@ void main() {
     final panel = tester.getRect(find.byKey(QuickSearchKeys.panel));
     final first = tester.getRect(find.byKey(QuickSearchKeys.result(0)));
     expect(first.top, greaterThanOrEqualTo(panel.top));
+  });
+
+  testWidgets('result rows grow with large text, so none clips its name', (
+    tester,
+  ) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await Rig(kept: copyN).pump(tester);
+    await tester.tap(find.byKey(QuickSearchKeys.field));
+    await tester.pump();
+    await typeQuery(tester, 'rifter');
+
+    final row = tester.getSize(find.byKey(QuickSearchKeys.result(0)));
+    final name = tester.renderObject<RenderParagraph>(
+      inPanel(find.text('Rifter')),
+    );
+    // The row holds the name's whole line, not a box clamped to the row.
+    expect(
+      row.height,
+      greaterThan(name.getMaxIntrinsicHeight(double.infinity) + 6),
+    );
   });
 
   testWidgets('the keyboard search action keeps the results open', (

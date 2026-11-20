@@ -46,8 +46,18 @@ class QuickSearchPanel extends StatefulWidget {
   /// top bar instead.
   final double? Function()? top;
 
-  /// The height of one result row.
+  /// The height of one result row at the default text size.
   static const double rowHeight = 32;
+
+  /// The height of one result row at [context]'s text scale: [rowHeight],
+  /// or more when scaled text needs it, so a row never clips its line.
+  static double rowExtent(BuildContext context) {
+    const style = EmberType.body;
+    final line = style.fontSize! * style.height!;
+    final scaled =
+        MediaQuery.textScalerOf(context).scale(style.fontSize!) * style.height!;
+    return rowHeight + max(0.0, scaled - line);
+  }
 
   @override
   State<QuickSearchPanel> createState() => _QuickSearchPanelState();
@@ -89,9 +99,9 @@ class _QuickSearchPanelState extends State<QuickSearchPanel> {
     // The row's bounds in the scroll view, after the notice, if any, and
     // the list's padding.
     final notice = _noticeKey.currentContext?.size?.height ?? 0;
-    final top =
-        notice + _listPadding + widget.active * QuickSearchPanel.rowHeight;
-    final bottom = top + QuickSearchPanel.rowHeight;
+    final row = QuickSearchPanel.rowExtent(context);
+    final top = notice + _listPadding + widget.active * row;
+    final bottom = top + row;
     final position = _scroll.position;
     if (top < position.pixels) {
       _scroll.jumpTo(top);
@@ -120,7 +130,7 @@ class _QuickSearchPanelState extends State<QuickSearchPanel> {
     // It never reaches under the keyboard, even when less than a row fits:
     // whatever room there is scrolls to every result.
     final maxHeight = (media.size.height - keyboard - top - EmberSpace.sm)
-        .clamp(0.0, QuickSearchPanel.rowHeight * 11);
+        .clamp(0.0, QuickSearchPanel.rowExtent(context) * 11);
     final content = switch (widget.state) {
       SearchBlank() => const SizedBox.shrink(),
       SearchNotLoaded(:final reason) => _NotLoaded(
@@ -261,7 +271,7 @@ class _Found extends StatelessWidget {
             sliver: SliverPadding(
               padding: const EdgeInsets.all(_listPadding),
               sliver: SliverFixedExtentList.builder(
-                itemExtent: QuickSearchPanel.rowHeight,
+                itemExtent: QuickSearchPanel.rowExtent(context),
                 itemCount: hits.length,
                 itemBuilder: (context, index) => _ResultRow(
                   key: QuickSearchKeys.result(index),

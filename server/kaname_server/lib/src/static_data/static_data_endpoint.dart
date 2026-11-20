@@ -38,7 +38,10 @@ class StaticDataEndpoint extends Endpoint {
   ///   Every send carries the announcement installed at that moment, and
   ///   only when its revision is higher than the last one this stream sent
   ///   (C16): bus messages are wake-ups, never the payload, so a late or
-  ///   buffered message cannot send a retired announcement.
+  ///   buffered message cannot send a retired announcement. The handoff is
+  ///   synchronous; Serverpod writes the value to the WebSocket one
+  ///   microtask later, and an announcement installed in that microtask
+  ///   follows at once.
   Stream<BundleAnnouncement> bundleAnnouncements(Session session) {
     final runtime = bundleAnnouncementRuntime;
     final announcer = runtime.announcer;
@@ -69,7 +72,9 @@ class StaticDataEndpoint extends Endpoint {
     // A controller, not an `async*` body: a generator that waits for a
     // wake-up does not see its cancellation until it next yields, so the bus
     // listener of a disconnected client would stay until the next change.
-    final controller = StreamController<BundleAnnouncement>();
+    // A sync one: the value checked is the value handed to Serverpod in the
+    // same step, with no queued delivery in between (C16).
+    final controller = StreamController<BundleAnnouncement>(sync: true);
     StreamSubscription<BundleAnnouncement>? busSubscription;
     Timer? expiry;
     var open = false;

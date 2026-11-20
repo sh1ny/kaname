@@ -22,6 +22,10 @@ dependencies:
   yaml: ^3.1.3
 
 dev_dependencies:
+  # Dev-only: the stream tests drive the app's own, plain-Dart reconnect
+  # loop (StaticDataSync) against the real server.
+  kaname_app:
+    path: ../../app
   kaname_client:
     path: ../kaname_client
   lints: ^6.0.0
