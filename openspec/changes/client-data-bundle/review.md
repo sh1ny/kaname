@@ -50,3 +50,8 @@ Task 2.1 and 2.2 probes against Serverpod 4.1.2 disproved parts of A11 to A14 du
 ## Apply drift (round 18)
 
 - **D12's chunked web parse had no task.** D12 has the web app parse in 2,000-line chunks that yield to the event loop, but no task built it: the group 8 web opener parsed in one pass. The owner chose (2026-11-20) to add an asynchronous, chunked open to `kaname_static_data_bundle` and use it on the web; task 8.4 now covers it, with a unit test that the chunked open yields between chunks and gives the same bundle as the one-pass open. D12 is unchanged.
+
+## Apply drift (round 19)
+
+- **First event at 20 s was 20.003 s at the client.** Group 7's real-time test showed that a stream opened at the announcer's start receives "none" just over 20 s after subscribing, because the server installed it exactly 20 s after start and the WebSocket delivery came on top. The owner chose (2026-11-20) to install "none" 19 s after start; the spec's 20-second limit (C29) is unchanged and the test asserts under 20 s. D8 and task 7.2 amended.
+- **A lock cannot hold a stale read.** Task 7.2 had the "first read held" test hold the state read on a separate locking connection, but a read blocked on a lock sees the newest state when it is released, so it can never return the stale build the test must catch. The owner chose (2026-11-20) to let the real read run and hold its result behind a gate before the announcer uses it. Task 7.2 amended.
