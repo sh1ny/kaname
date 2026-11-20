@@ -10,6 +10,7 @@ const _expectedType = {
   StoredColumnType.doublePrecision: 'doublePrecision',
   StoredColumnType.timestamp: 'timestampWithoutTimeZone',
   StoredColumnType.jsonb: 'jsonb',
+  StoredColumnType.bytea: 'bytea',
 };
 
 /// C4: the store writes tables that Serverpod migrations own with hand-written

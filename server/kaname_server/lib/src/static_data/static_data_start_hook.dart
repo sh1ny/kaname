@@ -2,7 +2,13 @@
 library;
 
 import 'package:kaname_static_data/kaname_static_data.dart'
-    show BuildCheckFailed, BuildStaged, DailyBuildCheckSchedule;
+    show
+        BuildCheckFailed,
+        BuildStaged,
+        BundleFailed,
+        BundleRepairFailed,
+        BundleRepairRan,
+        DailyBuildCheckSchedule;
 import 'package:serverpod/serverpod.dart';
 
 import '../generated/protocol.dart';
@@ -105,6 +111,9 @@ StaticDataStartHook? staticDataStartHookFor({
 ///    finds a newer one. The check's own record says how it ended; a failed
 ///    one (CCP unreachable, say) leaves no active build on a first start, so
 ///    the next start tries again.
+/// 5. when no check is due, sends a [RunBundleRepair] instead, so the active
+///    build's bundle is built when it is missing, failed or of another
+///    format version (D20). A check that runs repairs the bundle itself.
 ///
 /// ## Carried constraint
 ///
@@ -145,8 +154,9 @@ final class StaticDataStartHook {
   /// Starts the worker, schedules the daily check and runs a check when one
   /// is due.
   ///
-  /// Completes with the worker's answer to the check, or with `null` when no
-  /// check was due or the start-time work failed.
+  /// Completes with the worker's answer to the check, or, when no check was
+  /// due, to the bundle repair ([BundleRepairFinished]); with `null` when
+  /// the start-time work failed.
   Future<WorkerReply?> run() async {
     supervisor.start();
     staticDataRuntime
@@ -186,7 +196,17 @@ final class StaticDataStartHook {
         hasActiveBuild: hasActiveBuild,
         now: _now(),
       )) {
-        return null;
+        final repair = await supervisor.runBundleRepair();
+        log(switch (repair) {
+          BundleRepairFinished(
+            result: BundleRepairRan(step: BundleFailed()) ||
+                BundleRepairFailed(),
+          ) =>
+            WorkerLogLevel.warning,
+          BundleRepairFinished() => WorkerLogLevel.info,
+          _ => WorkerLogLevel.warning,
+        }, 'static data: start-up bundle repair answered: $repair');
+        return repair;
       }
       log(
         WorkerLogLevel.info,

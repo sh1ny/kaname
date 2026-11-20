@@ -8,10 +8,9 @@ import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
 
 import 'import_build.dart';
 import 'in_memory_static_data_store.dart';
-import 'known_files.dart';
 import 'local_zip_sde_source.dart';
 import 'sde_limits.dart';
-import 'typed_files.dart';
+import 'stored_bundle.dart';
 
 /// Why a bundle could not be built from a local zip.
 ///
@@ -39,11 +38,9 @@ final class ZipBundleException implements Exception {
 /// [InMemoryStaticDataStore], so the build number, the required files, the
 /// lines kept (unreadable lines dropped, the first record of a duplicate
 /// typed key kept) and the typed values (a wrong-typed value is `null`) are
-/// the import's. The typed files' rows are fed as typed records, the
-/// raw-only sections' stored records as raw records with their line
-/// numbers, duplicates kept, and the release date is picked from the stored
-/// `_sde.jsonl` objects in line order with [bundle.selectReleaseDate]. A
-/// section with no stored record is absent.
+/// the import's. The bundle is then built from that store by
+/// [buildStoredBundle], the same code the server runs on its stored build,
+/// so both paths feed the builder alike.
 ///
 /// Returns the bundle's bytes and writes no file: the caller decides where
 /// they go. [limits] bound the unpacking and the import's duration;
@@ -76,48 +73,8 @@ Future<bundle.BuiltBundle> buildBundleFromZip(
       throw ZipBundleException(zipFile.path, reason),
   };
   try {
-    return _bundleOf(store, build);
+    return await buildStoredBundle(store, build);
   } on bundle.BundleBuildException catch (error) {
     throw ZipBundleException(zipFile.path, '$error');
   }
-}
-
-bundle.BuiltBundle _bundleOf(InMemoryStaticDataStore store, int build) {
-  final builder = bundle.BundleBuilder(
-    buildNumber: build,
-    releaseDate: bundle.selectReleaseDate(build, [
-      for (final record in store.rawRecordsOf(build, sdeRecordFileName))
-        record.record.value,
-    ]),
-  );
-  for (final file in typedFiles) {
-    final section = bundle.BundleSection.fromFile(file.fileName);
-    if (section == null || section.isRawOnly) {
-      throw StateError('${file.fileName} has no typed bundle section');
-    }
-    for (final row in store.typedRows(build, file.table)) {
-      builder.addTyped(
-        section,
-        bundle.TypedRecord(
-          key: row.sdeId,
-          values: row.values,
-          raw: row.raw.value,
-        ),
-      );
-    }
-  }
-  for (final section in bundle.BundleSection.values) {
-    if (!section.isRawOnly) continue;
-    for (final record in store.rawRecordsOf(build, section.fileName)) {
-      builder.addRaw(
-        section,
-        bundle.RawRecord(
-          key: record.key,
-          line: record.line,
-          record: record.record.value,
-        ),
-      );
-    }
-  }
-  return builder.build();
 }

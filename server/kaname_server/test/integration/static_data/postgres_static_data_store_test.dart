@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:kaname_core/kaname_core.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
@@ -8,6 +9,8 @@ import 'package:kaname_server/src/static_data/postgres_static_data_store.dart';
 import 'package:kaname_server/src/static_data/static_data_lock.dart';
 import 'package:kaname_static_data/kaname_static_data.dart';
 import 'package:kaname_static_data/testing.dart';
+import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
+    show BuiltBundle;
 import 'package:postgres/postgres.dart' as pg;
 import 'package:serverpod/serverpod.dart' show Session;
 import 'package:test/test.dart';
@@ -21,6 +24,8 @@ const _tables = [
   'sde_check',
   'sde_switch',
   'sde_build_diff',
+  'sde_bundle',
+  'sde_bundle_bytes',
   'sde_record',
   'sde_build',
   'sde_category',
@@ -68,6 +73,18 @@ RawRecord _rawRecord(String file, int line) => RawRecord(
   line: line,
   key: '$line',
   record: SdeJson({'_key': line}),
+);
+
+/// A stand-in bundle of [build]: the store keeps any bytes it is given.
+BundleWriteBuilt _bundleOf(int build) => BundleWriteBuilt(
+  build: build,
+  at: _t0,
+  built: BuiltBundle(
+    buildNumber: build,
+    bytes: Uint8List.fromList([build, 1, 2, 3]),
+    sha256: 'hash-of-$build',
+    records: const {},
+  ),
 );
 
 void main() {
@@ -379,6 +396,54 @@ void main() {
       };
       expect(rawBuilds, {1, 2});
       expect(await SdeBuildDiff.db.find(session), isEmpty);
+    });
+
+    // Scenario: Every stored build has its bundle / Build removed (C5).
+    test('removing a build removes its bundle rows in the same '
+        'transaction', () async {
+      final store = await open();
+      Future<Set<int>> bundleBuilds() async => {
+        for (final row in await SdeBundle.db.find(session)) row.build,
+      };
+      Future<Set<int>> byteBuilds() async => {
+        for (final row in await SdeBundleBytes.db.find(session)) row.build,
+      };
+      await store1(store, 1, BuildState.active);
+      await store1(store, 2, BuildState.staged);
+      for (final build in [1, 2]) {
+        await store.recordBundle(_bundleOf(build));
+      }
+      expect(await bundleBuilds(), {1, 2});
+      expect(await byteBuilds(), {1, 2});
+
+      // The import's removal of the staged build.
+      expect(await store.dropStagedBuild(), 2);
+      expect(await bundleBuilds(), {1});
+      expect(await byteBuilds(), {1});
+
+      // A switch to 2 makes 1 previous; a switch to 3 removes it.
+      await store1(store, 2, BuildState.staged);
+      await store.recordBundle(_bundleOf(2));
+      await store.inTransaction((writer) => writer.switchTo(2, at: _t0));
+      await store1(store, 3, BuildState.staged);
+      await store.recordBundle(_bundleOf(3));
+
+      // A switch that rolls back after its deletes keeps build 1's bundle:
+      // the deletes are statements of the switch's own transaction.
+      await expectLater(
+        store.inTransaction((writer) async {
+          await writer.switchTo(3, at: _t0);
+          throw StateError('after the switch statements');
+        }),
+        throwsStateError,
+      );
+      expect(await bundleBuilds(), {1, 2, 3});
+      expect(await byteBuilds(), {1, 2, 3});
+
+      await store.inTransaction((writer) => writer.switchTo(3, at: _t0));
+      expect((await builds()).map((b) => b.build), [2, 3]);
+      expect(await bundleBuilds(), {2, 3});
+      expect(await byteBuilds(), {2, 3});
     });
 
     test('dropping with no staged build removes nothing', () async {

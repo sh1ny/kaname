@@ -7,6 +7,7 @@
 library;
 
 export 'src/build_diff.dart';
+export 'src/bundle_repair_job.dart';
 export 'src/ccp_sde_source.dart';
 export 'src/daily_build_check_schedule.dart';
 export 'src/field_check.dart';
@@ -26,6 +27,7 @@ export 'src/sde_rows.dart';
 export 'src/sde_source.dart';
 export 'src/static_data_reader.dart';
 export 'src/static_data_store.dart';
+export 'src/stored_bundle.dart';
 export 'src/take_latest_build_job.dart';
 export 'src/typed_files.dart';
 export 'src/zip_bundle.dart';

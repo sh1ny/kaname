@@ -18,6 +18,7 @@ import 'health/dependency_status.dart' as _iztepymd;
 import 'health/health_report.dart' as _if75m2mz;
 import 'static_data/sde_build_diff_outcome.dart' as _iby3hddy;
 import 'static_data/sde_build_state.dart' as _isyk7irp;
+import 'static_data/sde_bundle_outcome.dart' as _iquqzrxf;
 import 'static_data/sde_check_outcome.dart' as _illgk9kj;
 import 'static_data/sde_import_outcome.dart' as _is3f4xcr;
 import 'static_data/sde_import_source.dart' as _ice2slzs;
@@ -27,6 +28,7 @@ export 'health/dependency_status.dart';
 export 'health/health_report.dart';
 export 'static_data/sde_build_diff_outcome.dart';
 export 'static_data/sde_build_state.dart';
+export 'static_data/sde_bundle_outcome.dart';
 export 'static_data/sde_check_outcome.dart';
 export 'static_data/sde_import_outcome.dart';
 export 'static_data/sde_import_source.dart';
@@ -51,6 +53,7 @@ class Protocol extends _isc.SerializationManager
           _isc.getType<_if75m2mz.HealthReport>,
           _isc.getType<_iby3hddy.SdeBuildDiffOutcome>,
           _isc.getType<_isyk7irp.SdeBuildState>,
+          _isc.getType<_iquqzrxf.SdeBundleOutcome>,
           _isc.getType<_illgk9kj.SdeCheckOutcome>,
           _isc.getType<_is3f4xcr.SdeImportOutcome>,
           _isc.getType<_ice2slzs.SdeImportSource>,
@@ -60,6 +63,7 @@ class Protocol extends _isc.SerializationManager
           _isc.getType<_if75m2mz.HealthReport?>,
           _isc.getType<_iby3hddy.SdeBuildDiffOutcome?>,
           _isc.getType<_isyk7irp.SdeBuildState?>,
+          _isc.getType<_iquqzrxf.SdeBundleOutcome?>,
           _isc.getType<_illgk9kj.SdeCheckOutcome?>,
           _isc.getType<_is3f4xcr.SdeImportOutcome?>,
           _isc.getType<_ice2slzs.SdeImportSource?>,
@@ -75,6 +79,7 @@ class Protocol extends _isc.SerializationManager
           'HealthReport',
           'SdeBuildDiffOutcome',
           'SdeBuildState',
+          'SdeBundleOutcome',
           'SdeCheckOutcome',
           'SdeImportOutcome',
           'SdeImportSource',
@@ -116,6 +121,9 @@ class Protocol extends _isc.SerializationManager
     if (t == _isyk7irp.SdeBuildState) {
       return _isyk7irp.SdeBuildState.fromJson(data) as T;
     }
+    if (t == _iquqzrxf.SdeBundleOutcome) {
+      return _iquqzrxf.SdeBundleOutcome.fromJson(data) as T;
+    }
     if (t == _illgk9kj.SdeCheckOutcome) {
       return _illgk9kj.SdeCheckOutcome.fromJson(data) as T;
     }
@@ -146,6 +154,10 @@ class Protocol extends _isc.SerializationManager
     }
     if (t == _isc.getType<_isyk7irp.SdeBuildState?>()) {
       return (data != null ? _isyk7irp.SdeBuildState.fromJson(data) : null)
+          as T;
+    }
+    if (t == _isc.getType<_iquqzrxf.SdeBundleOutcome?>()) {
+      return (data != null ? _iquqzrxf.SdeBundleOutcome.fromJson(data) : null)
           as T;
     }
     if (t == _isc.getType<_illgk9kj.SdeCheckOutcome?>()) {
@@ -184,6 +196,7 @@ class Protocol extends _isc.SerializationManager
       _if75m2mz.HealthReport => 'HealthReport',
       _iby3hddy.SdeBuildDiffOutcome => 'SdeBuildDiffOutcome',
       _isyk7irp.SdeBuildState => 'SdeBuildState',
+      _iquqzrxf.SdeBundleOutcome => 'SdeBundleOutcome',
       _illgk9kj.SdeCheckOutcome => 'SdeCheckOutcome',
       _is3f4xcr.SdeImportOutcome => 'SdeImportOutcome',
       _ice2slzs.SdeImportSource => 'SdeImportSource',
@@ -213,6 +226,8 @@ class Protocol extends _isc.SerializationManager
         return 'SdeBuildDiffOutcome';
       case _isyk7irp.SdeBuildState():
         return 'SdeBuildState';
+      case _iquqzrxf.SdeBundleOutcome():
+        return 'SdeBundleOutcome';
       case _illgk9kj.SdeCheckOutcome():
         return 'SdeCheckOutcome';
       case _is3f4xcr.SdeImportOutcome():
@@ -247,6 +262,9 @@ class Protocol extends _isc.SerializationManager
     }
     if (dataClassName == 'SdeBuildState') {
       return deserialize<_isyk7irp.SdeBuildState>(data['data']);
+    }
+    if (dataClassName == 'SdeBundleOutcome') {
+      return deserialize<_iquqzrxf.SdeBundleOutcome>(data['data']);
     }
     if (dataClassName == 'SdeCheckOutcome') {
       return deserialize<_illgk9kj.SdeCheckOutcome>(data['data']);

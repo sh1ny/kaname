@@ -521,6 +521,16 @@ final class _SwitchFailingStore implements StaticDataStore {
   Future<BuildDiffRecord?> diff(int fromBuild, int toBuild) =>
       _inner.diff(fromBuild, toBuild);
   @override
+  Future<List<TypedRow>> readTypedRows(int build, TypedFile file) =>
+      _inner.readTypedRows(build, file);
+  @override
+  Future<List<RawRecord>> readRawRecords(int build, String file) =>
+      _inner.readRawRecords(build, file);
+  @override
+  Future<StoredBundle?> storedBundle(int build) => _inner.storedBundle(build);
+  @override
+  Future<void> recordBundle(BundleWrite write) => _inner.recordBundle(write);
+  @override
   Future<T> inTransaction<T>(
     Future<T> Function(StaticDataWriter writer) body,
   ) => _inner.inTransaction((writer) => body(_FailingSwitchWriter(writer)));

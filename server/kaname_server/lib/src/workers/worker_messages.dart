@@ -194,6 +194,37 @@ final class RunBuildCheck extends WorkerRequest {
   String toString() => 'RunBuildCheck(requestId: $requestId, source: $source)';
 }
 
+/// Asks the worker to repair the active build's client data bundle.
+///
+/// The worker runs a `BundleRepairJob` on its own connection: it takes the
+/// static-data lock without waiting, does nothing when the lock is held, and
+/// otherwise builds the active build's bundle when it is missing, failed or
+/// of another format version. The start hook sends it when no check is due;
+/// the bundle announcer's tick sends it too (C7).
+final class RunBundleRepair extends WorkerRequest {
+  /// Creates a request with [requestId].
+  const RunBundleRepair({required int requestId}) : super(requestId);
+
+  /// The message's type name.
+  static const String typeName = 'bundle.repair.run';
+
+  /// Decodes the payload [json].
+  factory RunBundleRepair.fromJson(Map<String, Object?> json) =>
+      RunBundleRepair(requestId: json['requestId']! as int);
+
+  @override
+  String get type => typeName;
+
+  @override
+  int get version => 1;
+
+  @override
+  Map<String, Object?> payloadToJson() => {'requestId': requestId};
+
+  @override
+  String toString() => 'RunBundleRepair(requestId: $requestId)';
+}
+
 /// A message the worker sends back for a request.
 sealed class WorkerReply extends WorkerMessage {
   /// Creates a reply.
@@ -371,6 +402,119 @@ String _describeResult(BuildCheckResult result) => switch (result) {
   BuildStaged(:final build, :final reason) => 'build $build staged: $reason',
   BuildCheckFailed(:final reason, :final latestBuild) =>
     'failed (latest $latestBuild): $reason',
+};
+
+/// The worker's answer to [RunBundleRepair]: how the repair ended.
+///
+/// [result] says whether the repair built the bundle
+/// ([BundleRepairRan] with a [BundleBuilt] step), found it current
+/// ([BundleAlreadyCurrent]), failed ([BundleFailed] or [BundleRepairFailed]),
+/// was skipped because another job held the lock ([BundleRepairLockHeld]),
+/// or found no active build ([BundleRepairNoActiveBuild]). It is encoded with
+/// a `kind` and the fields of that kind.
+final class BundleRepairFinished extends WorkerReply {
+  /// Creates the answer for [requestId].
+  const BundleRepairFinished({required int requestId, required this.result})
+    : super(requestId);
+
+  /// The message's type name.
+  static const String typeName = 'bundle.repair.finished';
+
+  /// Decodes the payload [json].
+  ///
+  /// Throws a [FormatException] for a result of an unknown kind.
+  factory BundleRepairFinished.fromJson(Map<String, Object?> json) =>
+      BundleRepairFinished(
+        requestId: json['requestId']! as int,
+        result: switch ((json['result']! as Map).cast<String, Object?>()) {
+          {'kind': 'ran', 'step': final Map<Object?, Object?> step} =>
+            BundleRepairRan(_stepFromJson(step.cast<String, Object?>())),
+          {'kind': 'lockHeld'} => const BundleRepairLockHeld(),
+          {'kind': 'noActiveBuild'} => const BundleRepairNoActiveBuild(),
+          {'kind': 'failed', 'reason': final String reason} =>
+            BundleRepairFailed(reason),
+          _ => throw const FormatException('unknown bundle repair result'),
+        },
+      );
+
+  /// How the repair ended.
+  final BundleRepairResult result;
+
+  @override
+  String get type => typeName;
+
+  @override
+  int get version => 1;
+
+  @override
+  Map<String, Object?> payloadToJson() => {
+    'requestId': requestId,
+    'result': switch (result) {
+      BundleRepairRan(:final step) => {
+        'kind': 'ran',
+        'step': _stepToJson(step),
+      },
+      BundleRepairLockHeld() => {'kind': 'lockHeld'},
+      BundleRepairNoActiveBuild() => {'kind': 'noActiveBuild'},
+      BundleRepairFailed(:final reason) => {'kind': 'failed', 'reason': reason},
+    },
+  };
+
+  @override
+  String toString() =>
+      'BundleRepairFinished(requestId: $requestId, '
+      '${describeBundleRepair(result)})';
+}
+
+Map<String, Object?> _stepToJson(BundleStepResult step) => switch (step) {
+  BundleAlreadyCurrent(:final build) => {
+    'kind': 'alreadyCurrent',
+    'build': build,
+  },
+  BundleBuilt(:final build, :final sha256, :final size) => {
+    'kind': 'built',
+    'build': build,
+    'sha256': sha256,
+    'size': size,
+  },
+  BundleFailed(:final build, :final reason) => {
+    'kind': 'failed',
+    'build': build,
+    'reason': reason,
+  },
+};
+
+BundleStepResult _stepFromJson(Map<String, Object?> json) => switch (json) {
+  {'kind': 'alreadyCurrent', 'build': final int build} => BundleAlreadyCurrent(
+    build,
+  ),
+  {
+    'kind': 'built',
+    'build': final int build,
+    'sha256': final String sha256,
+    'size': final int size,
+  } =>
+    BundleBuilt(build, sha256: sha256, size: size),
+  {'kind': 'failed', 'build': final int build, 'reason': final String reason} =>
+    BundleFailed(build, reason),
+  _ => throw const FormatException('unknown bundle step result'),
+};
+
+/// Describes a bundle step's [result] for logs.
+String describeBundleStep(BundleStepResult result) => switch (result) {
+  BundleAlreadyCurrent(:final build) => 'bundle of build $build is current',
+  BundleBuilt(:final build, :final size) =>
+    'built the bundle of build $build ($size bytes)',
+  BundleFailed(:final build, :final reason) =>
+    'bundle of build $build failed: $reason',
+};
+
+/// Describes a bundle repair's [result] for logs.
+String describeBundleRepair(BundleRepairResult result) => switch (result) {
+  BundleRepairRan(:final step) => describeBundleStep(step),
+  BundleRepairLockHeld() => 'skipped: another job holds the static-data lock',
+  BundleRepairNoActiveBuild() => 'skipped: no active build',
+  BundleRepairFailed(:final reason) => 'bundle repair failed: $reason',
 };
 
 /// The worker could not act on a message; sent when the message expected a
@@ -607,6 +751,11 @@ WorkerMessageCodec workerInboxCodec() => WorkerMessageCodec()
     type: RunBuildCheck.typeName,
     version: 1,
     decoder: RunBuildCheck.fromJson,
+  )
+  ..register(
+    type: RunBundleRepair.typeName,
+    version: 1,
+    decoder: RunBundleRepair.fromJson,
   );
 
 /// The codec for the messages the main isolate receives from a worker.
@@ -620,6 +769,11 @@ WorkerMessageCodec workerOutboxCodec() => WorkerMessageCodec()
     type: BuildCheckFinished.typeName,
     version: 1,
     decoder: BuildCheckFinished.fromJson,
+  )
+  ..register(
+    type: BundleRepairFinished.typeName,
+    version: 1,
+    decoder: BundleRepairFinished.fromJson,
   )
   ..register(
     type: WorkerError.typeName,

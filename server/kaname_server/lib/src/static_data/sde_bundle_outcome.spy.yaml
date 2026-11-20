@@ -1,0 +1,5 @@
+### How the bundle build of one stored build ended (D3).
+enum: SdeBundleOutcome
+values:
+  - built
+  - failed

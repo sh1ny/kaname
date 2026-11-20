@@ -1,0 +1,26 @@
+### The client data bundle of one stored build: its metadata only (D3).
+### One row per build. A `built` row names the bundle's format version,
+### SHA-256 and size, and its bytes are the `sde_bundle_bytes` row with the
+### same `build` and `sha256`, written in the same transaction. A `failed`
+### row holds the reason and the format the builder tried; it has no bytes.
+### Both rows are removed with their build (C5).
+###
+### Carried constraint C11: bundle metadata and bytes live in separate
+### tables so no metadata read loads bytes; `static-data-settings` reads
+### `sde_bundle` only.
+class: SdeBundle
+table: sde_bundle
+serverOnly: true
+fields:
+  build: int
+  outcome: SdeBundleOutcome
+  reason: String?
+  formatMajor: int
+  formatMinor: int
+  sha256: String?
+  size: int?
+  builtAt: DateTime
+indexes:
+  sde_bundle_build_idx:
+    fields: build
+    unique: true

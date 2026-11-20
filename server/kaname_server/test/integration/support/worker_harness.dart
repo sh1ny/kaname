@@ -84,6 +84,14 @@ final class WorkerHarness {
     return answer;
   }
 
+  /// Sends a [RunBundleRepair] and completes with the worker's answer.
+  Future<WorkerReply> runBundleRepair() {
+    final id = _nextId++;
+    final answer = waitFor<WorkerReply>((reply) => reply.requestId == id);
+    sendMessage(RunBundleRepair(requestId: id));
+    return answer;
+  }
+
   /// Completes with the first message of type [T] that satisfies [test],
   /// whether it arrived before or arrives after the call.
   Future<T> waitFor<T extends WorkerMessage>(

@@ -280,6 +280,37 @@ void main() {
       expect(calls.single.scheduling, isA<CronFutureCallScheduling>());
     });
 
+    // Scenario: Every stored build has its bundle / Start with no due check
+    // (D20, C7).
+    test(
+      'start with no due check repairs the bundle and announces it',
+      () async {
+        // Build 3000 is active with no bundle, and today's check already ran.
+        final importer = await WorkerHarness.start(postgres: settings);
+        addTearDown(importer.close);
+        final imported = await importer.runImport(LocalZipSource(_zipPath));
+        expect((imported as ImportFinished).outcome, ImportOutcome.succeeded);
+        await checkedAt(DateTime.utc(2026, 1, 2, 12));
+        expect(await SdeBundle.db.find(session), isEmpty);
+
+        final reply = await hook(fakeCcpFactory).run();
+
+        // Group 7 adds here: the announcer, reacting to this
+        // `BundleRepairFinished`, announces build 3000's bundle.
+        expect(reply, isA<BundleRepairFinished>(), reason: '$reply');
+        final result = (reply as BundleRepairFinished).result;
+        final step = (result as BundleRepairRan).step;
+        expect(step, isA<BundleBuilt>());
+        expect(step.build, 3000);
+        final stored = (await SdeBundle.db.find(session)).single;
+        expect(stored.build, 3000);
+        expect(stored.outcome, SdeBundleOutcome.built);
+        expect(stored.sha256, (step as BundleBuilt).sha256);
+        expect(await SdeBundleBytes.db.count(session), 1);
+        expect(await SdeCheck.db.count(session), 1, reason: 'no check ran');
+      },
+    );
+
     test(
       'a restart after today\'s check runs none and keeps one daily call',
       () async {
@@ -290,8 +321,9 @@ void main() {
         await hooks.removeLast().stop();
         final second = await hook(fakeCcpFactory).run();
 
-        expect(first, isNull);
-        expect(second, isNull);
+        // No check runs; each start sends a bundle repair instead.
+        expect(first, isA<BundleRepairFinished>());
+        expect(second, isA<BundleRepairFinished>());
         expect(await SdeCheck.db.count(session), 1);
         expect(await dailyCalls(), hasLength(1));
       },
@@ -438,7 +470,11 @@ void main() {
       await checkedAt(_afternoon);
       final reply = await hook(fakeCcpFactory).run();
 
-      expect(reply, isNull, reason: 'a build is active');
+      expect(
+        reply,
+        isA<BundleRepairFinished>(),
+        reason: 'a build is active, so no check runs',
+      );
       final record = (await SdeImport.db.find(session)).single;
       expect(record.outcome, SdeImportOutcome.failed);
       expect(record.failureReason, 'interrupted');

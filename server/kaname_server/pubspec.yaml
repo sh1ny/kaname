@@ -13,6 +13,8 @@ dependencies:
     path: ../../packages/kaname_core
   kaname_static_data:
     path: ../../packages/kaname_static_data
+  kaname_static_data_bundle:
+    path: ../../packages/kaname_static_data_bundle
   meta: ^1.19.0
   path: ^1.9.1
   postgres: 3.6.0

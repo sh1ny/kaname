@@ -1,8 +1,12 @@
 /// The importer's Postgres storage.
 library;
 
+import 'dart:typed_data';
+
 import 'package:kaname_core/kaname_core.dart';
 import 'package:kaname_static_data/kaname_static_data.dart';
+import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
+    show bundleFormatMajor, bundleFormatMinor;
 import 'package:postgres/postgres.dart' as pg;
 
 import 'import_record_view.dart';
@@ -32,7 +36,10 @@ enum StoredColumnType {
   timestamp('timestamp without time zone'),
 
   /// `jsonb`, for an `SdeJson`.
-  jsonb('jsonb');
+  jsonb('jsonb'),
+
+  /// `bytea`, for bytes.
+  bytea('bytea');
 
   const StoredColumnType(this.sql);
 
@@ -129,6 +136,25 @@ const _recordColumns = [
   StoredColumn('record', _jsonb),
 ];
 
+/// The columns of `sde_bundle`, without `id`.
+const _bundleColumns = [
+  StoredColumn('build', _bigint),
+  StoredColumn('outcome', _text),
+  StoredColumn('reason', _text, nullable: true),
+  StoredColumn('formatMajor', _bigint),
+  StoredColumn('formatMinor', _bigint),
+  StoredColumn('sha256', _text, nullable: true),
+  StoredColumn('size', _bigint, nullable: true),
+  StoredColumn('builtAt', _timestamp),
+];
+
+/// The columns of `sde_bundle_bytes`, without `id`.
+const _bundleBytesColumns = [
+  StoredColumn('build', _bigint),
+  StoredColumn('sha256', _text),
+  StoredColumn('bytes', StoredColumnType.bytea),
+];
+
 /// The columns of a typed table, without `id`: build, SDE id, the typed
 /// columns of [file] and the raw record.
 List<StoredColumn> _typedColumns(TypedFile file) => [
@@ -187,6 +213,8 @@ final class PostgresStaticDataStore implements StaticDataStore {
   static final Map<String, List<StoredColumn>> writtenTables = {
     'sde_build': _buildColumns,
     'sde_build_diff': _diffColumns,
+    'sde_bundle': _bundleColumns,
+    'sde_bundle_bytes': _bundleBytesColumns,
     'sde_check': _checkColumns,
     'sde_import': _importColumns,
     'sde_record': _recordColumns,
@@ -464,6 +492,114 @@ final class PostgresStaticDataStore implements StaticDataStore {
     );
   }
 
+  @override
+  Future<List<TypedRow>> readTypedRows(int build, TypedFile file) async {
+    final columns = [for (final TypedColumn(:name) in file.columns) '"$name"'];
+    final result = await _connection.execute(
+      'SELECT "sdeId", ${[...columns, '"raw"'].join(', ')} '
+      'FROM "${file.table}" WHERE "build" = \$1::bigint ORDER BY "sdeId"',
+      parameters: [build],
+    );
+    return [
+      for (final row in result)
+        TypedRow(
+          table: file.table,
+          sdeId: row[0]! as int,
+          values: {
+            for (final (index, column) in file.columns.indexed)
+              column.name: row[index + 1],
+          },
+          raw: SdeJson.fromJson(row[file.columns.length + 1]),
+        ),
+    ];
+  }
+
+  @override
+  Future<List<RawRecord>> readRawRecords(int build, String file) async {
+    final result = await _connection.execute(
+      'SELECT "line", "key", "record" FROM "sde_record" '
+      r'WHERE "build" = $1::bigint AND "file" = $2::text ORDER BY "line"',
+      parameters: [build, file],
+    );
+    return [
+      for (final row in result)
+        RawRecord(
+          file: file,
+          line: row[0]! as int,
+          key: row[1]! as String,
+          record: SdeJson.fromJson(row[2]),
+        ),
+    ];
+  }
+
+  @override
+  Future<StoredBundle?> storedBundle(int build) async {
+    final names = [for (final column in _bundleColumns) '"${column.name}"'];
+    final result = await _connection.execute(
+      'SELECT ${names.join(', ')} FROM "sde_bundle" '
+      r'WHERE "build" = $1::bigint',
+      parameters: [build],
+    );
+    if (result.isEmpty) return null;
+    final row = result.single;
+    return StoredBundle(
+      build: row[0]! as int,
+      outcome: BundleOutcome.values.byName(row[1]! as String),
+      reason: row[2] as String?,
+      formatMajor: row[3]! as int,
+      formatMinor: row[4]! as int,
+      sha256: row[5] as String?,
+      size: row[6] as int?,
+      builtAt: (row[7]! as DateTime).toUtc(),
+    );
+  }
+
+  @override
+  Future<void> recordBundle(BundleWrite write) => _connection.runTx((tx) async {
+    final build = write.build;
+    // One metadata row and at most one set of bytes per build: the old
+    // ones go in this transaction, whatever their hash.
+    await tx.execute(
+      r'DELETE FROM "sde_bundle_bytes" WHERE "build" = $1::bigint',
+      parameters: [build],
+    );
+    await tx.execute(
+      r'DELETE FROM "sde_bundle" WHERE "build" = $1::bigint',
+      parameters: [build],
+    );
+    switch (write) {
+      case BundleWriteBuilt(:final at, :final built):
+        await _insertRows(tx, 'sde_bundle_bytes', _bundleBytesColumns, [
+          [build, built.sha256, built.bytes],
+        ]);
+        await _insertRows(tx, 'sde_bundle', _bundleColumns, [
+          [
+            build,
+            BundleOutcome.built.name,
+            null,
+            bundleFormatMajor,
+            bundleFormatMinor,
+            built.sha256,
+            built.bytes.length,
+            at,
+          ],
+        ]);
+      case BundleWriteFailed(:final at, :final reason):
+        await _insertRows(tx, 'sde_bundle', _bundleColumns, [
+          [
+            build,
+            BundleOutcome.failed.name,
+            reason,
+            bundleFormatMajor,
+            bundleFormatMinor,
+            null,
+            null,
+            at,
+          ],
+        ]);
+    }
+  });
+
   /// A differ that compares stored builds on this store's connection.
   ///
   /// [onStatement], when given, sees every statement with its duration, and
@@ -658,12 +794,16 @@ int? _buildIn(Map<int, BuildState> stored, BuildState state) {
 }
 
 /// Deletes [builds] completely: their rows in every typed table and in
-/// `sde_record`, their diff records and their `sde_build` rows, one statement
+/// `sde_record`, their bundle metadata and bytes (C5), their diff records and
+/// their `sde_build` rows, one statement
 /// per table so each stays within the statement timeout.
 Future<void> _deleteBuilds(pg.Session session, List<int> builds) async {
   for (final table in [
     for (final file in typedFiles) file.table,
     'sde_record',
+    // C5: a removed build's bundle goes with it, in the same transaction.
+    'sde_bundle_bytes',
+    'sde_bundle',
   ]) {
     await session.execute(
       'DELETE FROM "$table" WHERE "build" = ANY(\$1::bigint[])',
@@ -745,6 +885,10 @@ Object? _parameter(StoredColumn column, Object? value) {
       json.toJson(),
     ),
     (StoredColumnType.jsonb, null) => pg.TypedValue(pg.Type.jsonb, null),
+    (StoredColumnType.bytea, final Uint8List bytes) => pg.TypedValue(
+      pg.Type.byteArray,
+      bytes,
+    ),
     (StoredColumnType.doublePrecision, final num number) => number.toDouble(),
     (StoredColumnType.timestamp, final DateTime time) => time.toUtc(),
     (StoredColumnType.bigint, final int _) => value,

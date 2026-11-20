@@ -67,8 +67,8 @@ typedef Delay = Future<void> Function(Duration duration);
 ///
 /// ## Requests
 ///
-/// [runImport] and [runBuildCheck] send a request and complete with the worker's
-/// [WorkerReply]. A request made while no worker is running completes at
+/// [runImport], [runBuildCheck] and [runBundleRepair] send a request and
+/// complete with the worker's [WorkerReply]. A request made while no worker is running completes at
 /// once with a [WorkerError]; a request still unanswered when the worker
 /// exits completes with a [WorkerError] saying so.
 final class WorkerSupervisor {
@@ -169,6 +169,14 @@ final class WorkerSupervisor {
     final request = RunBuildCheck(requestId: _nextRequestId++, source: source);
     return _send(request);
   }
+
+  /// Asks the worker to repair the active build's client data bundle.
+  ///
+  /// Completes with the worker's [BundleRepairFinished], or with a
+  /// [WorkerError] when no worker runs, the worker refuses the request, or
+  /// the worker exits before it answers.
+  Future<WorkerReply> runBundleRepair() =>
+      _send(RunBundleRepair(requestId: _nextRequestId++));
 
   Future<WorkerReply> _send(WorkerRequest request) {
     final process = _process;

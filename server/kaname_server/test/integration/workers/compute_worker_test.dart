@@ -692,6 +692,96 @@ void main() {
       );
     });
 
+    // Scenario: Bundle builds run on the compute worker (C9).
+    test('health answers under 1 s during a bundle build', () async {
+      // Build 2850 is active with no bundle, so the repair builds one.
+      final worker = await WorkerHarness.start(postgres: settings);
+      addTearDown(worker.close);
+      final zip = SdeFixture.complete(build: 2850).writeTo(scratch);
+      expect(
+        (await worker.runImport(
+          LocalZipSource(zip.path),
+        ) as ImportFinished).outcome,
+        ImportOutcome.succeeded,
+      );
+      expect(await SdeBundle.db.find(session), isEmpty);
+
+      // A transaction of the test holds an exclusive lock on `sde_type`,
+      // which the bundle build reads, so the build is held mid-statement
+      // while health is called.
+      final release = Completer<void>();
+      final locked = Completer<void>();
+      final holder = session.db.transaction((transaction) async {
+        await session.db.unsafeExecute(
+          'LOCK TABLE sde_type IN ACCESS EXCLUSIVE MODE',
+          transaction: transaction,
+        );
+        locked.complete();
+        await release.future;
+      });
+      addTearDown(() async {
+        if (!release.isCompleted) release.complete();
+        await holder;
+      });
+      await locked.future;
+
+      final answer = worker.runBundleRepair();
+      var answered = false;
+      unawaited(answer.then((_) => answered = true));
+      final deadline = DateTime.now().add(const Duration(seconds: 20));
+      var building = false;
+      while (!building && DateTime.now().isBefore(deadline)) {
+        final rows = await session.db.unsafeQuery(
+          'SELECT query FROM pg_stat_activity '
+          "WHERE application_name = 'kaname-static-data' "
+          'AND datname = current_database() '
+          "AND state = 'active' AND wait_event_type = 'Lock'",
+        );
+        building = rows.any(
+          (row) => (row.single! as String).contains('"sde_type"'),
+        );
+        if (!building) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      }
+      expect(building, isTrue, reason: 'the bundle build never started');
+      expect(answered, isFalse);
+
+      final latencies = <Duration>[];
+      for (var i = 0; i < 5; i++) {
+        final stopwatch = Stopwatch()..start();
+        final report = await endpoints.health.check(sessionBuilder);
+        latencies.add(stopwatch.elapsed);
+        expect(report.postgres, DependencyStatus.up);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      for (final latency in latencies) {
+        expect(latency, lessThan(const Duration(seconds: 1)));
+      }
+      expect(answered, isFalse, reason: 'the bundle build was still held');
+      expect(await SdeBundle.db.find(session), isEmpty);
+
+      // The build goes on once the lock is released.
+      release.complete();
+      await holder;
+      final reply = await answer;
+      // Group 7 adds here: the announcer, reacting to this
+      // `BundleRepairFinished`, announces build 2850's bundle.
+      expect(reply, isA<BundleRepairFinished>(), reason: '$reply');
+      final result = (reply as BundleRepairFinished).result;
+      expect(result, isA<BundleRepairRan>());
+      final step = (result as BundleRepairRan).step;
+      expect(step, isA<BundleBuilt>());
+      expect(step.build, 2850);
+      final stored = (await SdeBundle.db.find(session)).single;
+      expect(stored.outcome, SdeBundleOutcome.built);
+      expect(stored.sha256, (step as BundleBuilt).sha256);
+      expect(
+        (await SdeBundleBytes.db.find(session)).single.sha256,
+        step.sha256,
+      );
+    });
+
     test(
       'crash in download and in transaction marks worker crashed and '
       'restarts',
