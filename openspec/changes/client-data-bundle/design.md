@@ -207,7 +207,7 @@ The proposal (`proposal.md`) states the scope; this section holds only what the 
 
 ### D22: Search layout by width
 
-- **Choice:** above 1080 logical pixels, an inline field in the top bar with a result list below it; at narrower widths, a search button that opens a full-width search (field and results), closed by Escape or back, returning focus to the button. Built with DESIGN.md tokens and the impeccable skill.
+- **Choice:** above 1080 logical pixels, an inline field in the top bar with a result list below it; at narrower widths, a search button that opens a full-width search (field and results), closed by Escape or back, returning focus to the button. Built with DESIGN.md tokens and the impeccable skill. The open narrow search has its own history entry, marked by a `search` query parameter on the current location (pre-ship round 4, owner's choice): opening it adds the entry, so the browser's Back on the web closes it before it leaves the page; Escape or the close button steps the browser back over that entry, so no dead entry stays; the platform's back closes it in place. A location opened with the marker shows the narrow search, and the wide layout drops the marker.
 - **Rejected:** an overlay on every width, because it hides search behind a button on desktop.
 - **Reversal cost:** low
 - **Important:** yes (changes what users see)
