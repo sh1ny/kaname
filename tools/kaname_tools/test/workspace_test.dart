@@ -65,35 +65,39 @@ void main() {
     expect(result.code, 0);
   });
 
-  test('current layout reports app, ember_ui, core, static data, tools, '
-      'server, client and grid spike and exits 0', () async {
-    final repository = RealFileSystem.locate(Directory.current.path);
-    expect(repository, isNotNull, reason: 'no workspace root above the cwd');
-    final out = StringBuffer();
-    final err = StringBuffer();
+  test(
+    'current layout reports app, ember_ui, core, static data, static '
+    'data bundle, tools, server, client and grid spike and exits 0',
+    () async {
+      final repository = RealFileSystem.locate(Directory.current.path);
+      expect(repository, isNotNull, reason: 'no workspace root above the cwd');
+      final out = StringBuffer();
+      final err = StringBuffer();
 
-    final code = await runCli(
-      ['workspace'],
-      fileSystem: repository!,
-      output: CliOutput(out: out, err: err),
-    );
+      final code = await runCli(
+        ['workspace'],
+        fileSystem: repository!,
+        output: CliOutput(out: out, err: err),
+      );
 
-    expect(err.toString(), isEmpty);
-    expect(code, 0);
-    expect(
-      out.toString().trim().split('\n'),
-      unorderedEquals([
-        'kaname_app at app/',
-        'kaname_ember_ui at app_packages/kaname_ember_ui/',
-        'kaname_core at packages/kaname_core/',
-        'kaname_static_data at packages/kaname_static_data/',
-        'kaname_tools at tools/kaname_tools/',
-        'kaname_server at server/kaname_server/',
-        'kaname_client at server/kaname_client/',
-        'kaname_grid_spike at spikes/kaname_grid_spike/',
-      ]),
-    );
-  });
+      expect(err.toString(), isEmpty);
+      expect(code, 0);
+      expect(
+        out.toString().trim().split('\n'),
+        unorderedEquals([
+          'kaname_app at app/',
+          'kaname_ember_ui at app_packages/kaname_ember_ui/',
+          'kaname_core at packages/kaname_core/',
+          'kaname_static_data at packages/kaname_static_data/',
+          'kaname_static_data_bundle at packages/kaname_static_data_bundle/',
+          'kaname_tools at tools/kaname_tools/',
+          'kaname_server at server/kaname_server/',
+          'kaname_client at server/kaname_client/',
+          'kaname_grid_spike at spikes/kaname_grid_spike/',
+        ]),
+      );
+    },
+  );
 
   test('missing prefix or directory mismatch fails with rule', () async {
     fs

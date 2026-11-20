@@ -63,6 +63,11 @@ description = "Run the kaname_static_data tests"
 dir = "packages/kaname_static_data"
 run = "dart test"
 
+[tasks."test:static_data_bundle"]
+description = "Run the kaname_static_data_bundle tests"
+dir = "packages/kaname_static_data_bundle"
+run = "dart test"
+
 [tasks."test:app"]
 description = "Run the app's widget tests"
 dir = "app"
@@ -88,6 +93,7 @@ description = "Run every workspace member's tests"
 run = [
   { task = "test:core" },
   { task = "test:static_data" },
+  { task = "test:static_data_bundle" },
   { task = "test:tools" },
   { task = "test:app" },
   { task = "test:ember_ui" },

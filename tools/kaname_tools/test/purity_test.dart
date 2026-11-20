@@ -249,4 +249,105 @@ void main() {
       ),
     );
   });
+  group('web-safe packages', () {
+    setUp(
+      () => fs
+        ..writeFile(
+          'pubspec.yaml',
+          'name: kaname_workspace\n'
+              'workspace:\n'
+              '  - app\n'
+              '  - packages/kaname_core\n'
+              '  - packages/kaname_static_data_bundle\n'
+              '  - tools/kaname_tools\n',
+        )
+        ..writeFile(
+          'packages/kaname_static_data_bundle/pubspec.yaml',
+          pubspecSource('kaname_static_data_bundle'),
+        )
+        ..writeFile(
+          'packages/kaname_static_data_bundle/lib/bundle.dart',
+          '// bundle\n',
+        ),
+    );
+
+    test('dart:io, dart:ffi or dart:isolate in lib fails with file', () async {
+      fs
+        ..writeFile(
+          'packages/kaname_core/lib/src/a.dart',
+          "import 'dart:io';\n",
+        )
+        ..writeFile(
+          'packages/kaname_static_data_bundle/lib/src/b.dart',
+          "import 'dart:ffi' as ffi;\n",
+        )
+        ..writeFile(
+          'packages/kaname_static_data_bundle/lib/src/c.dart',
+          "export 'dart:isolate' show Isolate;\n",
+        );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.code, 1);
+      expect(
+        result.err,
+        allOf(
+          contains('packages/kaname_core/lib/src/a.dart'),
+          contains('"dart:io"'),
+          contains('web-safe'),
+        ),
+      );
+      expect(
+        result.err,
+        allOf(
+          contains('packages/kaname_static_data_bundle/lib/src/b.dart'),
+          contains('"dart:ffi"'),
+        ),
+      );
+      expect(
+        result.err,
+        allOf(
+          contains('packages/kaname_static_data_bundle/lib/src/c.dart'),
+          contains('"dart:isolate"'),
+        ),
+      );
+      expect(result.out, isNot(contains('kaname_core is pure')));
+    });
+
+    test('tests of a web-safe package may use dart:io', () async {
+      fs
+        ..writeFile(
+          'packages/kaname_core/test/a_test.dart',
+          "import 'dart:io';\n",
+        )
+        ..writeFile(
+          'packages/kaname_static_data_bundle/tool/build.dart',
+          "import 'dart:io';\n",
+        );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.err, isEmpty);
+      expect(result.code, 0);
+      expect(
+        result.out,
+        contains(
+          'kaname_static_data_bundle is pure at '
+          'packages/kaname_static_data_bundle/',
+        ),
+      );
+    });
+
+    test('packages that are not web-safe may use dart:io', () async {
+      fs.writeFile(
+        'tools/kaname_tools/lib/src/io.dart',
+        "import 'dart:io';\nimport 'dart:isolate';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.err, isEmpty);
+      expect(result.code, 0);
+    });
+  });
 }

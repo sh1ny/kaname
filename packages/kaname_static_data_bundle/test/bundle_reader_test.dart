@@ -1,0 +1,214 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:archive/archive.dart';
+import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart';
+import 'package:test/test.dart';
+
+import 'support/bundle_fixture.dart';
+
+/// The fixture's bundle with its header replaced by [edit]'s result and
+/// [extraLines] appended, re-gzip'd.
+Uint8List editedBundle(
+  Map<String, Object?> Function(Map<String, Object?> header) edit, {
+  List<String> extraLines = const [],
+}) {
+  final text = utf8.decode(
+    const GZipDecoder().decodeBytes(fixtureBuilder().build().bytes),
+  );
+  final lines = text.substring(0, text.length - 1).split('\n');
+  final header = jsonDecode(lines.first) as Map<String, Object?>;
+  final edited = [jsonEncode(edit(header)), ...lines.skip(1), ...extraLines];
+  return const GZipEncoder().encodeBytes(utf8.encode('${edited.join('\n')}\n'));
+}
+
+/// The opened bundle of [result], failing the test when it was refused.
+ClientBundle opened(BundleOpenResult result) => switch (result) {
+  BundleOpened(:final bundle) => bundle,
+  BundleRefused(:final refusal) => fail('refused: $refusal'),
+};
+
+/// The refusal of [result], failing the test when it was opened.
+BundleRefusal refused(BundleOpenResult result) => switch (result) {
+  BundleRefused(:final refusal) => refusal,
+  BundleOpened() => fail('opened, expected a refusal'),
+};
+
+void main() {
+  late BuiltBundle built;
+
+  setUp(() => built = fixtureBuilder().build());
+
+  test('valid bundle returns types, systems and dogma', () {
+    final bundle = opened(
+      openBundle(built.bytes, build: fixtureBuild, sha256: built.sha256),
+    );
+
+    final header = bundle.header;
+    expect(header.formatMajor, 1);
+    expect(header.formatMinor, 0);
+    expect(header.build, fixtureBuild);
+    expect(header.releaseDate, fixtureReleaseDate);
+    expect(header.locales, ['en']);
+    expect(header.sections, hasLength(17));
+    expect(header.sections[BundleSection.dbuffCollections]?.records, 3);
+
+    expect([for (final type in bundle.types) type.id], [587, 34562]);
+    final rifter = bundle.types.first;
+    expect(rifter.name.en, 'Rifter');
+    expect(rifter.groupId, 25);
+    expect(rifter.published, isTrue);
+    expect(rifter.mass, 1067000.0);
+    expect(rifter.radius, 31.0);
+    expect(rifter.factionId, 500002);
+    expect(rifter.raceId, 2);
+    expect(rifter.variationParentTypeId, 586);
+    expect(bundle.types.last.name.en, isNull);
+    expect(bundle.types.last.published, isFalse);
+
+    expect(bundle.groups.single.name.en, 'Frigate');
+    expect(bundle.regions.single.name.en, 'The Forge');
+    final jita = bundle.solarSystems.single;
+    expect(jita.id, 30000142);
+    expect(jita.name.en, 'Jita');
+    expect(jita.regionId, 10000002);
+    expect(jita.securityStatus, 0.9459);
+    expect(jita.securityClass, 'B');
+
+    final dogma = bundle.records(BundleSection.typeDogma).single;
+    expect(dogma.key, 587);
+    expect(dogma.raw?['dogmaAttributes'], [
+      {'attributeID': 4, 'value': 1067000},
+    ]);
+    final attribute = bundle.records(BundleSection.dogmaAttributes).single;
+    expect(attribute.typed['displayName'], {'en': 'Mass'});
+    expect(
+      [
+        for (final record in bundle.records(BundleSection.dbuffCollections))
+          (record.key, record.raw?['aggregateMode']),
+      ],
+      [(2, 'Min'), (10, 'Min'), (10, 'Max')],
+    );
+  });
+
+  test('newer major is refused naming both versions', () {
+    final bytes = editedBundle(
+      (header) => {...header, 'formatMajor': 2, 'formatMinor': 3},
+    );
+
+    final refusal = refused(
+      openBundle(bytes, build: fixtureBuild, sha256: bundleSha256(bytes)),
+    );
+
+    expect(
+      refusal,
+      isA<UnsupportedFormat>()
+          .having((r) => r.bundleMajor, 'bundleMajor', 2)
+          .having((r) => r.supportedMajor, 'supportedMajor', 1),
+    );
+    expect(refusal.reason, 'unsupported bundle format');
+    expect(refusal.message, allOf(contains('2.3'), contains('format 1')));
+  });
+
+  test('matching hash with another build is refused as wrong build', () {
+    final other = fixtureBuilder(build: fixtureBuild + 1).build();
+
+    final refusal = refused(
+      openBundle(other.bytes, build: fixtureBuild, sha256: other.sha256),
+    );
+
+    expect(
+      refusal,
+      isA<WrongBuild>()
+          .having((r) => r.expected, 'expected', fixtureBuild)
+          .having((r) => r.actual, 'actual', fixtureBuild + 1),
+    );
+    expect(refusal.reason, 'wrong build');
+    expect(
+      refusal.message,
+      allOf(contains('$fixtureBuild'), contains('${fixtureBuild + 1}')),
+    );
+  });
+
+  test('hash mismatch is refused', () {
+    final other = fixtureBuilder(withDynamicItemAttributes: false).build();
+
+    final refusal = refused(
+      openBundle(built.bytes, build: fixtureBuild, sha256: other.sha256),
+    );
+
+    expect(
+      refusal,
+      isA<HashMismatch>()
+          .having((r) => r.expected, 'expected', other.sha256)
+          .having((r) => r.actual, 'actual', built.sha256),
+    );
+    expect(refusal.reason, 'hash mismatch');
+  });
+
+  test('a newer minor with unknown header keys and sections is read', () {
+    final bytes = editedBundle(
+      (header) => {
+        ...header,
+        'formatMinor': 7,
+        'futureKey': {'any': 'thing'},
+        'sections': [
+          ...header['sections']! as List<Object?>,
+          {'file': 'futureFile', 'present': true, 'records': 1},
+        ],
+      },
+      extraLines: ['{"section":"futureFile"}', '[1,{"x":1},null]'],
+    );
+
+    final bundle = opened(
+      openBundle(bytes, build: fixtureBuild, sha256: bundleSha256(bytes)),
+    );
+
+    expect(bundle.header.formatMinor, 7);
+    expect(bundle.header.sections, hasLength(17));
+    expect(bundle.types, hasLength(2));
+    expect(
+      bundle.records(BundleSection.fighterAbilitiesByType).single.key,
+      23055,
+    );
+  });
+
+  test('an absent section has no records', () {
+    final other = fixtureBuilder(withDynamicItemAttributes: false).build();
+    final bundle = opened(
+      openBundle(other.bytes, build: fixtureBuild, sha256: other.sha256),
+    );
+
+    expect(
+      bundle.header.sections[BundleSection.dynamicItemAttributes]?.present,
+      isFalse,
+    );
+    expect(bundle.records(BundleSection.dynamicItemAttributes), isEmpty);
+  });
+
+  test('bytes that are not a bundle are refused as corrupt', () {
+    final notGzip = Uint8List.fromList(utf8.encode('not a bundle'));
+    final notJson = const GZipEncoder().encodeBytes(utf8.encode('{oops\n'));
+
+    expect(
+      refused(
+        openBundle(notGzip, build: fixtureBuild, sha256: bundleSha256(notGzip)),
+      ),
+      isA<CorruptBundle>(),
+    );
+    expect(
+      refused(
+        openBundle(notJson, build: fixtureBuild, sha256: bundleSha256(notJson)),
+      ),
+      isA<CorruptBundle>(),
+    );
+  });
+
+  test('an inflated bundle whose hash the caller checked opens', () {
+    final inflated = const GZipDecoder().decodeBytes(built.bytes);
+
+    final bundle = opened(openInflatedBundle(inflated, build: fixtureBuild));
+
+    expect(bundle.solarSystems.single.name.en, 'Jita');
+  });
+}

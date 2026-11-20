@@ -25,6 +25,14 @@ import 'workspace.dart';
 /// resolved workspace; without one the check fails and asks for
 /// `mise run resolve`.
 ///
+/// The web-safe packages, [webSafePackages], also import no `dart:io`,
+/// `dart:ffi` or `dart:isolate` (C28, design D23 of `client-data-bundle`):
+/// `kaname_static_data_bundle` and `kaname_core` run in the app's web build,
+/// and this check, run by `mise run check`, catches such an import long before
+/// a web build would. The rule covers the files under the package's `lib/`,
+/// which is what a web build compiles; its tests and tools run on the Dart VM
+/// and may use `dart:io`.
+///
 /// There is no exemption list (decision C4). A package that needs Flutter
 /// belongs in `app_packages/`, which this check does not cover. An allowlist
 /// of exceptions was considered and rejected (design D6): it is one more
@@ -37,6 +45,19 @@ final class PurityCheck {
 
   /// Top-level directories whose members must be pure Dart.
   static const List<String> pureRoots = ['packages', 'tools'];
+
+  /// Packages, by name, whose libraries must also be web-safe.
+  static const Set<String> webSafePackages = {
+    'kaname_core',
+    'kaname_static_data_bundle',
+  };
+
+  /// Libraries a web-safe package's `lib/` must not import or export.
+  static const Set<String> webUnsafeLibraries = {
+    'dart:io',
+    'dart:ffi',
+    'dart:isolate',
+  };
 
   static const _skippedDirectories = {'build', '.dart_tool'};
 
@@ -70,6 +91,8 @@ final class PurityCheck {
         ..._dependencyProblems(directory, pubspec),
         ..._transitiveProblems(directory, pubspec, roots),
         ..._importProblems(directory),
+        if (webSafePackages.contains(pubspec.name))
+          ..._webSafetyProblems(directory),
       ];
       if (found.isEmpty) {
         pure.add(WorkspacePackage(pubspec.name, directory));
@@ -149,8 +172,19 @@ final class PurityCheck {
       dependency.sdk == 'flutter' ||
       dependency.name.startsWith('serverpod');
 
-  List<String> _importProblems(String directory) {
+  List<String> _importProblems(String directory) => _scanTree(directory, _scan);
+
+  List<String> _webSafetyProblems(String directory) =>
+      _scanTree(p.posix.join(directory, 'lib'), _scanWebSafety);
+
+  /// Applies [scan] to every `.dart` file under [directory], skipping links
+  /// and generated trees.
+  List<String> _scanTree(
+    String directory,
+    List<String> Function(String path) scan,
+  ) {
     final problems = <String>[];
+    if (_fileSystem.kindOf(directory) != FsEntryKind.directory) return problems;
     void walk(String current) {
       for (final FsEntry(:name, :kind) in _fileSystem.list(current)) {
         final path = p.posix.join(current, name);
@@ -160,7 +194,7 @@ final class PurityCheck {
           case FsEntryKind.directory:
             if (!_skippedDirectories.contains(name)) walk(path);
           case FsEntryKind.file:
-            if (name.endsWith('.dart')) problems.addAll(_scan(path));
+            if (name.endsWith('.dart')) problems.addAll(scan(path));
         }
       }
     }
@@ -174,6 +208,14 @@ final class PurityCheck {
       if (_isForbidden(match[2]!))
         '$path: ${match[1]} of "${match[2]}" is not allowed in a pure-Dart '
             'package $_rule',
+  ];
+
+  List<String> _scanWebSafety(String path) => [
+    for (final match in _directive.allMatches(_fileSystem.readAsString(path)))
+      if (webUnsafeLibraries.contains(match[2]))
+        '$path: ${match[1]} of "${match[2]}" is not allowed in a web-safe '
+            'package (rule: web-safe packages import no dart:io, dart:ffi or '
+            'dart:isolate)',
   ];
 
   static bool _isForbidden(String uri) =>
