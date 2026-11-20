@@ -117,6 +117,6 @@ Accepted, not superseded. Proposed ADRs are drafts and are not listed.
 | [0009](../docs/adr/0009-server-process-and-isolates.md) | One process; main, realtime, Discord and compute isolates; pure-Dart jobs behind a runner | — |
 | [0010](../docs/adr/0010-flutter-app-state.md) | Riverpod 3 in the presentation layer only, no codegen or persist | — |
 | [0011](../docs/adr/0011-fit-engine-behind-an-interface.md) | Kaname `FitEngine` interface over EVEShipFit's pinned engine | — |
-| [0012](../docs/adr/0012-worker-isolate-access.md) | Workers reach Postgres through their own per-job connections; Redis, vault, privacy scope and bus still open (R56) | — |
+| [0012](../docs/adr/0012-worker-isolate-access.md) | Workers reach Postgres through their own per-job connections; the bus is settled by ADR 0014 (workers send typed replies, only the main isolate publishes); Redis, vault and privacy scope still open (R56) | — |
 | [0013](../docs/adr/0013-client-data-bundle.md) | One versioned gzip JSON Lines bundle per SDE build, public data only, served by build and hash; same builder on server and device | — |
 | [0014](../docs/adr/0014-realtime-bus-topics.md) | RealtimeBus topics typed and versioned, public or scoped, local delivery first, only the main isolate publishes | — |
