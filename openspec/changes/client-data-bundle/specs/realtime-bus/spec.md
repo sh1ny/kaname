@@ -71,7 +71,7 @@ The server SHALL offer an unauthenticated stream that first sends, within 20 sec
 - **THEN** the first event says no bundle is available
 
 ### Requirement: Announcements are ordered and bounded
-Each announcement SHALL carry the server's epoch and a revision that rises with each change, and a stream SHALL never send a revision lower than or equal to one it already sent. The server SHALL hold at most 2,000 announcement streams, refusing more, SHALL end each after 30 minutes or once a write to it has been outstanding for 60 seconds, and SHALL keep at most one pending event per stream. Every send SHALL carry the announcement installed at that moment, never an earlier copy.
+Each announcement SHALL carry the server's epoch and a revision that rises with each change, and a stream SHALL never send a revision lower than or equal to one it already sent. The server SHALL hold at most 2,000 announcement streams, refusing more, SHALL end each after 30 minutes, and SHALL send each stream at most one event per change of the installed announcement. Every send SHALL carry the announcement installed at that moment, never an earlier copy.
 
 #### Scenario: Changes during subscribe
 - **WHEN** an app subscribes and two changes, to build B and then to build C, are published before its first event is sent, and the first event names build C
@@ -85,21 +85,17 @@ Each announcement SHALL carry the server's epoch and a revision that rises with 
 - **WHEN** an app is subscribed while build A is announced, and a switch to build B and a rollback to build A both happen before the server next reads its state
 - **THEN** the app receives either no new event or an event naming build A, and never an event naming build B after one naming build A
 
-#### Scenario: Retired announcement while a write is stalled
-- **WHEN** a write to an app's stream is outstanding, build N's bundle with hash H is announced and then rebuilt as H2, and the publish of H2 fails
-- **THEN** when the write completes the stream sends H2's announcement if it is still installed, or the announcement installed since, and never H
-
 #### Scenario: Late wake-up for a retired announcement
 - **WHEN** an app's stream is idle, the bus message for hash H is delayed until H2 has been installed, and the publish of H2 fails
 - **THEN** when the delayed message arrives the stream sends H2's announcement, and never H
 
 #### Scenario: Stalled subscriber
-- **WHEN** a write to one app's stream is outstanding while ten announcements are published, and another app keeps reading
-- **THEN** the server holds at most one pending announcement for the stalled stream, the reading app ends on the latest announcement with each event's revision higher than the one before, and once the write completes within 60 seconds the stalled stream sends the latest announcement
+- **WHEN** one app stops reading its stream while ten announcements are published, and another app keeps reading
+- **THEN** the stalled stream is sent at most ten events, each with a higher revision than the one before, and the reading app ends on the latest announcement with each event's revision higher than the one before
 
 #### Scenario: Stalled past the limit
-- **WHEN** a write to an app's stream has been outstanding for 60 seconds
-- **THEN** the server ends that stream and frees its place
+- **WHEN** an app has stopped reading its stream and the stream reaches its 30-minute limit
+- **THEN** the server ends that stream and frees its place while the app still does not read, and a new subscription is admitted into that place
 
 #### Scenario: Stream expiry
 - **WHEN** a stream whose client keeps reading has been open for 30 minutes

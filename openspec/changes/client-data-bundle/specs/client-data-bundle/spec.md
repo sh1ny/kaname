@@ -131,7 +131,7 @@ The server SHALL serve the announced bundle and the previous one, at most one pe
 - **THEN** the server answers 404, and a request for the active build's format 2 bundle answers 200
 
 ### Requirement: Bundle downloads are bounded
-Above 16 bundle requests in flight the server SHALL answer 503 with a retry time. A request SHALL hold its place until its body has been written, has failed or was cancelled, and a transfer still running 2 minutes after admission SHALL be closed, freeing its place. A bundle request SHALL NOT read the database.
+Above 16 bundle requests in flight the server SHALL answer 503 with a retry time. A request SHALL hold its place until its body has been written, has failed or was cancelled, or until 2 minutes after admission, when it SHALL lose its place and its body SHALL end at the next chunk it sends. A bundle request SHALL NOT read the database.
 
 #### Scenario: Too many downloads
 - **WHEN** 16 bundle responses are in flight and another client asks for a bundle
