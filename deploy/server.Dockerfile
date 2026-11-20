@@ -56,6 +56,7 @@ RUN mise exec -- flutter pub get --enforce-lockfile
 
 COPY packages/kaname_core/lib packages/kaname_core/lib
 COPY packages/kaname_static_data/lib packages/kaname_static_data/lib
+COPY packages/kaname_static_data_bundle/lib packages/kaname_static_data_bundle/lib
 COPY server/kaname_client/lib server/kaname_client/lib
 COPY server/kaname_server/bin server/kaname_server/bin
 COPY server/kaname_server/lib server/kaname_server/lib

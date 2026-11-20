@@ -14,7 +14,7 @@ Paths are relative to the repository root. `bundle/` stands for `packages/kaname
 | client-data-bundle → The builder is deterministic and runs without a server | Server and local zip agree | server/test/integration/static_data/bundle_determinism_test.dart | server bundle and local zip bundle have the same bytes | red |
 | client-data-bundle → The builder is deterministic and runs without a server | Odd input agrees | server/test/integration/static_data/bundle_determinism_test.dart | duplicate typed and dbuffCollections keys and float in an integer column give the same records, values and bytes on both paths | red |
 | client-data-bundle → The builder is deterministic and runs without a server | Compiled builder agrees | bundle/test/aot_determinism_test.dart | AOT-compiled builder gives the VM's bytes | green |
-| client-data-bundle → The builder is deterministic and runs without a server | Unreadable input | packages/kaname_static_data/test/zip_bundle_records_test.dart | unreadable zip fails naming the zip and writes nothing | red |
+| client-data-bundle → The builder is deterministic and runs without a server | Unreadable input | packages/kaname_static_data/test/zip_bundle_records_test.dart | unreadable zip fails naming the zip and writes nothing | green |
 | client-data-bundle → Readers refuse a bundle they cannot read | Valid bundle | bundle/test/bundle_reader_test.dart | valid bundle returns types, systems and dogma | green |
 | client-data-bundle → Readers refuse a bundle they cannot read | Newer major format | bundle/test/bundle_reader_test.dart | newer major is refused naming both versions | green |
 | client-data-bundle → Readers refuse a bundle they cannot read | Wrong build | bundle/test/bundle_reader_test.dart | matching hash with another build is refused as wrong build | green |
@@ -140,7 +140,7 @@ Paths are relative to the repository root. `bundle/` stands for `packages/kaname
 
 ## 4. Reading records from a zip
 
-- [ ] 4.1 Write the failing test "unreadable zip fails naming the zip and writes nothing" in `packages/kaname_static_data/test/zip_bundle_records_test.dart`; add the zip-to-builder path in `kaname_static_data` (the 13 typed files plus the four raw files and `_sde.jsonl`, read through the existing zip source and selected and projected by the import's own `SdeIngest` into an in-memory writer, C23) and verify the row turns green and a fixture zip builds a bundle with no server whose header holds the fixture `_sde` record's release date.
+- [x] 4.1 Write the failing test "unreadable zip fails naming the zip and writes nothing" in `packages/kaname_static_data/test/zip_bundle_records_test.dart`; add the zip-to-builder path in `kaname_static_data` (the 13 typed files plus the four raw files and `_sde.jsonl`, read through the existing zip source and selected and projected by the import's own `SdeIngest` into an in-memory writer, C23) and verify the row turns green and a fixture zip builds a bundle with no server whose header holds the fixture `_sde` record's release date.
 
 ## 5. Server storage and the bundle build job
 

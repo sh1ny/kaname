@@ -20,6 +20,7 @@
 # The server packages' sources, and the workspace packages the server imports.
 !packages/kaname_core/lib/**
 !packages/kaname_static_data/lib/**
+!packages/kaname_static_data_bundle/lib/**
 !server/kaname_client/pubspec.yaml
 !server/kaname_client/lib/**
 !server/kaname_server/pubspec.yaml

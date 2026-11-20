@@ -28,4 +28,5 @@ export 'src/static_data_reader.dart';
 export 'src/static_data_store.dart';
 export 'src/take_latest_build_job.dart';
 export 'src/typed_files.dart';
+export 'src/zip_bundle.dart';
 export 'src/zip_sde_archive.dart';
