@@ -31,6 +31,15 @@
 		respond "Not Found" 404
 	}
 
+	# The generated client opens its WebSocket at /v1/websocket on the
+	# origin, whatever path the app is configured with, so the web app's
+	# streams (the static-data announcements) arrive here, not under /api/.
+	# The path passes through unchanged; without this route they would get
+	# the single-page-app fallback.
+	handle /v1/websocket {
+		reverse_proxy server:8080
+	}
+
 	# Health probes pass through unchanged.
 	@probes path /livez /readyz
 	handle @probes {

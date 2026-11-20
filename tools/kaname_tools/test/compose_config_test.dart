@@ -304,5 +304,23 @@ void main() {
         isTrue,
       );
     });
+
+    // The generated client opens its WebSocket at <origin>/v1/websocket
+    // whatever path the app configures, so the web app's streams need this
+    // route; without it they get the single-page-app fallback (round 21).
+    test("the generated client's WebSocket path reaches the server", () {
+      final caddy = code();
+      final route = RegExp(
+        r'handle\s+/v1/websocket\s*\{\s*reverse_proxy\s+server:8080\s*\}',
+      ).firstMatch(caddy);
+      expect(route, isNotNull, reason: '/v1/websocket must reach the server');
+      final fallback = caddy.indexOf('try_files');
+      expect(fallback, greaterThan(-1));
+      expect(
+        route!.start,
+        lessThan(caddy.lastIndexOf('handle {', fallback)),
+        reason: 'the route must come before the single-page-app fallback',
+      );
+    });
   });
 }
