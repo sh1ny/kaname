@@ -25,6 +25,7 @@ class QuickSearchPanel extends StatefulWidget {
     this.active = -1,
     this.onHover,
     this.fullWidth = false,
+    this.top,
     super.key,
   });
 
@@ -39,6 +40,11 @@ class QuickSearchPanel extends StatefulWidget {
 
   /// Whether the panel spans the window's width.
   final bool fullWidth;
+
+  /// Measures where the panel's top edge is in the window, so it fits
+  /// between there and the keyboard; null, or a null answer, allows for a
+  /// top bar instead.
+  final double? Function()? top;
 
   /// The height of one result row.
   static const double rowHeight = 32;
@@ -94,10 +100,11 @@ class _QuickSearchPanelState extends State<QuickSearchPanel> {
       media.viewInsets.bottom,
       MediaQueryData.fromView(View.of(context)).viewInsets.bottom,
     );
-    final maxHeight = (media.size.height - keyboard - 120).clamp(
-      QuickSearchPanel.rowHeight * 3,
-      QuickSearchPanel.rowHeight * 11,
-    );
+    final top = widget.top?.call() ?? 120;
+    // It never reaches under the keyboard, even when less than a row fits:
+    // whatever room there is scrolls to every result.
+    final maxHeight = (media.size.height - keyboard - top - EmberSpace.sm)
+        .clamp(0.0, QuickSearchPanel.rowHeight * 11);
     final content = switch (widget.state) {
       SearchBlank() => const SizedBox.shrink(),
       SearchNotLoaded(:final reason) => _NotLoaded(

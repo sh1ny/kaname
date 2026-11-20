@@ -437,6 +437,43 @@ void main() {
     );
   });
 
+  testWidgets('with less than three rows of room above the keyboard, the '
+      'last result still scrolls fully into view', (tester) async {
+    const short = Size(800, 375);
+    const keyboard = 260.0;
+    // The shell itself does not fit this short a page and reports its own
+    // overflow; only the search panel is checked here.
+    final reported = FlutterError.onError;
+    FlutterError.onError = (details) {
+      if (!details.toString().contains('overflowed')) reported?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = reported);
+    final many = fixtureBundle(
+      100,
+      extraTypes: {for (var i = 0; i < 30; i++) 700 + i: 'Rifter $i'},
+    );
+    await Rig(kept: many).pump(tester, size: short);
+    tester.view.viewInsets = FakeViewPadding(
+      bottom: keyboard * tester.view.devicePixelRatio,
+    );
+    addTearDown(tester.view.resetViewInsets);
+    await tester.tap(find.byKey(QuickSearchKeys.openButton));
+    await tester.pumpAndSettle();
+    await typeQuery(tester, 'rifter');
+
+    for (var i = 0; i < 31; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    final panel = tester.getRect(find.byKey(QuickSearchKeys.panel));
+    expect(panel.bottom, lessThanOrEqualTo(short.height - keyboard));
+    final last = find.byKey(QuickSearchKeys.result(30));
+    expect(last, findsOneWidget);
+    expect(tester.getRect(last).bottom, lessThanOrEqualTo(panel.bottom));
+  });
+
   testWidgets('empty or blank query shows no list', (tester) async {
     await Rig(kept: copyN).pump(tester);
 

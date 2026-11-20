@@ -24,6 +24,7 @@ class QuickSearchField extends ConsumerStatefulWidget {
   const QuickSearchField({
     required this.anchor,
     required this.panelWidth,
+    this.anchorKey,
     this.onClose,
     this.autofocus = false,
     super.key,
@@ -31,6 +32,10 @@ class QuickSearchField extends ConsumerStatefulWidget {
 
   /// The layer the panel is placed under.
   final LayerLink anchor;
+
+  /// The widget that [anchor] follows, whose bottom edge the panel's room
+  /// is measured from; without it the panel allows for a top bar.
+  final GlobalKey? anchorKey;
 
   /// The panel's width in logical pixels.
   final double panelWidth;
@@ -114,6 +119,17 @@ class _QuickSearchFieldState extends ConsumerState<QuickSearchField> {
     ref.read(quickSearchProvider.notifier).setQuery(text);
   }
 
+  /// Where the panel's top edge is in the window: below the anchor, by the
+  /// gap the inline panel keeps; null before the anchor is laid out.
+  double? _panelTop() {
+    final anchor = widget.anchorKey?.currentContext?.findRenderObject();
+    if (anchor is! RenderBox || !anchor.attached || !anchor.hasSize) {
+      return null;
+    }
+    final bottom = anchor.localToGlobal(Offset(0, anchor.size.height)).dy;
+    return bottom + (widget.onClose == null ? EmberSpace.xs : 0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -141,6 +157,7 @@ class _QuickSearchFieldState extends ConsumerState<QuickSearchField> {
                     width: widget.panelWidth,
                     child: QuickSearchPanel(
                       state: state,
+                      top: _panelTop,
                       active: active,
                       fullWidth: widget.onClose != null,
                       onHover: (index) => setState(() => _active = index),

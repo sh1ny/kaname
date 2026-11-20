@@ -228,6 +228,47 @@ void main() {
       _expectRising(feed.events);
     });
 
+    // Scenario: Late wake-up for a retired announcement, with the same
+    // build rebuilt: only the hash tells H from H2 (pre-ship round 11).
+    test('an idle stream woken late by H\'s message after the same build '
+        'was rebuilt as H2 and H2\'s publish failed sends H2\'s hash, never '
+        'H', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      final first = await seedBundle(session, 100);
+      await rig.start();
+      final feed = rig.subscribe();
+      await feed.waitFor(1);
+      await rig.listenersAre(1);
+
+      // H's message is held on its way to the streams; the build is rebuilt
+      // as H2, which retires H, and H2's publish fails.
+      rig.bus.holding = true;
+      final h = await seedBundle(session, 100, content: 'rebuilt once');
+      await rig.announcer.workerReplied(upToDateReply(100));
+      final h2 = await seedBundle(session, 100, content: 'rebuilt twice');
+      rig.bus.failNextPublish = true;
+      await rig.announcer.workerReplied(upToDateReply(100));
+      expect(
+        rig.announcer.heldBundle(100, h.sha256),
+        isNull,
+        reason:
+            'H is '
+            'no longer held',
+      );
+      expect(rig.announcer.heldBundle(100, h2.sha256), isNotNull);
+      expect(feed.events, hasLength(1), reason: 'nothing reached the stream');
+      await rig.bus.release();
+      await feed.waitFor(2);
+      await _quiet();
+
+      final hashes = [
+        for (final event in feed.events)
+          if (event case wire.BundleAnnouncementNamed(:final sha256)) sha256,
+      ];
+      expect(hashes, [first.sha256, h2.sha256]);
+      _expectRising(feed.events);
+    });
+
     // Scenario: Publish fails (static-data-builds). The replacement
     // subscription is a real generated-client stream: its first event comes
     // from the installed announcement, with no further publish.
@@ -439,6 +480,10 @@ void main() {
       proxy.releaseTargetReads();
 
       expect(_builds(admitted.events), [100]);
+      // Once its client reads again, the stalled stream itself is seen to
+      // have ended, without an error.
+      await stalled.ended;
+      expect(stalled.errors, isEmpty);
     });
 
     // Scenario: Stream expiry.

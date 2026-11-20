@@ -68,6 +68,9 @@ class ShellTopBar extends ConsumerStatefulWidget {
 
 class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   final _searchLink = LayerLink();
+
+  /// The widget the search panel hangs from, measured for the panel's room.
+  final _searchTarget = GlobalKey(debugLabel: 'search anchor');
   final _searchButtonFocus = FocusNode(debugLabel: 'search button');
   GoRouteInformationProvider? _locations;
 
@@ -303,6 +306,7 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
         if (!didPop) _closeSearch();
       },
       child: CompositedTransformTarget(
+        key: fullWidthSearch ? _searchTarget : null,
         link: fullWidthSearch ? _searchLink : LayerLink(),
         child: DecoratedBox(
           decoration: BoxDecoration(
@@ -354,6 +358,7 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
             Expanded(
               child: QuickSearchField(
                 anchor: _searchLink,
+                anchorKey: _searchTarget,
                 // The panel spans the window: the bar's width plus its padding.
                 panelWidth: constraints.maxWidth + 2 * EmberSpace.sm,
                 onClose: _closeSearch,
@@ -386,11 +391,13 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
       const Spacer(),
       if (widget.inlineSearch)
         CompositedTransformTarget(
+          key: _searchTarget,
           link: _searchLink,
           child: SizedBox(
             width: ShellTopBar.inlineSearchWidth,
             child: QuickSearchField(
               anchor: _searchLink,
+              anchorKey: _searchTarget,
               panelWidth: ShellTopBar.inlineSearchWidth,
             ),
           ),
