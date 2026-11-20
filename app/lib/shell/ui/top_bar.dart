@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -73,9 +75,10 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   ///
   /// It follows the location's [searchMarker], and every marked history
   /// entry comes right after the same location unmarked: the bar adds marked
-  /// entries only by pushing them from there; a new page load with the
-  /// marker is rewritten to that pair (narrow) or unmarked (wide), while a
-  /// reloaded or restored one already is such a pair; and a marked
+  /// entries only by pushing them from there, and tags each in the browser;
+  /// a page loaded on an untagged marked entry is rewritten to that pair
+  /// (narrow) or unmarked (wide), while a tagged one already is such a pair;
+  /// and a marked
   /// location the app itself navigates to, such as a branch's remembered
   /// location, is unmarked in place. Only a location the browser reports
   /// (Back or Forward) may arrive marked, and it is one of those pairs. So
@@ -91,6 +94,14 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   Uri get _location => _locations!.value.uri;
 
   @override
+  void initState() {
+    super.initState();
+    // The browser history reads the tag of the entry the page loaded on when
+    // it is created, which must come before the router's first report.
+    ref.read(browserHistoryProvider);
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final locations = GoRouter.of(context).routeInformationProvider;
@@ -100,16 +111,17 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     if (hasSearchMarker(_location)) _afterFrame(_loadedMarked);
   }
 
-  /// A page loaded with the marker. A reload, or Back or Forward from
-  /// another page, reopens an entry the bar made, already right after the
-  /// same location unmarked: a narrow window shows its search, a wide one
-  /// steps back over it. Any other load, such as a typed or shared link,
-  /// makes that pair: the entry becomes the unmarked location, with the
-  /// search pushed over it on a narrow window. The push waits a frame, so
-  /// the router reports the replacement before it.
+  /// A page loaded with the marker. An entry the bar tagged when it pushed
+  /// it, reopened by a reload or by Back or Forward from another site, is
+  /// already right after the same location unmarked: a narrow window shows
+  /// its search, a wide one steps back over it. Any other marked load, such
+  /// as a typed or shared link, is made that pair: the entry becomes the
+  /// unmarked location, with the search pushed over it on a narrow window.
+  /// The push waits a frame, so the router reports the replacement before
+  /// it.
   void _loadedMarked() {
     final history = ref.read(browserHistoryProvider);
-    if (history != null && history.pageRestored) {
+    if (history != null && history.loadedOnTaggedEntry) {
       if (!widget.inlineSearch) {
         _openPath = _location.path;
         setState(() => _searchOpen = true);
@@ -191,6 +203,27 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     _openPath = _location.path;
     setState(() => _searchOpen = true);
     GoRouter.of(context).go(withSearchMarker(_location));
+    _tagSearchEntry();
+  }
+
+  /// Tags the marked entry just pushed, so a reload keeps it as the pair it
+  /// is. The router reports the push after the next frame and the browser
+  /// records it after that report's own turn, so the tag waits for both,
+  /// and is skipped if the search or its entry has gone meanwhile.
+  void _tagSearchEntry() {
+    final history = ref.read(browserHistoryProvider);
+    if (history == null) return;
+    final path = _location.path;
+    _afterFrame(
+      () => Timer.run(() {
+        if (mounted &&
+            _searchOpen &&
+            hasSearchMarker(_location) &&
+            _location.path == path) {
+          history.tagCurrentEntry();
+        }
+      }),
+    );
   }
 
   /// Closes the search from inside the app: Escape, the close button or the

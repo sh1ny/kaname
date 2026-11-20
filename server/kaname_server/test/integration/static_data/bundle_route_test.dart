@@ -1147,6 +1147,12 @@ void _bundleRouteTests() {
       expect(next.status, 200);
       expect(next.body, hasLength(bundle.size));
       expect(stalled, hasLength(16));
+      // A stalled client that reads again gets no more than the chunk the
+      // transport asked for: the expired body ends short of its length.
+      final resumed = await stalled.first.readToEnd(
+        const Duration(seconds: 30),
+      );
+      expect(resumed, lessThan(bundle.size));
     });
 
     // Scenario: Database not answering.

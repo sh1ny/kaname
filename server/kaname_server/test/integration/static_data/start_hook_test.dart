@@ -368,6 +368,59 @@ void main() {
       expect(await SdeCheck.db.count(session), 1);
     });
 
+    // Pre-ship round 8: the hold ends when the check is answered.
+    test('a tick after the start-up check is answered sends the owed repair '
+        'while the refresh it causes is held', () async {
+      final importer = await WorkerHarness.start(postgres: settings);
+      addTearDown(importer.close);
+      final imported = await importer.runImport(LocalZipSource(_zipPath));
+      expect((imported as ImportFinished).outcome, ImportOutcome.succeeded);
+      await SdeCheck.db.deleteWhere(
+        session,
+        where: (t) => t.id.notEquals(null),
+      );
+      var repairs = 0;
+      final announced = await TestAnnouncer.start(
+        session,
+        runRepair: () {
+          repairs++;
+          return staticDataRuntime.supervisor!.runBundleRepair();
+        },
+      );
+      addTearDown(announced.announcer.stop);
+      final gate = announced.source.holdReads = Completer<void>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+
+      final running = hook(
+        fakeCcpFactory,
+        announcer: announced.announcer,
+      ).run();
+      // The check ends with its reply; the refresh that reply asks for
+      // stays held.
+      final checked = DateTime.now().add(const Duration(seconds: 60));
+      while (await SdeCheck.db.count(session) == 0 ||
+          announced.source.reads < 2) {
+        if (DateTime.now().isAfter(checked)) fail('the check never ended');
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      announced.clock.elapse(const Duration(seconds: 60));
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      expect(
+        repairs,
+        1,
+        reason:
+            'the tick sends the repair the last read '
+            'owed, the hold having ended with the check',
+      );
+
+      gate.complete();
+      expect(await running, isA<BuildCheckFinished>());
+    });
+
     test(
       'a restart after today\'s check runs none and keeps one daily call',
       () async {

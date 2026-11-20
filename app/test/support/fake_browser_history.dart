@@ -14,13 +14,18 @@ final class FakeBrowserHistory implements BrowserHistory {
   /// channel, until the test ends.
   ///
   /// [restored] starts the history with those entries, the last current, as
-  /// a page reloaded on that entry or reached by Back or Forward finds it.
-  FakeBrowserHistory(this._tester, {List<String> restored = const []})
-    : pageRestored = restored.isNotEmpty {
+  /// a page reloaded on that entry finds it; [restoredTagged] tags that last
+  /// entry, as [tagCurrentEntry] did before the reload.
+  FakeBrowserHistory(
+    this._tester, {
+    List<String> restored = const [],
+    bool restoredTagged = false,
+  }) : loadedOnTaggedEntry = restoredTagged {
     for (final uri in restored) {
-      _entries.add((uri: uri, state: null));
+      _entries.add(_Entry(uri, null));
     }
     _index = _entries.length - 1;
+    if (restoredTagged) _entries.last.tagged = true;
     final messenger = _tester.binding.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(SystemChannels.navigation, _record);
     addTearDown(
@@ -29,11 +34,17 @@ final class FakeBrowserHistory implements BrowserHistory {
   }
 
   final WidgetTester _tester;
-  final List<({String uri, Object? state})> _entries = [];
+  final List<_Entry> _entries = [];
   int _index = -1;
 
   @override
-  final bool pageRestored;
+  final bool loadedOnTaggedEntry;
+
+  /// Whether the current entry is tagged.
+  bool get currentTagged => _entries[_index].tagged;
+
+  @override
+  void tagCurrentEntry() => _entries[_index].tagged = true;
 
   /// How many times the app stepped back through [back].
   int backCalls = 0;
@@ -47,7 +58,7 @@ final class FakeBrowserHistory implements BrowserHistory {
   Future<Object?> _record(MethodCall call) async {
     if (call.method != 'routeInformationUpdated') return null;
     final arguments = call.arguments as Map<Object?, Object?>;
-    final entry = (uri: arguments['uri']! as String, state: arguments['state']);
+    final entry = _Entry(arguments['uri']! as String, arguments['state']);
     if (arguments['replace'] == true && _index >= 0) {
       _entries[_index] = entry;
     } else {
@@ -86,4 +97,14 @@ final class FakeBrowserHistory implements BrowserHistory {
       (_) {},
     );
   }
+}
+
+/// One entry: its location, the router's state, and the app's tag, which a
+/// replacement drops as the browser's does.
+final class _Entry {
+  _Entry(this.uri, this.state);
+
+  final String uri;
+  final Object? state;
+  bool tagged = false;
 }

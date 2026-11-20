@@ -171,7 +171,8 @@ final class StaticDataStartHook {
   /// the start-time work failed.
   Future<WorkerReply?> run() async {
     // The announcer's ticks send no repair until the start-up decision and
-    // the check or repair it makes have ended (D10).
+    // the check or repair it makes have ended (D10); a check releases them
+    // as soon as it is answered.
     announcer?.holdTickRepairs();
     try {
       return await _run();
@@ -244,6 +245,9 @@ final class StaticDataStartHook {
                   'build',
       );
       final reply = await supervisor.runBuildCheck(const CcpLatestSource());
+      // The check has ended and freed the lock, so the ticks may send
+      // repairs again, even while the refresh its reply asks for hangs.
+      announcer?.releaseTickRepairs();
       await announcer?.workerReplied(reply);
       log(switch (reply) {
         BuildCheckFinished(result: BuildCheckFailed() || BuildStaged()) =>

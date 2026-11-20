@@ -420,6 +420,7 @@ void main() {
         '/settings/licences',
         '/settings/licences?search',
       ], reason: 'opening the search adds its own history entry');
+      expect(history.currentTagged, isTrue, reason: 'a reload keeps it');
     }
 
     testWidgets('the first Back closes the narrow search and returns focus, '
@@ -574,6 +575,7 @@ void main() {
       history = FakeBrowserHistory(
         tester,
         restored: ['/home', '/settings', '/settings?search'],
+        restoredTagged: true,
       );
       harness = await Rig(kept: copyN).pump(
         tester,
@@ -595,11 +597,37 @@ void main() {
       expect(location(), '/home', reason: 'no repeated page entry');
     });
 
+    testWidgets('a reload of a marked link the bar has not paired yet makes '
+        'the pair', (tester) async {
+      history = FakeBrowserHistory(
+        tester,
+        restored: ['/home', '/settings?search'],
+      );
+      harness = await Rig(kept: copyN).pump(
+        tester,
+        size: _narrow,
+        location: '/settings?search',
+        browserHistory: history,
+      );
+      expect(find.byKey(QuickSearchKeys.field), findsOneWidget);
+      expect(history.entries, ['/home', '/settings', '/settings?search']);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(QuickSearchKeys.field), findsNothing);
+      expect(location(), '/settings', reason: 'the search closes in place');
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      expect(location(), '/home');
+    });
+
     testWidgets('a reloaded page with the search open on a wide window steps '
         'back over its entry', (tester) async {
       history = FakeBrowserHistory(
         tester,
         restored: ['/home', '/settings', '/settings?search'],
+        restoredTagged: true,
       );
       harness = await Rig(kept: copyN)
           .pump(tester, location: '/settings?search', browserHistory: history);

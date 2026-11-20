@@ -10,8 +10,13 @@ abstract interface class BrowserHistory {
   /// learns of the new location from the browser afterwards.
   void back();
 
-  /// Whether this page load reopened an entry already in the history, by a
-  /// reload or by Back or Forward from another page, rather than navigating
-  /// to a new one.
-  bool get pageRestored;
+  /// Whether the page loaded on an entry carrying the tag of
+  /// [tagCurrentEntry]: one reopened by a reload, or by Back or Forward from
+  /// another site. It is read when the history is created, before the
+  /// router's first report replaces the entry's state and so its tag.
+  bool get loadedOnTaggedEntry;
+
+  /// Tags the current entry as one the app made for itself. The tag stays
+  /// with the entry until the router replaces it.
+  void tagCurrentEntry();
 }

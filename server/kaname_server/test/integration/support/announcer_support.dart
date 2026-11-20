@@ -313,10 +313,13 @@ WorkerReply upToDateReply(int build) =>
 /// A started announcer over [session]'s database with a fake clock and a
 /// recording bus, for tests that feed it the worker replies they produce.
 final class TestAnnouncer {
-  TestAnnouncer._(this.announcer, this.bus, this.clock);
+  TestAnnouncer._(this.announcer, this.bus, this.clock, this.source);
 
   /// The announcer.
   final BundleAnnouncer announcer;
+
+  /// The source it reads through, which a test can hold.
+  final ScriptedSource source;
 
   /// Everything it published.
   final RecordingBus bus;
@@ -333,8 +336,11 @@ final class TestAnnouncer {
   }) async {
     final bus = RecordingBus();
     final clock = FakeClock();
+    final source = ScriptedSource(
+      OrmBundleStateSource(<T>(action) => action(session)),
+    );
     final announcer = BundleAnnouncer(
-      source: OrmBundleStateSource(<T>(action) => action(session)),
+      source: source,
       bus: bus,
       clock: clock,
       log: (level, message) => log?.call(message),
@@ -342,7 +348,7 @@ final class TestAnnouncer {
       epoch: 'test-epoch',
     )..start();
     await announcer.settled;
-    return TestAnnouncer._(announcer, bus, clock);
+    return TestAnnouncer._(announcer, bus, clock, source);
   }
 
   /// Feeds [reply] to the announcer and waits for the refresh it causes.

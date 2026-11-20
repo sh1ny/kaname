@@ -1,27 +1,38 @@
 /// The web platform's browser history.
 library;
 
+import 'dart:js_interop';
+
 import 'package:web/web.dart' as web;
 
 import 'browser_history.dart';
 
 /// The browser history of this platform: the page's `window.history`.
-BrowserHistory? createPlatformBrowserHistory() => const _WindowHistory();
+BrowserHistory? createPlatformBrowserHistory() => _WindowHistory();
 
 final class _WindowHistory implements BrowserHistory {
-  const _WindowHistory();
+  _WindowHistory() : loadedOnTaggedEntry = _tagged(web.window.history.state);
 
   @override
   void back() => web.window.history.back();
 
+  /// The key of the tag in the entry's state, beside the Flutter engine's
+  /// own keys, which it reads by name and so leaves this one alone.
+  static const _tagKey = 'kanameTag';
+
   @override
-  bool get pageRestored {
-    final entries = web.window.performance.getEntriesByType('navigation');
-    if (entries.length == 0) return false;
-    final load = entries[0] as web.PerformanceNavigationTiming;
-    return switch (load.type) {
-      'reload' || 'back_forward' => true,
-      _ => false,
-    };
+  final bool loadedOnTaggedEntry;
+
+  static bool _tagged(JSAny? state) => switch (state.dartify()) {
+    {_tagKey: true} => true,
+    _ => false,
+  };
+
+  @override
+  void tagCurrentEntry() {
+    final history = web.window.history;
+    if (history.state.dartify() case final Map<Object?, Object?> state) {
+      history.replaceState({...state, _tagKey: true}.jsify(), '');
+    }
   }
 }
