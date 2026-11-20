@@ -60,3 +60,9 @@ Task 2.1 and 2.2 probes against Serverpod 4.1.2 disproved parts of A11 to A14 du
 
 - **No reason for the first moments.** D21's reasons did not cover the time before the kept copy has loaded and the first announcement has arrived; "downloading" would be untrue then. The owner chose (2026-11-20) to add a "starting" reason with its own localised message.
 - **Indexing failures.** A bundle that fails to index while the app holds no bundle is reported as "refused", like hash, format and build failures; the owner confirmed (2026-11-20). D21 amended for both.
+
+## Apply drift (round 21)
+
+- **The web stream never reached the server behind Caddy.** Task 11.1 found that the generated client opens its WebSocket at `<origin>/v1/websocket` whatever path the app configures (serverpod_client 4.1.2 replaces the path), while Caddy forwarded only `/api/*`, so the request got the single-page-app fallback and no announcement arrived. Chrome passed every other 11.1 check through a test proxy that forwarded that path. The owner chose (2026-11-20) to proxy `/v1/websocket` in Caddy: design "Routing" amended, task 11.6 added.
+- **Which memory the envelope bounds.** The bundle build added 647 MiB to the server; with 19 served versions that is 742 to 790 MiB, inside a quarter of the 4 GB envelope, but the whole development (JIT) server peaked at 1,319 MiB. The owner chose (2026-11-20) the reading that the limit bounds the memory the bundle work adds; the bounds row says so.
+- **Other browsers.** Edge, Firefox and Safari cannot run in this environment; the owner checks them (task 11.7, `[user]`).
