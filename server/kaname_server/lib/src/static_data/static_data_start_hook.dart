@@ -170,6 +170,17 @@ final class StaticDataStartHook {
   /// due, to the bundle repair ([BundleRepairFinished]); with `null` when
   /// the start-time work failed.
   Future<WorkerReply?> run() async {
+    // The announcer's ticks send no repair until the start-up decision and
+    // the check or repair it makes have ended (D10).
+    announcer?.holdTickRepairs();
+    try {
+      return await _run();
+    } finally {
+      announcer?.releaseTickRepairs();
+    }
+  }
+
+  Future<WorkerReply?> _run() async {
     supervisor.start();
     staticDataRuntime
       ..supervisor = supervisor

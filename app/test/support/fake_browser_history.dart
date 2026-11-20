@@ -12,7 +12,15 @@ import 'package:kaname_app/shell/data/browser_history.dart';
 final class FakeBrowserHistory implements BrowserHistory {
   /// Creates the history and starts recording on [tester]'s navigation
   /// channel, until the test ends.
-  FakeBrowserHistory(this._tester) {
+  ///
+  /// [restored] starts the history with those entries, the last current, as
+  /// a page reloaded on that entry or reached by Back or Forward finds it.
+  FakeBrowserHistory(this._tester, {List<String> restored = const []})
+    : pageRestored = restored.isNotEmpty {
+    for (final uri in restored) {
+      _entries.add((uri: uri, state: null));
+    }
+    _index = _entries.length - 1;
     final messenger = _tester.binding.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(SystemChannels.navigation, _record);
     addTearDown(
@@ -23,6 +31,9 @@ final class FakeBrowserHistory implements BrowserHistory {
   final WidgetTester _tester;
   final List<({String uri, Object? state})> _entries = [];
   int _index = -1;
+
+  @override
+  final bool pageRestored;
 
   /// How many times the app stepped back through [back].
   int backCalls = 0;

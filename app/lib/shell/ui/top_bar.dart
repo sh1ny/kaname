@@ -73,14 +73,20 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   ///
   /// It follows the location's [searchMarker], and every marked history
   /// entry comes right after the same location unmarked: the bar adds marked
-  /// entries only by pushing them from there; a page loaded with the marker
-  /// is rewritten to that pair (narrow) or unmarked (wide); and a marked
+  /// entries only by pushing them from there; a new page load with the
+  /// marker is rewritten to that pair (narrow) or unmarked (wide), while a
+  /// reloaded or restored one already is such a pair; and a marked
   /// location the app itself navigates to, such as a branch's remembered
   /// location, is unmarked in place. Only a location the browser reports
   /// (Back or Forward) may arrive marked, and it is one of those pairs. So
   /// closing the search in a browser always steps back, onto the same page
   /// without the marker, and leaves no dead entry.
   bool _searchOpen = false;
+
+  /// The path the open search belongs to: where it was opened, or where the
+  /// browser brought a marked entry back. A marked location at another path
+  /// is another page's search, which the app restores only by navigating.
+  String? _openPath;
 
   Uri get _location => _locations!.value.uri;
 
@@ -91,15 +97,29 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     if (identical(locations, _locations)) return;
     _locations?.removeListener(_onLocation);
     _locations = locations..addListener(_onLocation);
-    // A page loaded with the marker: the entry becomes the unmarked
-    // location, with the search pushed over it on a narrow window. The push
-    // waits a frame, so the router reports the replacement before it.
-    if (hasSearchMarker(_location)) {
-      _afterFrame(() {
-        _dropMarker();
-        if (!widget.inlineSearch) _afterFrame(_openSearch);
-      });
+    if (hasSearchMarker(_location)) _afterFrame(_loadedMarked);
+  }
+
+  /// A page loaded with the marker. A reload, or Back or Forward from
+  /// another page, reopens an entry the bar made, already right after the
+  /// same location unmarked: a narrow window shows its search, a wide one
+  /// steps back over it. Any other load, such as a typed or shared link,
+  /// makes that pair: the entry becomes the unmarked location, with the
+  /// search pushed over it on a narrow window. The push waits a frame, so
+  /// the router reports the replacement before it.
+  void _loadedMarked() {
+    final history = ref.read(browserHistoryProvider);
+    if (history != null && history.pageRestored) {
+      if (!widget.inlineSearch) {
+        _openPath = _location.path;
+        setState(() => _searchOpen = true);
+      } else {
+        history.back();
+      }
+      return;
     }
+    _dropMarker();
+    if (!widget.inlineSearch) _afterFrame(_openSearch);
   }
 
   @override
@@ -113,6 +133,7 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     // after this frame builds.
     final wasOpen = _searchOpen;
     _searchOpen = !widget.inlineSearch && hasSearchMarker(_location);
+    _openPath = _location.path;
     _afterFrame(() {
       ref.read(quickSearchProvider.notifier).clear();
       if (wasOpen) _leaveMarkedEntry();
@@ -134,14 +155,19 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   /// Follows the location: the browser's Back or Forward, or a navigation
   /// made while the search was open. A marked location the app navigated to
   /// itself, such as the remembered location of a branch the user switched
-  /// back to, is unmarked in place, after the router reported it. The wide
+  /// back to, is unmarked in place, after the router reported it, and ends a
+  /// search open on another page. The wide
   /// bar has no narrow search and otherwise ignores the marker.
   void _onLocation() {
     final marked = hasSearchMarker(_location);
-    if (marked && !_searchOpen && !_reportedByBrowser(_locations!.value)) {
+    final fromBrowser = _reportedByBrowser(_locations!.value);
+    final ownEntry = _searchOpen && _location.path == _openPath;
+    if (marked && !fromBrowser && !ownEntry) {
       _afterFrame(_dropMarker);
+      if (_searchOpen) _endSearch();
       return;
     }
+    if (marked) _openPath = _location.path;
     if (widget.inlineSearch) return;
     switch ((marked, _searchOpen)) {
       case (true, false):
@@ -162,6 +188,7 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
       location.state is Map;
 
   void _openSearch() {
+    _openPath = _location.path;
     setState(() => _searchOpen = true);
     GoRouter.of(context).go(withSearchMarker(_location));
   }

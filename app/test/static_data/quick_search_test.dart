@@ -511,6 +511,26 @@ void main() {
       expect(location(), '/home');
     });
 
+    testWidgets('returning to a branch whose search was open, from a branch '
+        'whose search is open, closes the search on the unmarked page', (
+      tester,
+    ) async {
+      await openOverLicences(tester);
+      await tester.tap(find.byKey(ShellKeys.bar('home')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(QuickSearchKeys.openButton));
+      await tester.pumpAndSettle();
+      expect(location(), '/home?search');
+
+      await tester.tap(find.byKey(ShellKeys.bar('settings')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(QuickSearchKeys.field), findsNothing);
+      expect(location(), '/settings/licences');
+      expect(history.current, '/settings/licences');
+      expect(history.backCalls, 0);
+    });
+
     testWidgets('a marked page loaded on a wide window is unmarked, and '
         'narrowing then opens no search', (tester) async {
       history = FakeBrowserHistory(tester);
@@ -547,6 +567,46 @@ void main() {
       expect(history.backCalls, 1);
       expect(history.current, '/settings');
       expect(location(), '/settings');
+    });
+
+    testWidgets('a reloaded page with the search open keeps its history, and '
+        'closing the search steps back to the same page', (tester) async {
+      history = FakeBrowserHistory(
+        tester,
+        restored: ['/home', '/settings', '/settings?search'],
+      );
+      harness = await Rig(kept: copyN).pump(
+        tester,
+        size: _narrow,
+        location: '/settings?search',
+        browserHistory: history,
+      );
+      expect(find.byKey(QuickSearchKeys.field), findsOneWidget);
+      expect(history.entries, ['/home', '/settings', '/settings?search']);
+
+      await tester.tap(find.byKey(QuickSearchKeys.closeButton));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(QuickSearchKeys.field), findsNothing);
+      expect(history.backCalls, 1);
+      expect(location(), '/settings');
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      expect(location(), '/home', reason: 'no repeated page entry');
+    });
+
+    testWidgets('a reloaded page with the search open on a wide window steps '
+        'back over its entry', (tester) async {
+      history = FakeBrowserHistory(
+        tester,
+        restored: ['/home', '/settings', '/settings?search'],
+      );
+      harness = await Rig(kept: copyN)
+          .pump(tester, location: '/settings?search', browserHistory: history);
+
+      expect(history.backCalls, 1);
+      expect(location(), '/settings');
+      expect(history.current, '/settings');
     });
   });
 

@@ -398,6 +398,18 @@ final class BundleAnnouncer {
 
   int _repairChecksWaiting = 0;
 
+  bool _tickRepairsHeld = false;
+
+  /// Stops the ticks from sending repairs until [releaseTickRepairs].
+  ///
+  /// The start hook holds them while it decides between its catch-up check
+  /// and its own repair and while that work runs, so a tick's repair never
+  /// takes the lock a due check needs (D10). Refreshes go on.
+  void holdTickRepairs() => _tickRepairsHeld = true;
+
+  /// Lets the ticks send repairs again; the next tick sends one still owed.
+  void releaseTickRepairs() => _tickRepairsHeld = false;
+
   /// How many repairs [sendRepair] has sent.
   int _repairsSent = 0;
 
@@ -408,7 +420,11 @@ final class BundleAnnouncer {
   /// Sends a [RunBundleRepair] when the last state read owes one and none is
   /// outstanding.
   void _sendOwedRepair() {
-    if (_stopped || !_repairOwed || _repair != null || _runRepair == null) {
+    if (_stopped ||
+        _tickRepairsHeld ||
+        !_repairOwed ||
+        _repair != null ||
+        _runRepair == null) {
       return;
     }
     unawaited(

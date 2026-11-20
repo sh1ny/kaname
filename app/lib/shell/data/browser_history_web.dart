@@ -13,4 +13,15 @@ final class _WindowHistory implements BrowserHistory {
 
   @override
   void back() => web.window.history.back();
+
+  @override
+  bool get pageRestored {
+    final entries = web.window.performance.getEntriesByType('navigation');
+    if (entries.length == 0) return false;
+    final load = entries[0] as web.PerformanceNavigationTiming;
+    return switch (load.type) {
+      'reload' || 'back_forward' => true,
+      _ => false,
+    };
+  }
 }
