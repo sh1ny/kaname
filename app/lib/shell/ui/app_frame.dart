@@ -150,6 +150,7 @@ class _AppFrameState extends ConsumerState<AppFrame> {
             child: Column(
               children: [
                 ShellTopBar(
+                  inlineSearch: breakpoint == ShellBreakpoint.wide,
                   inspectorOpen: inspectorOpen,
                   onInspectorToggle: _toggleInspector,
                   inspectorToggleFocus: _toggleFocus,

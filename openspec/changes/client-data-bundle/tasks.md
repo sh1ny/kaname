@@ -74,12 +74,12 @@ Paths are relative to the repository root. `bundle/` stands for `packages/kaname
 | static-data-search → Search matches names case-insensitively, prefixes first | Many matches | bundle/test/search_index_test.dart | 300 matches return 50 and a more flag | green |
 | static-data-search → An exact id matches its record | Type id | bundle/test/search_index_test.dart | exact unpublished type id comes first and its name does not match | green |
 | static-data-search → An exact id matches its record | Unknown id | bundle/test/search_index_test.dart | unknown id returns only name matches | green |
-| static-data-search → Search works with no network | Offline search | app/test/static_data/quick_search_test.dart | offline search finds Jita and sends no request | red |
-| static-data-search → Search works with no network | No bundle | app/test/static_data/quick_search_test.dart | no bundle shows localised reason without exception text | red |
-| static-data-search → The top bar offers quick search | App update needed while holding a bundle | app/test/static_data/quick_search_test.dart | app update notice shows while search still returns results | red |
-| static-data-search → The top bar offers quick search | Keyboard search | app/test/static_data/quick_search_test.dart | keyboard search lists Rifter and arrows move | red |
-| static-data-search → The top bar offers quick search | Narrow window | app/test/static_data/quick_search_test.dart | narrow window opens full-width search, Escape returns focus | red |
-| static-data-search → The top bar offers quick search | Empty query | app/test/static_data/quick_search_test.dart | empty or blank query shows no list | red |
+| static-data-search → Search works with no network | Offline search | app/test/static_data/quick_search_test.dart | offline search finds Jita and sends no request | green |
+| static-data-search → Search works with no network | No bundle | app/test/static_data/quick_search_test.dart | no bundle shows localised reason without exception text | green |
+| static-data-search → The top bar offers quick search | App update needed while holding a bundle | app/test/static_data/quick_search_test.dart | app update notice shows while search still returns results | green |
+| static-data-search → The top bar offers quick search | Keyboard search | app/test/static_data/quick_search_test.dart | keyboard search lists Rifter and arrows move | green |
+| static-data-search → The top bar offers quick search | Narrow window | app/test/static_data/quick_search_test.dart | narrow window opens full-width search, Escape returns focus | green |
+| static-data-search → The top bar offers quick search | Empty query | app/test/static_data/quick_search_test.dart | empty or blank query shows no list | green |
 | realtime-bus → Bus messages are typed per topic | Subscriber gets its topic | packages/kaname_core/test/realtime_bus_test.dart | subscriber receives its topic once as the typed model | green |
 | realtime-bus → Bus messages are typed per topic | Unknown version | server/test/integration/realtime/serverpod_realtime_bus_test.dart | unknown version is logged and dropped, later messages delivered | green |
 | realtime-bus → The bus delivers within one server instance | Worker publishes | server/test/integration/realtime/serverpod_realtime_bus_test.dart | worker switch reply reaches every bus subscription, and each open stream ends on it or newer | green |
@@ -174,7 +174,7 @@ Paths are relative to the repository root. `bundle/` stands for `packages/kaname
 
 ## 10. Top-bar quick search
 
-- [ ] 10.1 Read `impeccable`, DESIGN.md and the Flutter layout skills; write failing tests "offline search finds Jita and sends no request", "no bundle shows localised reason without exception text", "app update notice shows while search still returns results", "keyboard search lists Rifter and arrows move", "narrow window opens full-width search, Escape returns focus" and "empty or blank query shows no list" in `app/test/static_data/quick_search_test.dart`; implement the top-bar search (inline above 1080 px, button plus full-width search below, 150 ms debounce, keyboard and screen-reader labels) with localised strings in the ARB files (D17, D22); verify the rows turn green and `l10n_test.dart` and `accessibility_test.dart` still pass.
+- [x] 10.1 Read `impeccable`, DESIGN.md and the Flutter layout skills; write failing tests "offline search finds Jita and sends no request", "no bundle shows localised reason without exception text", "app update notice shows while search still returns results", "keyboard search lists Rifter and arrows move", "narrow window opens full-width search, Escape returns focus" and "empty or blank query shows no list" in `app/test/static_data/quick_search_test.dart`; implement the top-bar search (inline above 1080 px, button plus full-width search below, 150 ms debounce, keyboard and screen-reader labels) with localised strings in the ARB files (D17, D22); verify the rows turn green and `l10n_test.dart` and `accessibility_test.dart` still pass.
 
 ## 11. Integration and evidence
 
