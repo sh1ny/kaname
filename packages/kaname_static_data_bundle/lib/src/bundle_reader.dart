@@ -243,7 +243,47 @@ BundleOpenResult openBundle(
 /// D12) and starts here; checks as [openBundle] does after its hash.
 BundleOpenResult openInflatedBundle(Uint8List inflated, {required int build}) {
   try {
-    return _open(inflated, build);
+    switch (_prepare(inflated, build)) {
+      case _Rejected(:final refused):
+        return refused;
+      case _Ready(:final bundle):
+        // A chunk no bundle fills, so the decoding never pauses.
+        bundle._decodeSearchSections(_onePass).forEach((_) {});
+        return BundleOpened(bundle);
+    }
+  } on FormatException catch (error) {
+    return BundleRefused(CorruptBundle(error.message));
+  }
+}
+
+/// Opens the already inflated bundle [inflated] as [openInflatedBundle]
+/// does, but decodes it in chunks of [linesPerChunk] record lines and yields
+/// to the event loop between chunks.
+///
+/// The web app's Dart code runs on the browser's main thread (design D12),
+/// where one long synchronous parse would freeze the page. The bundle and
+/// the refusals are the same as the one-pass open gives. Throws an
+/// [ArgumentError] when [linesPerChunk] is below one.
+Future<BundleOpenResult> openInflatedBundleChunked(
+  Uint8List inflated, {
+  required int build,
+  int linesPerChunk = 2000,
+}) async {
+  if (linesPerChunk < 1) {
+    throw ArgumentError.value(linesPerChunk, 'linesPerChunk', 'below one');
+  }
+  try {
+    switch (_prepare(inflated, build)) {
+      case _Rejected(:final refused):
+        return refused;
+      case _Ready(:final bundle):
+        for (final _ in bundle._decodeSearchSections(linesPerChunk)) {
+          // A timer, not a microtask: only a timer lets the browser paint
+          // and handle input.
+          await Future<void>.delayed(Duration.zero);
+        }
+        return BundleOpened(bundle);
+    }
   } on FormatException catch (error) {
     return BundleRefused(CorruptBundle(error.message));
   }
@@ -252,7 +292,33 @@ BundleOpenResult openInflatedBundle(Uint8List inflated, {required int build}) {
 const _lineFeed = 0x0a;
 const _openBrace = 0x7b;
 
-BundleOpenResult _open(Uint8List bytes, int build) {
+/// A chunk size no bundle reaches: the one-pass open never pauses.
+///
+/// It is the largest integer JavaScript represents exactly, so the
+/// reader also compiles for the web.
+const _onePass = 0x1fffffffffffff;
+
+/// What the cheap first step of an open found: a bundle whose search
+/// sections are still to decode, or a refusal.
+sealed class _Prepared {
+  const _Prepared();
+}
+
+final class _Ready extends _Prepared {
+  const _Ready(this.bundle);
+
+  final _Bundle bundle;
+}
+
+final class _Rejected extends _Prepared {
+  const _Rejected(this.refused);
+
+  final BundleRefused refused;
+}
+
+/// Checks the header and indexes the sections of [bytes], without decoding a
+/// record line.
+_Prepared _prepare(Uint8List bytes, int build) {
   final headerEnd = bytes.indexOf(_lineFeed);
   if (headerEnd < 0) throw const FormatException('no header line');
   final header = switch (_decodeJson(bytes, 0, headerEnd)) {
@@ -264,14 +330,16 @@ BundleOpenResult _open(Uint8List bytes, int build) {
     _ => throw const FormatException('the header has no formatMajor'),
   };
   if (major != bundleFormatMajor) {
-    return BundleRefused(
-      UnsupportedFormat(
-        bundleMajor: major,
-        bundleMinor: switch (header['formatMinor']) {
-          final int minor => minor,
-          _ => null,
-        },
-        supportedMajor: bundleFormatMajor,
+    return _Rejected(
+      BundleRefused(
+        UnsupportedFormat(
+          bundleMajor: major,
+          bundleMinor: switch (header['formatMinor']) {
+            final int minor => minor,
+            _ => null,
+          },
+          supportedMajor: bundleFormatMajor,
+        ),
       ),
     );
   }
@@ -280,12 +348,13 @@ BundleOpenResult _open(Uint8List bytes, int build) {
     _ => throw const FormatException('the header has no build'),
   };
   if (bundleBuild != build) {
-    return BundleRefused(WrongBuild(expected: build, actual: bundleBuild));
+    return _Rejected(
+      BundleRefused(WrongBuild(expected: build, actual: bundleBuild)),
+    );
   }
   final bundle = _Bundle(bytes, _parseHeader(header, bundleBuild))
-    .._index(headerEnd + 1)
-    .._decodeSearchSections();
-  return BundleOpened(bundle);
+    .._index(headerEnd + 1);
+  return _Ready(bundle);
 }
 
 BundleHeader _parseHeader(Map<String, Object?> header, int build) {
@@ -389,40 +458,75 @@ final class _Bundle implements ClientBundle {
     close(_bytes.length);
   }
 
-  void _decodeSearchSections() {
-    types = [
-      for (final record in records(BundleSection.types))
-        _type(record.key, _Fields(record, BundleSection.types)),
-    ];
-    groups = [
-      for (final record in records(BundleSection.groups))
-        _group(record.key, _Fields(record, BundleSection.groups)),
-    ];
-    regions = [
-      for (final record in records(BundleSection.mapRegions))
+  /// The count of record lines decoded since the last pause.
+  int _sinceYield = 0;
+
+  /// Decodes the sections search needs, pausing after every [linesPerChunk]
+  /// record lines.
+  ///
+  /// The pauses are the iterable's elements: the one-pass open drains it at
+  /// once, the chunked open awaits the event loop at each.
+  Iterable<void> _decodeSearchSections(int linesPerChunk) sync* {
+    final typeList = <BundleType>[];
+    yield* _decodeSection(BundleSection.types, linesPerChunk, (record) {
+      typeList.add(_type(record.key, _Fields(record, BundleSection.types)));
+    });
+    types = typeList;
+    final groupList = <BundleGroup>[];
+    yield* _decodeSection(BundleSection.groups, linesPerChunk, (record) {
+      groupList.add(_group(record.key, _Fields(record, BundleSection.groups)));
+    });
+    groups = groupList;
+    final regionList = <BundleRegion>[];
+    yield* _decodeSection(BundleSection.mapRegions, linesPerChunk, (record) {
+      regionList.add(
         _region(record.key, _Fields(record, BundleSection.mapRegions)),
-    ];
-    solarSystems = [
-      for (final record in records(BundleSection.mapSolarSystems))
+      );
+    });
+    regions = regionList;
+    final systemList = <BundleSolarSystem>[];
+    yield* _decodeSection(BundleSection.mapSolarSystems, linesPerChunk, (
+      record,
+    ) {
+      systemList.add(
         _solarSystem(
           record.key,
           _Fields(record, BundleSection.mapSolarSystems),
         ),
-    ];
+      );
+    });
+    solarSystems = systemList;
+  }
+
+  Iterable<void> _decodeSection(
+    BundleSection section,
+    int linesPerChunk,
+    void Function(BundleRecord record) add,
+  ) sync* {
+    for (final record in _recordLines(section)) {
+      add(record);
+      if (++_sinceYield >= linesPerChunk) {
+        _sinceYield = 0;
+        yield null;
+      }
+    }
   }
 
   @override
-  List<BundleRecord> records(BundleSection section) {
+  List<BundleRecord> records(BundleSection section) =>
+      _recordLines(section).toList();
+
+  /// Decodes the record lines of [section] one at a time.
+  Iterable<BundleRecord> _recordLines(BundleSection section) sync* {
     final range = _ranges[section];
-    if (range == null) return const [];
+    if (range == null) return;
     final (start, end) = range;
-    final records = <BundleRecord>[];
     var position = start;
     while (position < end) {
       var lineEnd = _bytes.indexOf(_lineFeed, position);
       if (lineEnd < 0 || lineEnd > end) lineEnd = end;
       if (lineEnd > position) {
-        records.add(switch (_decodeJson(_bytes, position, lineEnd)) {
+        yield switch (_decodeJson(_bytes, position, lineEnd)) {
           [
             final int key,
             final Map<String, Object?> typed,
@@ -433,11 +537,10 @@ final class _Bundle implements ClientBundle {
             'malformed record line in section ${section.file}',
             other,
           ),
-        });
+        };
       }
       position = lineEnd + 1;
     }
-    return records;
   }
 }
 
