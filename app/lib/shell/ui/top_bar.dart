@@ -73,11 +73,13 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   ///
   /// It follows the location's [searchMarker], and every marked history
   /// entry comes right after the same location unmarked: the bar adds marked
-  /// entries only by pushing them from there, and a page loaded with the
-  /// marker is first rewritten to that pair. So closing the search in a
-  /// browser always steps back, onto the same page without the marker, and
-  /// leaves no dead entry, whether the marked entry was reached by opening
-  /// the search or by Forward.
+  /// entries only by pushing them from there; a page loaded with the marker
+  /// is rewritten to that pair (narrow) or unmarked (wide); and a marked
+  /// location the app itself navigates to, such as a branch's remembered
+  /// location, is unmarked in place. Only a location the browser reports
+  /// (Back or Forward) may arrive marked, and it is one of those pairs. So
+  /// closing the search in a browser always steps back, onto the same page
+  /// without the marker, and leaves no dead entry.
   bool _searchOpen = false;
 
   Uri get _location => _locations!.value.uri;
@@ -89,13 +91,13 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     if (identical(locations, _locations)) return;
     _locations?.removeListener(_onLocation);
     _locations = locations..addListener(_onLocation);
-    // A page loaded with the marker on a narrow window: the entry becomes the
-    // unmarked location with the search pushed over it. The push waits a
-    // frame, so the router reports the replacement before it.
-    if (!widget.inlineSearch && hasSearchMarker(_location)) {
+    // A page loaded with the marker: the entry becomes the unmarked
+    // location, with the search pushed over it on a narrow window. The push
+    // waits a frame, so the router reports the replacement before it.
+    if (hasSearchMarker(_location)) {
       _afterFrame(() {
         _dropMarker();
-        _afterFrame(_openSearch);
+        if (!widget.inlineSearch) _afterFrame(_openSearch);
       });
     }
   }
@@ -105,13 +107,15 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.inlineSearch == widget.inlineSearch) return;
     // The other kind of field replaces the one that held the text, so the
-    // query and its results end together with it, and the narrow search
-    // starts closed; the provider and the location are changed after this
-    // frame builds.
-    _searchOpen = false;
+    // query and its results end together with it. A narrow search that was
+    // open is left with its entry; on narrowing, the search opens empty if
+    // the location is marked. The provider and the location are changed
+    // after this frame builds.
+    final wasOpen = _searchOpen;
+    _searchOpen = !widget.inlineSearch && hasSearchMarker(_location);
     _afterFrame(() {
       ref.read(quickSearchProvider.notifier).clear();
-      _leaveMarkedEntry();
+      if (wasOpen) _leaveMarkedEntry();
     });
   }
 
@@ -127,12 +131,19 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
         if (mounted) run();
       });
 
-  /// Follows the location on narrow windows: the browser's Back or Forward,
-  /// or a navigation made while the search was open. The wide bar has no
-  /// narrow search and ignores the marker.
+  /// Follows the location: the browser's Back or Forward, or a navigation
+  /// made while the search was open. A marked location the app navigated to
+  /// itself, such as the remembered location of a branch the user switched
+  /// back to, is unmarked in place, after the router reported it. The wide
+  /// bar has no narrow search and otherwise ignores the marker.
   void _onLocation() {
+    final marked = hasSearchMarker(_location);
+    if (marked && !_searchOpen && !_reportedByBrowser(_locations!.value)) {
+      _afterFrame(_dropMarker);
+      return;
+    }
     if (widget.inlineSearch) return;
-    switch ((hasSearchMarker(_location), _searchOpen)) {
+    switch ((marked, _searchOpen)) {
       case (true, false):
         setState(() => _searchOpen = true);
       case (false, true):
@@ -141,6 +152,14 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
         break;
     }
   }
+
+  /// Whether the browser reported [location], by Back or Forward.
+  ///
+  /// go_router keeps the state the browser hands back with an entry, the
+  /// match list it encoded as a map when it reported the entry; a location
+  /// the app navigates to carries go_router's own state object instead.
+  static bool _reportedByBrowser(RouteInformation location) =>
+      location.state is Map;
 
   void _openSearch() {
     setState(() => _searchOpen = true);

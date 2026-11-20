@@ -347,6 +347,7 @@ final class BundleAnnouncer {
     if (outstanding != null) return outstanding;
     final run =
         _runRepair ?? (throw StateError('no worker runs a bundle repair here'));
+    _repairsSent++;
     final sent = run().then((reply) {
       unawaited(workerReplied(reply));
       return reply;
@@ -377,7 +378,10 @@ final class BundleAnnouncer {
     // cannot hold it back; the check runs again on the state this tick's
     // refresh reads, so a repair that an out-of-process change made owed is
     // sent on the tick that finds it, not one tick later (D9). At most one
-    // is outstanding either way.
+    // is outstanding either way, and a tick sends at most one: the later
+    // check sends only when no repair went out since the tick began, even if
+    // the early one was answered while the refresh ran.
+    final sentBefore = _repairsSent;
     _sendOwedRepair();
     final refreshed = request();
     // One check waits for the refreshes at a time: while a read hangs, the
@@ -387,12 +391,15 @@ final class BundleAnnouncer {
     unawaited(
       refreshed.then((_) {
         _repairChecksWaiting--;
-        _sendOwedRepair();
+        if (_repairsSent == sentBefore) _sendOwedRepair();
       }),
     );
   }
 
   int _repairChecksWaiting = 0;
+
+  /// How many repairs [sendRepair] has sent.
+  int _repairsSent = 0;
 
   /// How many repair checks wait for the refreshes to end: at most one.
   @visibleForTesting

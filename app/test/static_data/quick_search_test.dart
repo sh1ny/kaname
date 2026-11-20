@@ -492,6 +492,40 @@ void main() {
       expect(location(), '/settings', reason: 'no repeated page entry');
     });
 
+    testWidgets('a branch switched away from with the search open comes '
+        'back unmarked, its entry right after the other page', (tester) async {
+      await openOverLicences(tester);
+
+      await tester.tap(find.byKey(ShellKeys.bar('home')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(QuickSearchKeys.field), findsNothing);
+      await tester.tap(find.byKey(ShellKeys.bar('settings')));
+      await tester.pumpAndSettle();
+
+      expect(location(), '/settings/licences', reason: 'the branch is kept');
+      expect(find.byKey(QuickSearchKeys.field), findsNothing);
+      expect(history.current, '/settings/licences');
+      expect(history.backCalls, 0);
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      expect(location(), '/home');
+    });
+
+    testWidgets('a marked page loaded on a wide window is unmarked, and '
+        'narrowing then opens no search', (tester) async {
+      history = FakeBrowserHistory(tester);
+      harness = await Rig(kept: copyN)
+          .pump(tester, location: '/settings?search', browserHistory: history);
+      expect(history.entries, ['/settings']);
+
+      setWindowSize(tester, _narrow);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(QuickSearchKeys.field), findsNothing);
+      expect(history.backCalls, 0);
+      expect(location(), '/settings');
+    });
+
     testWidgets('a page loaded with the marker shows the narrow search over '
         'the same page unmarked, and closing it steps back there', (
       tester,
