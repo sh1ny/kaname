@@ -424,6 +424,25 @@ void main() {
     expect((h.state as BundleReady).notice, isA<AppUpdateNeeded>());
   });
 
+  test('a refused save keeps the downloaded bundle searchable, and a fresh '
+      'sync over the same store downloads it again', () async {
+    final store = FakeBundleStore()..refuseSaves = true;
+    final h = Harness(fakeStore: store);
+    await h.start();
+    await h.send(announce(copyN));
+    await h.deliver(copyN);
+
+    expect(h.state, readyOn(copyN, updating: false));
+    expect((h.state as BundleReady).index.search('rifter').hits.single.id, 587);
+    expect(store.kept, isNull);
+
+    final restart = Harness(fakeStore: store);
+    await restart.start();
+    expect(restart.state, isA<NoBundle>());
+    await restart.send(announce(copyN));
+    expect(restart.downloader.builds, [buildN]);
+  });
+
   group('with the real file store', () {
     late Directory root;
     late Directory directory;
@@ -476,6 +495,45 @@ void main() {
       final load = await newStore().load();
       expect(load, isA<KeptBundleLoaded>());
       expect((load as KeptBundleLoaded).identity, copyN1.identity);
+    });
+
+    test('a rollback announced at a higher revision downloads N, keeps it, '
+        'and an offline restart loads N from the same file', () async {
+      final opener = FakeBundleOpener();
+      FileBundleStore newStore() =>
+          FileBundleStore(directory: directory, opener: opener);
+      await newStore().save(copyN1);
+
+      final h = Harness(store: newStore(), opener: opener);
+      await h.start();
+      await waitFor(() => h.state is BundleReady);
+      expect(h.state, readyOn(copyN1));
+
+      await h.send(announce(copyN, revision: 2));
+      expect(h.downloader.builds, [buildN]);
+      h.downloader.last.complete(copyN.bytes);
+      await waitFor(
+        () => h.state is BundleReady && !(h.state as BundleReady).updating,
+      );
+      expect(h.state, readyOn(copyN));
+      // The save of N replaces the kept file.
+      for (var i = 0; i < 400; i++) {
+        final load = await newStore().load();
+        if (load case KeptBundleLoaded(:final identity)
+            when identity == copyN.identity) {
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+
+      final offline = Harness(
+        store: newStore(),
+        opener: opener,
+        target: const NoServer(),
+      );
+      await offline.start();
+      await waitFor(() => offline.state is BundleReady);
+      expect(offline.state, readyOn(copyN));
     });
   });
 

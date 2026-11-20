@@ -251,6 +251,10 @@ final class FakeBundleStore implements BundleStore {
   /// Whether saves wait for [releaseSaves].
   bool holdSave = false;
 
+  /// Whether saves are refused, as a browser that denies Cache Storage
+  /// refuses them; nothing is kept then.
+  bool refuseSaves = false;
+
   /// How many loads were asked for.
   int loads = 0;
 
@@ -314,6 +318,7 @@ final class FakeBundleStore implements BundleStore {
       _saveGates.add(gate);
       await gate.future;
     }
+    if (refuseSaves) return const BundleNotSaved('storage refused');
     kept = copy;
     savesDone.add(copy.identity);
     return const BundleSaved();

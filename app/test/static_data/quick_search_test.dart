@@ -74,6 +74,21 @@ Future<void> typeQuery(WidgetTester tester, String text) async {
 Finder inPanel(Finder finder) =>
     find.descendant(of: find.byKey(QuickSearchKeys.panel), matching: finder);
 
+/// Lets the shell report no overflow in a window too short for it, the
+/// search panel being the subject; an overflow in the panel still fails.
+void ignoreShellOverflow() {
+  final reported = FlutterError.onError;
+  FlutterError.onError = (details) {
+    final text = details.toString();
+    if (text.contains('overflowed') &&
+        !text.contains('quick_search_panel.dart')) {
+      return;
+    }
+    reported?.call(details);
+  };
+  addTearDown(() => FlutterError.onError = reported);
+}
+
 /// Whether the search field's editable text holds primary focus.
 bool fieldHasFocus(WidgetTester tester) => tester
     .widget<EditableText>(find.byType(EditableText))
@@ -441,13 +456,7 @@ void main() {
       'last result still scrolls fully into view', (tester) async {
     const short = Size(800, 375);
     const keyboard = 260.0;
-    // The shell itself does not fit this short a page and reports its own
-    // overflow; only the search panel is checked here.
-    final reported = FlutterError.onError;
-    FlutterError.onError = (details) {
-      if (!details.toString().contains('overflowed')) reported?.call(details);
-    };
-    addTearDown(() => FlutterError.onError = reported);
+    ignoreShellOverflow();
     final many = fixtureBundle(
       100,
       extraTypes: {for (var i = 0; i < 30; i++) 700 + i: 'Rifter $i'},
@@ -472,6 +481,29 @@ void main() {
     final last = find.byKey(QuickSearchKeys.result(30));
     expect(last, findsOneWidget);
     expect(tester.getRect(last).bottom, lessThanOrEqualTo(panel.bottom));
+  });
+
+  testWidgets('with little room above the keyboard, the no-bundle reason '
+      'scrolls into view and nothing in the panel overflows', (tester) async {
+    const short = Size(800, 375);
+    const keyboard = 260.0;
+    ignoreShellOverflow();
+    await Rig().pump(tester, size: short);
+    tester.view.viewInsets = FakeViewPadding(
+      bottom: keyboard * tester.view.devicePixelRatio,
+    );
+    addTearDown(tester.view.resetViewInsets);
+    await tester.tap(find.byKey(QuickSearchKeys.openButton));
+    await tester.pumpAndSettle();
+    await typeQuery(tester, 'jita');
+
+    final reason = inPanel(find.text('No server is configured.'));
+    expect(reason, findsOneWidget);
+    await tester.ensureVisible(reason);
+    await tester.pumpAndSettle();
+    final panel = tester.getRect(find.byKey(QuickSearchKeys.panel));
+    expect(panel.bottom, lessThanOrEqualTo(short.height - keyboard));
+    expect(tester.getRect(reason).bottom, lessThanOrEqualTo(panel.bottom));
   });
 
   testWidgets('empty or blank query shows no list', (tester) async {
@@ -678,10 +710,8 @@ void main() {
       expect(location(), '/settings');
     });
 
-    testWidgets('a page loaded with the marker shows the narrow search over '
-        'the same page unmarked, and closing it steps back there', (
-      tester,
-    ) async {
+    testWidgets('a shared link with the marker opens the page unmarked with '
+        'the search closed, and adds no history entry', (tester) async {
       history = FakeBrowserHistory(tester);
       harness = await Rig(kept: copyN).pump(
         tester,
@@ -689,15 +719,10 @@ void main() {
         location: '/settings?search',
         browserHistory: history,
       );
-      expect(find.byKey(QuickSearchKeys.field), findsOneWidget);
-      expect(history.entries, ['/settings', '/settings?search']);
-
-      await tester.tap(find.byKey(QuickSearchKeys.closeButton));
-      await tester.pumpAndSettle();
 
       expect(find.byKey(QuickSearchKeys.field), findsNothing);
-      expect(history.backCalls, 1);
-      expect(history.current, '/settings');
+      expect(history.entries, ['/settings']);
+      expect(history.backCalls, 0);
       expect(location(), '/settings');
     });
 
@@ -735,8 +760,8 @@ void main() {
       expect(location(), '/home', reason: 'no repeated page entry');
     });
 
-    testWidgets('a reload of a marked link the bar has not paired yet makes '
-        'the pair', (tester) async {
+    testWidgets('a reload of a marked entry the bar did not tag opens the '
+        'page unmarked with the search closed', (tester) async {
       history = FakeBrowserHistory(
         tester,
         restored: ['/home', '/settings?search'],
@@ -747,14 +772,9 @@ void main() {
         location: '/settings?search',
         browserHistory: history,
       );
-      expect(find.byKey(QuickSearchKeys.field), findsOneWidget);
-      expect(history.entries, ['/home', '/settings', '/settings?search']);
-
-      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-      await tester.pumpAndSettle();
 
       expect(find.byKey(QuickSearchKeys.field), findsNothing);
-      expect(location(), '/settings', reason: 'the search closes in place');
+      expect(history.entries, ['/home', '/settings']);
       await history.pressBack();
       await tester.pumpAndSettle();
       expect(location(), '/home');

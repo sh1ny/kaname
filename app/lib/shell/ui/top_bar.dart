@@ -79,9 +79,9 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   /// It follows the location's [searchMarker], and every marked history
   /// entry comes right after the same location unmarked: the bar adds marked
   /// entries only by pushing them from there, and tags each in the browser;
-  /// a page loaded on an untagged marked entry is rewritten to that pair
-  /// (narrow) or unmarked (wide), while a tagged one already is such a pair;
-  /// and a marked
+  /// a page loaded on an untagged marked entry is unmarked in place, with
+  /// the search closed, while a tagged one already is such a pair; and a
+  /// marked
   /// location the app itself navigates to, such as a branch's remembered
   /// location, is unmarked in place. Only a location the browser reports
   /// (Back or Forward) may arrive marked, and it is one of those pairs. So
@@ -127,10 +127,9 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   /// it, reopened by a reload or by Back or Forward from another site, is
   /// already right after the same location unmarked: a narrow window shows
   /// its search, a wide one steps back over it. Any other marked load, such
-  /// as a typed or shared link, is made that pair: the entry becomes the
-  /// unmarked location, with the search pushed over it on a narrow window.
-  /// The push waits a frame, so the router reports the replacement before
-  /// it.
+  /// as a typed or shared link, opens the page unmarked with the search
+  /// closed (pre-ship round 12, owner's choice): a history entry pushed
+  /// before the user acts on the page is one the browser's Back may skip.
   void _loadedMarked() {
     final history = ref.read(browserHistoryProvider);
     if (history != null && history.loadedOnTaggedEntry) {
@@ -146,7 +145,6 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
       return;
     }
     _dropMarker();
-    if (!widget.inlineSearch) _afterFrame(_openSearch);
   }
 
   @override

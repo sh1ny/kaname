@@ -56,6 +56,9 @@ class QuickSearchPanel extends StatefulWidget {
 class _QuickSearchPanelState extends State<QuickSearchPanel> {
   final _scroll = ScrollController();
 
+  /// The notice above the results, whose height the reveal skips.
+  final _noticeKey = GlobalKey(debugLabel: 'search notice');
+
   @override
   void dispose() {
     _scroll.dispose();
@@ -73,8 +76,11 @@ class _QuickSearchPanelState extends State<QuickSearchPanel> {
   /// Scrolls, without animation, so the highlighted row is in view.
   void _reveal() {
     if (!mounted || !_scroll.hasClients) return;
-    // The row's bounds in the list, which starts with its padding.
-    final top = _listPadding + widget.active * QuickSearchPanel.rowHeight;
+    // The row's bounds in the scroll view, after the notice, if any, and
+    // the list's padding.
+    final notice = _noticeKey.currentContext?.size?.height ?? 0;
+    final top =
+        notice + _listPadding + widget.active * QuickSearchPanel.rowHeight;
     final bottom = top + QuickSearchPanel.rowHeight;
     final position = _scroll.position;
     if (top < position.pixels) {
@@ -117,6 +123,7 @@ class _QuickSearchPanelState extends State<QuickSearchPanel> {
         active: widget.active,
         onHover: widget.onHover,
         controller: _scroll,
+        noticeKey: _noticeKey,
       ),
     };
     return DecoratedBox(
@@ -167,7 +174,8 @@ class _NotLoaded extends StatelessWidget {
     return Semantics(
       liveRegion: true,
       container: true,
-      child: Padding(
+      // Scrolls when the panel is capped shorter than the message.
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(EmberSpace.md),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -196,6 +204,7 @@ class _Found extends StatelessWidget {
     required this.active,
     required this.onHover,
     required this.controller,
+    required this.noticeKey,
   });
 
   final SearchResults results;
@@ -203,41 +212,45 @@ class _Found extends StatelessWidget {
   final int active;
   final ValueChanged<int>? onHover;
   final ScrollController controller;
+  final GlobalKey noticeKey;
 
   @override
   Widget build(BuildContext context) {
     final colors = EmberColors.of(context);
     final l10n = AppLocalizations.of(context);
     final hits = results.hits;
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (notice case final notice?) _Notice(notice: notice),
-        // Announces the count to screen readers when it changes.
-        Semantics(
-          liveRegion: true,
-          label: l10n.searchResultCount(hits.length),
-          child: const SizedBox.shrink(),
-        ),
+    // One scroll view holds the notice, the results and the footer, so all
+    // of them stay reachable when the panel is capped short (by the
+    // keyboard or by large text).
+    final scroll = CustomScrollView(
+      controller: controller,
+      shrinkWrap: true,
+      slivers: [
+        if (notice case final notice?)
+          SliverToBoxAdapter(
+            child: KeyedSubtree(
+              key: noticeKey,
+              child: _Notice(notice: notice),
+            ),
+          ),
         if (hits.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(EmberSpace.md),
-            child: Text(
-              l10n.searchNoMatches,
-              style: EmberType.body.copyWith(color: colors.inkSecondary),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(EmberSpace.md),
+              child: Text(
+                l10n.searchNoMatches,
+                style: EmberType.body.copyWith(color: colors.inkSecondary),
+              ),
             ),
           )
         else
-          Flexible(
-            child: Semantics(
-              container: true,
-              explicitChildNodes: true,
-              label: l10n.searchResults,
-              child: ListView.builder(
-                controller: controller,
-                shrinkWrap: true,
-                padding: const EdgeInsets.all(_listPadding),
+          SliverSemantics(
+            container: true,
+            explicitChildNodes: true,
+            label: l10n.searchResults,
+            sliver: SliverPadding(
+              padding: const EdgeInsets.all(_listPadding),
+              sliver: SliverFixedExtentList.builder(
                 itemExtent: QuickSearchPanel.rowHeight,
                 itemCount: hits.length,
                 itemBuilder: (context, index) => _ResultRow(
@@ -250,18 +263,34 @@ class _Found extends StatelessWidget {
             ),
           ),
         if (results.more)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              EmberSpace.md,
-              0,
-              EmberSpace.md,
-              EmberSpace.sm,
-            ),
-            child: Text(
-              l10n.searchMoreMatches,
-              style: EmberType.label.copyWith(color: colors.inkTertiary),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                EmberSpace.md,
+                0,
+                EmberSpace.md,
+                EmberSpace.sm,
+              ),
+              child: Text(
+                l10n.searchMoreMatches,
+                style: EmberType.label.copyWith(color: colors.inkTertiary),
+              ),
             ),
           ),
+      ],
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Announces the count to screen readers when it changes; outside
+        // the scroll view, which leaves out what it does not show.
+        Semantics(
+          liveRegion: true,
+          label: l10n.searchResultCount(hits.length),
+          child: const SizedBox.shrink(),
+        ),
+        Flexible(child: scroll),
       ],
     );
   }

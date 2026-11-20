@@ -35,9 +35,12 @@ const MimeType _gzip = MimeType('application', 'gzip');
 ///   one, at most one per build, each matched by build, hash and the current
 ///   format together. Any other build, hash or format, a staged build's
 ///   bundle and a stored but unannounced bundle included, gets 404, whatever
-///   HTTP caches hold. A matching `If-None-Match` gets 304 with the same
-///   headers and no body, but only for a bundle held: a bundle no longer
-///   announced answers 404 to a conditional request too.
+///   HTTP caches hold. A new hash announced for a build retires the old
+///   hash at once: a new request for it gets 404, while a response for it
+///   already admitted is not cancelled and finishes from the bytes it holds.
+///   A matching `If-None-Match` gets 304 with the same headers and no body,
+///   but only for a bundle held: a bundle no longer announced answers 404
+///   to a conditional request too.
 /// - **C19:** At most [maxBundleTransfers] bodies are in flight; a request
 ///   that finds them taken gets 503 with `Retry-After: 60`, which the app
 ///   treats as a failed download. A transfer takes its place at admission and
