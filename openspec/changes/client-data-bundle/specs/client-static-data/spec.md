@@ -151,7 +151,7 @@ At start the app SHALL finish loading its kept bundle before acting on an announ
 - **THEN** build N's bundle is used until build N+1's is downloaded once and swapped in, and build N's never replaces it
 
 ### Requirement: Bundle work runs one at a time
-At most one download, check and index SHALL run at a time. An announcement of another bundle or of no bundle SHALL cancel a running download, and one of the same bundle SHALL leave it running. Other running work SHALL finish and be dropped before work for the latest announcement starts; announcements replaced while waiting SHALL be skipped.
+At most one download, check and index SHALL run at a time. An announcement of another bundle or of no bundle SHALL cancel a running download by aborting its transfer, and one of the same bundle SHALL leave it running. Other running work SHALL finish and be dropped, and an aborted transfer SHALL have ended, before work for the latest announcement starts; announcements replaced while waiting SHALL be skipped.
 
 #### Scenario: Newer announcement while downloading
 - **WHEN** build N+1's bundle is downloading and the stream announces build N+2
@@ -170,7 +170,7 @@ At most one download, check and index SHALL run at a time. An announcement of an
 - **THEN** the first index result is never swapped in, and build N+1's bundle is downloaded and indexed again after it ends
 
 ### Requirement: Events from a replaced subscription are ignored
-When the app subscribes again, it SHALL ignore every later event, error and ending of the subscription it replaced, whatever epoch that event names.
+When the app subscribes again, it SHALL ignore every later event, error and ending of the subscription it replaced, whatever epoch that event names, and only the current subscription's reconnect timer SHALL act.
 
 #### Scenario: Old subscription after a resubscribe
 - **WHEN** the user's server check resubscribes, the new stream delivers epoch E2's announcement, and the old stream then delivers an epoch E1 announcement and ends

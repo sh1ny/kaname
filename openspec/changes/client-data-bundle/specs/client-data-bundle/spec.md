@@ -36,7 +36,7 @@ Each name a bundle holds SHALL be stored under its locale. A bundle built by thi
 - **THEN** the record is kept with no `en` name, and the build of the bundle does not fail
 
 ### Requirement: The builder is deterministic and runs without a server
-With the same builder version and locked dependencies, the same build SHALL give byte-identical bundles on every native Dart runtime, built by the server from its stored build or from a local SDE zip with no server. Both paths SHALL keep the records and typed values the server's import keeps, raw duplicates in key then line order, and SHALL take the release date from the first `_sde` object whose build number numerically equals the build. Records SHALL be in key order and JSON keys sorted.
+The same build SHALL give byte-identical bundles on every native Dart runtime for one builder version and lock file, from the server's stored build or a local SDE zip. The zip path SHALL use the import's own record selection and projection; the server SHALL use its stored typed columns, not re-project raw JSON. Records SHALL be in key order, raw duplicates in key then line order, JSON keys sorted, and the release date from the first `_sde` object whose build number numerically equals the build.
 
 #### Scenario: Server and local zip agree
 - **WHEN** build N is imported by the server and its bundle built, and the same build's zip is built into a bundle with no server
@@ -131,7 +131,7 @@ The server SHALL serve the announced bundle and the previous one, at most one pe
 - **THEN** the server answers 404, and a request for the active build's format 2 bundle answers 200
 
 ### Requirement: Bundle downloads are bounded
-Above 16 bundle requests in flight the server SHALL answer 503 with a retry time. A request SHALL hold its place until its body has been written, has failed or was cancelled, or until 2 minutes after admission, when it SHALL lose its place and its body SHALL end at the next chunk it sends. A bundle request SHALL NOT read the database.
+Above 16 bundle requests in flight the server SHALL answer 503 with a retry time. A request SHALL hold its place until its body has been written, has failed or was cancelled, or until 2 minutes after admission, when it SHALL lose its place and its body SHALL end at the next chunk it sends. A bundle request SHALL NOT read the database. The deploy proxy SHALL close client connections that stop reading.
 
 #### Scenario: Too many downloads
 - **WHEN** 16 bundle responses are in flight and another client asks for a bundle

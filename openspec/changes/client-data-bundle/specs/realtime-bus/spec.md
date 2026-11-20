@@ -40,7 +40,7 @@ A topic SHALL be declared public or scoped, and every delivery to a client strea
 - **THEN** the subscription is refused with reason "topic needs the privacy scope"
 
 ### Requirement: Apps learn the current bundle from one stream
-The server SHALL offer an unauthenticated stream that first sends, within 20 seconds of subscribing, the bundle last made downloadable (build number, size and SHA-256), then an event when the announced bundle changes; changes between two reads of the server's state MAY be merged into one. The announced bundle SHALL be the active build's built bundle in the server's current format, else the previous build's, else none; with none, the event SHALL say that no bundle is available.
+The server SHALL offer an unauthenticated stream that first sends, within 20 seconds of subscribing, a limit kept below the generated client's idle timeout, the bundle last made downloadable (build, size and SHA-256), then an event when it changes; changes between two reads of the server's state MAY be merged. The announced bundle SHALL be the active build's built bundle in the current format, else the previous build's, else none, which the event SHALL say.
 
 #### Scenario: Subscribe
 - **WHEN** an app subscribes while build N is active and its bundle has been announced
