@@ -24,9 +24,10 @@ Chrome for Testing 156.0.8078.80, headless, driven with `puppeteer` (Dart).
 | Bundle build on the worker | +647 MiB over the idle server (peak 1,319 MiB for the whole process) | quarter of the 4 GB envelope = 1,024 MiB | holds on the design's formula; see the note on the whole-process figure |
 | Served bundle versions, 19 (up to 21) times one version, plus the worker's peak | 143 MiB + 647 MiB = 790 MiB (conservative) | 1,024 MiB | holds (77%) |
 | App holding three bundles | about 0.2 GB over the page's baseline on web (0.37 GB renderer total), 0.27 GB native | 1,024 MiB | holds |
-| A4 / A17 / C26 in Chrome, wasm and JS builds | pass, with one finding (below) | | pass, one stack defect found |
+| A4 / A17 / C26 in Chrome, wasm and JS builds | pass, with one finding (below), since fixed | | pass; the stack defect found is fixed and passes through Caddy (11.6) |
 
-**Finding for the owner (not a measurement failure): the generated client's
+**Finding for the owner (not a measurement failure; observed before the
+fix, now fixed, see "Through Caddy (11.6)" below): the generated client's
 WebSocket path ignores the `/api/` prefix.** The web app derives its server
 address as `<origin>/api/` (`ServerAddress`), but the Serverpod client opens
 its WebSocket at `<origin>/v1/websocket` (the path is fixed in
@@ -44,7 +45,10 @@ true of the client but the deployed web topology does not carry the stream.
 The checks below therefore ran through a test proxy that also forwarded
 `/v1/websocket` to the server. This is reported as design drift against
 D2/D8 (same-origin `/api/` plus stream); a fix (for example a Caddy route
-for `/v1/websocket`, or a client-side prefix) is not made here.
+for `/v1/websocket`, or a client-side prefix) was not made in this run.
+It was fixed afterwards (round 21, owner's choice): `deploy/Caddyfile` now
+routes `/v1/websocket` to the server, and the JS and wasm builds pass
+through the real Caddy stack in "Through Caddy (11.6)".
 
 ## A2: the four raw files' keys
 

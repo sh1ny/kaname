@@ -359,7 +359,8 @@ _Prepared _prepare(Uint8List bytes, int build) {
     );
   }
   final bundle = _Bundle(bytes, _parseHeader(header, bundleBuild))
-    .._index(headerEnd + 1);
+    .._index(headerEnd + 1)
+    .._checkFraming();
   return _Ready(bundle);
 }
 
@@ -424,6 +425,9 @@ final class _Bundle implements ClientBundle {
   /// The byte range of each known section's record lines.
   final Map<BundleSection, (int, int)> _ranges = {};
 
+  /// The count of each known section's record lines.
+  final Map<BundleSection, int> _counts = {};
+
   @override
   late final List<BundleType> types;
 
@@ -439,29 +443,62 @@ final class _Bundle implements ClientBundle {
   /// Records where each section's record lines start and end, from [start].
   ///
   /// Only section marker lines are decoded; record lines start with `[` and
-  /// are skipped. Unknown sections are passed over.
+  /// are counted, not decoded. Unknown sections are passed over. Throws a
+  /// [FormatException] when a known section appears twice.
   void _index(int start) {
     BundleSection? current;
     var currentStart = start;
+    var currentCount = 0;
     var position = start;
     void close(int end) {
-      if (current != null) _ranges[current] = (currentStart, end);
+      if (current == null) return;
+      _ranges[current] = (currentStart, end);
+      _counts[current] = currentCount;
     }
 
     while (position < _bytes.length) {
       var end = _bytes.indexOf(_lineFeed, position);
       if (end < 0) end = _bytes.length;
-      if (_bytes[position] == _openBrace) {
+      if (end == position) {
+        // An empty line holds no record.
+      } else if (_bytes[position] == _openBrace) {
         close(position);
         current = switch (_decodeJson(_bytes, position, end)) {
           {'section': final String file} => BundleSection.fromFile(file),
           final other => throw FormatException('malformed section line', other),
         };
+        if (current != null && _ranges.containsKey(current)) {
+          throw FormatException('section ${current.file} appears twice');
+        }
         currentStart = end + 1;
+        currentCount = 0;
+      } else {
+        currentCount++;
       }
       position = end + 1;
     }
     close(_bytes.length);
+  }
+
+  /// Checks that each known section holds the records its header entry
+  /// counts: a present section has exactly that many record lines, an
+  /// absent or unlisted one has none.
+  ///
+  /// Throws a [FormatException] naming the first section that does not.
+  void _checkFraming() {
+    for (final section in BundleSection.values) {
+      final expected = switch (header.sections[section]) {
+        BundleSectionInfo(present: true, :final records) => records,
+        _ => 0,
+      };
+      final actual = _counts[section] ?? 0;
+      if (actual != expected) {
+        throw FormatException(
+          'section ${section.file} holds $actual records, '
+          'the header counts $expected',
+        );
+      }
+    }
   }
 
   /// The count of record lines decoded since the last pause.

@@ -372,18 +372,27 @@ final class BundleAnnouncer {
         'new refresh starts until it ends',
       );
     }
-    unawaited(request());
-    if (_repairOwed && _repair == null && _runRepair != null) {
-      unawaited(
-        sendRepair().then<void>(
-          (_) {},
-          onError: (Object error) => _log(
-            WorkerLogLevel.warning,
-            'announcer: the bundle repair request failed: $error',
-          ),
-        ),
-      );
+    // The repair check reads the state this tick's refresh read, so a repair
+    // that an out-of-process change made owed is sent on the tick that finds
+    // it, not one tick later (D9).
+    unawaited(request().then((_) => _sendOwedRepair()));
+  }
+
+  /// Sends a [RunBundleRepair] when the last state read owes one and none is
+  /// outstanding.
+  void _sendOwedRepair() {
+    if (_stopped || !_repairOwed || _repair != null || _runRepair == null) {
+      return;
     }
+    unawaited(
+      sendRepair().then<void>(
+        (_) {},
+        onError: (Object error) => _log(
+          WorkerLogLevel.warning,
+          'announcer: the bundle repair request failed: $error',
+        ),
+      ),
+    );
   }
 
   DateTime? _databaseWorkStarted;

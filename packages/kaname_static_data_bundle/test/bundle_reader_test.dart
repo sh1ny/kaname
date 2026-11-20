@@ -22,6 +22,28 @@ Uint8List editedBundle(
   return const GZipEncoder().encodeBytes(utf8.encode('${edited.join('\n')}\n'));
 }
 
+/// The fixture bundle's lines after [edit] rewrote its record lines (the
+/// header kept as built), re-gzip'd.
+Uint8List editedBody(List<String> Function(List<String> body) edit) {
+  final text = utf8.decode(
+    const GZipDecoder().decodeBytes(fixtureBuilder().build().bytes),
+  );
+  final lines = text.substring(0, text.length - 1).split('\n');
+  final edited = [lines.first, ...edit(lines.skip(1).toList())];
+  return const GZipEncoder().encodeBytes(utf8.encode('${edited.join('\n')}\n'));
+}
+
+/// [body] without the marker and record lines of section [file].
+List<String> withoutSection(List<String> body, String file) {
+  final start = body.indexOf('{"section":"$file"}');
+  if (start < 0) fail('no section $file');
+  var end = start + 1;
+  while (end < body.length && !body[end].startsWith('{')) {
+    end++;
+  }
+  return [...body.take(start), ...body.skip(end)];
+}
+
 /// The opened bundle of [result], failing the test when it was refused.
 ClientBundle opened(BundleOpenResult result) => switch (result) {
   BundleOpened(:final bundle) => bundle,
@@ -202,6 +224,80 @@ void main() {
       ),
       isA<CorruptBundle>(),
     );
+  });
+
+  group('a body that does not match its header is refused as corrupt', () {
+    BundleRefusal refusalOf(Uint8List bytes) => refused(
+      openBundle(bytes, build: fixtureBuild, sha256: bundleSha256(bytes)),
+    );
+
+    test('a present section left out', () {
+      final bytes = editedBody((body) => withoutSection(body, 'types'));
+
+      expect(
+        refusalOf(bytes),
+        isA<CorruptBundle>().having(
+          (r) => r.detail,
+          'detail',
+          contains('types'),
+        ),
+      );
+    });
+
+    test('a present section with fewer records than the header counts', () {
+      final bytes = editedBody((body) {
+        final marker = body.indexOf('{"section":"types"}');
+        return [...body.take(marker + 1), ...body.skip(marker + 2)];
+      });
+
+      expect(
+        refusalOf(bytes),
+        isA<CorruptBundle>().having(
+          (r) => r.detail,
+          'detail',
+          contains('types'),
+        ),
+      );
+    });
+
+    test('records in a section the header names absent', () {
+      final bytes = editedBundle(
+        (header) => {
+          ...header,
+          'sections': [
+            for (final entry in header['sections']! as List<Object?>)
+              switch (entry) {
+                {'file': 'types'} => {
+                  'file': 'types',
+                  'present': false,
+                  'records': 0,
+                },
+                _ => entry,
+              },
+          ],
+        },
+      );
+
+      expect(refusalOf(bytes), isA<CorruptBundle>());
+    });
+
+    test('a section that appears twice', () {
+      final bytes = editedBody(
+        (body) => [...body, '{"section":"types"}', '[99,{},null]'],
+      );
+
+      expect(refusalOf(bytes), isA<CorruptBundle>());
+    });
+
+    test('the chunked open refuses the same bundle', () async {
+      final bytes = editedBody((body) => withoutSection(body, 'types'));
+      final inflated = const GZipDecoder().decodeBytes(bytes);
+
+      expect(
+        refused(await openInflatedBundleChunked(inflated, build: fixtureBuild)),
+        isA<CorruptBundle>(),
+      );
+    });
   });
 
   test('an inflated bundle whose hash the caller checked opens', () {

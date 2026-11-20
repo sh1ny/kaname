@@ -468,6 +468,51 @@ void main() {
       );
     }, timeout: const Timeout(Duration(minutes: 4)));
 
+    // Scenario: Worker publishes (realtime-bus). The worker's replies go
+    // through the handler the main isolate runs them through in production
+    // (`BundleAnnouncer.workerReplied`, called by the start hook and the
+    // daily check), not a test-local translation.
+    test('worker switch reply reaches every bus subscription, and each open '
+        'stream ends on it or newer', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      final feeds = [rig.subscribe(), rig.subscribe()];
+      for (final feed in feeds) {
+        await feed.waitFor(1);
+      }
+      final busSeen = [for (var i = 0; i < 2; i++) <int?>[]];
+      final busSubscriptions = [
+        for (final seen in busSeen)
+          rig.bus
+              .subscribe(staticDataTopic)
+              .listen((message) => seen.add(namedBuilds([message]).single)),
+      ];
+      addTearDown(() async {
+        for (final each in busSubscriptions) {
+          await each.cancel();
+        }
+      });
+
+      await rig.announcer.workerReplied(upToDateReply(100));
+      await seedBuild(session, 101, SdeBuildState.staged);
+      await seedBundle(session, 101);
+      await switchTo(session, 101);
+      await rig.announcer.workerReplied(switchedReply(101));
+      for (final feed in feeds) {
+        await feed.waitFor(2);
+      }
+      await _quiet();
+
+      for (final seen in busSeen) {
+        expect(seen, [101], reason: 'the up-to-date reply changes nothing');
+      }
+      for (final feed in feeds) {
+        expect(_builds(feed.events), [100, 101]);
+        _expectRising(feed.events);
+      }
+    });
+
     // Scenario: Public topic; scoped topic.
     test('public event reaches a client stream through the endpoint with an '
         'accepting scope, and a refusing scope stops it', () async {

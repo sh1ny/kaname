@@ -38,9 +38,14 @@ final class Rig {
   final FakeBundleDownloader downloader = FakeBundleDownloader();
   final FakeServerHealth health = FakeServerHealth();
 
-  Future<void> pump(WidgetTester tester, {Size size = _wide}) async {
-    await pumpShell(
+  Future<ShellHarness> pump(
+    WidgetTester tester, {
+    Size size = _wide,
+    String location = '/home',
+  }) async {
+    final harness = await pumpShell(
       tester,
+      location: location,
       size: size,
       target: target,
       health: health,
@@ -51,6 +56,7 @@ final class Rig {
     // The status bar's health check ends, so no timeout timer stays pending.
     if (health.calls > 0) health.fail('down');
     await tester.pumpAndSettle();
+    return harness;
   }
 }
 
@@ -346,10 +352,12 @@ void main() {
     expect(find.byKey(QuickSearchKeys.panel), findsNothing);
   });
 
-  testWidgets('back closes the narrow search and returns focus', (
-    tester,
-  ) async {
-    await Rig(kept: copyN).pump(tester, size: _narrow);
+  testWidgets('back closes the narrow search over a nested page, returns '
+      'focus and leaves the page in place', (tester) async {
+    final harness = await Rig(kept: copyN)
+        .pump(tester, size: _narrow, location: '/settings/licences');
+    String path() => harness.router.routeInformationProvider.value.uri.path;
+    expect(path(), '/settings/licences');
     await tester.tap(find.byKey(QuickSearchKeys.openButton));
     await tester.pumpAndSettle();
     await typeQuery(tester, 'jita');
@@ -366,6 +374,12 @@ void main() {
           .hasPrimaryFocus,
       isTrue,
     );
+    expect(path(), '/settings/licences', reason: 'the page stays');
+
+    // With search closed, the next Back pops the page as usual.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(path(), '/settings');
   });
 
   testWidgets('Escape clears the inline query and keeps focus', (tester) async {

@@ -167,8 +167,10 @@ void main() {
       },
     );
 
-    test('worker switch reply reaches every bus subscription, and each open '
-        'stream ends on it or newer', () async {
+    // The scenario itself, through the announcer and the endpoint, is in
+    // static_data/bundle_stream_test.dart; this checks the bus alone.
+    test('a change published on the bus reaches every subscription of the '
+        'process', () async {
       final streams = [for (var i = 0; i < 3; i++) <int>[]];
       final subscriptions = [
         for (final seen in streams)

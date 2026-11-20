@@ -585,6 +585,32 @@ void main() {
       expect(replies.last.isCompleted, isFalse);
     });
 
+    // Pre-ship round 2: the repair check reads the tick's own state read,
+    // not the one before it.
+    test('a repair an out-of-process rollback makes owed is sent by the tick '
+        'whose refresh finds it', () async {
+      await seedBuild(session, 860, SdeBuildState.previous);
+      await seedBuild(session, 861, SdeBuildState.active);
+      await seedBundle(session, 861);
+      var sent = 0;
+      final created = announcer(
+        runRepair: () {
+          sent++;
+          return Completer<WorkerReply>().future;
+        },
+      );
+      await startAndSettle(created);
+      await tick(created);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(sent, 0, reason: 'nothing is owed yet');
+
+      // `sde:rollback` in another process makes 860, which has no bundle,
+      // the active build.
+      await rollback(session);
+      await tick(created);
+      await _eventually(() => sent == 1, 'the same tick sends the repair');
+    });
+
     test(
       'repair owed behind another lock holder is sent by the first tick '
       'after release with none outstanding and announced once stored',

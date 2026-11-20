@@ -1,6 +1,8 @@
 /// Offline search over a bundle's types and solar systems.
 library;
 
+import 'dart:math';
+
 import 'bundle_models.dart';
 import 'bundle_reader.dart';
 
@@ -64,16 +66,94 @@ final class SearchResults {
 final class SearchIndex {
   /// Builds the index of [types] and [solarSystems], showing each type's
   /// group from [groups] and each system's region from [regions].
-  SearchIndex({
+  factory SearchIndex({
     required List<BundleType> types,
     required List<BundleGroup> groups,
     required List<BundleSolarSystem> solarSystems,
     required List<BundleRegion> regions,
   }) {
-    final groupNames = {for (final group in groups) group.id: group.name.en};
-    final regionNames = {
-      for (final region in regions) region.id: region.name.en,
-    };
+    final index = SearchIndex._();
+    // A chunk no index fills, so the build never pauses.
+    index
+        ._build(types, groups, solarSystems, regions, _onePass)
+        .forEach((_) {});
+    return index;
+  }
+
+  SearchIndex._();
+
+  /// Builds the index as [SearchIndex.new] does, but in chunks of
+  /// [itemsPerChunk] entries, yielding to the event loop between chunks.
+  ///
+  /// The web app's Dart code runs on the browser's main thread (design D12),
+  /// where one long synchronous build would miss frames. The index answers
+  /// every search as the one-pass build's does. Throws an [ArgumentError]
+  /// when [itemsPerChunk] is below one.
+  static Future<SearchIndex> chunked({
+    required List<BundleType> types,
+    required List<BundleGroup> groups,
+    required List<BundleSolarSystem> solarSystems,
+    required List<BundleRegion> regions,
+    int itemsPerChunk = 2000,
+  }) async {
+    if (itemsPerChunk < 1) {
+      throw ArgumentError.value(itemsPerChunk, 'itemsPerChunk', 'below one');
+    }
+    final index = SearchIndex._();
+    for (final _ in index._build(
+      types,
+      groups,
+      solarSystems,
+      regions,
+      itemsPerChunk,
+    )) {
+      // A timer, not a microtask: only a timer lets the browser paint and
+      // handle input.
+      await Future<void>.delayed(Duration.zero);
+    }
+    return index;
+  }
+
+  /// Builds the index of [bundle] in chunks, as [SearchIndex.chunked] does.
+  static Future<SearchIndex> ofChunked(
+    ClientBundle bundle, {
+    int itemsPerChunk = 2000,
+  }) => chunked(
+    types: bundle.types,
+    groups: bundle.groups,
+    solarSystems: bundle.solarSystems,
+    regions: bundle.regions,
+    itemsPerChunk: itemsPerChunk,
+  );
+
+  /// Fills the index, pausing after every [perChunk] entries handled.
+  ///
+  /// The pauses are the iterable's elements: the one-pass build drains it
+  /// at once, the chunked build awaits the event loop at each.
+  Iterable<void> _build(
+    List<BundleType> types,
+    List<BundleGroup> groups,
+    List<BundleSolarSystem> solarSystems,
+    List<BundleRegion> regions,
+    int perChunk,
+  ) sync* {
+    var done = 0;
+    bool due() {
+      if (++done < perChunk) return false;
+      done = 0;
+      return true;
+    }
+
+    final groupNames = <int, String?>{};
+    for (final group in groups) {
+      groupNames[group.id] = group.name.en;
+      if (due()) yield null;
+    }
+    final regionNames = <int, String?>{};
+    for (final region in regions) {
+      regionNames[region.id] = region.name.en;
+      if (due()) yield null;
+    }
     for (final type in types) {
       final hit = SearchHit(
         kind: SearchKind.type,
@@ -83,6 +163,7 @@ final class SearchIndex {
       );
       _typesById[type.id] = hit;
       if (type.published) _addName(hit);
+      if (due()) yield null;
     }
     for (final system in solarSystems) {
       final hit = SearchHit(
@@ -93,8 +174,53 @@ final class SearchIndex {
       );
       _systemsById[system.id] = hit;
       _addName(hit);
+      if (due()) yield null;
     }
-    _named.sort(_byName);
+    yield* _sortNamed(perChunk);
+  }
+
+  /// Sorts [_named] by [_byName], pausing after every [perChunk] entries.
+  ///
+  /// A bottom-up merge sort: runs of [perChunk] entries are sorted one per
+  /// chunk, then merged pass by pass. [_byName] is a total order, so the
+  /// result is the one a single sort gives.
+  Iterable<void> _sortNamed(int perChunk) sync* {
+    final length = _named.length;
+    if (length <= perChunk) {
+      _named.sort(_byName);
+      return;
+    }
+    var source = _named;
+    for (var start = 0; start < length; start += perChunk) {
+      final end = min(start + perChunk, length);
+      final run = source.sublist(start, end)..sort(_byName);
+      source.setRange(start, end, run);
+      yield null;
+    }
+    var target = List.of(source);
+    var merged = 0;
+    for (var width = perChunk; width < length; width *= 2) {
+      for (var low = 0; low < length; low += 2 * width) {
+        final middle = min(low + width, length);
+        final high = min(low + 2 * width, length);
+        var left = low;
+        var right = middle;
+        for (var out = low; out < high; out++) {
+          if (right >= high ||
+              (left < middle && _byName(source[left], source[right]) <= 0)) {
+            target[out] = source[left++];
+          } else {
+            target[out] = source[right++];
+          }
+          if (++merged >= perChunk) {
+            merged = 0;
+            yield null;
+          }
+        }
+      }
+      (source, target) = (target, source);
+    }
+    if (!identical(source, _named)) _named.setAll(0, source);
   }
 
   /// Builds the index of [bundle].
@@ -107,6 +233,12 @@ final class SearchIndex {
 
   /// The most results one search returns.
   static const int maxResults = 50;
+
+  /// A chunk size no index reaches: the one-pass build never pauses.
+  ///
+  /// It is the largest integer JavaScript represents exactly, so the index
+  /// also compiles for the web.
+  static const int _onePass = 0x1fffffffffffff;
 
   /// Searches for [query].
   ///

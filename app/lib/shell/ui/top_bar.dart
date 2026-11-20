@@ -100,7 +100,7 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     // Keeps the static data running for as long as the app is.
     ref.watch(quickSearchProvider.select((_) => null));
     final fullWidthSearch = !widget.inlineSearch && _searchOpen;
-    return PopScope(
+    final bar = PopScope(
       canPop: !fullWidthSearch,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _closeSearch();
@@ -123,6 +123,18 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
           ),
         ),
       ),
+    );
+    if (!fullWidthSearch) return bar;
+    // The router asks a branch's navigator before the shell route, so the
+    // PopScope alone would let Back pop a nested page (such as Licences)
+    // under the open search. The listener takes priority over the router
+    // while the search is open, so the first Back only closes it.
+    return BackButtonListener(
+      onBackButtonPressed: () async {
+        _closeSearch();
+        return true;
+      },
+      child: bar,
     );
   }
 
