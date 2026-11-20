@@ -6,11 +6,16 @@ import 'dart:io';
 ///
 /// Connections to [port] are piped to the target; [close] stops accepting and
 /// destroys every open connection, so the target looks unreachable.
+/// [holdTargetReads] stops reading from the target's side, so the target's
+/// writes back up in the TCP buffers as they would for a peer that stops
+/// reading.
 final class TcpProxy {
   TcpProxy._(this._server);
 
   final ServerSocket _server;
   final List<Socket> _sockets = [];
+  final List<StreamSubscription<List<int>>> _targetReads = [];
+  bool _holdingTargetReads = false;
 
   /// The loopback port that forwards to the target.
   int get port => _server.port;
@@ -55,12 +60,48 @@ final class TcpProxy {
         final upstream = await connect();
         proxy._sockets.add(upstream);
         unawaited(client.cast<List<int>>().pipe(upstream).catchError((_) {}));
-        unawaited(upstream.cast<List<int>>().pipe(client).catchError((_) {}));
+        proxy._forwardTargetReads(upstream, client);
       } on SocketException {
         client.destroy();
       }
     });
     return proxy;
+  }
+
+  /// Forwards what [upstream] sends to [client], through a subscription
+  /// that [holdTargetReads] can pause.
+  void _forwardTargetReads(Socket upstream, Socket client) {
+    final reads = upstream.listen(
+      client.add,
+      onError: (Object _) => client.destroy(),
+      onDone: () => unawaited(client.close().catchError((_) {})),
+      cancelOnError: true,
+    );
+    _targetReads.add(reads);
+    if (_holdingTargetReads) reads.pause();
+  }
+
+  /// Stops reading from the target on every connection, open or later.
+  ///
+  /// The proxy's socket to the target then stops draining its receive
+  /// buffer, so the target's sends block once the TCP buffers between them
+  /// are full: to the target it looks like a peer whose transport stopped
+  /// reading. Data already read is still delivered to the client.
+  void holdTargetReads() {
+    if (_holdingTargetReads) return;
+    _holdingTargetReads = true;
+    for (final reads in _targetReads) {
+      reads.pause();
+    }
+  }
+
+  /// Reads from the target again after [holdTargetReads].
+  void releaseTargetReads() {
+    if (!_holdingTargetReads) return;
+    _holdingTargetReads = false;
+    for (final reads in _targetReads) {
+      reads.resume();
+    }
   }
 
   /// Stops listening and destroys every open connection.
@@ -70,5 +111,6 @@ final class TcpProxy {
       socket.destroy();
     }
     _sockets.clear();
+    _targetReads.clear();
   }
 }

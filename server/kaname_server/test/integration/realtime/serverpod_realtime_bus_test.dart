@@ -1,0 +1,98 @@
+/// Probes the Serverpod 4.1.2 message central that the realtime bus (design
+/// D7) builds on: assumption A9 of the `client-data-bundle` change.
+///
+/// A9 holds when a local-scope `postMessage` reaches a listener added through
+/// `pod.internalSession` on a pod with Redis disabled, and that listener
+/// stays until shutdown, outliving sessions that close meanwhile.
+///
+/// Source, `serverpod-4.1.2/lib/src/server/message_central.dart`:
+/// `postMessage` with `MessageScope.local` calls `_postLocal` (:62-63), which
+/// calls the channel's callbacks synchronously and never touches Redis
+/// (:86-94); only `MessageScope.global` needs Redis (:64-68). A listener is
+/// removed by `removeListener` or when its session closes
+/// (`removeListenersForSession`, :191); `pod.internalSession` is closed by
+/// the "Internal Session" shutdown task (`serverpod.dart`:294-297).
+/// `internalSession` itself is a getter of the `ServerpodInternalMethods`
+/// extension (`serverpod.dart`:1661-1675), which `package:serverpod` does not
+/// export: using it takes an import of `src/server/serverpod.dart`.
+@Timeout(Duration(minutes: 2))
+library;
+
+import 'package:kaname_server/src/generated/protocol.dart';
+import 'package:serverpod/serverpod.dart';
+// `internalSession` is in an extension that serverpod.dart does not export.
+// ignore: implementation_imports
+import 'package:serverpod/src/server/serverpod.dart'
+    show ServerpodInternalMethods;
+import 'package:test/test.dart';
+
+import '../support/in_process_pod.dart';
+
+const _channel = 'probe-bus';
+
+HealthReport _message(String version) => HealthReport(
+  version: version,
+  postgres: DependencyStatus.up,
+  redis: DependencyStatus.down,
+);
+
+void main() {
+  group('Given a pod with Redis disabled', () {
+    late InProcessPod server;
+    setUp(() async {
+      server = await InProcessPod.start(
+        configOverride: (config) => config.copyWith(
+          redis: RedisConfig(enabled: false, host: 'localhost', port: 8091),
+        ),
+      );
+    });
+    tearDown(() async => server.stop());
+
+    test('when a local message is posted then a listener on the internal '
+        'session receives it, until shutdown removes it', () async {
+      final pod = server.pod;
+      expect(pod.redisController, isNull);
+      final received = <String>[];
+      pod.internalSession.messages.addListener(
+        _channel,
+        (SerializableModel message) =>
+            received.add((message as HealthReport).version),
+      );
+
+      // A session that comes and goes, as a request's does.
+      final passing = await pod.createSession();
+      final passingReceived = <String>[];
+      passing.messages.addListener(
+        _channel,
+        (SerializableModel message) =>
+            passingReceived.add((message as HealthReport).version),
+      );
+      await passing.messages.postMessage(
+        _channel,
+        _message('1'),
+        scope: MessageScope.local,
+      );
+      await passing.close();
+      await Future<void>.delayed(const Duration(seconds: 1));
+
+      final poster = await pod.createSession();
+      await poster.messages.postMessage(
+        _channel,
+        _message('2'),
+        scope: MessageScope.local,
+      );
+      await poster.close();
+
+      expect(received, ['1', '2']);
+      expect(passingReceived, ['1']);
+
+      await server.shutdown();
+      await pod.server.messageCentral.postMessage(
+        _channel,
+        _message('3'),
+        scope: MessageScope.local,
+      );
+      expect(received, ['1', '2']);
+    });
+  });
+}
