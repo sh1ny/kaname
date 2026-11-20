@@ -68,6 +68,16 @@ class _QuickSearchPanelState extends State<QuickSearchPanel> {
   @override
   void didUpdateWidget(QuickSearchPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // A new query's results open at the top; a notice-only update keeps the
+    // same results, and the offset.
+    if ((oldWidget.state, widget.state)
+        case (
+          SearchFound(results: final before),
+          SearchFound(results: final after),
+        )
+        when !identical(before, after) && _scroll.hasClients) {
+      _scroll.jumpTo(0);
+    }
     if (widget.active != oldWidget.active && widget.active >= 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _reveal());
     }

@@ -503,7 +503,10 @@ void main() {
       expect(logged('announcer read outstanding'), isFalse);
       clock.elapse(const Duration(seconds: 61)); // deadline passed at 120 s
       expect(logged('refresh timed out'), isTrue);
+      // The loop waits for the held read between ticks.
+      await Future<void>.delayed(Duration.zero);
       clock.elapse(const Duration(seconds: 59)); // tick at t = 180 s
+      await Future<void>.delayed(Duration.zero);
       final afterFirst = logs
           .where((e) => e.$2.contains('announcer read outstanding'))
           .length;
@@ -524,6 +527,8 @@ void main() {
       gate.complete();
       await created.settled;
       expect(namedBuilds(bus.published), [null, 820], reason: 'fresh read');
+      // Both ticks came before the queued refresh started: one fresh read.
+      expect(source.reads, 2, reason: 'the ticks queue one refresh');
     });
 
     test('a first read that has not succeeded 19 s after start installs '

@@ -150,7 +150,11 @@ void main() {
       final check = (await SdeCheck.db.find(session)).single;
       expect(check.outcome, SdeCheckOutcome.failed);
       expect(check.failureReason, contains('CCP unreachable'));
-      // The worker's answer made the announcer refresh.
+      // The worker's answer, sent after it prunes and unlocks, makes the
+      // announcer refresh: wait for that read to start, then to end.
+      while (source.reads == readsBefore && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
       await announcer.settled;
       expect(source.reads, greaterThan(readsBefore));
     }, timeout: const Timeout(Duration(seconds: 90)));

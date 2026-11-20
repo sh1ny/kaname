@@ -443,12 +443,15 @@ final class BundleAnnouncer {
   Future<void> _runLoop() async {
     try {
       while (_rerun && !_stopped) {
-        _rerun = false;
         // A refresh starts only once the database work of the one before has
         // ended (C27).
         for (var work = _databaseWork; work != null; work = _databaseWork) {
           await work;
         }
+        if (_stopped) break;
+        // Requests made while the loop waited are answered by this refresh:
+        // they queue one, not one each (D9).
+        _rerun = false;
         await _refreshWithinDeadline();
       }
     } finally {

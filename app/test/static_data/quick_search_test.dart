@@ -357,6 +357,44 @@ void main() {
     expect(first.top, greaterThanOrEqualTo(panel.top));
   });
 
+  testWidgets('a new query opens its results at the top', (tester) async {
+    final many = fixtureBundle(
+      100,
+      extraTypes: {for (var i = 0; i < 30; i++) 700 + i: 'Rifter $i'},
+    );
+    await Rig(kept: many).pump(tester, size: _narrow);
+    await tester.tap(find.byKey(QuickSearchKeys.openButton));
+    await tester.pumpAndSettle();
+    await typeQuery(tester, 'rifter');
+    for (var i = 0; i < 20; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+    expect(find.byKey(QuickSearchKeys.result(0)), findsNothing);
+
+    await typeQuery(tester, 'rift');
+
+    final panel = tester.getRect(find.byKey(QuickSearchKeys.panel));
+    final first = tester.getRect(find.byKey(QuickSearchKeys.result(0)));
+    expect(first.top, greaterThanOrEqualTo(panel.top));
+  });
+
+  testWidgets('the keyboard search action keeps the results open', (
+    tester,
+  ) async {
+    await Rig(kept: copyN).pump(tester);
+    await tester.tap(find.byKey(QuickSearchKeys.field));
+    await tester.pump();
+    await typeQuery(tester, 'rifter');
+
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+
+    expect(fieldHasFocus(tester), isTrue);
+    expect(inPanel(find.text('Rifter')), findsOneWidget);
+  });
+
   testWidgets('narrow window opens full-width search, Escape returns focus', (
     tester,
   ) async {
@@ -620,6 +658,20 @@ void main() {
       await history.pressBack();
       await tester.pumpAndSettle();
       expect(location(), '/settings', reason: 'no dead search entry is left');
+    });
+
+    testWidgets('two closes before the browser reports Back step back once '
+        'and stay on the page', (tester) async {
+      await openOverLicences(tester);
+
+      // The close button and Escape both act before the browser answers.
+      await tester.tap(find.byKey(QuickSearchKeys.closeButton));
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(history.backCalls, 1);
+      expect(find.byKey(QuickSearchKeys.field), findsNothing);
+      expect(location(), '/settings/licences');
     });
 
     testWidgets('after Back and Forward reopen the search, closing it steps '

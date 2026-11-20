@@ -261,9 +261,15 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
 
   /// Closes the search from inside the app: Escape, the close button or the
   /// platform's back.
+  ///
+  /// It acts once: the search is marked closed before the browser is asked
+  /// to step back, so a second close that comes before the browser answers,
+  /// such as Escape right after the close button, finds it closed and does
+  /// not step back off the page.
   void _closeSearch() {
-    _leaveMarkedEntry();
+    if (!_searchOpen) return;
     _endSearch();
+    _leaveMarkedEntry();
   }
 
   /// Leaves the marked location: in a browser by stepping back onto the

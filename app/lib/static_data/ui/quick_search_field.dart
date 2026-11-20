@@ -183,6 +183,8 @@ class _QuickSearchFieldState extends ConsumerState<QuickSearchField> {
               minLines: null,
               textAlignVertical: TextAlignVertical.center,
               textInputAction: TextInputAction.search,
+              // The search action keeps focus, so the results stay open.
+              onEditingComplete: () {},
               style: EmberType.body.copyWith(color: colors.ink),
               cursorColor: colors.ink,
               decoration: InputDecoration(
