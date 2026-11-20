@@ -18,6 +18,7 @@ import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
 import 'package:serverpod/serverpod.dart' show Session;
 import 'package:test/test.dart';
 
+import '../support/announcer_support.dart';
 import '../support/migrated_database.dart';
 import '../support/sde_bundle_support.dart';
 import '../support/worker_harness.dart';
@@ -61,13 +62,16 @@ void main() {
     late Session session;
     late PostgresConnectionSettings settings;
     late Directory scratch;
+    TestAnnouncer? announced;
 
     setUp(() async {
+      announced = null;
       session = sessionBuilder.build();
       settings = await migratedDatabaseSettings(session);
       await resetStore(session);
       scratch = await Directory.systemTemp.createTemp('kaname_bundle_build_');
       addTearDown(() => scratch.delete(recursive: true));
+      addTearDown(() async => announced?.announcer.stop());
     });
 
     /// Makes the fake CCP announce [build] with a complete fixture zip.
@@ -96,6 +100,8 @@ void main() {
     Future<BuildCheckResult> checkThrough(WorkerHarness harness) async {
       final reply = await harness.runBuildCheck(const CcpLatestSource());
       expect(reply, isA<BuildCheckFinished>(), reason: '$reply');
+      // The server's start hook and daily call hand the reply on.
+      await announced?.reply(reply);
       return (reply as BuildCheckFinished).result;
     }
 
@@ -124,15 +130,21 @@ void main() {
         ccpAnnounces(2900);
         expect(await checkThrough(harness), isA<BuildSwitched>());
         final old = await expectCurrentBundle(2900);
+        announced = await TestAnnouncer.start(session);
+        expect(announced!.lastNamed.build, 2900);
 
         ccpAnnounces(2901);
         final result = await checkThrough(harness);
 
-        // Group 7 adds here: the announcer, reacting to this
-        // `BuildCheckFinished`, announces build 2901's bundle.
         expect(result, isA<BuildSwitched>());
         expect((result as BuildSwitched).build, 2901);
         final fresh = await expectCurrentBundle(2901);
+        // The announcer, reacting to the `BuildCheckFinished`, announces
+        // build 2901's bundle and still holds 2900's as the previous one.
+        expect(announced!.lastNamed.build, 2901);
+        expect(announced!.lastNamed.sha256, fresh.sha256);
+        expect(announced!.lastNamed.size, fresh.size);
+        expect(announced!.announcer.heldBundle(2900, old.sha256!), isNotNull);
         final switched = await SdeSwitch.db.findFirstRow(
           session,
           where: (t) => t.toBuild.equals(2901),
@@ -220,14 +232,18 @@ void main() {
         'check', () async {
       final harness = await worker();
       ccpAnnounces(3100);
+      announced = await TestAnnouncer.start(session);
+      expect(announced!.announcer.installed, isA<BundleAnnouncementNone>());
 
       final result = await checkThrough(harness);
 
-      // Group 7 adds here: the announcer, reacting to this
-      // `BuildCheckFinished`, announces build 3100's bundle.
       expect(result, isA<BuildSwitched>());
       expect((result as BuildSwitched).replacedBuild, isNull);
-      await expectCurrentBundle(3100);
+      final stored = await expectCurrentBundle(3100);
+      // The announcer, reacting to the `BuildCheckFinished`, announces
+      // build 3100's bundle.
+      expect(announced!.lastNamed.build, 3100);
+      expect(announced!.lastNamed.sha256, stored.sha256);
     });
 
     // Scenario: A bundle of another format version is rebuilt (D20, C12).
@@ -239,15 +255,20 @@ void main() {
       await session.db.unsafeExecute(
         'UPDATE "sde_bundle" SET "formatMajor" = 0 WHERE "build" = 3200',
       );
+      announced = await TestAnnouncer.start(session);
+      expect(announced!.announcer.installed, isA<BundleAnnouncementNone>());
 
       final result = await checkThrough(harness);
 
-      // Group 7 adds here: the announcer, reacting to this
-      // `BuildCheckFinished`, announces the rebuilt bundle.
       expect(result, isA<BuildUpToDate>());
       final after = await expectCurrentBundle(3200);
       expect(after.builtAt.isAfter(before.builtAt), isTrue);
       expect(after.sha256, before.sha256);
+      // The announcer, reacting to the `BuildCheckFinished`, announces the
+      // rebuilt bundle.
+      expect(announced!.lastNamed.build, 3200);
+      expect(announced!.lastNamed.sha256, after.sha256);
+      expect(announced!.lastNamed.formatMajor, bundleFormatMajor);
     });
   }, rollbackDatabase: RollbackDatabase.disabled);
 }

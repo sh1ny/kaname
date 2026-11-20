@@ -1,0 +1,5 @@
+### The announcement that no bundle is available: nothing is imported yet,
+### or no stored bundle is in the server's current format.
+class: BundleAnnouncementNone
+extends: BundleAnnouncement
+fields: {}

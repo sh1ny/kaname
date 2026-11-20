@@ -16,6 +16,7 @@ import 'package:serverpod_client/serverpod_client.dart' as _isc;
 
 import 'health/dependency_status.dart' as _iztepymd;
 import 'health/health_report.dart' as _if75m2mz;
+import 'static_data/bundle_announcement.dart' as _iothyv29;
 import 'static_data/sde_build_diff_outcome.dart' as _iby3hddy;
 import 'static_data/sde_build_state.dart' as _isyk7irp;
 import 'static_data/sde_bundle_outcome.dart' as _iquqzrxf;
@@ -26,6 +27,7 @@ import 'static_data/sde_switch_kind.dart' as _iqktcwf1;
 import 'static_data/sde_switch_outcome.dart' as _icb88h1v;
 export 'health/dependency_status.dart';
 export 'health/health_report.dart';
+export 'static_data/bundle_announcement.dart';
 export 'static_data/sde_build_diff_outcome.dart';
 export 'static_data/sde_build_state.dart';
 export 'static_data/sde_bundle_outcome.dart';
@@ -51,6 +53,8 @@ class Protocol extends _isc.SerializationManager
         types: const [
           _isc.getType<_iztepymd.DependencyStatus>,
           _isc.getType<_if75m2mz.HealthReport>,
+          _isc.getType<_iothyv29.BundleAnnouncementNamed>,
+          _isc.getType<_iothyv29.BundleAnnouncementNone>,
           _isc.getType<_iby3hddy.SdeBuildDiffOutcome>,
           _isc.getType<_isyk7irp.SdeBuildState>,
           _isc.getType<_iquqzrxf.SdeBundleOutcome>,
@@ -61,6 +65,8 @@ class Protocol extends _isc.SerializationManager
           _isc.getType<_icb88h1v.SdeSwitchOutcome>,
           _isc.getType<_iztepymd.DependencyStatus?>,
           _isc.getType<_if75m2mz.HealthReport?>,
+          _isc.getType<_iothyv29.BundleAnnouncementNamed?>,
+          _isc.getType<_iothyv29.BundleAnnouncementNone?>,
           _isc.getType<_iby3hddy.SdeBuildDiffOutcome?>,
           _isc.getType<_isyk7irp.SdeBuildState?>,
           _isc.getType<_iquqzrxf.SdeBundleOutcome?>,
@@ -77,6 +83,8 @@ class Protocol extends _isc.SerializationManager
           'SdeJson',
           'DependencyStatus',
           'HealthReport',
+          'BundleAnnouncementNamed',
+          'BundleAnnouncementNone',
           'SdeBuildDiffOutcome',
           'SdeBuildState',
           'SdeBundleOutcome',
@@ -115,6 +123,12 @@ class Protocol extends _isc.SerializationManager
     if (t == _if75m2mz.HealthReport) {
       return _if75m2mz.HealthReport.fromJson(data) as T;
     }
+    if (t == _iothyv29.BundleAnnouncementNamed) {
+      return _iothyv29.BundleAnnouncementNamed.fromJson(data) as T;
+    }
+    if (t == _iothyv29.BundleAnnouncementNone) {
+      return _iothyv29.BundleAnnouncementNone.fromJson(data) as T;
+    }
     if (t == _iby3hddy.SdeBuildDiffOutcome) {
       return _iby3hddy.SdeBuildDiffOutcome.fromJson(data) as T;
     }
@@ -145,6 +159,18 @@ class Protocol extends _isc.SerializationManager
     }
     if (t == _isc.getType<_if75m2mz.HealthReport?>()) {
       return (data != null ? _if75m2mz.HealthReport.fromJson(data) : null) as T;
+    }
+    if (t == _isc.getType<_iothyv29.BundleAnnouncementNamed?>()) {
+      return (data != null
+              ? _iothyv29.BundleAnnouncementNamed.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _isc.getType<_iothyv29.BundleAnnouncementNone?>()) {
+      return (data != null
+              ? _iothyv29.BundleAnnouncementNone.fromJson(data)
+              : null)
+          as T;
     }
     if (t == _isc.getType<_iby3hddy.SdeBuildDiffOutcome?>()) {
       return (data != null
@@ -194,6 +220,8 @@ class Protocol extends _isc.SerializationManager
       _idp9h2tz.SdeJson => 'SdeJson',
       _iztepymd.DependencyStatus => 'DependencyStatus',
       _if75m2mz.HealthReport => 'HealthReport',
+      _iothyv29.BundleAnnouncementNamed => 'BundleAnnouncementNamed',
+      _iothyv29.BundleAnnouncementNone => 'BundleAnnouncementNone',
       _iby3hddy.SdeBuildDiffOutcome => 'SdeBuildDiffOutcome',
       _isyk7irp.SdeBuildState => 'SdeBuildState',
       _iquqzrxf.SdeBundleOutcome => 'SdeBundleOutcome',
@@ -222,6 +250,10 @@ class Protocol extends _isc.SerializationManager
         return 'DependencyStatus';
       case _if75m2mz.HealthReport():
         return 'HealthReport';
+      case _iothyv29.BundleAnnouncementNamed():
+        return 'BundleAnnouncementNamed';
+      case _iothyv29.BundleAnnouncementNone():
+        return 'BundleAnnouncementNone';
       case _iby3hddy.SdeBuildDiffOutcome():
         return 'SdeBuildDiffOutcome';
       case _isyk7irp.SdeBuildState():
@@ -256,6 +288,12 @@ class Protocol extends _isc.SerializationManager
     }
     if (dataClassName == 'HealthReport') {
       return deserialize<_if75m2mz.HealthReport>(data['data']);
+    }
+    if (dataClassName == 'BundleAnnouncementNamed') {
+      return deserialize<_iothyv29.BundleAnnouncementNamed>(data['data']);
+    }
+    if (dataClassName == 'BundleAnnouncementNone') {
+      return deserialize<_iothyv29.BundleAnnouncementNone>(data['data']);
     }
     if (dataClassName == 'SdeBuildDiffOutcome') {
       return deserialize<_iby3hddy.SdeBuildDiffOutcome>(data['data']);

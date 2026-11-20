@@ -1,0 +1,9 @@
+### The announcement of one downloadable bundle: its build, SHA-256 (which
+### the download URL carries), compressed size and major format version.
+class: BundleAnnouncementNamed
+extends: BundleAnnouncement
+fields:
+  build: int
+  sha256: String
+  size: int
+  formatMajor: int

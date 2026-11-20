@@ -8,6 +8,9 @@ import 'package:yaml/yaml.dart';
 /// The self-host stack's Compose file, relative to the repository root.
 const _composeFile = 'deploy/compose.yaml';
 
+/// The Caddy configuration, relative to the repository root.
+const _caddyfile = 'deploy/Caddyfile';
+
 /// The environment variables that hold the stack's secrets.
 const _secrets = {
   'POSTGRES_PASSWORD',
@@ -248,6 +251,58 @@ void main() {
           reason: '$key is read from $variable',
         );
       }
+    });
+  });
+
+  group('deploy/Caddyfile', () {
+    String text() {
+      final file = File(p.join(_root(), _caddyfile));
+      if (!file.existsSync()) fail('$_caddyfile does not exist');
+      return file.readAsStringSync();
+    }
+
+    /// The Caddyfile without its comments.
+    String code() => text()
+        .split('\n')
+        .where((line) => !line.trimLeft().startsWith('#'))
+        .join('\n');
+
+    test('closes stalled client writes with an idle timeout that leaves the '
+        'announcement WebSockets alone', () {
+      final servers = RegExp(r'servers\s*\{\s*timeouts\s*\{([^}]*)\}')
+          .firstMatch(code());
+      expect(servers, isNotNull, reason: 'a global servers { timeouts { } }');
+      final timeouts = servers!.group(1)!;
+
+      final idle = RegExp(r'write_idle\s+(\d+)(s|m)\b').firstMatch(timeouts);
+      expect(
+        idle,
+        isNotNull,
+        reason:
+            'write_idle sets how long a stalled '
+            'write may last',
+      );
+      final seconds =
+          int.parse(idle!.group(1)!) * (idle.group(2) == 'm' ? 60 : 1);
+      // Within the bundle route's 2-minute deadline, so the proxy frees the
+      // bytes a stalled client pins no later than the route frees its place.
+      expect(seconds, inInclusiveRange(1, 120));
+      // A hard limit on the whole response (`write`), or a limit on idle
+      // connections shorter than the announcement stream's 30 minutes, would
+      // cut the WebSockets or slow downloads.
+      expect(
+        RegExp(r'^\s*write\s', multiLine: true).hasMatch(timeouts),
+        isFalse,
+        reason: 'no hard write limit',
+      );
+    });
+
+    test('still proxies /api/ to the server with the prefix removed', () {
+      expect(
+        RegExp(r'handle_path\s+/api/\*\s*\{\s*reverse_proxy\s+server:8080\s*\}')
+            .hasMatch(code()),
+        isTrue,
+      );
     });
   });
 }

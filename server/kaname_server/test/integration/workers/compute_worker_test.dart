@@ -17,6 +17,7 @@ import 'package:kaname_static_data/testing.dart';
 import 'package:serverpod/serverpod.dart' show Session;
 import 'package:test/test.dart';
 
+import '../support/announcer_support.dart';
 import '../support/migrated_database.dart';
 import '../support/tcp_proxy.dart';
 import '../support/worker_harness.dart';
@@ -705,6 +706,9 @@ void main() {
         ImportOutcome.succeeded,
       );
       expect(await SdeBundle.db.find(session), isEmpty);
+      final announced = await TestAnnouncer.start(session);
+      addTearDown(announced.announcer.stop);
+      expect(announced.announcer.installed, isA<BundleAnnouncementNone>());
 
       // A transaction of the test holds an exclusive lock on `sde_type`,
       // which the bundle build reads, so the build is held mid-statement
@@ -765,8 +769,7 @@ void main() {
       release.complete();
       await holder;
       final reply = await answer;
-      // Group 7 adds here: the announcer, reacting to this
-      // `BundleRepairFinished`, announces build 2850's bundle.
+      await announced.reply(reply);
       expect(reply, isA<BundleRepairFinished>(), reason: '$reply');
       final result = (reply as BundleRepairFinished).result;
       expect(result, isA<BundleRepairRan>());
@@ -780,6 +783,10 @@ void main() {
         (await SdeBundleBytes.db.find(session)).single.sha256,
         step.sha256,
       );
+      // The announcer, reacting to this `BundleRepairFinished`, announces
+      // build 2850's bundle.
+      expect(announced.lastNamed.build, 2850);
+      expect(announced.lastNamed.sha256, step.sha256);
     });
 
     test(

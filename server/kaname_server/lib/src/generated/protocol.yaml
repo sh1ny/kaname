@@ -1,2 +1,4 @@
 health:
   - check:
+staticData:
+  - bundleAnnouncements:

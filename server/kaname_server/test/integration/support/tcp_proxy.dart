@@ -45,6 +45,11 @@ final class TcpProxy {
     bindPort: bindPort,
   );
 
+  /// Starts forwarding a loopback port to the sockets that [connect] opens,
+  /// one for each client connection, when it connects.
+  static Future<TcpProxy> startWith(Future<Socket> Function() connect) =>
+      _start(connect, bindPort: 0);
+
   static Future<TcpProxy> _start(
     Future<Socket> Function() connect, {
     required int bindPort,

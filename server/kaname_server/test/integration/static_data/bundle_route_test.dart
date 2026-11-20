@@ -75,6 +75,11 @@
 /// (`relic_io src/adapter/io_relic_web_socket.dart`:128-133). With the peer
 /// still not reading, the endpoint can end the held stream: its cancel frees
 /// the slot and a replacement subscription is admitted.
+///
+/// The last group tests the real `BundleRoute` (design D4; C18, C19) on its
+/// own pod, whose database connections go through a proxy that the tests can
+/// pause. The embedded Postgres has no TCP port, so the proxy forwards to its
+/// Unix socket, found in the data directory's `postmaster.pid`.
 @Timeout(Duration(minutes: 2))
 library;
 
@@ -85,9 +90,18 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:kaname_client/kaname_client.dart';
+import 'package:kaname_server/src/generated/protocol.dart'
+    as models
+    show SdeBuildState;
+import 'package:kaname_server/src/static_data/bundle_announcer.dart';
+import 'package:kaname_server/src/static_data/bundle_route.dart';
+import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
+    show bundleSha256;
+import 'package:path/path.dart' as p;
 import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
 
+import '../support/announcer_support.dart';
 import '../support/in_process_pod.dart';
 import '../support/tcp_proxy.dart';
 
@@ -317,6 +331,8 @@ void main() {
       expect(await _open(otherClient).next(), 'admitted');
     });
   });
+
+  _bundleRouteTests();
 }
 
 /// A small gzip body.
@@ -760,4 +776,439 @@ Future<int> _stablePulls(_PumpProbe probe) async {
     await Future<void>.delayed(const Duration(milliseconds: 100));
   }
   return probe.pulls;
+}
+
+/// The base path of the real route.
+const _routeBase = '/static-data/bundle';
+
+/// A bundle big enough that a client that stops reading blocks the server's
+/// writes: several times the TCP buffers between the two.
+const _bigContent = 24 * 1024 * 1024;
+
+/// One test of the real [BundleRoute]: a pod whose database connections go
+/// through a proxy the test can pause, an announcer over that database, and
+/// the route in front of the API server (design D4; C18, C19).
+final class _RouteRig {
+  _RouteRig._(
+    this.pod,
+    this.postgres,
+    this.session,
+    this.source,
+    this.announcer,
+    this.routeClock,
+    this._sessions,
+  );
+
+  final InProcessPod pod;
+
+  /// The proxy between the pod and Postgres.
+  final TcpProxy postgres;
+
+  /// A session for seeding and reading rows, on the pod's pool.
+  final Session session;
+
+  /// The announcer's state source, which counts its reads.
+  final ScriptedSource source;
+
+  /// The announcer the route serves from.
+  final BundleAnnouncer announcer;
+
+  /// The clock of the route's transfer deadlines.
+  final FakeClock routeClock;
+
+  final _Counter _sessions;
+
+  /// How many database sessions the announcer opened so far.
+  int get sessionsOpened => _sessions.count;
+
+  /// The port of the API server.
+  int get port => pod.port;
+
+  /// Starts the pod and the announcer, which has read the empty store.
+  static Future<_RouteRig> start() async {
+    // The embedded Postgres listens on a Unix socket only; its socket is
+    // found when the first connection is made, once the scratch database
+    // has started the postmaster.
+    final postgres = await TcpProxy.startWith(() async {
+      final lines = File(
+        p.join(
+          Directory.current.path,
+          '.serverpod',
+          'test',
+          'pgdata',
+          'postmaster.pid',
+        ),
+      ).readAsLinesSync();
+      return Socket.connect(
+        InternetAddress(
+          p.normalize(p.join(lines[1], lines[4], '.s.PGSQL.${lines[3]}')),
+          type: InternetAddressType.unix,
+        ),
+        0,
+      );
+    });
+    final sessions = _Counter();
+    final routeClock = FakeClock();
+    InProcessPod? started;
+    final source = ScriptedSource(
+      OrmBundleStateSource(<T>(action) {
+        sessions.count++;
+        return started!.pod.withSession(action);
+      }),
+    );
+    final announcer = BundleAnnouncer(
+      source: source,
+      bus: RecordingBus(),
+      clock: FakeClock(),
+      log: (level, message) {},
+      epoch: 'route-test',
+    );
+    final pod = started = await InProcessPod.start(
+      middleware: [
+        BundleRoute(announcer: announcer, clock: routeClock).middleware,
+      ],
+      configOverride: (config) {
+        final database = config.database! as PostgresDatabaseConfig;
+        return config.copyWith(
+          database: PostgresDatabaseConfig(
+            host: '127.0.0.1',
+            port: postgres.port,
+            user: database.user,
+            password: database.password,
+            name: database.name,
+            maxConnectionCount: database.maxConnectionCount,
+          ),
+        );
+      },
+    );
+    final session = await pod.pod.createSession(enableLogging: false);
+    announcer.start();
+    await announcer.settled;
+    return _RouteRig._(
+      pod,
+      postgres,
+      session,
+      source,
+      announcer,
+      routeClock,
+      sessions,
+    );
+  }
+
+  /// Stores build [build] in [state] with a current-format bundle of
+  /// [content] and returns its identity; no refresh is asked for.
+  Future<BundleRef> store(
+    int build,
+    models.SdeBuildState state, {
+    String content = '',
+    int? formatMajor,
+  }) async {
+    await seedBuild(session, build, state);
+    return seedBundle(
+      session,
+      build,
+      content: content,
+      formatMajor: formatMajor,
+    );
+  }
+
+  /// Makes [build], stored as staged, the active build, as a check does, and
+  /// lets the announcer see it.
+  Future<void> switchAndAnnounce(int build) async {
+    await switchTo(session, build);
+    await announcer.workerReplied(switchedReply(build));
+  }
+
+  /// The path of [ref]'s bundle.
+  String pathOf(BundleRef ref) => '$_routeBase/${ref.build}/${ref.sha256}';
+
+  Future<void> stop() async {
+    postgres.releaseTargetReads();
+    await announcer.stop();
+    await session.close();
+    await pod.stop();
+    await postgres.close();
+  }
+}
+
+final class _Counter {
+  int count = 0;
+}
+
+/// A GET with an optional `If-None-Match`.
+Future<_Answer> _fetch(int port, String path, {String? ifNoneMatch}) async {
+  final client = HttpClient();
+  try {
+    final request = await client.get('127.0.0.1', port, path);
+    if (ifNoneMatch != null) {
+      request.headers.set(HttpHeaders.ifNoneMatchHeader, ifNoneMatch);
+    }
+    final response = await request.close();
+    final body = await response.fold<List<int>>([], (all, b) => all..addAll(b));
+    return (status: response.statusCode, headers: response.headers, body: body);
+  } finally {
+    client.close(force: true);
+  }
+}
+
+/// 16 clients that read the first bytes of [path] and then stop reading.
+Future<List<_RawClient>> _stalledClients(int port, String path) async {
+  final clients = <_RawClient>[];
+  for (var i = 0; i < 16; i++) {
+    final client = await _RawClient.get(port, path);
+    addTearDown(client.destroy);
+    await client.firstBytes;
+    client.stopReading();
+    clients.add(client);
+  }
+  return clients;
+}
+
+/// Tests of the real [BundleRoute].
+void _bundleRouteTests() {
+  group('Given the bundle route of the server', () {
+    late _RouteRig rig;
+
+    setUp(() async {
+      rig = await _RouteRig.start();
+      addTearDown(rig.stop);
+    });
+
+    // Scenario: Download.
+    test(
+      'GET answers 200 with bytes, length and immutable cache header',
+      () async {
+        final bundle = await rig.store(
+          100,
+          models.SdeBuildState.active,
+          content: 'z' * 300000,
+        );
+        await rig.announcer.request();
+
+        final answer = await _fetch(rig.port, rig.pathOf(bundle));
+
+        expect(answer.status, 200);
+        expect(answer.body, hasLength(bundle.size));
+        expect(bundleSha256(Uint8List.fromList(answer.body)), bundle.sha256);
+        expect(answer.headers.contentLength, bundle.size);
+        expect(
+          answer.headers.value('cache-control'),
+          'public, max-age=31536000, immutable',
+        );
+        expect(answer.headers.value('etag'), '"${bundle.sha256}"');
+        expect(answer.headers.contentType?.mimeType, 'application/gzip');
+      },
+    );
+
+    // Scenario: Unknown bundle; Conditional request.
+    test('GET for a bundle not announced or previous, a staged bundle or a '
+        'wrong hash answers 404 (plus 304 on If-None-Match)', () async {
+      final bundle = await rig.store(100, models.SdeBuildState.active);
+      final staged = await rig.store(105, models.SdeBuildState.staged);
+      await rig.announcer.request();
+      final wrongHash = 'f' * 64;
+
+      expect((await _fetch(rig.port, rig.pathOf(bundle))).status, 200);
+      expect((await _fetch(rig.port, rig.pathOf(staged))).status, 404);
+      expect(
+        (await _fetch(rig.port, '$_routeBase/100/$wrongHash')).status,
+        404,
+      );
+      expect(
+        (await _fetch(rig.port, '$_routeBase/999/$wrongHash')).status,
+        404,
+      );
+      expect(
+        (await _fetch(rig.port, '$_routeBase/abc/${bundle.sha256}')).status,
+        404,
+      );
+      expect((await _fetch(rig.port, '$_routeBase/100/short')).status, 404);
+
+      final unchanged = await _fetch(
+        rig.port,
+        rig.pathOf(bundle),
+        ifNoneMatch: '"${bundle.sha256}"',
+      );
+      expect(unchanged.status, 304);
+      expect(unchanged.body, isEmpty);
+      expect(unchanged.headers.value('etag'), '"${bundle.sha256}"');
+      final other = await _fetch(
+        rig.port,
+        rig.pathOf(bundle),
+        ifNoneMatch: '"$wrongHash"',
+      );
+      expect(other.status, 200);
+    });
+
+    // Scenario: Superseded bundle.
+    test('bundle no longer announced or previous answers 404, also on a '
+        'conditional GET', () async {
+      final first = await rig.store(100, models.SdeBuildState.active);
+      await rig.announcer.request();
+      expect((await _fetch(rig.port, rig.pathOf(first))).status, 200);
+      await rig.store(101, models.SdeBuildState.staged);
+      await rig.switchAndAnnounce(101);
+      // Build 100 is now the previous bundle: still served.
+      expect((await _fetch(rig.port, rig.pathOf(first))).status, 200);
+      await rig.store(102, models.SdeBuildState.staged);
+      await rig.switchAndAnnounce(102);
+
+      final plain = await _fetch(rig.port, rig.pathOf(first));
+      final conditional = await _fetch(
+        rig.port,
+        rig.pathOf(first),
+        ifNoneMatch: '"${first.sha256}"',
+      );
+
+      expect(plain.status, 404);
+      expect(conditional.status, 404);
+    });
+
+    // Scenario: Too many downloads.
+    test('17th concurrent GET answers 503 with Retry-After and health stays '
+        'under 1 s', () async {
+      final bundle = await rig.store(
+        100,
+        models.SdeBuildState.active,
+        content: 'x' * _bigContent,
+      );
+      await rig.announcer.request();
+      await _stalledClients(rig.port, rig.pathOf(bundle));
+
+      final refused = await _fetch(rig.port, rig.pathOf(bundle));
+      final client = Client(rig.pod.baseUrl);
+      addTearDown(client.close);
+      final stopwatch = Stopwatch()..start();
+      final report = await client.health.check();
+      stopwatch.stop();
+
+      expect(refused.status, 503);
+      expect(refused.headers.value('retry-after'), '60');
+      expect(report.postgres, DependencyStatus.up);
+      expect(stopwatch.elapsed, lessThan(const Duration(seconds: 1)));
+    });
+
+    // Scenario: Stalled download.
+    test('stalled bodies free their slots after the deadline and the next '
+        'GET answers 200', () async {
+      final bundle = await rig.store(
+        100,
+        models.SdeBuildState.active,
+        content: 'x' * _bigContent,
+      );
+      await rig.announcer.request();
+      final stalled = await _stalledClients(rig.port, rig.pathOf(bundle));
+      expect((await _fetch(rig.port, rig.pathOf(bundle))).status, 503);
+
+      rig.routeClock.elapse(const Duration(minutes: 2));
+      final next = await _fetch(rig.port, rig.pathOf(bundle));
+
+      expect(next.status, 200);
+      expect(next.body, hasLength(bundle.size));
+      expect(stalled, hasLength(16));
+    });
+
+    // Scenario: Database not answering.
+    test('with Postgres paused, GETs for the held bundle answer 200 and '
+        'issue no query', () async {
+      final bundle = await rig.store(
+        100,
+        models.SdeBuildState.active,
+        content: 'q' * 100000,
+      );
+      await rig.announcer.request();
+      final sessions = rig.sessionsOpened;
+      final reads = rig.source.reads;
+      final loads = rig.source.loads;
+
+      rig.postgres.holdTargetReads();
+      await expectLater(
+        rig.session.db
+            .unsafeQuery('SELECT 1')
+            .timeout(const Duration(seconds: 2)),
+        throwsA(isA<TimeoutException>()),
+        reason: 'Postgres answers nothing now',
+      );
+      for (var i = 0; i < 3; i++) {
+        final answer = await _fetch(
+          rig.port,
+          rig.pathOf(bundle),
+        ).timeout(const Duration(seconds: 5));
+        expect(answer.status, 200);
+        expect(answer.body, hasLength(bundle.size));
+      }
+
+      expect(rig.sessionsOpened, sessions, reason: 'no session was opened');
+      expect((rig.source.reads, rig.source.loads), (reads, loads));
+    });
+
+    // Scenario: Rebuilt bundle.
+    test('rebuilt bundle answers 404 for the old hash and 200 for the '
+        'announced one', () async {
+      final old = await rig.store(
+        100,
+        models.SdeBuildState.active,
+        content: 'one',
+      );
+      await rig.announcer.request();
+      expect((await _fetch(rig.port, rig.pathOf(old))).status, 200);
+
+      final rebuilt = Uint8List.fromList('bundle 100 two'.codeUnits);
+      await storeBundleRows(rig.session, 100, rebuilt);
+      await rig.announcer.request();
+
+      expect((await _fetch(rig.port, rig.pathOf(old))).status, 404);
+      expect(
+        (await _fetch(
+          rig.port,
+          '$_routeBase/100/${bundleSha256(rebuilt)}',
+        )).status,
+        200,
+      );
+    });
+
+    // Scenario: Transfer in flight while its bundle is dropped.
+    test(
+      'a transfer admitted before its bundle is dropped completes',
+      () async {
+        final big = await rig.store(
+          100,
+          models.SdeBuildState.active,
+          content: 'x' * _bigContent,
+        );
+        await rig.announcer.request();
+        final client = await _RawClient.get(rig.port, rig.pathOf(big));
+        addTearDown(client.destroy);
+        await client.firstBytes;
+        client.stopReading();
+
+        await rig.store(101, models.SdeBuildState.staged);
+        await rig.switchAndAnnounce(101);
+        await rig.store(102, models.SdeBuildState.staged);
+        await rig.switchAndAnnounce(102);
+        expect(rig.announcer.heldBundle(100, big.sha256), isNull);
+        expect((await _fetch(rig.port, rig.pathOf(big))).status, 404);
+
+        final received = await client.readToEnd(const Duration(seconds: 60));
+
+        expect(received, big.size);
+      },
+    );
+
+    // Scenario: Old-format bundle.
+    test('old-format bundle answers 404 and the current one 200', () async {
+      final current = await rig.store(99, models.SdeBuildState.previous);
+      final old = await rig.store(
+        100,
+        models.SdeBuildState.active,
+        formatMajor: 0,
+      );
+      await rig.announcer.request();
+
+      expect((await _fetch(rig.port, rig.pathOf(old))).status, 404);
+      final served = await _fetch(rig.port, rig.pathOf(current));
+      expect(served.status, 200);
+      expect(served.body, hasLength(current.size));
+    });
+  });
 }

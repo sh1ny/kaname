@@ -14,6 +14,7 @@ import 'package:kaname_server/src/generated/future_calls.dart' as _ibdqg5o2;
 import 'package:serverpod/serverpod.dart' as _is;
 
 import '../health/health_endpoint.dart' as _id9paj9q;
+import '../static_data/static_data_endpoint.dart' as _ije194qr;
 export 'future_calls.dart' show ServerpodFutureCallsGetter;
 
 class Endpoints extends _is.EndpointDispatch {
@@ -26,6 +27,8 @@ class Endpoints extends _is.EndpointDispatch {
   void initializeOwnEndpoints(_is.Server server) {
     var endpoints = <String, _is.Endpoint>{
       'health': _id9paj9q.HealthEndpoint()..initialize(server, 'health', null),
+      'staticData': _ije194qr.StaticDataEndpoint()
+        ..initialize(server, 'staticData', null),
     };
     connectors['health'] = _is.EndpointConnector(
       name: 'health',
@@ -36,6 +39,25 @@ class Endpoints extends _is.EndpointDispatch {
           params: {},
           call: (_is.Session session, Map<String, dynamic> params) async =>
               (endpoints['health'] as _id9paj9q.HealthEndpoint).check(session),
+        ),
+      },
+    );
+    connectors['staticData'] = _is.EndpointConnector(
+      name: 'staticData',
+      endpoint: endpoints['staticData']!,
+      methodConnectors: {
+        'bundleAnnouncements': _is.MethodStreamConnector(
+          name: 'bundleAnnouncements',
+          params: {},
+          streamParams: {},
+          returnType: _is.MethodStreamReturnType.streamType,
+          call:
+              (
+                _is.Session session,
+                Map<String, dynamic> params,
+                Map<String, Stream> streamParams,
+              ) => (endpoints['staticData'] as _ije194qr.StaticDataEndpoint)
+                  .bundleAnnouncements(session),
         ),
       },
     );

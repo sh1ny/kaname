@@ -15,6 +15,8 @@ import 'dart:async' as _ida;
 import 'package:http/http.dart' as _i85jenna;
 import 'package:kaname_client/src/protocol/health/health_report.dart'
     as _ipujyub9;
+import 'package:kaname_client/src/protocol/static_data/bundle_announcement.dart'
+    as _ibnxtke0;
 import 'package:serverpod_client/serverpod_client.dart' as _isc;
 
 import 'protocol.dart' as _il2as5qe;
@@ -40,6 +42,23 @@ class EndpointHealth extends _isc.EndpointRef {
       caller.callServerEndpoint<_ipujyub9.HealthReport>('health', 'check', {});
 }
 
+/// The static-data endpoint: the announcement stream of the client data
+/// bundle.
+/// {@category Endpoint}
+class EndpointStaticData extends _isc.EndpointRef {
+  EndpointStaticData(_isc.EndpointCaller caller) : super(caller);
+
+  @override
+  String get name => 'staticData';
+
+  /// Streams the bundle announcement.
+  _ida.Stream<_ibnxtke0.BundleAnnouncement> bundleAnnouncements() =>
+      caller.callStreamingServerEndpoint<
+        _ida.Stream<_ibnxtke0.BundleAnnouncement>,
+        _ibnxtke0.BundleAnnouncement
+      >('staticData', 'bundleAnnouncements', {}, {});
+}
+
 class Client extends _isc.ServerpodClientShared {
   Client(
     String host, {
@@ -63,12 +82,18 @@ class Client extends _isc.ServerpodClientShared {
          httpClientOverride: httpClientOverride,
        ) {
     health = EndpointHealth(this);
+    staticData = EndpointStaticData(this);
   }
 
   late final EndpointHealth health;
 
+  late final EndpointStaticData staticData;
+
   @override
-  Map<String, _isc.EndpointRef> get endpointRefLookup => {'health': health};
+  Map<String, _isc.EndpointRef> get endpointRefLookup => {
+    'health': health,
+    'staticData': staticData,
+  };
 
   @override
   Map<String, _isc.ModuleEndpointCaller> get moduleLookup => {};
