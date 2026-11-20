@@ -290,8 +290,9 @@ void main() {
     );
 
     // Scenario: Publish fails.
-    test('failed publish is logged, the switch stands and a new subscription '
-        'receives N+1 first', () async {
+    // The scenario through a real client stream is in bundle_stream_test.
+    test('failed publish is logged, the switch stands and N+1 stays the '
+        'installed announcement', () async {
       await seedBuild(session, 500, SdeBuildState.active);
       await seedBundle(session, 500);
       final created = announcer();
@@ -610,6 +611,54 @@ void main() {
       await tick(created);
       await _eventually(() => sent == 1, 'the same tick sends the repair');
     });
+
+    // Pre-ship round 3: a held read does not hold back a repair an
+    // earlier read already found owed.
+    test(
+      'a repair already owed is sent by a tick whose own read is held',
+      () async {
+        await seedBuild(session, 870, SdeBuildState.active);
+        final replies = <Completer<WorkerReply>>[];
+        final created = announcer(
+          runRepair: () {
+            final reply = Completer<WorkerReply>();
+            replies.add(reply);
+            return reply.future;
+          },
+        );
+        await startAndSettle(created);
+        expect(namedBuilds([created.installed!]), [null], reason: 'owed');
+        // The start hook's request finds the lock held and is answered.
+        unawaited(created.sendRepair());
+        replies.single.complete(
+          const BundleRepairFinished(
+            requestId: 1,
+            result: BundleRepairLockHeld(),
+          ),
+        );
+        await created.settled;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        // The next read hangs; the tick still sends the owed repair.
+        final gate = source.holdReads = Completer<void>();
+        addTearDown(() {
+          if (!gate.isCompleted) gate.complete();
+        });
+        clock.elapse(const Duration(seconds: 60));
+        await _eventually(() => replies.length == 2, 'the tick sends it');
+        clock.elapse(const Duration(seconds: 60));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(replies, hasLength(2), reason: 'still one outstanding at most');
+        gate.complete();
+        replies.last.complete(
+          const BundleRepairFinished(
+            requestId: 2,
+            result: BundleRepairLockHeld(),
+          ),
+        );
+        await created.settled;
+      },
+    );
 
     test(
       'repair owed behind another lock holder is sent by the first tick '

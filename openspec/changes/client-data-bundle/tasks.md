@@ -111,7 +111,7 @@ Paths are relative to the repository root. `bundle/` stands for `packages/kaname
 | static-data-builds → Build changes are announced to apps | Rollback during a slow refresh | server/test/integration/static_data/bundle_announcer_test.dart | a byte load held across a tick queues one refresh that starts after its database work ends and publishes the rollback | green |
 | static-data-builds → Build changes are announced to apps | Byte load fails | server/test/integration/static_data/bundle_announcer_test.dart | failed or late byte load keeps the previous announcement and a later refresh publishes | green |
 | static-data-builds → Build changes are announced to apps | Late bundle | server/test/integration/static_data/bundle_announcer_test.dart | bundle built by a later check is published after it is stored | green |
-| static-data-builds → Build changes are announced to apps | Publish fails | server/test/integration/static_data/bundle_announcer_test.dart | failed publish is logged, the switch stands and a new subscription receives N+1 first | green |
+| static-data-builds → Build changes are announced to apps | Publish fails | server/test/integration/static_data/bundle_stream_test.dart | failed publish is logged, the switch stands and a new subscription receives N+1 first | green |
 
 ## 1. ADRs and architecture
 

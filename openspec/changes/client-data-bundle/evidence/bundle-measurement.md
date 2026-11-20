@@ -22,7 +22,7 @@ Chrome for Testing 156.0.8078.80, headless, driven with `puppeteer` (Dart).
 | Parse + index native (AOT) | 0.28 s | none | recorded |
 | One whole one-letter query on web | 0.5 ms (JS build), 1.0 ms (wasm build) | A16: 16 ms | holds, 15x or more headroom |
 | Bundle build on the worker | +647 MiB over the idle server (peak 1,319 MiB for the whole process) | quarter of the 4 GB envelope = 1,024 MiB | holds on the design's formula; see the note on the whole-process figure |
-| Served bundle versions, 19 (up to 21) times one version, plus the worker's peak | 143 MiB + 647 MiB = 790 MiB (conservative) | 1,024 MiB | holds (77%) |
+| Served bundle versions, 19 plus an estimated 2 rotated out (21) times one version, plus the worker's peak | 143 MiB + 647 MiB = 790 MiB (conservative) | 1,024 MiB | holds for the estimated workload (77%); 21 is an estimate, not a bound (see below) |
 | App holding three bundles | about 0.2 GB over the page's baseline on web (0.37 GB renderer total), 0.27 GB native | 1,024 MiB | holds |
 | A4 / A17 / C26 in Chrome, wasm and JS builds | pass, with one finding (below), since fixed | | pass; the stack defect found is fixed and passes through Caddy (11.6) |
 
@@ -202,11 +202,15 @@ Per version, measured: 2.72 + 0.07 + 1.71 = 4.5 MiB. Conservatively, with the
 | Count | Basis | Typical (4.5 MiB) | Conservative (6.8 MiB) |
 |---|---|---|---|
 | 19 versions | 2 held + 1 loading + 16 in flight | 86 MiB | 129 MiB |
-| +2 rotated out within the proxy's timeout | `write_idle 1m` in `deploy/Caddyfile` is below the route's 2-minute deadline, and the announcer changes its announcement at most once per 60-second tick, so one more rotation falls in the window, two at a tick boundary | 95 MiB (21) | 143 MiB (21) |
+| +2 rotated out within the proxy's timeout (workload estimate) | `write_idle 1m` in `deploy/Caddyfile` is below the route's 2-minute deadline; with rotations coming from the 60-second tick, one more falls in the window, two at a tick boundary. Worker replies (a switch, a repair) also trigger refreshes, and `write_idle` measures inactivity rather than time since admission, so this is the expected workload, not an enforced bound | 95 MiB (21) | 143 MiB (21) |
 | + worker's peak | 647 MiB | 742 MiB | **790 MiB** |
 | Limit | | 1,024 MiB | 1,024 MiB |
 
-The conservative total, 790 MiB, is 77% of the limit.
+The conservative total, 790 MiB, is 77% of the limit for that workload. The
+measured per-version figures hold whatever the count; nothing in the server
+caps the rotated-out versions at two, so each further version still pinned
+by a slow transfer adds up to 6.8 MiB (the remaining 234 MiB covers about 34
+more).
 
 Rotation with an old transfer held open: 16 transfers of the announced
 bundle were held stalled while `sde:rollback` rotated the announcement to the

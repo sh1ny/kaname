@@ -382,6 +382,38 @@ void main() {
     expect(path(), '/settings');
   });
 
+  testWidgets('Escape on the close button closes the narrow search and '
+      'returns focus', (tester) async {
+    await Rig(kept: copyN).pump(tester, size: _narrow);
+    await tester.tap(find.byKey(QuickSearchKeys.openButton));
+    await tester.pumpAndSettle();
+    await typeQuery(tester, 'jita');
+    // Focus leaves the field for the close button.
+    Focus.of(
+      tester.element(
+        find.descendant(
+          of: find.byKey(QuickSearchKeys.closeButton),
+          matching: find.byType(Icon),
+        ),
+      ),
+    ).requestFocus();
+    await tester.pumpAndSettle();
+    expect(find.byKey(QuickSearchKeys.field), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(QuickSearchKeys.field), findsNothing);
+    expect(find.byKey(QuickSearchKeys.panel), findsNothing);
+    expect(
+      tester
+          .widget<ShellIconButton>(find.byKey(QuickSearchKeys.openButton))
+          .focusNode!
+          .hasPrimaryFocus,
+      isTrue,
+    );
+  });
+
   testWidgets('Escape clears the inline query and keeps focus', (tester) async {
     await Rig(kept: copyN).pump(tester);
     await typeQuery(tester, 'jita');

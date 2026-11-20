@@ -207,6 +207,33 @@ void main() {
       _expectRising(feed.events);
     });
 
+    // Scenario: Publish fails (static-data-builds). The replacement
+    // subscription is a real generated-client stream: its first event comes
+    // from the installed announcement, with no further publish.
+    test('failed publish is logged, the switch stands and a new subscription '
+        'receives N+1 first', () async {
+      await seedBuild(session, 500, SdeBuildState.active);
+      await seedBundle(session, 500);
+      await rig.start();
+      await seedBuild(session, 501, SdeBuildState.staged);
+      await seedBundle(session, 501);
+      await switchTo(session, 501);
+      rig.bus.failNextPublish = true;
+
+      await rig.announcer.workerReplied(switchedReply(501));
+
+      expect(rig.logs.any((line) => line.contains('publish')), isTrue);
+      final active = await SdeBuild.db.findFirstRow(
+        session,
+        where: (t) => t.state.equals(SdeBuildState.active),
+      );
+      expect(active?.build, 501, reason: 'the switch stands');
+      final feed = rig.subscribe();
+      await feed.waitFor(1);
+      await _quiet();
+      expect(_builds(feed.events), [501]);
+    });
+
     // Scenario: Switch while subscribed.
     test(
       'switch held at N+1 until received sends one event naming it',

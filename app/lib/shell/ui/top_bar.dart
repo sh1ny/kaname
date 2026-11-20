@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kaname_ember_ui/kaname_ember_ui.dart';
 
@@ -138,26 +139,31 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     );
   }
 
-  Widget _fullWidthSearch(AppLocalizations l10n) => LayoutBuilder(
-    builder: (context, constraints) => Row(
-      children: [
-        ShellIconButton(
-          key: QuickSearchKeys.closeButton,
-          label: l10n.searchClose,
-          icon: const Icon(Icons.arrow_back),
-          onPressed: _closeSearch,
-        ),
-        const SizedBox(width: EmberSpace.xs),
-        Expanded(
-          child: QuickSearchField(
-            anchor: _searchLink,
-            // The panel spans the window: the bar's width plus its padding.
-            panelWidth: constraints.maxWidth + 2 * EmberSpace.sm,
-            onClose: _closeSearch,
-            autofocus: true,
+  // Escape closes the search wherever focus is within it, the close button
+  // included; the field handles its own Escape first.
+  Widget _fullWidthSearch(AppLocalizations l10n) => CallbackShortcuts(
+    bindings: {const SingleActivator(LogicalKeyboardKey.escape): _closeSearch},
+    child: LayoutBuilder(
+      builder: (context, constraints) => Row(
+        children: [
+          ShellIconButton(
+            key: QuickSearchKeys.closeButton,
+            label: l10n.searchClose,
+            icon: const Icon(Icons.arrow_back),
+            onPressed: _closeSearch,
           ),
-        ),
-      ],
+          const SizedBox(width: EmberSpace.xs),
+          Expanded(
+            child: QuickSearchField(
+              anchor: _searchLink,
+              // The panel spans the window: the bar's width plus its padding.
+              panelWidth: constraints.maxWidth + 2 * EmberSpace.sm,
+              onClose: _closeSearch,
+              autofocus: true,
+            ),
+          ),
+        ],
+      ),
     ),
   );
 

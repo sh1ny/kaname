@@ -372,9 +372,12 @@ final class BundleAnnouncer {
         'new refresh starts until it ends',
       );
     }
-    // The repair check reads the state this tick's refresh read, so a repair
-    // that an out-of-process change made owed is sent on the tick that finds
-    // it, not one tick later (D9).
+    // A repair an earlier read found owed is sent now, so a read that hangs
+    // cannot hold it back; the check runs again on the state this tick's
+    // refresh reads, so a repair that an out-of-process change made owed is
+    // sent on the tick that finds it, not one tick later (D9). At most one
+    // is outstanding either way.
+    _sendOwedRepair();
     unawaited(request().then((_) => _sendOwedRepair()));
   }
 

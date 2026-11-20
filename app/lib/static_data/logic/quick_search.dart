@@ -101,11 +101,20 @@ class QuickSearchNotifier extends Notifier<QuickSearchState> {
   /// Results already shown keep the names and ids of the bundle they were
   /// searched on until the next query; only availability and the notice
   /// follow the new state.
+  ///
+  /// While a query waits for its debounce, the change does not search it
+  /// early: the debounce searches it once. Only a not-loaded state already
+  /// shown follows the new reason meanwhile.
   void _onStaticData(StaticDataState next) {
     if (_query.trim().isEmpty) return;
+    final pending = _debounce?.isActive ?? false;
     switch ((state, next)) {
       case (SearchFound(:final results), BundleReady(:final notice)):
         state = SearchFound(results, notice: notice);
+      case (SearchNotLoaded(), NoBundle(:final reason)) when pending:
+        state = SearchNotLoaded(reason);
+      case _ when pending:
+        break;
       case _:
         _search();
     }
