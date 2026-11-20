@@ -7,8 +7,9 @@ import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart';
 /// The bundle of a small build [build], holding Rifter, Frigate, The Forge
 /// and Jita, as the server would serve it.
 ///
-/// Each build gives other bytes, so its SHA-256 differs.
-BundleCopy fixtureBundle(int build) {
+/// Each build gives other bytes, so its SHA-256 differs. [extraTypes] adds
+/// published types, by id, to the bundle.
+BundleCopy fixtureBundle(int build, {Map<int, String> extraTypes = const {}}) {
   final builder = BundleBuilder(
     buildNumber: build,
     releaseDate: '2026-11-18T11:00:00Z',
@@ -30,6 +31,13 @@ BundleCopy fixtureBundle(int build) {
     'name': 'Rifter',
     'published': true,
   });
+  for (final MapEntry(:key, :value) in extraTypes.entries) {
+    typed(BundleSection.types, key, {
+      'groupId': 25,
+      'name': value,
+      'published': true,
+    });
+  }
   typed(BundleSection.mapRegions, 10000002, {
     'name': 'The Forge',
     'factionId': 500001,
