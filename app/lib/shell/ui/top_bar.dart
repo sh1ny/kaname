@@ -125,6 +125,9 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
       if (!widget.inlineSearch) {
         _openPath = _location.path;
         setState(() => _searchOpen = true);
+        // The router's first report replaces the entry and drops its tag:
+        // tag it again for the next reload.
+        _tagSearchEntry();
       } else {
         history.back();
       }

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:kaname_ember_ui/kaname_ember_ui.dart';
 import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart';
@@ -82,8 +84,16 @@ class _QuickSearchPanelState extends State<QuickSearchPanel> {
     final radius = widget.fullWidth
         ? const BorderRadius.vertical(bottom: Radius.circular(EmberRadius.l))
         : BorderRadius.circular(EmberRadius.l);
+    // The panel floats over the page, so it also takes the window's own
+    // keyboard inset: a scaffold that drops the inset for its body must not
+    // hide the keyboard from it. The media query rebuilds it as either
+    // changes.
     final media = MediaQuery.of(context);
-    final maxHeight = (media.size.height - media.viewInsets.bottom - 120).clamp(
+    final keyboard = max(
+      media.viewInsets.bottom,
+      MediaQueryData.fromView(View.of(context)).viewInsets.bottom,
+    );
+    final maxHeight = (media.size.height - keyboard - 120).clamp(
       QuickSearchPanel.rowHeight * 3,
       QuickSearchPanel.rowHeight * 11,
     );

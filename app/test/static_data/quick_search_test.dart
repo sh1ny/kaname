@@ -343,6 +343,34 @@ void main() {
     );
   });
 
+  testWidgets('the narrow search results stay above the on-screen keyboard '
+      'in a short window', (tester) async {
+    const short = Size(800, 480);
+    const keyboard = 220.0;
+    final many = fixtureBundle(
+      100,
+      extraTypes: {for (var i = 0; i < 30; i++) 700 + i: 'Rifter $i'},
+    );
+    await Rig(kept: many).pump(tester, size: short);
+    tester.view.viewInsets = FakeViewPadding(
+      bottom: keyboard * tester.view.devicePixelRatio,
+    );
+    addTearDown(tester.view.resetViewInsets);
+    await tester.tap(find.byKey(QuickSearchKeys.openButton));
+    await tester.pumpAndSettle();
+    await typeQuery(tester, 'rifter');
+    expect(find.byKey(QuickSearchKeys.result(0)), findsOneWidget);
+
+    final panel = tester.getRect(find.byKey(QuickSearchKeys.panel));
+    expect(
+      panel.bottom,
+      lessThanOrEqualTo(short.height - keyboard),
+      reason:
+          'every result can be scrolled into the part the keyboard '
+          'leaves',
+    );
+  });
+
   testWidgets('empty or blank query shows no list', (tester) async {
     await Rig(kept: copyN).pump(tester);
 
@@ -585,6 +613,13 @@ void main() {
       );
       expect(find.byKey(QuickSearchKeys.field), findsOneWidget);
       expect(history.entries, ['/home', '/settings', '/settings?search']);
+      expect(
+        history.currentTagged,
+        isTrue,
+        reason:
+            'the router\'s first report replaced the entry, so the tag '
+            'is put back for the next reload',
+      );
 
       await tester.tap(find.byKey(QuickSearchKeys.closeButton));
       await tester.pumpAndSettle();
