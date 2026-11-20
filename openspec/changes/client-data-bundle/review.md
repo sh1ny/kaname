@@ -55,3 +55,8 @@ Task 2.1 and 2.2 probes against Serverpod 4.1.2 disproved parts of A11 to A14 du
 
 - **First event at 20 s was 20.003 s at the client.** Group 7's real-time test showed that a stream opened at the announcer's start receives "none" just over 20 s after subscribing, because the server installed it exactly 20 s after start and the WebSocket delivery came on top. The owner chose (2026-11-20) to install "none" 19 s after start; the spec's 20-second limit (C29) is unchanged and the test asserts under 20 s. D8 and task 7.2 amended.
 - **A lock cannot hold a stale read.** Task 7.2 had the "first read held" test hold the state read on a separate locking connection, but a read blocked on a lock sees the newest state when it is released, so it can never return the stale build the test must catch. The owner chose (2026-11-20) to let the real read run and hold its result behind a gate before the announcer uses it. Task 7.2 amended.
+
+## Apply drift (round 20)
+
+- **No reason for the first moments.** D21's reasons did not cover the time before the kept copy has loaded and the first announcement has arrived; "downloading" would be untrue then. The owner chose (2026-11-20) to add a "starting" reason with its own localised message.
+- **Indexing failures.** A bundle that fails to index while the app holds no bundle is reported as "refused", like hash, format and build failures; the owner confirmed (2026-11-20). D21 amended for both.

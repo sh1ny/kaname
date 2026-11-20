@@ -199,7 +199,7 @@ The proposal (`proposal.md`) states the scope; this section holds only what the 
 
 ### D21: Why there is no bundle
 
-- **Choice:** `NoBundle` carries a sealed reason: downloading, no server configured, server unreachable, server has no bundle yet (a valid "none" announcement while the app holds no bundle), refused (hash, format or build), app update needed (round 10). Each has a localised message; exception text, hosts and ports never reach the UI, as the app's existing rule requires (`app/lib/server/logic/server_status.dart:13-18`); this change also writes them to the log, a new policy for bundle errors.
+- **Choice:** `NoBundle` carries a sealed reason: starting (the kept copy is not loaded and no announcement has arrived yet; round 20), downloading, no server configured, server unreachable, server has no bundle yet (a valid "none" announcement while the app holds no bundle), refused (hash, format, build or indexing; round 20), app update needed (round 10). Each has a localised message; exception text, hosts and ports never reach the UI, as the app's existing rule requires (`app/lib/server/logic/server_status.dart:13-18`); this change also writes them to the log, a new policy for bundle errors.
 - **Rejected:** one generic message, because the user could not tell a missing server from an outdated app.
 - **Reversal cost:** low
 - **Important:** yes (changes what users see)
