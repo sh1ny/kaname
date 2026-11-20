@@ -41,7 +41,7 @@ Search SHALL read only the bundle in memory and SHALL make no network request.
 
 #### Scenario: No bundle
 - **WHEN** the app holds no bundle and the user searches
-- **THEN** the search shows "Static data not loaded yet" with a localised reason (downloading, no server configured, server unreachable, server has no bundle yet, data refused, or app update needed), no exception text, host or port, and no empty result list
+- **THEN** the search shows "Static data not loaded yet" with a localised reason (starting, downloading, no server configured, server unreachable, server has no bundle yet, data refused, or app update needed), no exception text, host or port, and no empty result list
 
 ### Requirement: The top bar offers quick search
 On windows wider than 1080 logical pixels the top bar SHALL hold an inline search field with a result list below it. On narrower windows it SHALL hold a search button that opens a full-width search with its results, closed by Escape or back. Results SHALL list each match's name and kind, with a type's group or a system's region, and the field and its results SHALL be reachable by keyboard and screen reader, with localised text.
