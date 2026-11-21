@@ -72,6 +72,7 @@ Paths are relative to the repository root. `bundle/` stands for `packages/kaname
 | static-data-search → Search matches names case-insensitively, prefixes first | Prefix before substring | bundle/test/search_index_test.dart | prefix matches come before substring matches | green |
 | static-data-search → Search matches names case-insensitively, prefixes first | Unpublished type | bundle/test/search_index_test.dart | unpublished type is not a name match | green |
 | static-data-search → Search matches names case-insensitively, prefixes first | Many matches | bundle/test/search_index_test.dart | 300 matches return 50 and a more flag | green |
+| static-data-search → Search matches names case-insensitively, prefixes first | Many matches | app/test/static_data/quick_search_test.dart | a truncated result list ends with the more-matches notice, and a full one has none | green |
 | static-data-search → An exact id matches its record | Type id | bundle/test/search_index_test.dart | exact unpublished type id comes first and its name does not match | green |
 | static-data-search → An exact id matches its record | Unknown id | bundle/test/search_index_test.dart | unknown id returns only name matches | green |
 | static-data-search → Search works with no network | Offline search | app/test/static_data/quick_search_test.dart | offline search finds Jita and sends no request | green |
