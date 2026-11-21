@@ -107,7 +107,10 @@ Uint8List inflateGzip(Uint8List bytes) {
   }
   // The inflater gets only the DEFLATE data, so its lookahead never reads
   // the trailer, and must reach the final block and use every byte of it
-  // (pre-ship round 44).
+  // (pre-ship round 44). Its cursor is the block's true end: archive
+  // rewinds every whole byte its lookahead read but did not use at the
+  // end of each Huffman block, so a stray byte after the final block is
+  // left unread and caught below (pre-ship round 50).
   final deflated = Uint8List.sublistView(bytes, position, length - 8);
   final input = InputMemoryStream(deflated);
   final Inflate inflater;
