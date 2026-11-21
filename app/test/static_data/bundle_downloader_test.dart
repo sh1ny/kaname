@@ -88,6 +88,47 @@ final class HoldingServer {
   Future<void> close() => _socket.close();
 }
 
+/// A local TCP server that accepts connections and never answers: a plain
+/// request waits for response headers, a TLS client for the handshake.
+final class SilentServer {
+  SilentServer._(this._socket);
+
+  static Future<SilentServer> start() async =>
+      SilentServer._(await ServerSocket.bind(InternetAddress.loopbackIPv4, 0));
+
+  final ServerSocket _socket;
+  final _connections = <Socket>[];
+
+  /// Completes when a client opened a connection.
+  final Completer<void> connected = Completer();
+
+  /// Completes when the client closed a connection.
+  final Completer<void> closedByClient = Completer();
+
+  /// The base address of the server under [scheme].
+  Uri base(String scheme) =>
+      Uri.parse('$scheme://127.0.0.1:${_socket.port}/base/');
+
+  void serve() {
+    _socket.listen((connection) {
+      _connections.add(connection);
+      if (!connected.isCompleted) connected.complete();
+      void closed([Object? _]) {
+        if (!closedByClient.isCompleted) closedByClient.complete();
+      }
+
+      connection.listen((_) {}, onDone: closed, onError: closed);
+    });
+  }
+
+  Future<void> close() async {
+    for (final connection in _connections) {
+      connection.destroy();
+    }
+    await _socket.close();
+  }
+}
+
 void main() {
   test('bundle URL resolves against native base path and web /api/ base', () {
     final native = resolve(isWeb: false, define: 'https://kaname.example/base');
@@ -123,6 +164,101 @@ void main() {
     expect(
       await transfer.result.timeout(const Duration(seconds: 5)),
       isA<BundleDownloadCancelled>(),
+    );
+    await server.closedByClient.future.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => fail('the server never saw the connection close'),
+    );
+  });
+
+  group('before response headers', () {
+    // dart:io gives no handle that closes a socket during its TLS
+    // handshake (design D4), so only the plain stage checks the close.
+    for (final (stage, scheme, closes) in [
+      ('while response headers are awaited', 'http', true),
+      ('while the TLS handshake stalls', 'https', false),
+    ]) {
+      test('cancel ends the transfer $stage', () async {
+        final server = await SilentServer.start();
+        addTearDown(server.close);
+        server.serve();
+        final transfer = HttpBundleDownloader(
+          server: ConfiguredServer(server.base(scheme)),
+        ).start(bundle);
+        await server.connected.future.timeout(const Duration(seconds: 5));
+
+        transfer.cancel();
+
+        expect(
+          await transfer.result.timeout(
+            const Duration(seconds: 5),
+            onTimeout: () => fail('the transfer outlived its cancel'),
+          ),
+          isA<BundleDownloadCancelled>(),
+        );
+        if (closes) {
+          await server.closedByClient.future.timeout(
+            const Duration(seconds: 5),
+            onTimeout: () => fail('the server never saw the connection close'),
+          );
+        }
+      });
+
+      test('the time limit ends the transfer $stage', () async {
+        final server = await SilentServer.start();
+        addTearDown(server.close);
+        server.serve();
+        const limit = Duration(milliseconds: 300);
+        final transfer = HttpBundleDownloader(
+          server: ConfiguredServer(server.base(scheme)),
+          timeout: limit,
+        ).start(bundle);
+
+        final result = await transfer.result.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => fail('the transfer outlived its time limit'),
+        );
+
+        expect(
+          result,
+          isA<BundleDownloadFailed>().having(
+            (failed) => failed.failure,
+            'failure',
+            isA<BundleDownloadTimedOut>().having(
+              (timedOut) => timedOut.limit,
+              'limit',
+              limit,
+            ),
+          ),
+        );
+        if (closes) {
+          await server.closedByClient.future.timeout(
+            const Duration(seconds: 5),
+            onTimeout: () => fail('the server never saw the connection close'),
+          );
+        }
+      });
+    }
+  });
+
+  test('the time limit ends a transfer whose body is held open', () async {
+    final server = await HoldingServer.start();
+    addTearDown(server.close);
+    server.serve();
+    const limit = Duration(milliseconds: 500);
+    final transfer = HttpBundleDownloader(
+      server: ConfiguredServer(server.base),
+      timeout: limit,
+    ).start(bundle);
+    await server.bodyStarted.future.timeout(const Duration(seconds: 5));
+
+    expect(
+      await transfer.result.timeout(const Duration(seconds: 5)),
+      isA<BundleDownloadFailed>().having(
+        (failed) => failed.failure,
+        'failure',
+        isA<BundleDownloadTimedOut>(),
+      ),
     );
     await server.closedByClient.future.timeout(
       const Duration(seconds: 5),

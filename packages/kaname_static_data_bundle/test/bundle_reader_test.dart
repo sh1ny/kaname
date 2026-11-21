@@ -333,6 +333,19 @@ void main() {
       expect(refusalOf(bytes), isA<CorruptBundle>());
     });
 
+    test('a record line before the first section marker', () {
+      final bytes = editedBody((body) => ['[99,{},null]', ...body]);
+
+      expect(
+        refusalOf(bytes),
+        isA<CorruptBundle>().having(
+          (r) => r.detail,
+          'detail',
+          contains('before the first section'),
+        ),
+      );
+    });
+
     test('a section that appears twice', () {
       final bytes = editedBody(
         (body) => [...body, '{"section":"types"}', '[99,{},null]'],

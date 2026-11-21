@@ -455,10 +455,12 @@ final class _Bundle implements ClientBundle {
   ///
   /// Only section marker lines are decoded; record lines start with `[` and
   /// are counted, not decoded. Unknown sections are passed over. Throws a
-  /// [FormatException] when a known section appears twice. The pauses are the
+  /// [FormatException] when a known section appears twice or a record line
+  /// comes before the first section marker. The pauses are the
   /// iterable's elements, as in [_decodeSearchSections].
   Iterable<void> _index(int start, int linesPerChunk) sync* {
     BundleSection? current;
+    var framed = false;
     var currentStart = start;
     var currentCount = 0;
     var position = start;
@@ -483,8 +485,13 @@ final class _Bundle implements ClientBundle {
         if (current != null && _ranges.containsKey(current)) {
           throw FormatException('section ${current.file} appears twice');
         }
+        framed = true;
         currentStart = end + 1;
         currentCount = 0;
+      } else if (!framed) {
+        throw const FormatException(
+          'a record line before the first section marker',
+        );
       } else {
         currentCount++;
       }

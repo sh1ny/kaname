@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import '../../server/data/server_address.dart';
+import 'bundle_http_client.dart';
 import 'bundle_store.dart';
 
 /// The URL of the bundle [bundle] on [server]:
@@ -102,8 +103,8 @@ abstract interface class BundleTransfer {
   /// Completes once with the download's outcome; never with an error.
   Future<BundleDownloadResult> get result;
 
-  /// Aborts the download at once, also while its body is still arriving,
-  /// and closes its connection; [result] then completes with
+  /// Aborts the download at once, also while its connection is still being
+  /// set up or its body is still arriving, and closes its connection; [result] then completes with
   /// [BundleDownloadCancelled]. Does nothing once [result] has completed.
   void cancel();
 }
@@ -116,12 +117,14 @@ abstract interface class BundleDownloader {
 
 /// A [BundleDownloader] over `package:http`, from the server [server].
 final class HttpBundleDownloader implements BundleDownloader {
-  /// Creates the downloader for [server], sending through [client].
+  /// Creates the downloader for [server]; each transfer sends through its
+  /// own client from [clientFor], which the transfer's abort ends at every
+  /// stage of the connection.
   HttpBundleDownloader({
     required this.server,
-    http.Client? client,
     this.timeout = defaultTimeout,
-  }) : _client = client ?? http.Client();
+    this._clientFor = abortableBundleClient,
+  });
 
   /// The time limit of one download (design D4's 2 minutes).
   static const defaultTimeout = Duration(minutes: 2);
@@ -132,23 +135,28 @@ final class HttpBundleDownloader implements BundleDownloader {
   /// How long one download may take before it is aborted.
   final Duration timeout;
 
-  final http.Client _client;
+  final http.Client Function(Future<void> abort) _clientFor;
 
   @override
   BundleTransfer start(BundleIdentity bundle) =>
-      _HttpBundleTransfer(_client, bundleUrl(server, bundle), timeout);
+      _HttpBundleTransfer(_clientFor, bundleUrl(server, bundle), timeout);
 }
 
 /// Why a transfer's abort trigger fired.
 enum _Abort { cancelled, timedOut }
 
 final class _HttpBundleTransfer implements BundleTransfer {
-  _HttpBundleTransfer(this._client, this._url, this._timeout) {
+  _HttpBundleTransfer(
+    http.Client Function(Future<void> abort) clientFor,
+    this._url,
+    this._timeout,
+  ) {
+    _client = clientFor(_abortTrigger.future);
     _timer = Timer(_timeout, () => _abort(_Abort.timedOut));
     unawaited(_run());
   }
 
-  final http.Client _client;
+  late final http.Client _client;
   final Uri _url;
   final Duration _timeout;
   late final Timer _timer;
@@ -190,9 +198,12 @@ final class _HttpBundleTransfer implements BundleTransfer {
     } on Exception catch (error) {
       // Any other failure of the platform client is still a failed
       // download, never an error out of [result].
-      outcome = BundleDownloadFailed(BundleNetworkError('$error'));
+      outcome = _aborted != null
+          ? _abortedOutcome()
+          : BundleDownloadFailed(BundleNetworkError('$error'));
     }
     _timer.cancel();
+    _client.close();
     _result.complete(outcome);
   }
 
