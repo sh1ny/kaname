@@ -122,6 +122,36 @@ void main() {
       expect(created.heldBundle(101, fresh.sha256), isNotNull);
     });
 
+    test('after A then B, announcing none keeps only B servable, as the '
+        'bundle announced before it, and a later C keeps B and C', () async {
+      await seedBuild(session, 110, SdeBuildState.active);
+      final a = await seedBundle(session, 110);
+      final created = announcer();
+      await startAndSettle(created);
+      await seedBuild(session, 111, SdeBuildState.staged);
+      final b = await seedBundle(session, 111);
+      await switchTo(session, 111);
+      await created.workerReplied(switchedReply(111));
+      expect(created.heldBundle(110, a.sha256), isNotNull);
+
+      await SdeBundle.db.deleteWhere(session, where: (t) => t.build > 0);
+      await tick(created);
+
+      expect(namedBuilds(bus.published), [110, 111, null]);
+      expect(created.heldBundle(110, a.sha256), isNull);
+      expect(created.heldBundle(111, b.sha256), isNotNull);
+
+      await seedBuild(session, 112, SdeBuildState.staged);
+      final c = await seedBundle(session, 112);
+      await switchTo(session, 112);
+      await created.workerReplied(switchedReply(112));
+
+      expect(namedBuilds(bus.published), [110, 111, null, 112]);
+      expect(created.heldBundle(110, a.sha256), isNull);
+      expect(created.heldBundle(111, b.sha256), isNotNull);
+      expect(created.heldBundle(112, c.sha256), isNotNull);
+    });
+
     test('without a repair callback an owed repair does not interrupt '
         'announcement refreshes', () async {
       await seedBuild(session, 300, SdeBuildState.active);

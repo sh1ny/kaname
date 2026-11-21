@@ -456,6 +456,43 @@ void main() {
       _expectRising(stalled.events);
     });
 
+    // Scenario: Install during Serverpod's write.
+    test('an announcement handed to Serverpod before a newer one is installed '
+        'reaches the app first, then the newer one', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await seedBuild(session, 101, SdeBuildState.previous);
+      await seedBundle(session, 101);
+      await rig.start();
+      final proxy = await TcpProxy.start('127.0.0.1', server.port);
+      addTearDown(proxy.close);
+      final client = wire.Client('http://127.0.0.1:${proxy.port}/');
+      addTearDown(client.close);
+      final feed = _Feed(client.staticData.bundleAnnouncements());
+      await feed.waitFor(1);
+
+      // H (build 101) is handed over and its write held on the way to the
+      // app; H2 (build 100) is installed before the app has received H.
+      proxy.holdTargetReads();
+      await rollback(session);
+      await rig.announcer.request();
+      await _quiet();
+      await rollback(session);
+      await rig.announcer.request();
+      await _quiet();
+      expect(feed.events, hasLength(1), reason: 'H is still held');
+      proxy.releaseTargetReads();
+      await feed.waitFor(3);
+      await _quiet();
+
+      expect(_builds(feed.events), [100, 101, 100]);
+      _expectRising(feed.events);
+      expect(
+        (feed.events.last as wire.BundleAnnouncementNamed).revision,
+        rig.announcer.installed!.revision,
+      );
+    });
+
     // Scenario: Stalled past the limit.
     test('a stream whose client stopped reading is ended at 30 min, frees '
         'its place and a new subscription takes it', () async {

@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:kaname_static_data/kaname_static_data.dart';
 import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
-    show BuiltBundle;
+    show BuiltBundle, bundleFormatMajor, bundleFormatMinor;
 import 'package:test/test.dart';
 
 void main() {
@@ -72,5 +72,36 @@ void main() {
       expect((second as BundleRepairRan).step, isA<BundleAlreadyCurrent>());
       expect(attempts, [7]);
     });
+
+    for (final (missing, sha256, size) in [
+      ('hash', null, 3),
+      ('size', 'hash-7', null),
+    ]) {
+      test('a built bundle of the current format stored without its $missing '
+          'counts as missing and is built again', () async {
+        final store = InMemoryStaticDataStore()
+          ..seedBuild(7, BuildState.active)
+          ..seedBundle(
+            StoredBundle(
+              build: 7,
+              outcome: BundleOutcome.built,
+              formatMajor: bundleFormatMajor,
+              formatMinor: bundleFormatMinor,
+              builtAt: at,
+              sha256: sha256,
+              size: size,
+            ),
+          );
+        expect(store.bundles[7]!.isCurrent, isFalse);
+
+        final result = await repair(store).run();
+
+        expect((result as BundleRepairRan).step, isA<BundleBuilt>());
+        expect(attempts, [7]);
+        expect(store.bundles[7]!.sha256, 'hash-7');
+        expect(store.bundles[7]!.size, 3);
+        expect(store.bundles[7]!.isCurrent, isTrue);
+      });
+    }
   });
 }

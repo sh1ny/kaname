@@ -58,14 +58,19 @@ final class StoredBundle {
   /// When the bundle build ended.
   final DateTime builtAt;
 
-  /// Whether this is a built bundle in the format this builder writes.
+  /// Whether this is a built bundle in the format this builder writes, with
+  /// its hash and size recorded.
   ///
-  /// A failed bundle, and a built one of another format version, count as
-  /// missing and are built again (D20, C12).
+  /// A failed bundle, a built one of another format version, and a built one
+  /// missing its hash or size count as missing and are built again (D20,
+  /// C12): the announcer reads the same rule, so it never asks for a repair
+  /// this step would skip.
   bool get isCurrent =>
       outcome == BundleOutcome.built &&
       formatMajor == bundle.bundleFormatMajor &&
-      formatMinor == bundle.bundleFormatMinor;
+      formatMinor == bundle.bundleFormatMinor &&
+      sha256 != null &&
+      size != null;
 }
 
 /// What a store records about one build's bundle.

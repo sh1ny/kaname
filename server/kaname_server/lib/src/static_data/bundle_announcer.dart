@@ -575,7 +575,8 @@ final class BundleAnnouncer {
             formatMajor: ref.formatMajor,
           );
     // One bundle per build: a rebuilt hash replaces the old hash at once; the
-    // bundle announced before another build's becomes the previous one.
+    // bundle announced before another build's, or before none, becomes the
+    // previous one, and announcing none leaves no announced bundle.
     final before = _announcedBundle;
     if (before != null && before.ref.build != ref?.build) {
       _previousBundle = before;
@@ -583,7 +584,7 @@ final class BundleAnnouncer {
     if (held != null && _previousBundle?.ref.build == held.ref.build) {
       _previousBundle = null;
     }
-    _announcedBundle = held ?? _announcedBundle;
+    _announcedBundle = ref == null ? null : held ?? _announcedBundle;
     _installed = announcement;
     if (!_firstInstalled.isCompleted) _firstInstalled.complete();
     try {
