@@ -14,7 +14,7 @@ A bundle SHALL hold the data of exactly one SDE build: the typed columns of the 
 - **THEN** the bundle names build N, its format version, build N's release date and the locale `en`, holds a section for each of those 17 files, and a type record carries its typed columns, `radius`, `factionID`, `raceID` and `variationParentTypeID`, and no description
 
 ### Requirement: Section presence follows accepted records
-Each section SHALL record the count of its accepted records and SHALL be present only when that count is above zero, on both build paths, whatever import report is kept.
+Each section SHALL record the count of its accepted records and SHALL be present exactly when that count is above zero: a section with records SHALL be present and one without SHALL be absent, on both build paths, whatever archive membership or import report is kept.
 
 #### Scenario: Optional file missing
 - **WHEN** a bundle is built from a build that has no `dynamicItemAttributes` file and accepted records in each of the other 16 files
