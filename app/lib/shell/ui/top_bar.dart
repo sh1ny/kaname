@@ -249,9 +249,12 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
       location.state is Map;
 
   void _openSearch() {
-    if (_backPending) {
-      // The browser has yet to step back off the last search's entry; an
-      // open now would push onto that entry and the Back would land on it.
+    if (_backPending || _backWhenRecorded) {
+      // The browser has yet to step back off the last search's entry, or a
+      // close is waiting to ask it to once the entry is recorded; an open
+      // now would push onto that entry and the Back would land on it. Both
+      // are one transition: the search opens once the Back is reported
+      // (pre-ship round 41).
       _openWhenBack = true;
       return;
     }
@@ -310,6 +313,10 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
             // must find a pair, not a shared link to unmark in place.
             history.tagCurrentEntry();
             _back();
+          } else if (_openWhenBack) {
+            // No Back is needed after all, so a reopen waits for none.
+            _openWhenBack = false;
+            if (!widget.inlineSearch) _openSearch();
           }
           return;
         }

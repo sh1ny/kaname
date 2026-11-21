@@ -836,6 +836,41 @@ void main() {
       expect(history.currentTagged, isTrue);
     });
 
+    // Pre-ship round 41: a reopen between a deferred close and its Back.
+    testWidgets('reopening after a close that waits for the entry to be '
+        'recorded, before its Back is asked, keeps the search open', (
+      tester,
+    ) async {
+      history = FakeBrowserHistory(tester);
+      harness = await Rig(kept: copyN).pump(
+        tester,
+        size: _narrow,
+        location: '/settings',
+        browserHistory: history,
+      );
+      harness.router.go('/settings/licences');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(QuickSearchKeys.openButton));
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      // One frame rebuilds the opener; the close's Back is still deferred.
+      await tester.pump();
+      expect(find.byKey(QuickSearchKeys.openButton), findsOneWidget);
+      await tester.tap(find.byKey(QuickSearchKeys.openButton));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(QuickSearchKeys.field), findsOneWidget);
+      expect(location(), '/settings/licences?search');
+      expect(history.current, '/settings/licences?search');
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      expect(find.byKey(QuickSearchKeys.field), findsNothing);
+      expect(location(), '/settings/licences', reason: 'the page stays');
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      expect(location(), '/settings', reason: 'no repeated page entry');
+    });
+
     testWidgets('opening again while the close\'s Back is still pending '
         'opens a new search entry once the Back arrives', (tester) async {
       await openOverLicences(tester);
