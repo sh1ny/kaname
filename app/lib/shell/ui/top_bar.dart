@@ -263,7 +263,13 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
         if (!mounted) return;
         if (_backWhenRecorded) {
           _backWhenRecorded = false;
-          if (hasSearchMarker(_location)) history.back();
+          if (hasSearchMarker(_location)) {
+            // Tagged first: Forward can return to it, and a reload there
+            // must find a pair, not a shared link to unmark in place.
+            history
+              ..tagCurrentEntry()
+              ..back();
+          }
           return;
         }
         if (_searchOpen &&

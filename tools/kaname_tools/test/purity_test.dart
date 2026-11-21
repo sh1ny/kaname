@@ -407,6 +407,21 @@ void main() {
       expect(result.err, contains('"dart:io"'));
     });
 
+    test('an import after argument-free annotations fails', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        "import 'b.dart';\n"
+            "@deprecated\n"
+            "import 'c.dart';\n"
+            "@meta.internal import 'dart:io';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.code, 1);
+      expect(result.err, contains('"dart:io"'));
+    });
+
     test('an import shown in a multiline string passes', () async {
       fs.writeFile(
         'packages/kaname_core/lib/src/a.dart',

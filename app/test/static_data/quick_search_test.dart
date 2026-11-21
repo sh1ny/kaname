@@ -753,6 +753,14 @@ void main() {
       expect(history.current, '/settings/licences');
       expect(location(), '/settings/licences', reason: 'the page stays');
       expect(find.byType(LicensePage), findsOneWidget);
+
+      // Forward returns to the search entry the close stepped back from. It
+      // is tagged, so a reload on it finds a page-and-search pair (D22's
+      // reload tests) rather than a shared link it would unmark in place.
+      await history.pressForward();
+      await tester.pumpAndSettle();
+      expect(history.current, '/settings/licences?search');
+      expect(history.currentTagged, isTrue);
     });
 
     testWidgets('after Back and Forward reopen the search, closing it steps '

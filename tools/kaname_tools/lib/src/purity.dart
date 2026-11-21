@@ -102,14 +102,14 @@ final class PurityCheck {
           }
           i++;
         case _Punct(text: '@'):
-          // An annotation: a dotted name and its optional arguments.
+          // An annotation: one name, each further `.name`, and optional
+          // arguments; the next word, such as `import`, is not part of it.
           i++;
-          while (i < tokens.length) {
-            if (tokens[i] case _Word() || _Punct(text: '.')) {
-              i++;
-            } else {
-              break;
-            }
+          if (tokens.elementAtOrNull(i) case _Word()) i++;
+          while (tokens.elementAtOrNull(i) is _Punct &&
+              (tokens[i] as _Punct).text == '.' &&
+              tokens.elementAtOrNull(i + 1) is _Word) {
+            i += 2;
           }
           if (tokens.elementAtOrNull(i) case _Punct(text: '(')) {
             var depth = 0;
