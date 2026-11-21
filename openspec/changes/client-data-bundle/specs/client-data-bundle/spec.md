@@ -17,7 +17,7 @@ A bundle SHALL hold the data of exactly one SDE build: the typed columns of the 
 Each section SHALL record the count of its accepted records and SHALL be present only when that count is above zero, on both build paths, whatever import report is kept.
 
 #### Scenario: Optional file missing
-- **WHEN** a bundle is built from a build that has no `dynamicItemAttributes` file
+- **WHEN** a bundle is built from a build that has no `dynamicItemAttributes` file and accepted records in each of the other 16 files
 - **THEN** the bundle is built, names that section as absent, and every other section is present
 
 #### Scenario: Optional file with no accepted records
@@ -93,7 +93,7 @@ The server SHALL build a bundle for a staged build before switching to it, and f
 - **THEN** build N-1's bundle is removed in the same step
 
 ### Requirement: A missing active bundle is repaired
-Every start of the monolith role in the development, staging or production run mode, every build check that holds the static-data lock, and every 60-second check while the bundle is still owed SHALL build the active build's bundle when it is missing, failed or of another format version. A check SHALL NOT build a bundle it already attempted in that check.
+Every start of the monolith role in the development, staging or production run mode, every build check that holds the static-data lock, and every 60-second check while the bundle is still owed SHALL build the active build's bundle when it is missing, failed or of another format version. A built bundle lacking its hash, size or stored bytes SHALL count as missing, for the announcer and the repair alike. A check SHALL NOT build a bundle it already attempted in that check.
 
 #### Scenario: Restart after an interrupted bundle build
 - **WHEN** the server stops while it builds the active build's bundle, and starts again the same day after the daily check
@@ -106,6 +106,10 @@ Every start of the monolith role in the development, staging or production run m
 #### Scenario: Format version changed
 - **WHEN** a server whose bundle format is 2.0 starts and the active build's stored bundle is format 1.0
 - **THEN** it builds a format 2.0 bundle for the active build and announces it
+
+#### Scenario: Bundle bytes lost
+- **WHEN** the active build's bundle metadata is stored but its bytes are not
+- **THEN** the announcer and the repair, each checking only that a bytes row of the bundle's build and hash exists, count it as missing: the announcer does not announce it and owes its repair, and the next build check rebuilds and announces it
 
 ### Requirement: The server serves a bundle by build
 The server SHALL serve the announced bundle and the previous one, at most one per build, over plain HTTP under its base path, addressed by build number and SHA-256, without authentication, with caching headers that mark it immutable, deciding from the announcer's state and never from the database. It SHALL answer 404 for any other build, hash or format version, a stored bundle included.
