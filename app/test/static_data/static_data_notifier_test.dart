@@ -776,6 +776,34 @@ void main() {
     expect(h.state, readyOn(copyN1, updating: false));
   });
 
+  test('an announcement queued behind a held kept load is dropped when its '
+      'subscription is replaced before the load ends', () async {
+    final h = harnessHolding(copyN);
+    h.fakeStore!.holdLoad = true;
+    await h.start();
+    h.container.read(serverStatusProvider);
+    h.health.answer(
+      HealthReport(
+        version: '0.1.0',
+        postgres: DependencyStatus.up,
+        redis: DependencyStatus.up,
+      ),
+    );
+    await pumpEventQueue();
+    // The first stream names N+1 while the kept copy is still loading.
+    await h.send(announce(copyN1));
+
+    // The user's check replaces that stream; the new one has not answered.
+    unawaited(h.container.read(serverStatusProvider.notifier).check());
+    await pumpEventQueue();
+    expect(h.source.subscribes, 2);
+    h.fakeStore!.releaseLoads();
+    await pumpEventQueue();
+
+    expect(h.downloader.started, isEmpty, reason: 'the replaced event');
+    expect(h.state, readyOn(copyN, updating: false));
+  });
+
   test(
     'late event and ending from a replaced subscription change nothing',
     () async {

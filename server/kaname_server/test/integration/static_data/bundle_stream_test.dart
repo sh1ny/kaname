@@ -14,6 +14,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:kaname_app/static_data/data/bundle_downloader.dart';
@@ -458,21 +459,59 @@ void main() {
     // Scenario: Stalled past the limit.
     test('a stream whose client stopped reading is ended at 30 min, frees '
         'its place and a new subscription takes it', () async {
-      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBuild(session, 100, SdeBuildState.previous);
       await seedBundle(session, 100);
+      await seedBuild(session, 101, SdeBuildState.active);
+      await seedBundle(session, 101);
       await rig.start();
-      bundleAnnouncementRuntime.maxStreams = 1;
-      final proxy = await TcpProxy.start('127.0.0.1', server.port);
+      // The stalled client's connection gets a small receive buffer at the
+      // proxy, so what the server cannot hand to the kernel is measurable.
+      var receiveBuffer = 0;
+      Socket? upstreamSocket;
+      final proxy = await TcpProxy.startWith(() async {
+        final upstream = upstreamSocket = await Socket.connect(
+          '127.0.0.1',
+          server.port,
+        );
+        upstream.setRawOption(
+          RawSocketOption.fromInt(RawSocketOption.levelSocket, _soRcvBuf, 4096),
+        );
+        final read = upstream.getRawOption(
+          RawSocketOption(RawSocketOption.levelSocket, _soRcvBuf, Uint8List(4)),
+        );
+        receiveBuffer = ByteData.sublistView(read).getInt32(0, Endian.host);
+        return upstream;
+      });
       addTearDown(proxy.close);
       final stalledClient = wire.Client('http://127.0.0.1:${proxy.port}/');
       addTearDown(stalledClient.close);
-      final stalled = _Feed(stalledClient.staticData.bundleAnnouncements());
-      await stalled.waitFor(1);
-      final start = await rig.listenerCount();
-      proxy.holdTargetReads();
-      expect(start, 1);
+      const stalledCount = 1999;
+      bundleAnnouncementRuntime.maxStreams = stalledCount + 1;
+      final stalled = [
+        for (var i = 0; i < stalledCount; i++)
+          _Feed(stalledClient.staticData.bundleAnnouncements()),
+      ];
+      for (final feed in stalled) {
+        await feed.waitFor(1);
+      }
+      final reading = rig.subscribe();
+      await reading.waitFor(1);
+      expect(receiveBuffer, inInclusiveRange(1, 64 * 1024));
 
-      // The only place is taken: a second subscription is refused.
+      proxy.holdTargetReads();
+      final held = proxy.bytesFromTarget;
+      // Each rollback changes the announced build, so every stalled stream
+      // is sent one more event: far more than the kernel can hold for the
+      // connection, so the server's writes back up behind a blocked
+      // transport (Serverpod has no backpressure; A14).
+      for (var i = 0; i < 80; i++) {
+        await rollback(session);
+        await rig.announcer.request();
+        await reading.waitFor(2 + i);
+      }
+      final kernel = receiveBuffer + _maxSendBuffer();
+
+      // The only free place is taken: a further subscription is refused.
       final refused = rig.subscribe();
       await refused.ended;
       expect(refused.events, isEmpty);
@@ -480,19 +519,35 @@ void main() {
       rig.streamClock.elapse(_thirtyMinutes);
       await _until(
         () => bundleAnnouncementRuntime.openStreams == 0,
-        'the stalled stream to free its place',
+        'the stalled streams to free their places',
       );
       await rig.listenersAre(0);
       final admitted = rig.subscribe();
       await admitted.waitFor(1);
-      proxy.releaseTargetReads();
+      expect(proxy.bytesFromTarget, held, reason: 'still no reads');
 
-      expect(_builds(admitted.events), [100]);
-      // Once its client reads again, the stalled stream itself is seen to
-      // have ended, without an error.
-      await stalled.ended;
-      expect(stalled.errors, isEmpty);
-    });
+      // The backlog drains at loopback speed once the buffer is wide again.
+      upstreamSocket!.setRawOption(
+        RawSocketOption.fromInt(
+          RawSocketOption.levelSocket,
+          _soRcvBuf,
+          4 * 1024 * 1024,
+        ),
+      );
+      proxy.releaseTargetReads();
+      expect(_builds(admitted.events), [
+        (reading.events.last as wire.BundleAnnouncementNamed).build,
+      ]);
+      // Once its client reads again, each stalled stream is seen to have
+      // ended, without an error; what the server wrote while the client did
+      // not read exceeded what the kernel could hold, so the expiry did not
+      // wait for a writable transport.
+      for (final feed in stalled) {
+        await feed.ended;
+        expect(feed.errors, isEmpty);
+      }
+      expect(proxy.bytesFromTarget - held, greaterThan(kernel));
+    }, timeout: const Timeout(Duration(minutes: 4)));
 
     // Scenario: Stream expiry.
     test('healthy stream ends at 30 min, frees its place, removes its bus '
@@ -666,6 +721,25 @@ void _expectRising(Iterable<wire.BundleAnnouncement> events) {
 }
 
 /// A pause long enough for an unwanted event to show up.
+/// `SO_RCVBUF` on Linux, where the integration tests run.
+const _soRcvBuf = 8;
+
+/// The largest send buffer the kernel gives a TCP socket, from
+/// `net.ipv4.tcp_wmem` and `net.core.wmem_max`.
+int _maxSendBuffer() {
+  final autotuned = int.parse(
+    File('/proc/sys/net/ipv4/tcp_wmem')
+        .readAsStringSync()
+        .trim()
+        .split(RegExp(r'\s+'))
+        .last,
+  );
+  final set = int.parse(
+    File('/proc/sys/net/core/wmem_max').readAsStringSync().trim(),
+  );
+  return autotuned > set ? autotuned : set;
+}
+
 Future<void> _quiet() => Future<void>.delayed(const Duration(seconds: 1));
 
 /// Waits until [condition] holds, polling.

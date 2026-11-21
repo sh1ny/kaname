@@ -341,70 +341,31 @@ void main() {
         'commit, no event names B', () async {
       await seedBuild(session, 700, SdeBuildState.active);
       await seedBundle(session, 700);
-      await seedBuild(session, 701, SdeBuildState.previous);
+      await seedBuild(session, 701, SdeBuildState.staged);
       await seedBundle(session, 701);
       final created = announcer();
       await startAndSettle(created);
       expect(namedBuilds(bus.published), [700]);
 
-      // A separate transaction locks the build table, so the next state read
-      // is held mid-statement; inside it, 701 becomes active and 700 is
-      // rolled back to, and both commit when the lock is released.
-      final release = Completer<void>();
-      final locked = Completer<void>();
-      final holder = session.db.transaction((tx) async {
-        await session.db.unsafeExecute(
-          'LOCK TABLE "sde_build" IN ACCESS EXCLUSIVE MODE',
-          transaction: tx,
-        );
-        await session.db.unsafeExecute(
-          'UPDATE "sde_build" SET "state" = \'staged\', "previousMarker" = NULL '
-          'WHERE "state" = \'previous\'',
-          transaction: tx,
-        );
-        await session.db.unsafeExecute(
-          'UPDATE "sde_build" SET "state" = \'previous\', '
-          '"activeMarker" = NULL, "previousMarker" = TRUE '
-          'WHERE "state" = \'active\'',
-          transaction: tx,
-        );
-        await session.db.unsafeExecute(
-          'UPDATE "sde_build" SET "state" = \'active\', "activeMarker" = TRUE '
-          'WHERE "state" = \'staged\'',
-          transaction: tx,
-        );
-        // Build 701 is active here; the rollback to 700 follows.
-        await session.db.unsafeExecute(
-          'UPDATE "sde_build" SET "state" = \'staged\', "previousMarker" = NULL '
-          'WHERE "state" = \'previous\'',
-          transaction: tx,
-        );
-        await session.db.unsafeExecute(
-          'UPDATE "sde_build" SET "state" = \'previous\', '
-          '"activeMarker" = NULL, "previousMarker" = TRUE '
-          'WHERE "state" = \'active\'',
-          transaction: tx,
-        );
-        await session.db.unsafeExecute(
-          'UPDATE "sde_build" SET "state" = \'active\', "activeMarker" = TRUE '
-          'WHERE "state" = \'staged\'',
-          transaction: tx,
-        );
-        locked.complete();
-        await release.future;
-      });
-      addTearDown(() async {
-        if (!release.isCompleted) release.complete();
-        await holder;
-      });
-      await locked.future;
+      // The tick's read waits before it queries Postgres; meanwhile the
+      // switch to 701 and the rollback to 700 commit, each on its own.
+      final gate = source.holdReadStarts = Completer<void>();
       final reads = source.reads;
       clock.elapse(const Duration(seconds: 60));
       await _eventually(() => source.reads == reads + 1, 'the read started');
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+      await switchTo(session, 701);
+      expect(
+        (await SdeBuild.db.findFirstRow(
+          session,
+          where: (t) => t.state.equals(SdeBuildState.active),
+        ))?.build,
+        701,
+        reason: 'the switch to B committed',
+      );
+      await rollback(session);
 
-      release.complete();
-      await holder;
+      source.holdReadStarts = null;
+      gate.complete();
       await created.settled;
 
       expect(namedBuilds(bus.published), [700], reason: 'no event names 701');

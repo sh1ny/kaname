@@ -152,6 +152,10 @@ final class ScriptedSource implements BundleStateSource {
   /// itself has already been done when it waits.
   Completer<void>? holdReads;
 
+  /// While set, a state read waits for the gate before it queries the
+  /// database, so it reads what is committed when the gate opens.
+  Completer<void>? holdReadStarts;
+
   /// While set, a byte load completes only after the gate does.
   Completer<void>? holdLoads;
 
@@ -169,6 +173,7 @@ final class ScriptedSource implements BundleStateSource {
       failReads--;
       throw StateError('the state read failed');
     }
+    if (holdReadStarts case final start?) await start.future;
     final result = await inner.readState();
     if (gate != null) await gate.future;
     return result;

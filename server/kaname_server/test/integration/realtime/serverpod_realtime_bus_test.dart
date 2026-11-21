@@ -145,13 +145,15 @@ void main() {
             .listen((message) => received.add(message.build));
         addTearDown(subscription.cancel);
 
-        // A sender at a version this receiver does not know.
+        // A sender at a version this receiver does not know, with a payload
+        // of the topic's type on the topic's channel: only the version is
+        // wrong.
         await server.pod.server.messageCentral.postMessage(
           _topic.name,
           const BusEnvelope(
             topic: 'test-static-data',
             version: 99,
-            payload: null,
+            payload: _BuildChanged(4),
           ),
           scope: MessageScope.local,
         );
