@@ -140,7 +140,8 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
         // tag it again for the next reload.
         _tagSearchEntry();
       } else {
-        history.back();
+        // Guarded like every Back the bar asks for (pre-ship round 40).
+        _back();
       }
       return;
     }

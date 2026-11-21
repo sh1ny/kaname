@@ -21,6 +21,17 @@ final class TcpProxy {
   /// The bytes read from the target so far, on every connection.
   int get bytesFromTarget => _bytesFromTarget;
 
+  int _bytesFromClients = 0;
+  int _connections = 0;
+
+  /// The bytes the clients sent so far, on every connection, whether or
+  /// not the target took them: a query a client starts shows here even
+  /// while [holdTargetReads] keeps its answer back.
+  int get bytesFromClients => _bytesFromClients;
+
+  /// How many client connections the proxy accepted so far.
+  int get connections => _connections;
+
   /// The loopback port that forwards to the target.
   int get port => _server.port;
 
@@ -65,10 +76,20 @@ final class TcpProxy {
     final proxy = TcpProxy._(server);
     server.listen((client) async {
       proxy._sockets.add(client);
+      proxy._connections++;
       try {
         final upstream = await connect();
         proxy._sockets.add(upstream);
-        unawaited(client.cast<List<int>>().pipe(upstream).catchError((_) {}));
+        unawaited(
+          client
+              .cast<List<int>>()
+              .map((data) {
+                proxy._bytesFromClients += data.length;
+                return data;
+              })
+              .pipe(upstream)
+              .catchError((_) {}),
+        );
         proxy._forwardTargetReads(upstream, client);
       } on SocketException {
         client.destroy();

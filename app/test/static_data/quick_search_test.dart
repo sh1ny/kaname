@@ -1077,6 +1077,35 @@ void main() {
       expect(location(), '/home');
     });
 
+    // Pre-ship round 40: the reload's Back is guarded like any other.
+    testWidgets('a wide reload whose Back is pending keeps the search closed '
+        'through resizing and steps back once', (tester) async {
+      history = FakeBrowserHistory(
+        tester,
+        restored: ['/home', '/settings', '/settings?search'],
+        restoredTagged: true,
+      )..holdBacks = true;
+      harness = await Rig(kept: copyN)
+          .pump(tester, location: '/settings?search', browserHistory: history);
+      expect(history.backCalls, 1);
+
+      setWindowSize(tester, _narrow);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(QuickSearchKeys.field),
+        findsNothing,
+        reason: 'the entry is being left',
+      );
+      setWindowSize(tester, _wide);
+      await tester.pumpAndSettle();
+      await history.releaseBacks();
+      await tester.pumpAndSettle();
+
+      expect(history.backCalls, 1);
+      expect(location(), '/settings');
+      expect(history.current, '/settings');
+    });
+
     testWidgets('a reloaded page with the search open on a wide window steps '
         'back over its entry', (tester) async {
       history = FakeBrowserHistory(

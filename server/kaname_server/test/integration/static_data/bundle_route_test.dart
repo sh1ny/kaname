@@ -1233,6 +1233,11 @@ void _bundleRouteTests() {
         throwsA(isA<TimeoutException>()),
         reason: 'Postgres answers nothing now',
       );
+      // Measured at the transport the pool uses, after the probe above: a
+      // query any session starts, awaited or not, sends bytes or opens a
+      // connection.
+      final sent = rig.postgres.bytesFromClients;
+      final connections = rig.postgres.connections;
       for (var i = 0; i < 3; i++) {
         final answer = await _fetch(
           rig.port,
@@ -1242,8 +1247,15 @@ void _bundleRouteTests() {
         expect(answer.body, hasLength(bundle.size));
       }
 
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
       expect(rig.sessionsOpened, sessions, reason: 'no session was opened');
       expect((rig.source.reads, rig.source.loads), (reads, loads));
+      expect(
+        (rig.postgres.bytesFromClients, rig.postgres.connections),
+        (sent, connections),
+        reason: 'no database traffic during the GETs',
+      );
     });
 
     // Scenario: Rebuilt bundle.
