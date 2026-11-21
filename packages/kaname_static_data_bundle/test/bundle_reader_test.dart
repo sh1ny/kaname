@@ -178,6 +178,38 @@ void main() {
     );
   });
 
+  // Pre-ship round 43: the browser's gzip DecompressionStream takes one
+  // member only, so the native reader does too.
+  test('valid bundle lines split across two gzip members are refused', () {
+    final lines = const GZipDecoder().decodeBytes(
+      fixtureBuilder().build().bytes,
+    );
+    final half = lines.length ~/ 2;
+    final bytes = Uint8List.fromList([
+      ...const GZipEncoder().encodeBytes(lines.sublist(0, half)),
+      ...const GZipEncoder().encodeBytes(lines.sublist(half)),
+    ]);
+
+    expect(
+      refused(
+        openBundle(bytes, build: fixtureBuild, sha256: bundleSha256(bytes)),
+      ),
+      isA<CorruptBundle>().having((r) => r.detail, 'detail', contains('gzip')),
+    );
+  });
+
+  test('a gzip member with trailing bytes after it is refused', () {
+    final built = fixtureBuilder().build().bytes;
+    final bytes = Uint8List.fromList([...built, 0]);
+
+    expect(
+      refused(
+        openBundle(bytes, build: fixtureBuild, sha256: bundleSha256(bytes)),
+      ),
+      isA<CorruptBundle>().having((r) => r.detail, 'detail', contains('gzip')),
+    );
+  });
+
   test('newer major is refused naming both versions', () {
     final bytes = editedBundle(
       (header) => {...header, 'formatMajor': 2, 'formatMinor': 3},

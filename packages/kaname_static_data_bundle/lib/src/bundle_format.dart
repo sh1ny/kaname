@@ -52,32 +52,66 @@ Uint8List deterministicGzip(Uint8List data, {required int level}) {
   return out.takeBytes();
 }
 
-/// Inflates the gzip file [bytes], checking its CRC.
+/// Inflates the gzip file [bytes], checking its CRC and length.
 ///
-/// Throws a [FormatException] when [bytes] is not a valid gzip file. The
-/// gzip framing (magic and deflate method) is checked first, because the
-/// native decoder also takes zlib framing, which the browser's gzip
-/// `DecompressionStream` refuses (pre-ship round 39).
+/// Throws a [FormatException] when [bytes] is not exactly one valid gzip
+/// member: the web opener's `DecompressionStream('gzip')` takes nothing
+/// else, so neither does this. The header is checked first, because the
+/// native decoder also takes zlib framing (pre-ship round 39); the member
+/// must end exactly at the end of [bytes], because the native decoder also
+/// takes concatenated members (pre-ship round 43). The builder writes one
+/// member ([deterministicGzip]).
 Uint8List inflateGzip(Uint8List bytes) {
-  if (bytes.length < 18 ||
-      bytes[0] != 0x1f ||
-      bytes[1] != 0x8b ||
-      bytes[2] != 0x08) {
+  const notGzip = 'not a valid gzip file';
+  final length = bytes.length;
+  if (length < 18 || bytes[0] != 0x1f || bytes[1] != 0x8b || bytes[2] != 0x08) {
     throw const FormatException(
-      'not a valid gzip file: no gzip header with the deflate method',
+      '$notGzip: no gzip header with the deflate method',
     );
   }
+  final flags = bytes[3];
+  if (flags & 0xe0 != 0) {
+    throw const FormatException('$notGzip: reserved header flags are set');
+  }
+  var position = 10;
+  if (flags & 0x04 != 0) {
+    if (position + 2 > length) {
+      throw const FormatException('$notGzip: truncated header');
+    }
+    position += 2 + (bytes[position] | bytes[position + 1] << 8);
+  }
+  for (final flag in const [0x08, 0x10]) {
+    // A file name or comment, each ending in a zero byte.
+    if (flags & flag == 0) continue;
+    while (position < length && bytes[position] != 0) {
+      position++;
+    }
+    position++;
+  }
+  if (flags & 0x02 != 0) position += 2;
+  if (position > length - 8) {
+    throw const FormatException('$notGzip: truncated header');
+  }
+  final input = InputMemoryStream(bytes)..skip(position);
+  final Uint8List inflated;
   try {
-    return const GZipDecoder().decodeBytes(
-      bytes,
-      verify: true,
-      throwOnError: true,
-    );
-  } on FormatException {
-    rethrow;
+    inflated = Inflate.stream(input).getBytes();
   } on Object catch (error) {
-    throw FormatException('not a valid gzip file: $error');
+    throw FormatException('$notGzip: $error');
   }
+  if (input.position != length - 8) {
+    throw const FormatException(
+      '$notGzip: the file is not exactly one gzip member',
+    );
+  }
+  final trailer = ByteData.sublistView(bytes, length - 8);
+  if (trailer.getUint32(0, Endian.little) != getCrc32(inflated)) {
+    throw const FormatException('$notGzip: CRC mismatch');
+  }
+  if (trailer.getUint32(4, Endian.little) != inflated.length & 0xffffffff) {
+    throw const FormatException('$notGzip: length mismatch');
+  }
+  return inflated;
 }
 
 Uint8List _uint32(int value) =>

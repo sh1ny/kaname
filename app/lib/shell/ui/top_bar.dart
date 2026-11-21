@@ -140,8 +140,11 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
         // tag it again for the next reload.
         _tagSearchEntry();
       } else {
-        // Guarded like every Back the bar asks for (pre-ship round 40).
-        _back();
+        // The same report drops the tag here too, and Forward can return to
+        // this entry: once the report is recorded, tag it again and step
+        // back through the guarded Back (pre-ship rounds 40 and 43).
+        _backWhenRecorded = true;
+        _tagSearchEntry();
       }
       return;
     }
@@ -160,7 +163,10 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     // provider and the location are changed after this frame builds.
     final wasOpen = _searchOpen;
     _searchOpen =
-        !widget.inlineSearch && hasSearchMarker(_location) && !_backPending;
+        !widget.inlineSearch &&
+        hasSearchMarker(_location) &&
+        !_backPending &&
+        !_backWhenRecorded;
     _openPath = _location.path;
     _afterFrame(() {
       ref.read(quickSearchProvider.notifier).clear();

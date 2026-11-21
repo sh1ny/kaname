@@ -1180,6 +1180,19 @@ void main() {
       expect(history.backCalls, 1);
       expect(location(), '/settings');
       expect(history.current, '/settings');
+
+      // Pre-ship round 43: Forward returns to the entry left, and a reload
+      // there must still find the pair the bar tagged.
+      await history.pressForward();
+      await tester.pumpAndSettle();
+      expect(history.current, '/settings?search');
+      expect(
+        history.currentTagged,
+        isTrue,
+        reason:
+            'the router\'s first report dropped the tag, so it is put '
+            'back before stepping back',
+      );
     });
   });
 
