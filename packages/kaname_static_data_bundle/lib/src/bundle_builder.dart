@@ -299,7 +299,7 @@ final class BundleBuilder {
     final value = values[column.name];
     final fits = switch ((column.kind, value)) {
       (_, null) => true,
-      (BundleColumnKind.integer, int()) => true,
+      (BundleColumnKind.integer, final int value) => _inKeyRange(value),
       (BundleColumnKind.real, num()) => true,
       (BundleColumnKind.boolean, bool()) => true,
       (BundleColumnKind.text || BundleColumnKind.localizedText, String()) =>
@@ -319,15 +319,25 @@ final class BundleBuilder {
     };
   }
 
+  /// The value of type extra [extra], or null when it is not one: an
+  /// integer extra holds only an integral number in the range every reader
+  /// decodes as the same `int` ([bundleMaxKey]).
   static Object? _extraValue(BundleColumn extra, Object? value) =>
       switch ((extra.kind, value)) {
         (BundleColumnKind.real, final num value) => value,
-        (BundleColumnKind.integer, final int value) => value,
+        (BundleColumnKind.integer, final int value) when _inKeyRange(value) =>
+          value,
         (BundleColumnKind.integer, final double value)
-            when value.isFinite && value == value.truncateToDouble() =>
+            when value.isFinite &&
+                value == value.truncateToDouble() &&
+                value.abs() <= bundleMaxKey =>
           value,
         _ => null,
       };
+
+  /// Whether [value] is in the range every reader decodes exactly.
+  static bool _inKeyRange(int value) =>
+      value <= bundleMaxKey && value >= -bundleMaxKey;
 }
 
 final class _Line {

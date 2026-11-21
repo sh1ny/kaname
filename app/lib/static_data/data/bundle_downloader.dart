@@ -136,12 +136,15 @@ final class HttpBundleDownloader implements BundleDownloader {
     this._cacheToken = randomCacheToken,
   });
 
-  /// A random token for a reload query: 64 bits in hex.
+  /// A random token for a reload query: 8 random bytes in hex.
+  ///
+  /// Built a byte at a time, so no bound exceeds what the JavaScript
+  /// build's 32-bit shifts and `nextInt` take.
   static String randomCacheToken() {
     final random = Random.secure();
     return [
-      for (var i = 0; i < 2; i++)
-        random.nextInt(1 << 32).toRadixString(16).padLeft(8, '0'),
+      for (var i = 0; i < 8; i++)
+        random.nextInt(256).toRadixString(16).padLeft(2, '0'),
     ].join();
   }
 
@@ -203,6 +206,13 @@ final class _HttpBundleTransfer implements BundleTransfer {
     if (_result.isCompleted || _aborted != null) return;
     _aborted = why;
     _abortTrigger.complete();
+    // The result does not wait for the request to notice: a TLS handshake
+    // dart:io runs itself, inside a proxy's tunnel, cannot be ended, and
+    // the request would wait on it (design D4). A late response is
+    // discarded in [_run].
+    _timer.cancel();
+    _client.close();
+    _result.complete(_abortedOutcome());
   }
 
   Future<void> _run() async {
@@ -214,6 +224,11 @@ final class _HttpBundleTransfer implements BundleTransfer {
     BundleDownloadResult outcome;
     try {
       final response = await _client.send(request);
+      if (_result.isCompleted) {
+        // Aborted while the response was on its way: drop it.
+        unawaited(response.stream.listen(null).cancel());
+        return;
+      }
       // A failed status is known from the headers; its body, which may be
       // slow or large, is never read: the abort below ends it.
       outcome = response.statusCode == 200
@@ -238,7 +253,7 @@ final class _HttpBundleTransfer implements BundleTransfer {
     // an unread body, and only the abort does.
     if (!_abortTrigger.isCompleted) _abortTrigger.complete();
     _client.close();
-    _result.complete(outcome);
+    if (!_result.isCompleted) _result.complete(outcome);
   }
 
   BundleDownloadResult _abortedOutcome() => switch (_aborted) {

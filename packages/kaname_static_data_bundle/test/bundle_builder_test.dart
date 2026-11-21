@@ -255,6 +255,53 @@ void main() {
       );
     });
 
+    // Pre-ship round 30: an integer beyond the key range is a double to
+    // the native decoder, or rounded on the web.
+    test('an integer value beyond the bundle key range is dropped from a '
+        'type extra and fails the build in a typed column', () {
+      final built =
+          (fixtureBuilder()..addTyped(
+                BundleSection.types,
+                const TypedRecord(
+                  key: 9001,
+                  values: {'groupId': 25, 'published': true},
+                  raw: {'_key': 9001, 'factionID': 1e20, 'raceID': 2.0},
+                ),
+              ))
+              .build();
+      final bundle = switch (openBundle(
+        built.bytes,
+        build: fixtureBuild,
+        sha256: built.sha256,
+      )) {
+        BundleOpened(:final bundle) => bundle,
+        BundleRefused(:final refusal) => fail('refused: $refusal'),
+      };
+      final type = bundle.types.singleWhere((t) => t.id == 9001);
+      expect(type.factionId, isNull);
+      expect(type.raceId, 2);
+
+      for (final value in [bundleMaxKey + 1, -bundleMaxKey - 1]) {
+        expect(
+          () => fixtureBuilder().addTyped(
+            BundleSection.types,
+            TypedRecord(
+              key: 9002,
+              values: {'groupId': value, 'published': true},
+              raw: const {'_key': 9002},
+            ),
+          ),
+          throwsA(
+            isA<BundleBuildException>().having(
+              (e) => e.message,
+              'message',
+              contains('groupId'),
+            ),
+          ),
+        );
+      }
+    });
+
     test('typed input is refused when it does not fit the section', () {
       final builder = fixtureBuilder();
 

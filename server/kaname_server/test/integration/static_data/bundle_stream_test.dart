@@ -747,6 +747,44 @@ void main() {
       // The stream opened under the accepting scope is not affected.
       expect(_builds(accepted.events), [100, 101, 100]);
     });
+
+    // Pre-ship round 30: the scope decides at every send, not once per
+    // stream.
+    test('a scope that accepts an announcement, refuses the next and accepts '
+        'a later one gives the stream the first and the last', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      final public = rig.subscribe();
+      await public.waitFor(1);
+      final scope = _Scope.deciding(
+        (message) => switch (message) {
+          BundleAnnouncementNamed(build: 101) => false,
+          _ => true,
+        },
+      );
+      bundleAnnouncementRuntime.scope = scope;
+      final scoped = rig.subscribe();
+      await scoped.waitFor(1);
+
+      await seedBuild(session, 101, SdeBuildState.staged);
+      await seedBundle(session, 101);
+      await switchTo(session, 101);
+      await rig.announcer.workerReplied(switchedReply(101));
+      await public.waitFor(2);
+      await _quiet();
+      expect(_builds(scoped.events), [100], reason: 'build 101 was refused');
+
+      await rollback(session);
+      await rig.announcer.request();
+      await public.waitFor(3);
+      await scoped.waitFor(2);
+
+      expect(_builds(scoped.events), [100, 100]);
+      _expectRising(scoped.events);
+      expect(scope.asked, greaterThanOrEqualTo(3));
+      expect(_builds(public.events), [100, 101, 100]);
+    });
   });
 }
 
@@ -807,15 +845,19 @@ Future<void> _until(
 
 /// A delivery scope that passes everything or nothing, counting its asks.
 final class _Scope implements DeliveryScope<BundleAnnouncement> {
-  _Scope({required this.accepts});
+  /// A scope that answers [accepts] for every announcement.
+  _Scope({required bool accepts}) : _decide = ((_) => accepts);
 
-  final bool accepts;
+  /// A scope that asks [decide] for each announcement.
+  _Scope.deciding(this._decide);
+
+  final bool Function(BundleAnnouncement) _decide;
   int asked = 0;
 
   @override
   bool passes(BundleAnnouncement message) {
     asked++;
-    return accepts;
+    return _decide(message);
   }
 }
 

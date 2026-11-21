@@ -98,10 +98,20 @@ final class HoldingServer {
 /// A local TCP server that accepts connections and never answers: a plain
 /// request waits for response headers, a TLS client for the handshake.
 final class SilentServer {
-  SilentServer._(this._socket);
+  SilentServer._(this._socket, this._proxy);
 
-  static Future<SilentServer> start() async =>
-      SilentServer._(await ServerSocket.bind(InternetAddress.loopbackIPv4, 0));
+  /// Starts the server; as a [proxy] it answers each `CONNECT` with 200 and
+  /// then stays silent inside the tunnel.
+  static Future<SilentServer> start({bool proxy = false}) async =>
+      SilentServer._(
+        await ServerSocket.bind(InternetAddress.loopbackIPv4, 0),
+        proxy,
+      );
+
+  final bool _proxy;
+
+  /// The `PROXY` setting of this server, for `findProxy`.
+  String get proxySetting => 'PROXY 127.0.0.1:${_socket.port}';
 
   final ServerSocket _socket;
   final _connections = <Socket>[];
@@ -124,7 +134,20 @@ final class SilentServer {
         if (!closedByClient.isCompleted) closedByClient.complete();
       }
 
-      connection.listen((_) {}, onDone: closed, onError: closed);
+      var head = '';
+      var tunnelled = false;
+      connection.listen(
+        (data) {
+          if (!_proxy || tunnelled) return;
+          head += String.fromCharCodes(data);
+          if (head.startsWith('CONNECT ') && head.contains('\r\n\r\n')) {
+            tunnelled = true;
+            connection.write('HTTP/1.1 200 Connection established\r\n\r\n');
+          }
+        },
+        onDone: closed,
+        onError: closed,
+      );
     });
   }
 
@@ -232,18 +255,43 @@ void main() {
   group('before response headers', () {
     // dart:io gives no handle that closes a socket during its TLS
     // handshake (design D4), so only the plain stage checks the close.
-    for (final (stage, scheme, closes) in [
-      ('while response headers are awaited', 'http', true),
-      ('while the TLS handshake stalls', 'https', false),
+    // Pre-ship round 30: through a proxy, dart:io secures the tunnel
+    // itself, after this client handed over the socket.
+    for (final (stage, scheme, closes, proxied) in [
+      ('while response headers are awaited', 'http', true, false),
+      ('while the TLS handshake stalls', 'https', false, false),
+      ('while the TLS handshake through a proxy stalls', 'https', false, true),
     ]) {
-      test('cancel ends the transfer $stage', () async {
-        final server = await SilentServer.start();
+      Future<SilentServer> startServer() async {
+        final server = await SilentServer.start(proxy: proxied);
         addTearDown(server.close);
         server.serve();
-        final transfer = HttpBundleDownloader(
-          server: ConfiguredServer(server.base(scheme)),
+        return server;
+      }
+
+      BundleTransfer startTransfer(SilentServer server, {Duration? limit}) {
+        BundleTransfer go() => HttpBundleDownloader(
+          server: ConfiguredServer(
+            proxied
+                ? Uri.parse('https://bundles.invalid/base/')
+                : server.base(scheme),
+          ),
+          timeout: limit ?? HttpBundleDownloader.defaultTimeout,
         ).start(bundle);
+        if (!proxied) return go();
+        return HttpOverrides.runZoned(
+          go,
+          findProxyFromEnvironment: (_, _) => server.proxySetting,
+        );
+      }
+
+      test('cancel ends the transfer $stage', () async {
+        final server = await startServer();
+        final transfer = startTransfer(server);
         await server.connected.future.timeout(const Duration(seconds: 5));
+        // Through the proxy, wait until dart:io has the tunnel and is in
+        // its handshake.
+        if (proxied) await Future<void>.delayed(const Duration(seconds: 1));
 
         transfer.cancel();
 
@@ -263,14 +311,9 @@ void main() {
       });
 
       test('the time limit ends the transfer $stage', () async {
-        final server = await SilentServer.start();
-        addTearDown(server.close);
-        server.serve();
-        const limit = Duration(milliseconds: 300);
-        final transfer = HttpBundleDownloader(
-          server: ConfiguredServer(server.base(scheme)),
-          timeout: limit,
-        ).start(bundle);
+        final server = await startServer();
+        final limit = Duration(milliseconds: proxied ? 1500 : 300);
+        final transfer = startTransfer(server, limit: limit);
 
         final result = await transfer.result.timeout(
           const Duration(seconds: 5),
