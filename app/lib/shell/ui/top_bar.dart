@@ -188,6 +188,13 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   void _onLocation() {
     final marked = hasSearchMarker(_location);
     final fromBrowser = _reportedByBrowser(_locations!.value);
+    if (_backPending && fromBrowser) {
+      _backPending = false;
+      if (_openWhenBack) {
+        _openWhenBack = false;
+        if (!widget.inlineSearch && !marked) _afterFrame(_openSearch);
+      }
+    }
     final ownEntry = _searchOpen && _location.path == _openPath;
     if (marked && !fromBrowser && !ownEntry) {
       _afterFrame(_dropMarker);
@@ -233,10 +240,32 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
       location.state is Map;
 
   void _openSearch() {
+    if (_backPending) {
+      // The browser has yet to step back off the last search's entry; an
+      // open now would push onto that entry and the Back would land on it.
+      _openWhenBack = true;
+      return;
+    }
     _openPath = _location.path;
     setState(() => _searchOpen = true);
     GoRouter.of(context).go(withSearchMarker(_location));
     _tagSearchEntry();
+  }
+
+  /// Whether the bar asked the browser to step back off a marked entry and
+  /// the browser has not reported the result yet.
+  bool _backPending = false;
+
+  /// Whether the search was opened during [_backPending]: it opens once the
+  /// Back is reported.
+  bool _openWhenBack = false;
+
+  /// Steps back off the marked entry, noting the Back until it is reported.
+  void _back() {
+    final history = ref.read(browserHistoryProvider);
+    if (history == null) return;
+    _backPending = true;
+    history.back();
   }
 
   /// Whether the browser has yet to record the marked entry just pushed.
@@ -266,9 +295,8 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
           if (hasSearchMarker(_location)) {
             // Tagged first: Forward can return to it, and a reload there
             // must find a pair, not a shared link to unmark in place.
-            history
-              ..tagCurrentEntry()
-              ..back();
+            history.tagCurrentEntry();
+            _back();
           }
           return;
         }
@@ -301,8 +329,8 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     switch (ref.read(browserHistoryProvider)) {
       case _? when _entryPending:
         _backWhenRecorded = true;
-      case final history?:
-        history.back();
+      case _?:
+        _back();
       case null:
         _dropMarker();
     }

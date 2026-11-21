@@ -185,9 +185,10 @@ final class _HttpBundleTransfer implements BundleTransfer {
     BundleDownloadResult outcome;
     try {
       final response = await _client.send(request);
-      final body = await response.stream.toBytes();
+      // A failed status is known from the headers; its body, which may be
+      // slow or large, is never read: closing the client below ends it.
       outcome = response.statusCode == 200
-          ? BundleDownloaded(body)
+          ? BundleDownloaded(await response.stream.toBytes())
           : BundleDownloadFailed(BundleHttpStatus(response.statusCode));
     } on http.RequestAbortedException {
       outcome = _abortedOutcome();

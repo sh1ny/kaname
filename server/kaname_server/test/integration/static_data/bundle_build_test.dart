@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:http/http.dart' as http;
@@ -15,6 +16,7 @@ import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
         BuiltBundle,
         bundleFormatMajor,
         bundleFormatMinor;
+import 'package:postgres/postgres.dart' as pg;
 import 'package:serverpod/serverpod.dart' show Session;
 import 'package:test/test.dart';
 
@@ -133,8 +135,61 @@ void main() {
         announced = await TestAnnouncer.start(session);
         expect(announced!.lastNamed.build, 2900);
 
+        // A second connection holds sde_bundle, so the bundle write waits
+        // at its transaction; a third watches the builds meanwhile.
+        Future<pg.Connection> connect() => pg.Connection.open(
+          pg.Endpoint(
+            host: settings.host,
+            port: settings.port,
+            database: settings.database,
+            username: settings.user,
+            password: settings.password,
+            isUnixSocket: settings.isUnixSocket,
+          ),
+          settings: pg.ConnectionSettings(sslMode: pg.SslMode.disable),
+        );
+        final locker = await connect();
+        addTearDown(locker.close);
+        final observer = await connect();
+        addTearDown(observer.close);
+        final locked = Completer<void>();
+        final release = Completer<void>();
+        final holding = locker.runTx((tx) async {
+          await tx.execute('LOCK TABLE "sde_bundle" IN EXCLUSIVE MODE');
+          locked.complete();
+          await release.future;
+        });
+        await locked.future;
+
         ccpAnnounces(2901);
-        final result = await checkThrough(harness);
+        final checking = checkThrough(harness);
+        final deadline = DateTime.now().add(const Duration(minutes: 2));
+        while (true) {
+          final waiting = await observer.execute(
+            'SELECT count(*) FROM pg_locks l '
+            'JOIN pg_class c ON c.oid = l.relation '
+            "WHERE c.relname = 'sde_bundle' AND NOT l.granted",
+          );
+          if ((waiting.single.single! as int) > 0) break;
+          if (DateTime.now().isAfter(deadline)) {
+            fail('the bundle write never reached sde_bundle');
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        // While the bundle cannot commit, the old build stays active and no
+        // switch to the new one exists.
+        final active = await observer.execute(
+          'SELECT "build" FROM "sde_build" WHERE "activeMarker" = true',
+        );
+        expect(active.single.single, 2900);
+        final switches = await observer.execute(
+          r'SELECT count(*) FROM "sde_switch" WHERE "toBuild" = $1::bigint',
+          parameters: [2901],
+        );
+        expect(switches.single.single, 0);
+        release.complete();
+        await holding;
+        final result = await checking;
 
         expect(result, isA<BuildSwitched>());
         expect((result as BuildSwitched).build, 2901);

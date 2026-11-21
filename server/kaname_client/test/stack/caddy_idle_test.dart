@@ -4,8 +4,9 @@
 /// Runs the pinned Caddy image of `deploy/compose.yaml` with the repository's
 /// Caddyfile in front of a stub upstream that streams a large body, opens a
 /// download through it and never reads. The proxy must give up the stalled
-/// write and close its upstream connection, while the client still reads
-/// nothing. Needs Docker; does not need the stack.
+/// write and close its upstream connection while the client still reads
+/// nothing, and its client connection too, which the client sees end once
+/// it reads again. Needs Docker; does not need the stack.
 @Tags(['stack'])
 library;
 
@@ -122,10 +123,17 @@ void main() {
         }
       }
       addTearDown(client.destroy);
-      var clientClosed = false;
-      client
-          .listen((_) {}, onDone: () => clientClosed = true, onError: (_) {})
-          .pause();
+      var received = 0;
+      final clientEnded = Completer<void>();
+      void ended([Object? _]) {
+        if (!clientEnded.isCompleted) clientEnded.complete();
+      }
+
+      final reads = client.listen(
+        (data) => received += data.length,
+        onDone: ended,
+        onError: ended,
+      )..pause();
       client.write(
         'GET /api/static-data/bundle/1/stalled HTTP/1.1\r\n'
         'Host: localhost\r\n\r\n',
@@ -144,8 +152,18 @@ void main() {
         closedAt.difference(stalledFrom),
         greaterThan(const Duration(seconds: 30)),
       );
-      // The client never read: the connection was given up on its behalf.
-      expect(clientClosed, isFalse, reason: 'the client never resumed');
+      expect(received, 0, reason: 'the client has read nothing yet');
+
+      // The client's own connection was closed too: once it reads again, it
+      // gets what the buffers still hold and then the end of the
+      // connection, well short of the whole body. A proxy that kept the
+      // client connected would leave this read waiting.
+      reads.resume();
+      await clientEnded.future.timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => fail('the proxy kept the client connection open'),
+      );
+      expect(received, lessThan(1 << 30), reason: 'the body was cut short');
     },
   );
 }

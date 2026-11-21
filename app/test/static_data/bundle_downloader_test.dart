@@ -34,10 +34,16 @@ ConfiguredServer resolve({
 /// A local HTTP server that answers one bundle request with headers and
 /// the start of a body, then holds the body open.
 final class HoldingServer {
-  HoldingServer._(this._socket);
+  HoldingServer._(this._socket, this._status);
 
-  static Future<HoldingServer> start() async =>
-      HoldingServer._(await ServerSocket.bind(InternetAddress.loopbackIPv4, 0));
+  /// Starts a server answering with [status] (`200 OK` by default).
+  static Future<HoldingServer> start({String status = '200 OK'}) async =>
+      HoldingServer._(
+        await ServerSocket.bind(InternetAddress.loopbackIPv4, 0),
+        status,
+      );
+
+  final String _status;
 
   final ServerSocket _socket;
 
@@ -66,7 +72,7 @@ final class HoldingServer {
           connection
             ..add(
               latin1.encode(
-                'HTTP/1.1 200 OK\r\n'
+                'HTTP/1.1 $_status\r\n'
                 'Content-Type: application/gzip\r\n'
                 'Content-Length: 1000000\r\n\r\n',
               ),
@@ -258,6 +264,31 @@ void main() {
         (failed) => failed.failure,
         'failure',
         isA<BundleDownloadTimedOut>(),
+      ),
+    );
+    await server.closedByClient.future.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => fail('the server never saw the connection close'),
+    );
+  });
+
+  test('a status other than 200 fails at its headers, without waiting '
+      'for the body', () async {
+    final server = await HoldingServer.start(status: '503 Service Unavailable');
+    addTearDown(server.close);
+    server.serve();
+    final transfer = HttpBundleDownloader(server: ConfiguredServer(server.base))
+        .start(bundle);
+
+    expect(
+      await transfer.result.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => fail('the transfer waited for the body'),
+      ),
+      isA<BundleDownloadFailed>().having(
+        (failed) => failed.failure,
+        'failure',
+        isA<BundleHttpStatus>().having((s) => s.statusCode, 'status', 503),
       ),
     );
     await server.closedByClient.future.timeout(

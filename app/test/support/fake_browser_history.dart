@@ -70,11 +70,29 @@ final class FakeBrowserHistory implements BrowserHistory {
     return null;
   }
 
+  /// Whether [back] waits for [releaseBacks] before the browser answers,
+  /// as a slow popstate does across rendered frames.
+  bool holdBacks = false;
+
+  int _heldBacks = 0;
+
   @override
   void back() {
     backCalls++;
+    if (holdBacks) {
+      _heldBacks++;
+      return;
+    }
     // The browser answers after the current event, as a popstate does.
     Future<void>(pressBack);
+  }
+
+  /// Answers the held [back] calls, in order, and stops holding.
+  Future<void> releaseBacks() async {
+    holdBacks = false;
+    for (; _heldBacks > 0; _heldBacks--) {
+      await pressBack();
+    }
   }
 
   /// The browser's Back button.

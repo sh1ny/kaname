@@ -763,6 +763,34 @@ void main() {
       expect(history.currentTagged, isTrue);
     });
 
+    testWidgets('opening again while the close\'s Back is still pending '
+        'opens a new search entry once the Back arrives', (tester) async {
+      await openOverLicences(tester);
+      history.holdBacks = true;
+
+      await tester.tap(find.byKey(QuickSearchKeys.closeButton));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(QuickSearchKeys.openButton));
+      await tester.pumpAndSettle();
+      await history.releaseBacks();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(QuickSearchKeys.field), findsOneWidget);
+      expect(location(), '/settings/licences?search');
+      expect(history.entries, [
+        '/settings',
+        '/settings/licences',
+        '/settings/licences?search',
+      ], reason: 'one page-and-search pair, no repeated search entry');
+      expect(history.currentTagged, isTrue);
+      await tester.tap(find.byKey(QuickSearchKeys.closeButton));
+      await tester.pumpAndSettle();
+      expect(location(), '/settings/licences');
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      expect(location(), '/settings', reason: 'no repeated page entry');
+    });
+
     testWidgets('after Back and Forward reopen the search, closing it steps '
         'back, so the next Back leaves the page', (tester) async {
       await openOverLicences(tester);
