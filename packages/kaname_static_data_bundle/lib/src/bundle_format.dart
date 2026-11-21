@@ -92,14 +92,24 @@ Uint8List inflateGzip(Uint8List bytes) {
   if (position > length - 8) {
     throw const FormatException('$notGzip: truncated header');
   }
-  final input = InputMemoryStream(bytes)..skip(position);
-  final Uint8List inflated;
+  // The inflater gets only the DEFLATE data, so its lookahead never reads
+  // the trailer, and must reach the final block and use every byte of it
+  // (pre-ship round 44).
+  final deflated = Uint8List.sublistView(bytes, position, length - 8);
+  final input = InputMemoryStream(deflated);
+  final Inflate inflater;
   try {
-    inflated = Inflate.stream(input).getBytes();
+    inflater = Inflate.stream(input);
   } on Object catch (error) {
     throw FormatException('$notGzip: $error');
   }
-  if (input.position != length - 8) {
+  if (!inflater.isFinished) {
+    throw const FormatException(
+      '$notGzip: the compressed data ends before its final block',
+    );
+  }
+  final inflated = inflater.getBytes();
+  if (input.position != deflated.length) {
     throw const FormatException(
       '$notGzip: the file is not exactly one gzip member',
     );
