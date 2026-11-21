@@ -6,7 +6,7 @@ import 'dart:typed_data';
 import 'package:kaname_core/kaname_core.dart';
 import 'package:kaname_static_data/kaname_static_data.dart';
 import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
-    show bundleFormatMajor, bundleFormatMinor;
+    show bundleFormatMajor, bundleFormatMinor, bundleSha256;
 import 'package:postgres/postgres.dart' as pg;
 
 import 'import_record_view.dart';
@@ -555,6 +555,22 @@ final class PostgresStaticDataStore implements StaticDataStore {
       builtAt: (row[7]! as DateTime).toUtc(),
       bytesStored: row[8]! as bool,
     );
+  }
+
+  @override
+  Future<bool> bundleBytesIntact(
+    int build, {
+    required String sha256,
+    required int size,
+  }) async {
+    final result = await _connection.execute(
+      r'SELECT "bytes" FROM "sde_bundle_bytes" '
+      r'WHERE "build" = $1::bigint AND "sha256" = $2',
+      parameters: [build, sha256],
+    );
+    if (result.isEmpty) return false;
+    final bytes = result.single[0]! as List<int>;
+    return bytes.length == size && bundleSha256(bytes) == sha256;
   }
 
   @override

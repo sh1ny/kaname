@@ -186,6 +186,39 @@ void main() {
     expect(recent.existsSync(), isTrue, reason: 'another save may own it');
   });
 
+  test('a save suspended past the cutoff before its rename writes again '
+      'when another start removed its temporary file', () async {
+    await store().save(fixtureBundle(buildN));
+    final next = fixtureBundle(buildN + 1);
+
+    // The first rename waits, as a process suspended before its rename.
+    final resume = Completer<void>();
+    var renames = 0;
+    Future<void> pause() {
+      renames++;
+      return renames == 1 ? resume.future : Future<void>.value();
+    }
+
+    final saving = store(beforeRename: pause).save(next);
+    await waitFor(() => renames == 1);
+
+    // Another process starts more than an hour later and removes the
+    // suspended save's temporary file as stale.
+    final later = FileBundleStore(
+      directory: directory,
+      opener: FakeBundleOpener(),
+      now: () => DateTime.now().add(const Duration(hours: 2)),
+    );
+    await later.load();
+    expect(temporaryFiles(), isEmpty);
+
+    resume.complete();
+    expect(await saving, isA<BundleSaved>());
+    expect(renames, 2);
+    expect(temporaryFiles(), isEmpty);
+    expectLoaded(await store().load(), next);
+  });
+
   test(
     'a failed write keeps the previous copy and lets no error escape',
     () async {

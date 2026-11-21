@@ -4,7 +4,7 @@ library;
 import 'dart:typed_data';
 
 import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
-    show bundleFormatMajor, bundleFormatMinor;
+    show bundleFormatMajor, bundleFormatMinor, bundleSha256;
 
 import 'sde_rows.dart';
 import 'static_data_store.dart';
@@ -61,6 +61,10 @@ final class InMemoryStaticDataStore implements StaticDataStore {
 
   /// When set, [storedBundle] throws it, as a store whose read failed.
   Object? storedBundleError;
+
+  /// When set, [bundleBytesIntact] throws it, as a store whose byte read
+  /// failed.
+  Object? bundleBytesError;
 
   /// The stored builds and their states.
   Map<int, BuildState> get builds => Map.unmodifiable(_builds);
@@ -271,6 +275,27 @@ final class InMemoryStaticDataStore implements StaticDataStore {
   Future<StoredBundle?> storedBundle(int build) async {
     if (storedBundleError case final error?) throw error;
     return _bundles[build];
+  }
+
+  @override
+  Future<bool> bundleBytesIntact(
+    int build, {
+    required String sha256,
+    required int size,
+  }) async {
+    if (bundleBytesError case final error?) throw error;
+    final stored = _bundleBytes[build];
+    return stored != null &&
+        stored.sha256 == sha256 &&
+        stored.bytes.length == size &&
+        bundleSha256(stored.bytes) == sha256;
+  }
+
+  /// Replaces the stored bytes of [build] with [bytes], keeping its hash and
+  /// metadata, as a storage fault that corrupts them would.
+  void corruptBundleBytes(int build, Uint8List bytes) {
+    final stored = _bundleBytes[build]!;
+    _bundleBytes[build] = (sha256: stored.sha256, bytes: bytes);
   }
 
   @override

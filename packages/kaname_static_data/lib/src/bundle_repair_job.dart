@@ -44,12 +44,15 @@ final class BundleRepairFailed extends BundleRepairResult {
   final String reason;
 }
 
-/// Builds the active build's bundle when it is missing, failed or of another
-/// format version (D20).
+/// Builds the active build's bundle when it is missing, failed, of another
+/// format version (D20), or stored with bytes that do not match its size and
+/// hash.
 ///
 /// The job takes the static-data lock without waiting; when another job
 /// holds it, it does nothing and returns [BundleRepairLockHeld] (C7). Under
-/// the lock it finds the active build and runs [ensureBundle] on it. It
+/// the lock it finds the active build and runs [ensureBundle] on it with
+/// `verifyBytes`, so a bundle the announcer refused for its bytes is built
+/// again. It
 /// releases the lock and closes the store whatever the outcome, and never
 /// throws: every failure is a [BundleRepairFailed] or a [BundleFailed] step.
 /// A job and its store are used once.
@@ -90,6 +93,7 @@ final class BundleRepairJob implements Job<BundleRepairResult> {
           active,
           buildBundle: buildBundle,
           clock: _clock,
+          verifyBytes: true,
         ),
       );
     } on Object catch (error) {

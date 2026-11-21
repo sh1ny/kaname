@@ -576,6 +576,46 @@ void main() {
       );
     });
 
+    // PR #15: the metadata calls a bundle whose bytes fail their size or
+    // hash current, so only the refused byte load shows its repair is owed.
+    test('stored bytes of the active bundle that fail their hash owe a '
+        'repair, and a byte load that only fails does not', () async {
+      await seedBuild(session, 850, SdeBuildState.active);
+      await seedBundle(session, 850);
+      var repairs = 0;
+      final created = announcer(
+        runRepair: () {
+          repairs++;
+          return Completer<WorkerReply>().future;
+        },
+      );
+      source.failLoads = 1;
+      await startAndSettle(created);
+      await tick(created);
+      expect(namedBuilds(bus.published), [null, 850]);
+      expect(repairs, 0, reason: 'a failed load is retried, not repaired');
+      await created.stop();
+
+      await session.db.unsafeExecute(
+        'UPDATE "sde_bundle_bytes" SET "bytes" = decode(\'00\', \'hex\') '
+        'WHERE "build" = 850',
+      );
+      // A second announcer holds no bytes yet, so its refreshes load them.
+      final restarted = announcer(
+        runRepair: () {
+          repairs++;
+          return Completer<WorkerReply>().future;
+        },
+      );
+      await startAndSettle(restarted);
+      expect(namedBuilds([restarted.installed!]), [null]);
+      expect(logged('do not match'), isTrue);
+
+      await tick(restarted);
+
+      expect(repairs, 1);
+    });
+
     // Scenario: Lock held at start (A missing active bundle is repaired).
     test('ticks while a repair request is outstanding send no second '
         'RunBundleRepair and the tick after its reply can send one', () async {

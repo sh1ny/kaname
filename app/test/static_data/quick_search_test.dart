@@ -508,6 +508,56 @@ void main() {
     expect(shown.contains(tester.getTopLeft(notice)), isTrue);
   });
 
+  // PR #15: a notice above the results moves them without changing the
+  // highlighted index, and the last row of a full list cannot be moved past.
+  testWidgets('the highlighted last row stays in view when an update notice '
+      'appears above the results', (tester) async {
+    final results = SearchResults([
+      for (var i = 0; i < 30; i++)
+        SearchHit(
+          kind: SearchKind.type,
+          id: 700 + i,
+          name: 'Rifter $i',
+          context: 'Frigate',
+        ),
+    ], more: false);
+    const room = Size(320, 240);
+    Widget panel(QuickSearchState state) => MaterialApp(
+      theme: EmberTheme.dark(),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: MediaQuery(
+        data: const MediaQueryData(size: room),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: room.width,
+            child: QuickSearchPanel(state: state, top: () => 0, active: 29),
+          ),
+        ),
+      ),
+    );
+    final last = find.byKey(QuickSearchKeys.result(29));
+    void expectLastInView() {
+      final shown = tester.getRect(find.byKey(QuickSearchKeys.panel));
+      final row = tester.getRect(last);
+      expect(row.top, greaterThanOrEqualTo(shown.top));
+      expect(row.bottom, lessThanOrEqualTo(shown.bottom));
+    }
+
+    await tester.pumpWidget(panel(const SearchBlank()));
+    await tester.pumpWidget(panel(SearchFound(results)));
+    await tester.pumpAndSettle();
+    expectLastInView();
+
+    await tester.pumpWidget(
+      panel(SearchFound(results, notice: const AppUpdateNeeded())),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(QuickSearchKeys.notice), findsOneWidget);
+    expectLastInView();
+  });
+
   testWidgets('arrows scroll the highlighted row fully into view', (
     tester,
   ) async {

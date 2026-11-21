@@ -365,6 +365,17 @@ abstract interface class StaticDataStore {
   /// Never reads the bundle's bytes (C11).
   Future<StoredBundle?> storedBundle(int build);
 
+  /// Whether the stored bytes of [build] with [sha256] are [size] bytes
+  /// long and hash to [sha256]; `false` when none are stored.
+  ///
+  /// Reads the bytes, so only a bundle repair calls it ([ensureBundle] with
+  /// `verifyBytes`), never a metadata read (C11).
+  Future<bool> bundleBytesIntact(
+    int build, {
+    required String sha256,
+    required int size,
+  });
+
   /// Records [write] for its build, in a transaction of its own.
   ///
   /// It replaces the build's bundle metadata. A [BundleWriteBuilt] stores

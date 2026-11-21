@@ -223,12 +223,20 @@ final class BundleFailed extends BundleStepResult {
 /// recorded as a [BundleWriteFailed] with its reason, at [clock]'s time.
 /// A failure to read the stored bundle builds and records nothing, so a
 /// stored bundle is never replaced on an unread state.
+///
+/// With [verifyBytes], a current bundle also has its stored bytes checked
+/// against its size and hash ([StaticDataStore.bundleBytesIntact]), and is
+/// built again when they do not match: the repair sets it, because the
+/// announcer refuses such bytes and owes a repair, while the metadata alone
+/// would call the bundle current (PR #15). A failed byte read builds
+/// nothing, as a failed state read does.
 /// Never throws: every failure is a [BundleFailed].
 Future<BundleStepResult> ensureBundle(
   StaticDataStore store,
   int build, {
   BuildBundle buildBundle = buildStoredBundle,
   DateTime Function() clock = DateTime.now,
+  bool verifyBytes = false,
 }) async {
   final StoredBundle? stored;
   try {
@@ -241,7 +249,23 @@ Future<BundleStepResult> ensureBundle(
       'bundle state read failed: ${describeFailure(error)}',
     );
   }
-  if (stored != null && stored.isCurrent) return BundleAlreadyCurrent(build);
+  if (stored != null && stored.isCurrent) {
+    if (!verifyBytes) return BundleAlreadyCurrent(build);
+    final bool intact;
+    try {
+      intact = await store.bundleBytesIntact(
+        build,
+        sha256: stored.sha256!,
+        size: stored.size!,
+      );
+    } on Object catch (error) {
+      return BundleFailed(
+        build,
+        'bundle bytes read failed: ${describeFailure(error)}',
+      );
+    }
+    if (intact) return BundleAlreadyCurrent(build);
+  }
   String reason;
   try {
     final built = await buildBundle(store, build);

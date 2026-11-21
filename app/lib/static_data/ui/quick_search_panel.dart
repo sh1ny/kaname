@@ -90,7 +90,12 @@ class _QuickSearchPanelState extends State<QuickSearchPanel> {
         when !identical(before, after) && _scroll.hasClients) {
       _scroll.jumpTo(0);
     }
-    if (widget.active != oldWidget.active && widget.active >= 0) {
+    // A notice that appears or goes moves the rows, and new results under
+    // an unchanged highlight start at the top: either can leave the
+    // highlighted row out of view with the same index (PR #15).
+    if (widget.active >= 0 &&
+        (widget.active != oldWidget.active ||
+            !identical(widget.state, oldWidget.state))) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _reveal());
     }
   }

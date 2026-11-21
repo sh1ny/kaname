@@ -22,7 +22,8 @@ import 'bundle_store.dart';
 /// the kept file: an unreadable one is rejected in memory and left for the
 /// next save's rename to replace (design D16). A save stopped before its
 /// rename leaves its temporary file behind; [load] removes temporary files
-/// older than [staleTemporaryAge], which no running save still owns.
+/// older than [staleTemporaryAge]. A save that was only suspended for that
+/// long finds its file gone at the rename and writes it once more.
 final class FileBundleStore implements BundleStore {
   /// Creates the store over [directory], checking loads with [opener].
   ///
@@ -89,42 +90,62 @@ final class FileBundleStore implements BundleStore {
     };
   }
 
+  /// How many times a save writes its temporary file: once, and once more
+  /// when another process's [load] removed the first one before its rename.
+  static const _saveAttempts = 2;
+
   @override
   Future<BundleSaveOutcome> save(BundleCopy copy) async {
-    File? temporary;
-    try {
-      await directory.create(recursive: true);
-      temporary = File(p.join(directory.path, _temporaryName()));
-      final header = jsonEncode({
-        'build': copy.identity.build,
-        'sha256': copy.identity.sha256,
-      });
-      final sink = temporary.openWrite();
-      // close() returns the same `done` future and reports its error here;
-      // this handler only keeps the error from also counting as unhandled.
-      sink.done.ignore();
+    for (var attempt = 1; ; attempt++) {
+      File? temporary;
       try {
-        sink
-          ..add(utf8.encode('$header\n'))
-          ..add(copy.bytes);
-        await sink.flush();
-      } finally {
-        await sink.close();
-      }
-      await _beforeRename?.call();
-      await temporary.rename(_keptFile.path);
-      return const BundleSaved();
-    } on FileSystemException catch (error) {
-      // This save's own temporary file is never another process's, so it
-      // is safe to remove; the kept file is not touched.
-      if (temporary != null) {
-        try {
-          await temporary.delete();
-        } on FileSystemException {
-          // Already gone, or removed at a later start once stale.
+        await directory.create(recursive: true);
+        temporary = File(p.join(directory.path, _temporaryName()));
+        await _write(temporary, copy);
+        await _beforeRename?.call();
+        await temporary.rename(_keptFile.path);
+        return const BundleSaved();
+      } on FileSystemException catch (error) {
+        // A save suspended past [staleTemporaryAge] before its rename can
+        // find its temporary file removed by another process's start: the
+        // file's age is no proof its writer has exited (PR #15). The copy
+        // is still in memory, so the save writes it again under a new name.
+        if (temporary != null &&
+            attempt < _saveAttempts &&
+            !await temporary.exists()) {
+          continue;
         }
+        // This save's own temporary file is never another process's, so it
+        // is safe to remove; the kept file is not touched.
+        if (temporary != null) {
+          try {
+            await temporary.delete();
+          } on FileSystemException {
+            // Already gone, or removed at a later start once stale.
+          }
+        }
+        return BundleNotSaved('${error.message}: ${error.path}');
       }
-      return BundleNotSaved('${error.message}: ${error.path}');
+    }
+  }
+
+  /// Writes [copy] with its header line to [temporary].
+  static Future<void> _write(File temporary, BundleCopy copy) async {
+    final header = jsonEncode({
+      'build': copy.identity.build,
+      'sha256': copy.identity.sha256,
+    });
+    final sink = temporary.openWrite();
+    // close() returns the same `done` future and reports its error here;
+    // this handler only keeps the error from also counting as unhandled.
+    sink.done.ignore();
+    try {
+      sink
+        ..add(utf8.encode('$header\n'))
+        ..add(copy.bytes);
+      await sink.flush();
+    } finally {
+      await sink.close();
     }
   }
 

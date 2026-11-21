@@ -10,7 +10,7 @@ import 'package:kaname_server/src/static_data/static_data_lock.dart';
 import 'package:kaname_static_data/kaname_static_data.dart';
 import 'package:kaname_static_data/testing.dart';
 import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
-    show BuiltBundle;
+    show BuiltBundle, bundleSha256;
 import 'package:postgres/postgres.dart' as pg;
 import 'package:serverpod/serverpod.dart' show Session;
 import 'package:test/test.dart';
@@ -444,6 +444,42 @@ void main() {
       expect((await builds()).map((b) => b.build), [2, 3]);
       expect(await bundleBuilds(), {2, 3});
       expect(await byteBuilds(), {2, 3});
+    });
+
+    // PR #15: the bundle repair checks the stored bytes, not only the
+    // metadata.
+    test('stored bundle bytes are intact only with their size and hash, and '
+        'not when changed or missing', () async {
+      final store = await open();
+      await store1(store, 1, BuildState.active);
+      final bytes = Uint8List.fromList([1, 1, 2, 3]);
+      final hash = bundleSha256(bytes);
+      await store.recordBundle(
+        BundleWriteBuilt(
+          build: 1,
+          at: _t0,
+          built: BuiltBundle(
+            buildNumber: 1,
+            bytes: bytes,
+            sha256: hash,
+            records: const {},
+          ),
+        ),
+      );
+
+      expect(await store.bundleBytesIntact(1, sha256: hash, size: 4), isTrue);
+      expect(await store.bundleBytesIntact(1, sha256: hash, size: 5), isFalse);
+      expect(
+        await store.bundleBytesIntact(1, sha256: 'ab' * 32, size: 4),
+        isFalse,
+        reason: 'no bytes of that hash are stored',
+      );
+
+      await session.db.unsafeExecute(
+        'UPDATE "sde_bundle_bytes" SET "bytes" = decode(\'01010204\', '
+        '\'hex\') WHERE "build" = 1',
+      );
+      expect(await store.bundleBytesIntact(1, sha256: hash, size: 4), isFalse);
     });
 
     test('dropping with no staged build removes nothing', () async {

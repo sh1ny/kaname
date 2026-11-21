@@ -528,6 +528,13 @@ final class _SwitchFailingStore implements StaticDataStore {
       _inner.readRawRecords(build, file);
   @override
   Future<StoredBundle?> storedBundle(int build) => _inner.storedBundle(build);
+
+  @override
+  Future<bool> bundleBytesIntact(
+    int build, {
+    required String sha256,
+    required int size,
+  }) => _inner.bundleBytesIntact(build, sha256: sha256, size: size);
   @override
   Future<void> recordBundle(BundleWrite write) => _inner.recordBundle(write);
   @override

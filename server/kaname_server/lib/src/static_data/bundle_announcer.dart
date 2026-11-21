@@ -74,11 +74,19 @@ final class HeldBundle {
 /// What one read of the stored state found.
 final class BundleStateRead {
   /// Creates a read result.
-  const BundleStateRead({required this.announce, required this.repairOwed});
+  const BundleStateRead({
+    required this.announce,
+    required this.repairOwed,
+    this.announcesActive = false,
+  });
 
   /// The bundle to announce: the active build's built bundle in the current
   /// format, else the previous build's, else `null`.
   final BundleRef? announce;
+
+  /// Whether [announce] is the active build's bundle, whose refused bytes
+  /// owe a repair (PR #15).
+  final bool announcesActive;
 
   /// Whether the active build's bundle is missing, failed or of another
   /// format version, so a repair is owed (D10).
@@ -92,8 +100,23 @@ abstract interface class BundleStateSource {
 
   /// Loads the bytes of [ref], found by build and hash together (D3).
   ///
-  /// Throws when they are not stored or do not match [ref].
+  /// Throws a [BundleBytesMismatch] when they do not match [ref]'s size and
+  /// hash, and another error when they cannot be read or are not stored.
   Future<Uint8List> loadBytes(BundleRef ref);
+}
+
+/// The stored bytes of [ref] do not match its size or hash: a confirmed
+/// integrity failure, which owes a repair when [ref] is the active build's
+/// bundle, unlike a failed read, which a later refresh retries.
+final class BundleBytesMismatch implements Exception {
+  /// Creates the failure for [ref].
+  const BundleBytesMismatch(this.ref);
+
+  /// The bundle whose stored bytes were refused.
+  final BundleRef ref;
+
+  @override
+  String toString() => 'the stored bundle bytes do not match $ref';
 }
 
 /// The [BundleStateSource] over the Serverpod ORM.
@@ -150,6 +173,7 @@ final class OrmBundleStateSource implements BundleStateSource {
     return BundleStateRead(
       announce: active ?? previous,
       repairOwed: hasActive && active == null,
+      announcesActive: active != null,
     );
   });
 
@@ -168,7 +192,7 @@ final class OrmBundleStateSource implements BundleStateSource {
       data.lengthInBytes,
     );
     if (bytes.length != ref.size || bundleSha256(bytes) != ref.sha256) {
-      throw StateError('the stored bundle bytes do not match $ref');
+      throw BundleBytesMismatch(ref);
     }
     return bytes;
   });
@@ -207,8 +231,9 @@ final class OrmBundleStateSource implements BundleStateSource {
 ///
 /// ## Repairs
 ///
-/// While the active build's bundle is missing, failed or of another format
-/// version, the 60-second tick sends [RunBundleRepair] through the function
+/// While the active build's bundle is missing, failed, of another format
+/// version, or stored with bytes its byte load refused ([BundleBytesMismatch]),
+/// the 60-second tick sends [RunBundleRepair] through the function
 /// given as `runRepair`, unless one is outstanding; the start hook sends its
 /// request through [sendRepair] too, so at most one is outstanding per
 /// server, until its reply, a worker error or the worker's exit.
@@ -539,7 +564,16 @@ final class BundleAnnouncer {
         await _install(null, null);
         return;
       }
-      final held = _held(ref) ?? HeldBundle(ref, await _loadBytes(ref));
+      final HeldBundle held;
+      try {
+        held = _held(ref) ?? HeldBundle(ref, await _loadBytes(ref));
+      } on BundleBytesMismatch {
+        // The metadata calls the active bundle current, so only the refused
+        // bytes show that its repair is owed; the repair checks the bytes
+        // under the lock and builds it again (PR #15).
+        if (!refresh.expired && state.announcesActive) _repairOwed = true;
+        rethrow;
+      }
       if (refresh.expired) return;
       await _install(ref, held);
     } on Object catch (error) {
@@ -553,6 +587,8 @@ final class BundleAnnouncer {
   Future<Uint8List> _loadBytes(BundleRef ref) async {
     try {
       return await _database(() => _source.loadBytes(ref));
+    } on BundleBytesMismatch {
+      rethrow;
     } on Object catch (error) {
       throw StateError('byte load failed for $ref: $error');
     }
