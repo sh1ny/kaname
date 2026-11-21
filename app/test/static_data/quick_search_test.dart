@@ -1007,6 +1007,32 @@ void main() {
       expect(location(), '/home');
     });
 
+    // Pre-ship round 42: an unmarking queued for one location report is
+    // dropped when another report comes before it runs.
+    testWidgets('a Back reported between a branch restore and its next frame '
+        'keeps the marked entry it lands on', (tester) async {
+      await openOverLicences(tester);
+      await tester.tap(find.byKey(ShellKeys.bar('home')));
+      await tester.pumpAndSettle();
+
+      // No frame between them: the restore's unmarking is still queued when
+      // the browser lands on the original search entry.
+      await tester.tap(find.byKey(ShellKeys.bar('settings')));
+      await history.pressBack();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(QuickSearchKeys.field), findsOneWidget);
+      expect(location(), '/settings/licences?search');
+      expect(history.current, '/settings/licences?search');
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      expect(find.byKey(QuickSearchKeys.field), findsNothing);
+      expect(location(), '/settings/licences');
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      expect(location(), '/settings', reason: 'no repeated page entry');
+    });
+
     testWidgets('returning to a branch whose search was open, from a branch '
         'whose search is open, closes the search on the unmarked page', (
       tester,

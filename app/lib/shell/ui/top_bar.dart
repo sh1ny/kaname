@@ -191,6 +191,7 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   void _onLocation() {
     final marked = hasSearchMarker(_location);
     final fromBrowser = _reportedByBrowser(_locations!.value);
+    if (fromBrowser) _browserReports++;
     if (_backPending && fromBrowser) {
       _backPending = false;
       if (_openWhenBack) {
@@ -206,7 +207,13 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     }
     final ownEntry = _searchOpen && _location.path == _openPath;
     if (marked && !fromBrowser && !ownEntry) {
-      _afterFrame(_dropMarker);
+      // Tied to this report: a Back or Forward the browser reports before
+      // the frame, such as one landing on a marked entry, decides for
+      // itself (pre-ship round 42).
+      final reports = _browserReports;
+      _afterFrame(() {
+        if (_browserReports == reports) _dropMarker();
+      });
       if (_searchOpen) _endSearch();
       return;
     }
@@ -221,6 +228,9 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
         break;
     }
   }
+
+  /// How many locations the browser reported, by Back or Forward.
+  int _browserReports = 0;
 
   /// Escape closes the open narrow search also while focus is elsewhere in
   /// the shell, such as the page or the bottom navigation. Within the search
