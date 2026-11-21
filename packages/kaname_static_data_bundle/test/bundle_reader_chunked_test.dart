@@ -401,6 +401,27 @@ void main() {
     );
   });
 
+  // Pre-ship round 35.
+  test('a negative minor with no sections and no body is refused by the '
+      'chunked open', () async {
+    final text = utf8.decode(inflatedFixture());
+    final header = jsonDecode(text.substring(0, text.indexOf('\n'))) as Map;
+    final inflated = Uint8List.fromList(
+      utf8.encode(
+        '${jsonEncode({...header, 'formatMinor': -1, 'sections': <Object?>[]})}\n',
+      ),
+    );
+
+    expect(
+      refused(await openInflatedBundleChunked(inflated, build: fixtureBuild)),
+      isA<CorruptBundle>().having(
+        (r) => r.detail,
+        'detail',
+        contains('formatMinor'),
+      ),
+    );
+  });
+
   test('a chunk size below one is rejected', () {
     expect(
       () => openInflatedBundleChunked(

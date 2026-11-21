@@ -113,6 +113,30 @@ void main() {
     );
   });
 
+  // Pre-ship round 35: a negative minor would define no section at all.
+  test('a negative minor with no sections and no body is refused', () {
+    final text = utf8.decode(
+      const GZipDecoder().decodeBytes(fixtureBuilder().build().bytes),
+    );
+    final header = jsonDecode(text.substring(0, text.indexOf('\n'))) as Map;
+    final bytes = const GZipEncoder().encodeBytes(
+      utf8.encode(
+        '${jsonEncode({...header, 'formatMinor': -1, 'sections': <Object?>[]})}\n',
+      ),
+    );
+
+    expect(
+      refused(
+        openBundle(bytes, build: fixtureBuild, sha256: bundleSha256(bytes)),
+      ),
+      isA<CorruptBundle>().having(
+        (r) => r.detail,
+        'detail',
+        contains('formatMinor'),
+      ),
+    );
+  });
+
   test('newer major is refused naming both versions', () {
     final bytes = editedBundle(
       (header) => {...header, 'formatMajor': 2, 'formatMinor': 3},

@@ -398,7 +398,10 @@ BundleHeader _parseHeader(Map<String, Object?> header, int build) {
   return BundleHeader(
     formatMajor: bundleFormatMajor,
     formatMinor: switch (header['formatMinor']) {
-      final int minor => minor,
+      final int minor when minor >= 0 => minor,
+      final int minor => throw FormatException(
+        'the header has formatMinor $minor, below zero',
+      ),
       _ => throw const FormatException('the header has no formatMinor'),
     },
     build: build,
