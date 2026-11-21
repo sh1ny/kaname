@@ -178,6 +178,25 @@ void main() {
     );
   });
 
+  test('a reload number asks for the bundle URL with that reload query, '
+      'and none asks for the plain URL', () async {
+    for (final (reload, line) in [
+      (0, 'GET /base/static-data/bundle/3714173/$hash HTTP/1.1'),
+      (2, 'GET /base/static-data/bundle/3714173/$hash?reload=2 HTTP/1.1'),
+    ]) {
+      final server = await HoldingServer.start();
+      addTearDown(server.close);
+      server.serve();
+      final transfer = HttpBundleDownloader(
+        server: ConfiguredServer(server.base),
+      ).start(bundle, reload: reload);
+
+      expect(await server.requestLine.future, line);
+      transfer.cancel();
+      await transfer.result;
+    }
+  });
+
   group('before response headers', () {
     // dart:io gives no handle that closes a socket during its TLS
     // handshake (design D4), so only the plain stage checks the close.

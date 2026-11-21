@@ -1032,10 +1032,15 @@ void _bundleRouteTests() {
         await rig.announcer.request();
 
         final answer = await _fetch(rig.port, rig.pathOf(bundle));
+        // The app's reload query, which asks past an HTTP cache, names the
+        // same bundle.
+        final reload = await _fetch(rig.port, '${rig.pathOf(bundle)}?reload=3');
 
         expect(answer.status, 200);
         expect(answer.body, hasLength(bundle.size));
         expect(bundleSha256(Uint8List.fromList(answer.body)), bundle.sha256);
+        expect(reload.status, 200);
+        expect(reload.body, answer.body);
         expect(answer.headers.contentLength, bundle.size);
         expect(
           answer.headers.value('cache-control'),

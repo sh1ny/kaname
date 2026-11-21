@@ -171,10 +171,17 @@ final class FakeTransfer implements BundleTransfer {
   /// Creates a transfer of [identity]; with [finishesOnCancel] false,
   /// [cancel] leaves [result] pending until [finishCancel], as a transport
   /// that takes a moment to abort does.
-  FakeTransfer(this.identity, {required this.finishesOnCancel});
+  FakeTransfer(
+    this.identity, {
+    required this.finishesOnCancel,
+    this.reload = 0,
+  });
 
   /// Which bundle is downloading.
   final BundleIdentity identity;
+
+  /// The reload number it was started with.
+  final int reload;
 
   /// Whether [cancel] ends [result] at once.
   final bool finishesOnCancel;
@@ -226,8 +233,12 @@ final class FakeBundleDownloader implements BundleDownloader {
   }
 
   @override
-  BundleTransfer start(BundleIdentity bundle) {
-    final transfer = FakeTransfer(bundle, finishesOnCancel: finishesOnCancel);
+  BundleTransfer start(BundleIdentity bundle, {int reload = 0}) {
+    final transfer = FakeTransfer(
+      bundle,
+      finishesOnCancel: finishesOnCancel,
+      reload: reload,
+    );
     started.add(transfer);
     return transfer;
   }

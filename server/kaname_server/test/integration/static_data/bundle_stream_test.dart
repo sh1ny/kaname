@@ -1092,7 +1092,8 @@ final class _EndlessDownloads implements BundleDownloader {
   const _EndlessDownloads();
 
   @override
-  BundleTransfer start(BundleIdentity bundle) => _EndlessTransfer();
+  BundleTransfer start(BundleIdentity bundle, {int reload = 0}) =>
+      _EndlessTransfer();
 }
 
 final class _EndlessTransfer implements BundleTransfer {

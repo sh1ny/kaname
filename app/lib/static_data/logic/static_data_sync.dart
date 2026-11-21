@@ -309,7 +309,11 @@ final class StaticDataSync {
 
   Future<void> _runPipeline(_Attempt attempt) async {
     try {
-      final transfer = _server!.downloader.start(attempt.identity);
+      // After refused bytes, ask past the HTTP cache that may hold them.
+      final transfer = _server!.downloader.start(
+        attempt.identity,
+        reload: attempt.refusals,
+      );
       attempt.transfer = transfer;
       final download = await transfer.result;
       attempt.transfer = null;
@@ -356,6 +360,7 @@ final class StaticDataSync {
       '(${failure.name}): $detail',
     );
     attempt.failures++;
+    if (failure == _Failure.refused) attempt.refusals++;
     attempt.failure = failure;
     attempt.phase = _Phase.backoff;
     var delay = firstRetryDelay;
@@ -524,6 +529,10 @@ final class _Attempt {
   final BundleIdentity identity;
   _Phase phase = _Phase.pending;
   int failures = 0;
+
+  /// How many of the [failures] refused the downloaded bytes; the next
+  /// download's reload number (`BundleDownloader.start`).
+  int refusals = 0;
   _Failure? failure;
   BundleTransfer? transfer;
   Timer? retryTimer;

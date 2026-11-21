@@ -5,6 +5,11 @@ import 'dart:typed_data';
 
 import 'bundle_format.dart';
 
+/// How deep a record line's JSON may nest: the typed and raw objects are
+/// level 1, and every value inside a level is one deeper. Deeper nesting
+/// is refused rather than risking the stack.
+const int recordMaxDepth = 512;
+
 /// Whether the bytes of [bytes] from [start] to [end] are one record line:
 /// UTF-8 JSON holding an array of an integer key, an object and an object
 /// or `null`, with only whitespace around it.
@@ -30,9 +35,6 @@ final class _Malformed implements Exception {
 /// A recursive-descent scan of RFC 8259 JSON over UTF-8 bytes.
 final class _Scanner {
   _Scanner(this._bytes, this._i, this._end);
-
-  /// Deeper nesting is refused rather than risking the stack.
-  static const _maxDepth = 512;
 
   static const _quote = 0x22;
   static const _backslash = 0x5C;
@@ -105,7 +107,7 @@ final class _Scanner {
   }
 
   void _value(int depth) {
-    if (depth > _maxDepth) _fail();
+    if (depth > recordMaxDepth) _fail();
     switch (_peek) {
       case _openBrace:
         _object(depth);

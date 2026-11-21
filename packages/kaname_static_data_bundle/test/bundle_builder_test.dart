@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart';
+import 'package:kaname_static_data_bundle/src/record_shape.dart'
+    show recordMaxDepth;
 import 'package:test/test.dart';
 
 import 'support/bundle_fixture.dart';
@@ -208,6 +210,49 @@ void main() {
           throwsA(isA<BundleBuildException>()),
         );
       }
+    });
+
+    test('raw JSON nested to the reader depth limit builds and reopens; one '
+        'level deeper fails the build', () {
+      // The raw object is level 1 and its "a" array level 2, so the number
+      // inside n nested arrays sits at level n + 2.
+      Object? nested(int n) => n == 0 ? 0 : [nested(n - 1)];
+      final atLimit = fixtureBuilder()
+        ..addRaw(
+          BundleSection.fighterAbilities,
+          RawRecord(
+            key: '7',
+            line: 99,
+            record: {'_key': 7, 'a': nested(recordMaxDepth - 2)},
+          ),
+        );
+      final built = atLimit.build();
+      expect(
+        openBundle(built.bytes, build: fixtureBuild, sha256: built.sha256),
+        isA<BundleOpened>(),
+      );
+
+      final beyond = fixtureBuilder()
+        ..addRaw(
+          BundleSection.fighterAbilities,
+          RawRecord(
+            key: '7',
+            line: 99,
+            record: {'_key': 7, 'a': nested(recordMaxDepth - 1)},
+          ),
+        );
+      expect(
+        beyond.build,
+        throwsA(
+          isA<BundleBuildException>()
+              .having(
+                (e) => e.section,
+                'section',
+                BundleSection.fighterAbilities,
+              )
+              .having((e) => e.message, 'message', contains('record 7')),
+        ),
+      );
     });
 
     test('typed input is refused when it does not fit the section', () {

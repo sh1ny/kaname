@@ -439,14 +439,6 @@ final class _Bundle implements ClientBundle {
   /// The count of each known section's record lines.
   final Map<BundleSection, int> _counts = {};
 
-  /// The sections [_decodeSearchSections] decodes at open.
-  static const _searchSections = {
-    BundleSection.types,
-    BundleSection.groups,
-    BundleSection.mapRegions,
-    BundleSection.mapSolarSystems,
-  };
-
   @override
   late final List<BundleType> types;
 
@@ -463,10 +455,11 @@ final class _Bundle implements ClientBundle {
   /// pausing after every [linesPerChunk] lines.
   ///
   /// Only section marker lines are decoded; record lines are counted, not
-  /// decoded. A record line of a known section that search does not decode
-  /// is shape-checked without building values ([isRecordLine]), so a
-  /// bundle whose lazy sections the fit engine could not read is refused
-  /// at open (D12); the search sections are checked by their decoding.
+  /// decoded. Every record line of a known section is shape-checked
+  /// without building values ([isRecordLine]): the lazy sections, so a
+  /// bundle the fit engine could not read is refused at open (D12), and
+  /// the search sections too, so their keys keep the range every platform
+  /// decodes exactly ([bundleMaxKey]).
   /// Unknown sections are passed over. Throws a [FormatException] when a
   /// known section appears twice, a record line comes before the first
   /// section marker, or a checked record line is malformed. The pauses are the
@@ -506,9 +499,7 @@ final class _Bundle implements ClientBundle {
           'a record line before the first section marker',
         );
       } else {
-        if (current != null &&
-            !_searchSections.contains(current) &&
-            !isRecordLine(_bytes, position, end)) {
+        if (current != null && !isRecordLine(_bytes, position, end)) {
           throw FormatException(
             'malformed record line in section ${current.file}',
           );

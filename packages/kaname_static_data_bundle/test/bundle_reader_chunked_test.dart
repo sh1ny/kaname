@@ -156,8 +156,15 @@ void main() {
     counter.stop();
 
     // A timer fires only when the open gives up the event loop, so one turn
-    // per chunk shows each chunk's yield was a real one.
-    expect(counter.turns, greaterThanOrEqualTo(searchLines - 1));
+    // per chunk shows each chunk's yield was a real one. The section scan
+    // pauses after each body line; only the search decoding's own pauses,
+    // one per search record line, take the count past the body's lines.
+    final bodyLines = '\n'.allMatches(utf8.decode(inflated)).length - 1;
+    expect(
+      counter.turns,
+      greaterThanOrEqualTo(bodyLines + searchLines - 1),
+      reason: '$bodyLines body lines, $searchLines search lines',
+    );
   });
 
   test(
@@ -320,6 +327,38 @@ void main() {
         );
       });
     }
+  });
+
+  test('a search-section key beyond the bundle key range is refused by '
+      'both opens', () async {
+    final text = utf8.decode(inflatedFixture());
+    final lines = text.substring(0, text.length - 1).split('\n');
+    final typesAt = lines.indexOf('{"section":"types"}');
+    final record = jsonDecode(lines[typesAt + 1]) as List<Object?>;
+    // Exact natively, rounded on the web.
+    final replaced = jsonEncode([bundleMaxKey + 2, record[1], record[2]]);
+    final bytes = Uint8List.fromList(
+      utf8.encode(
+        '${[...lines.take(typesAt + 1), replaced, ...lines.skip(typesAt + 2)].join('\n')}\n',
+      ),
+    );
+    final corrupt = isA<CorruptBundle>().having(
+      (r) => r.detail,
+      'detail',
+      allOf(contains('malformed'), contains('section types')),
+    );
+
+    expect(refused(openInflatedBundle(bytes, build: fixtureBuild)), corrupt);
+    expect(
+      refused(
+        await openInflatedBundleChunked(
+          bytes,
+          build: fixtureBuild,
+          linesPerChunk: 3,
+        ),
+      ),
+      corrupt,
+    );
   });
 
   test('a chunk size below one is rejected', () {

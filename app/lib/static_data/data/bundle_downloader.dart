@@ -112,7 +112,13 @@ abstract interface class BundleTransfer {
 /// Downloads bundles from the server.
 abstract interface class BundleDownloader {
   /// Starts downloading the bundle [bundle].
-  BundleTransfer start(BundleIdentity bundle);
+  ///
+  /// With [reload] above 0 the request asks past any HTTP cache: a browser
+  /// may have cached a complete response whose bytes then failed their
+  /// check, under the URL's immutable caching. Each [reload] number names
+  /// another URL (`?reload=<n>`), which the server's route ignores, so the
+  /// cached copy is never reused; 0 keeps ordinary cache reuse.
+  BundleTransfer start(BundleIdentity bundle, {int reload = 0});
 }
 
 /// A [BundleDownloader] over `package:http`, from the server [server].
@@ -138,8 +144,14 @@ final class HttpBundleDownloader implements BundleDownloader {
   final http.Client Function(Future<void> abort) _clientFor;
 
   @override
-  BundleTransfer start(BundleIdentity bundle) =>
-      _HttpBundleTransfer(_clientFor, bundleUrl(server, bundle), timeout);
+  BundleTransfer start(BundleIdentity bundle, {int reload = 0}) {
+    final url = bundleUrl(server, bundle);
+    return _HttpBundleTransfer(
+      _clientFor,
+      reload > 0 ? url.replace(queryParameters: {'reload': '$reload'}) : url,
+      timeout,
+    );
+  }
 }
 
 /// Why a transfer's abort trigger fired.

@@ -391,6 +391,29 @@ void main() {
     },
   );
 
+  test('a retry after refused bytes asks past the HTTP cache with a new '
+      'reload number; a retry after a network failure does not', () async {
+    final h = harnessHolding(copyN);
+    await h.start();
+    await h.send(announce(copyN1));
+    expect(h.downloader.last.reload, 0);
+
+    await h.deliver(copyN2);
+    await h.clock.elapse(oneMinute);
+    expect(h.downloader.builds, [buildN + 1, buildN + 1]);
+    expect(h.downloader.last.reload, 1);
+
+    h.downloader.last.fail();
+    await h.clock.elapse(const Duration(minutes: 2));
+    expect(h.downloader.started, hasLength(3));
+    expect(h.downloader.last.reload, 1);
+
+    await h.deliver(copyN2);
+    await h.clock.elapse(const Duration(minutes: 4));
+    expect(h.downloader.started, hasLength(4));
+    expect(h.downloader.last.reload, 2);
+  });
+
   test('newer major downloads nothing and reports app update needed', () async {
     final h = harnessHolding(copyN);
     await h.start();

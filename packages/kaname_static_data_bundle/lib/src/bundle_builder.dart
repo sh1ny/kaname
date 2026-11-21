@@ -8,6 +8,7 @@ import 'bundle_format.dart';
 import 'bundle_reader.dart';
 import 'bundle_section.dart';
 import 'canonical_json.dart';
+import 'record_shape.dart';
 
 /// A record of a typed section, as the import keeps it.
 ///
@@ -208,7 +209,8 @@ final class BundleBuilder {
 
   /// Writes the bundle of every record added so far.
   ///
-  /// Throws a [BundleBuildException] when a record's JSON cannot be written.
+  /// Throws a [BundleBuildException] when a record's JSON cannot be written,
+  /// or when the reader would refuse its line ([isRecordLine]).
   BuiltBundle build() {
     final records = {
       for (final section in BundleSection.values)
@@ -237,8 +239,24 @@ final class BundleBuilder {
       _write(out, section, {'section': section.file});
       out.write('\n');
       for (final line in lines) {
-        _write(out, section, [line.key, line.typed, line.raw]);
-        out.write('\n');
+        final record = StringBuffer();
+        _write(record, section, [line.key, line.typed, line.raw]);
+        // The reader's own check (D12): a record it would refuse, such as
+        // raw JSON nested past its depth limit, fails the build instead of
+        // shipping a bundle no app opens.
+        final text = record.toString();
+        final encoded = utf8.encode(text);
+        if (!isRecordLine(encoded, 0, encoded.length)) {
+          throw BundleBuildException(
+            section,
+            'record ${line.key} cannot be read back as a record line, '
+            'for example because its JSON nests deeper than '
+            '$recordMaxDepth levels',
+          );
+        }
+        out
+          ..write(text)
+          ..write('\n');
       }
     }
     final bytes = deterministicGzip(
