@@ -535,7 +535,17 @@ void main() {
       h.downloader.last.complete(copyN1.bytes);
       await waitFor(() => h.state is BundleReady);
       expect(h.state, readyOn(copyN1));
-      await waitFor(() => kept.readAsBytesSync().length != truncated.length);
+      // On Windows a read during the save's rename can find the file in use;
+      // that read only means the save has not finished yet.
+      bool replaced() {
+        try {
+          return kept.readAsBytesSync().length != truncated.length;
+        } on FileSystemException {
+          return false;
+        }
+      }
+
+      await waitFor(replaced);
       final load = await newStore().load();
       expect(load, isA<KeptBundleLoaded>());
       expect((load as KeptBundleLoaded).identity, copyN1.identity);
