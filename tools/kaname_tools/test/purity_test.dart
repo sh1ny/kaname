@@ -407,6 +407,22 @@ void main() {
       expect(result.err, contains('"dart:io"'));
     });
 
+    // Pre-ship round 37: an annotation may take type arguments.
+    test('an import after a generic annotation fails', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        "@Tag<Map<String, List<int>>>('x')\n"
+            "import 'b.dart';\n"
+            "@p.Tag<int>.named()\n"
+            "import 'dart:io';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.code, 1);
+      expect(result.err, contains('"dart:io"'));
+    });
+
     test('an import after argument-free annotations fails', () async {
       fs.writeFile(
         'packages/kaname_core/lib/src/a.dart',

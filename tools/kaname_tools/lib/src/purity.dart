@@ -111,14 +111,29 @@ final class PurityCheck {
           if (uri != null) yield (kind, uri.toString());
           i++;
         case _Punct(text: '@'):
-          // An annotation: one name, each further `.name`, and optional
-          // arguments; the next word, such as `import`, is not part of it.
+          // An annotation: one name, each further `.name`, optional type
+          // arguments in balanced `<>` followed by more `.name`s (a named
+          // constructor), and optional arguments; the next word, such as
+          // `import`, is not part of it.
           i++;
           if (tokens.elementAtOrNull(i) case _Word()) i++;
-          while (tokens.elementAtOrNull(i) is _Punct &&
-              (tokens[i] as _Punct).text == '.' &&
-              tokens.elementAtOrNull(i + 1) is _Word) {
-            i += 2;
+          void skipNames() {
+            while (tokens.elementAtOrNull(i) is _Punct &&
+                (tokens[i] as _Punct).text == '.' &&
+                tokens.elementAtOrNull(i + 1) is _Word) {
+              i += 2;
+            }
+          }
+
+          skipNames();
+          if (tokens.elementAtOrNull(i) case _Punct(text: '<')) {
+            var depth = 0;
+            for (; i < tokens.length; i++) {
+              if (tokens[i] case _Punct(text: '<')) depth++;
+              if (tokens[i] case _Punct(text: '>') when --depth == 0) break;
+            }
+            i++;
+            skipNames();
           }
           if (tokens.elementAtOrNull(i) case _Punct(text: '(')) {
             var depth = 0;
