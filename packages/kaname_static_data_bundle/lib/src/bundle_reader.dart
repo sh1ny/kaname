@@ -9,6 +9,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'bundle_format.dart';
 import 'bundle_models.dart';
 import 'bundle_section.dart';
+import 'record_shape.dart';
 import 'search_index.dart';
 
 /// Why a reader refused a bundle.
@@ -438,6 +439,14 @@ final class _Bundle implements ClientBundle {
   /// The count of each known section's record lines.
   final Map<BundleSection, int> _counts = {};
 
+  /// The sections [_decodeSearchSections] decodes at open.
+  static const _searchSections = {
+    BundleSection.types,
+    BundleSection.groups,
+    BundleSection.mapRegions,
+    BundleSection.mapSolarSystems,
+  };
+
   @override
   late final List<BundleType> types;
 
@@ -453,10 +462,14 @@ final class _Bundle implements ClientBundle {
   /// Records where each section's record lines start and end, from [start],
   /// pausing after every [linesPerChunk] lines.
   ///
-  /// Only section marker lines are decoded; record lines start with `[` and
-  /// are counted, not decoded. Unknown sections are passed over. Throws a
-  /// [FormatException] when a known section appears twice or a record line
-  /// comes before the first section marker. The pauses are the
+  /// Only section marker lines are decoded; record lines are counted, not
+  /// decoded. A record line of a known section that search does not decode
+  /// is shape-checked without building values ([isRecordLine]), so a
+  /// bundle whose lazy sections the fit engine could not read is refused
+  /// at open (D12); the search sections are checked by their decoding.
+  /// Unknown sections are passed over. Throws a [FormatException] when a
+  /// known section appears twice, a record line comes before the first
+  /// section marker, or a checked record line is malformed. The pauses are the
   /// iterable's elements, as in [_decodeSearchSections].
   Iterable<void> _index(int start, int linesPerChunk) sync* {
     BundleSection? current;
@@ -493,6 +506,13 @@ final class _Bundle implements ClientBundle {
           'a record line before the first section marker',
         );
       } else {
+        if (current != null &&
+            !_searchSections.contains(current) &&
+            !isRecordLine(_bytes, position, end)) {
+          throw FormatException(
+            'malformed record line in section ${current.file}',
+          );
+        }
         currentCount++;
       }
       position = end + 1;

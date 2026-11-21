@@ -266,6 +266,62 @@ void main() {
     );
   });
 
+  group('a lazy-section record replaced in place', () {
+    final text = utf8.decode(inflatedFixture());
+    final lines = text.substring(0, text.length - 1).split('\n');
+    final dogmaAt = lines.indexOf('{"section":"typeDogma"}');
+
+    Uint8List withDogmaRecord(List<int> record) => Uint8List.fromList([
+      ...utf8.encode('${lines.take(dogmaAt + 1).join('\n')}\n'),
+      ...record,
+      ...utf8.encode('\n${lines.skip(dogmaAt + 2).join('\n')}\n'),
+    ]);
+
+    test('keeps every count, so the fixture has such a record', () {
+      expect(dogmaAt, greaterThan(0));
+      expect(lines[dogmaAt + 1], startsWith('['));
+      final same = withDogmaRecord(utf8.encode(lines[dogmaAt + 1]));
+      expect(opened(openInflatedBundle(same, build: fixtureBuild)), isNotNull);
+    });
+
+    for (final (name, record) in [
+      ('invalid JSON', utf8.encode('[1,{},{"a":}]')),
+      ('a shape other than [key, typed, raw]', utf8.encode('[1,2]')),
+      ('a key that is not an integer', utf8.encode('[1.5,{},null]')),
+      ('trailing text', utf8.encode('[1,{},null] x')),
+      ('an unterminated string', utf8.encode('[1,{"a":"b},null]')),
+      ('a bad escape', utf8.encode(r'[1,{"a":"\q"},null]')),
+      (
+        'malformed UTF-8',
+        [...utf8.encode('[1,{"a":"'), 0xC3, ...utf8.encode('"},null]')],
+      ),
+    ]) {
+      test('holding $name is refused by both opens', () async {
+        final bytes = withDogmaRecord(record);
+        Matcher corrupt() => isA<CorruptBundle>().having(
+          (r) => r.detail,
+          'detail',
+          allOf(contains('malformed'), contains('section typeDogma')),
+        );
+
+        expect(
+          refused(openInflatedBundle(bytes, build: fixtureBuild)),
+          corrupt(),
+        );
+        expect(
+          refused(
+            await openInflatedBundleChunked(
+              bytes,
+              build: fixtureBuild,
+              linesPerChunk: 3,
+            ),
+          ),
+          corrupt(),
+        );
+      });
+    }
+  });
+
   test('a chunk size below one is rejected', () {
     expect(
       () => openInflatedBundleChunked(
