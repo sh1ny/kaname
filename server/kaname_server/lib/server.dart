@@ -16,8 +16,14 @@ import 'src/static_data/static_data_start.dart';
 /// before `pod.start()` returns. The bundle route is
 /// registered before the server starts, because the API server takes middleware
 /// only before it starts.
-Future<void> run(List<String> args) async {
-  final pod = Serverpod(args);
+Future<void> run(List<String> args) => serve(Serverpod(args));
+
+/// Wires the bundle route and announcer into [pod], starts it, then starts
+/// the announcer and the static-data work, as [run] does for its pod.
+///
+/// [run] builds its pod from the command line; tests pass one built for
+/// them, so they exercise this same order (C29).
+Future<void> serve(Serverpod pod) async {
   final announcer = buildBundleAnnouncer(pod);
   pod.server.addMiddleware(BundleRoute(announcer: announcer).middleware);
   // The API listener accepts subscriptions before pod.start() returns, while

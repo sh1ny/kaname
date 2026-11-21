@@ -333,6 +333,38 @@ void main() {
       expect(refusalOf(bytes), isA<CorruptBundle>());
     });
 
+    // Pre-ship round 33: format 1.0 lists every section it defines.
+    for (final file in ['types', 'mapSolarSystems', 'dynamicItemAttributes']) {
+      test('a header and body that both leave out the $file section', () {
+        final text = utf8.decode(
+          const GZipDecoder().decodeBytes(fixtureBuilder().build().bytes),
+        );
+        final lines = text.substring(0, text.length - 1).split('\n');
+        final header = jsonDecode(lines.first) as Map<String, Object?>;
+        final edited = {
+          ...header,
+          'sections': [
+            for (final entry in header['sections']! as List<Object?>)
+              if (entry case {'file': final String name} when name != file)
+                entry,
+          ],
+        };
+        final body = withoutSection(lines.skip(1).toList(), file);
+        final bytes = const GZipEncoder().encodeBytes(
+          utf8.encode('${[jsonEncode(edited), ...body].join('\n')}\n'),
+        );
+
+        expect(
+          refusalOf(bytes),
+          isA<CorruptBundle>().having(
+            (r) => r.detail,
+            'detail',
+            contains('no entry for section $file'),
+          ),
+        );
+      });
+    }
+
     // Pre-ship round 29.
     test('an absent section whose header counts a negative number of '
         'records', () {
