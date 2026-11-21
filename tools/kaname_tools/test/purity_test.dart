@@ -422,6 +422,41 @@ void main() {
       expect(result.err, contains('"dart:io"'));
     });
 
+    for (final (name, directive) in [
+      ('a \\u escape', r"import 'dart:\u0069o';"),
+      ('a \\u{} escape', r"import 'dart:\u{69}o';"),
+      ('a \\x escape', r"import 'dart:\x69o';"),
+      ('a needless escape', r"import 'dart:\io';"),
+      ('adjacent strings', "import 'dart:' \"io\";"),
+      ('adjacent raw strings', "import r'dart:' r'io';"),
+      (
+        'an escaped conditional alternative',
+        r"import 'a.dart' if (dart.library.io) 'dart:\x69o';",
+      ),
+    ]) {
+      test('a URI naming dart:io through $name fails', () async {
+        fs.writeFile('packages/kaname_core/lib/src/a.dart', '$directive\n');
+
+        final result = await runTool(fs, ['purity']);
+
+        expect(result.code, 1);
+        expect(result.err, contains('"dart:io"'));
+      });
+    }
+
+    test('a raw string keeps its backslash, so it names no dart: '
+        'library', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        r"import r'dart:\u0069o';"
+            '\n',
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.err, isNot(contains('"dart:io"')));
+    });
+
     test('an import shown in a multiline string passes', () async {
       fs.writeFile(
         'packages/kaname_core/lib/src/a.dart',

@@ -73,9 +73,10 @@ void main() {
       expect(attempts, [7]);
     });
 
-    for (final (missing, sha256, size) in [
-      ('hash', null, 3),
-      ('size', 'hash-7', null),
+    for (final (missing, sha256, size, bytesStored) in [
+      ('hash', null, 3, true),
+      ('size', 'hash-7', null, true),
+      ('bytes', 'hash-7', 3, false),
     ]) {
       test('a built bundle of the current format stored without its $missing '
           'counts as missing and is built again', () async {
@@ -90,6 +91,7 @@ void main() {
               builtAt: at,
               sha256: sha256,
               size: size,
+              bytesStored: bytesStored,
             ),
           );
         expect(store.bundles[7]!.isCurrent, isFalse);

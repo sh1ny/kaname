@@ -79,10 +79,22 @@ final class PurityCheck {
             final _Word keyword:
           final kind = keyword.text;
           // The directive ends at its `;`; a configuration's test, in
-          // parentheses, holds no URI.
+          // parentheses, holds no URI. Adjacent string literals are one URI,
+          // as Dart joins them.
+          final takesUris = kind == 'import' || kind == 'export';
           var depth = 0;
+          StringBuffer? uri;
           for (i++; i < tokens.length; i++) {
-            switch (tokens[i]) {
+            final token = tokens[i];
+            if (token case _Str(:final value) when depth == 0 && takesUris) {
+              (uri ??= StringBuffer()).write(value);
+              continue;
+            }
+            if (uri != null) {
+              yield (kind, uri.toString());
+              uri = null;
+            }
+            switch (token) {
               case _Punct(text: ';') when depth == 0:
                 break;
               case _Punct(text: '('):
@@ -91,15 +103,12 @@ final class PurityCheck {
               case _Punct(text: ')'):
                 depth--;
                 continue;
-              case _Str(:final value)
-                  when depth == 0 && (kind == 'import' || kind == 'export'):
-                yield (kind, value);
-                continue;
               case _:
                 continue;
             }
             break;
           }
+          if (uri != null) yield (kind, uri.toString());
           i++;
         case _Punct(text: '@'):
           // An annotation: one name, each further `.name`, and optional
@@ -352,7 +361,9 @@ final class _Word extends _Token {
   final String text;
 }
 
-/// A string literal; [value] is its text between the quotes.
+/// A string literal; [value] is its value: the text between the quotes,
+/// with a non-raw literal's escapes decoded as Dart decodes them (an
+/// interpolation is kept as its source text).
 final class _Str extends _Token {
   const _Str(this.value);
 
@@ -436,7 +447,7 @@ final class _DirectiveTokens extends Iterable<_Token> {
     return source.length;
   }
 
-  /// The text of the string literal whose opening quote is at [start],
+  /// The value of the string literal whose opening quote is at [start],
   /// and the index after its closing quote.
   (String, int) _string(int start, {required bool raw}) {
     final quote = source.startsWith(source[start] * 3, start)
@@ -446,8 +457,7 @@ final class _DirectiveTokens extends Iterable<_Token> {
     var i = start + quote.length;
     while (i < source.length && !source.startsWith(quote, i)) {
       if (!raw && source[i] == r'\' && i + 1 < source.length) {
-        text.write(source.substring(i, i + 2));
-        i += 2;
+        i = _escape(i + 1, text);
       } else if (!raw && source.startsWith(r'${', i)) {
         final end = _interpolationEnd(i + 2);
         text.write(source.substring(i, end));
@@ -458,6 +468,59 @@ final class _DirectiveTokens extends Iterable<_Token> {
       }
     }
     return (text.toString(), (i + quote.length).clamp(0, source.length));
+  }
+
+  /// Writes the character the escape after the backslash at [start] - 1
+  /// stands for to [text], and returns the index after the escape.
+  ///
+  /// As in Dart: `\n`, `\r`, `\t`, `\b`, `\f` and `\v` are control
+  /// characters, `\xHH`, `\uHHHH` and `\u{H...}` code points, and any
+  /// other escaped character stands for itself.
+  int _escape(int start, StringBuffer text) {
+    final c = source[start];
+    const controls = {
+      'n': '\n',
+      'r': '\r',
+      't': '\t',
+      'b': '\b',
+      'f': '\f',
+      'v': '\v',
+    };
+    if (controls[c] case final control?) {
+      text.write(control);
+      return start + 1;
+    }
+    if (c == 'x') {
+      if (_hex(start + 1, 2) case final code?) {
+        text.writeCharCode(code);
+        return start + 3;
+      }
+    } else if (c == 'u' && source.startsWith('{', start + 1)) {
+      final close = source.indexOf('}', start + 2);
+      final code = close > start + 2
+          ? _hex(start + 2, close - start - 2)
+          : null;
+      if (code != null && code <= 0x10FFFF) {
+        text.writeCharCode(code);
+        return close + 1;
+      }
+    } else if (c == 'u') {
+      if (_hex(start + 1, 4) case final code?) {
+        text.writeCharCode(code);
+        return start + 5;
+      }
+    }
+    text.write(c);
+    return start + 1;
+  }
+
+  /// The value of the [length] hexadecimal digits at [start], or `null`.
+  int? _hex(int start, int length) {
+    if (start + length > source.length) return null;
+    final digits = source.substring(start, start + length);
+    return RegExp(r'^[0-9A-Fa-f]+$').hasMatch(digits)
+        ? int.parse(digits, radix: 16)
+        : null;
   }
 
   /// The index after the `}` that closes an interpolation whose code

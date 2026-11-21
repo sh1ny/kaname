@@ -279,6 +279,7 @@ final class InMemoryStaticDataStore implements StaticDataStore {
           builtAt: at,
           sha256: built.sha256,
           size: built.bytes.length,
+          bytesStored: true,
         );
         _bundleBytes[build] = (sha256: built.sha256, bytes: built.bytes);
       case BundleWriteFailed(:final build, :final at, :final reason):

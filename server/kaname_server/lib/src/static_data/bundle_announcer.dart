@@ -100,8 +100,10 @@ abstract interface class BundleStateSource {
 ///
 /// The state is one statement over `sde_build` and `sde_bundle`, so one read
 /// sees one snapshot: a switch and a rollback that commit around it can never
-/// show it a torn state. It reads metadata only (C11); the bytes are a
-/// separate [loadBytes].
+/// show it a torn state. It reads metadata only (C11), plus whether a bytes
+/// row of the bundle's build and hash exists, never the bytes themselves; a
+/// bundle without that row counts as missing, as `StoredBundle.isCurrent`
+/// does, so its repair is owed. The bytes are a separate [loadBytes].
 final class OrmBundleStateSource implements BundleStateSource {
   /// Creates a source that opens its sessions with [withSession].
   OrmBundleStateSource(this._withSession);
@@ -112,7 +114,9 @@ final class OrmBundleStateSource implements BundleStateSource {
   Future<BundleStateRead> readState() => _withSession((session) async {
     final rows = await session.db.unsafeQuery(
       'SELECT b."state", m."outcome", m."formatMajor", m."formatMinor", '
-      'm."sha256", m."size", b."build" '
+      'm."sha256", m."size", b."build", EXISTS (SELECT 1 FROM '
+      '"sde_bundle_bytes" y WHERE y."build" = m."build" '
+      'AND y."sha256" = m."sha256") '
       'FROM "sde_build" b LEFT JOIN "sde_bundle" m ON m."build" = b."build" '
       "WHERE b.\"state\" IN ('active', 'previous')",
     );
@@ -126,7 +130,8 @@ final class OrmBundleStateSource implements BundleStateSource {
               row[2] == bundleFormatMajor &&
               row[3] == bundleFormatMinor &&
               row[4] != null &&
-              row[5] != null
+              row[5] != null &&
+              row[7] == true
           ? BundleRef(
               build: row[6]! as int,
               sha256: row[4]! as String,

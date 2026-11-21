@@ -7,6 +7,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:kaname_app/server/data/server_address.dart';
 import 'package:kaname_app/static_data/data/bundle_downloader.dart';
 import 'package:kaname_app/static_data/data/bundle_hash.dart';
@@ -297,6 +298,30 @@ void main() {
     );
   });
 
+  test('a status other than 200 aborts its request, for a client whose '
+      'close leaves returned responses running, as the browser client '
+      'does', () async {
+    final client = _BrowserLikeClient(503);
+    final transfer = HttpBundleDownloader(
+      server: ConfiguredServer(Uri.parse('https://kaname.example/')),
+      clientFor: (_) => client,
+    ).start(bundle);
+
+    expect(
+      await transfer.result.timeout(const Duration(seconds: 5)),
+      isA<BundleDownloadFailed>().having(
+        (failed) => failed.failure,
+        'failure',
+        isA<BundleHttpStatus>().having((s) => s.statusCode, 'status', 503),
+      ),
+    );
+    await client.bodyAborted.future.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => fail('the response body was never aborted'),
+    );
+    expect(client.closed, isTrue);
+  });
+
   test('the chunked fallback hash equals the native hash', () async {
     final fixture = fixtureBundle(3714173);
     final native = bundleSha256(fixture.bytes);
@@ -306,4 +331,32 @@ void main() {
     expect(await chunkedSha256(fixture.bytes), native);
     expect(await chunkedSha256(Uint8List(0)), bundleSha256(const []));
   });
+}
+
+/// A client that, like `package:http`'s browser client, stops tracking a
+/// request once its headers have arrived: [close] leaves the returned
+/// response's body running, and only the request's abort trigger ends it.
+final class _BrowserLikeClient extends http.BaseClient {
+  _BrowserLikeClient(this._status);
+
+  final int _status;
+  final Completer<void> bodyAborted = Completer();
+  bool closed = false;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final body = StreamController<List<int>>();
+    if (request case http.Abortable(:final abortTrigger?)) {
+      unawaited(
+        abortTrigger.then((_) {
+          if (!bodyAborted.isCompleted) bodyAborted.complete();
+          unawaited(body.close());
+        }),
+      );
+    }
+    return http.StreamedResponse(body.stream, _status, request: request);
+  }
+
+  @override
+  void close() => closed = true;
 }

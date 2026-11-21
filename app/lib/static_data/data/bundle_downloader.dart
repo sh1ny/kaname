@@ -186,7 +186,7 @@ final class _HttpBundleTransfer implements BundleTransfer {
     try {
       final response = await _client.send(request);
       // A failed status is known from the headers; its body, which may be
-      // slow or large, is never read: closing the client below ends it.
+      // slow or large, is never read: the abort below ends it.
       outcome = response.statusCode == 200
           ? BundleDownloaded(await response.stream.toBytes())
           : BundleDownloadFailed(BundleHttpStatus(response.statusCode));
@@ -204,6 +204,10 @@ final class _HttpBundleTransfer implements BundleTransfer {
           : BundleDownloadFailed(BundleNetworkError('$error'));
     }
     _timer.cancel();
+    // Fire the request's abort trigger too: the browser client stops
+    // tracking a request once its headers arrive, so closing it does not end
+    // an unread body, and only the abort does.
+    if (!_abortTrigger.isCompleted) _abortTrigger.complete();
     _client.close();
     _result.complete(outcome);
   }

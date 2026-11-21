@@ -325,5 +325,27 @@ void main() {
       expect(announced!.lastNamed.sha256, after.sha256);
       expect(announced!.lastNamed.formatMajor, bundleFormatMajor);
     });
+
+    // Pre-ship round 25: metadata whose bytes row is gone is rebuilt.
+    test('a bundle whose bytes row is gone is rebuilt and announced', () async {
+      final harness = await worker();
+      ccpAnnounces(3300);
+      expect(await checkThrough(harness), isA<BuildSwitched>());
+      final before = await expectCurrentBundle(3300);
+      await session.db.unsafeExecute(
+        'DELETE FROM "sde_bundle_bytes" WHERE "build" = 3300',
+      );
+      announced = await TestAnnouncer.start(session);
+      expect(announced!.announcer.installed, isA<BundleAnnouncementNone>());
+
+      final result = await checkThrough(harness);
+
+      expect(result, isA<BuildUpToDate>());
+      final after = await expectCurrentBundle(3300);
+      expect(after.builtAt.isAfter(before.builtAt), isTrue);
+      expect(await bundleBytesOf(session, 3300), isNotNull);
+      expect(announced!.lastNamed.build, 3300);
+      expect(announced!.lastNamed.sha256, after.sha256);
+    });
   }, rollbackDatabase: RollbackDatabase.disabled);
 }

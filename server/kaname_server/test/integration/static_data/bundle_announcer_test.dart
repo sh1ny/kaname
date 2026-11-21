@@ -636,6 +636,34 @@ void main() {
       await _eventually(() => sent == 1, 'the same tick sends the repair');
     });
 
+    // Pre-ship round 25: metadata whose bytes are gone is no bundle.
+    test('an active bundle whose metadata outlives its bytes is not '
+        'announced and owes a repair', () async {
+      await seedBuild(session, 870, SdeBuildState.previous);
+      final previous = await seedBundle(session, 870);
+      await seedBuild(session, 871, SdeBuildState.active);
+      await seedBundle(session, 871);
+      await SdeBundleBytes.db.deleteWhere(
+        session,
+        where: (t) => t.build.equals(871),
+      );
+      var sent = 0;
+      final created = announcer(
+        runRepair: () {
+          sent++;
+          return Completer<WorkerReply>().future;
+        },
+      );
+
+      await startAndSettle(created);
+      await tick(created);
+      await _eventually(() => sent == 1, 'the tick sends the repair');
+
+      expect(namedBuilds(bus.published), [870]);
+      expect(created.heldBundle(870, previous.sha256), isNotNull);
+      expect(logged('byte load failed'), isFalse);
+    });
+
     // Pre-ship round 3: a held read does not hold back a repair an
     // earlier read already found owed.
     test(

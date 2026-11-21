@@ -536,8 +536,10 @@ final class PostgresStaticDataStore implements StaticDataStore {
   Future<StoredBundle?> storedBundle(int build) async {
     final names = [for (final column in _bundleColumns) '"${column.name}"'];
     final result = await _connection.execute(
-      'SELECT ${names.join(', ')} FROM "sde_bundle" '
-      r'WHERE "build" = $1::bigint',
+      'SELECT ${names.join(', ')}, EXISTS (SELECT 1 FROM "sde_bundle_bytes" y '
+      'WHERE y."build" = m."build" AND y."sha256" = m."sha256") '
+      'FROM "sde_bundle" m '
+      r'WHERE m."build" = $1::bigint',
       parameters: [build],
     );
     if (result.isEmpty) return null;
@@ -551,6 +553,7 @@ final class PostgresStaticDataStore implements StaticDataStore {
       sha256: row[5] as String?,
       size: row[6] as int?,
       builtAt: (row[7]! as DateTime).toUtc(),
+      bytesStored: row[8]! as bool,
     );
   }
 

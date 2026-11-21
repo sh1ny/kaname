@@ -31,6 +31,7 @@ final class StoredBundle {
     this.reason,
     this.sha256,
     this.size,
+    this.bytesStored = false,
   });
 
   /// The build the bundle belongs to.
@@ -58,19 +59,24 @@ final class StoredBundle {
   /// When the bundle build ended.
   final DateTime builtAt;
 
+  /// Whether the bytes of this build with [sha256] are stored; `false` for a
+  /// failed build.
+  final bool bytesStored;
+
   /// Whether this is a built bundle in the format this builder writes, with
-  /// its hash and size recorded.
+  /// its hash, size and bytes stored.
   ///
   /// A failed bundle, a built one of another format version, and a built one
-  /// missing its hash or size count as missing and are built again (D20,
-  /// C12): the announcer reads the same rule, so it never asks for a repair
-  /// this step would skip.
+  /// missing its hash, size or bytes count as missing and are built again
+  /// (D20, C12): the announcer reads the same rule, so it never asks for a
+  /// repair this step would skip.
   bool get isCurrent =>
       outcome == BundleOutcome.built &&
       formatMajor == bundle.bundleFormatMajor &&
       formatMinor == bundle.bundleFormatMinor &&
       sha256 != null &&
-      size != null;
+      size != null &&
+      bytesStored;
 }
 
 /// What a store records about one build's bundle.
