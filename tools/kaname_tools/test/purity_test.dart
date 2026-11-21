@@ -361,6 +361,40 @@ void main() {
       expect(result.code, 0);
     });
 
+    test('a conditional alternative after a comment holding a semicolon '
+        'fails with file', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        "import 'stub.dart' /* native fallback; see below */\n"
+            "    // the io one; for tools\n"
+            "    if (dart.library.io) 'dart:io';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.code, 1);
+      expect(
+        result.err,
+        allOf(
+          contains('packages/kaname_core/lib/src/a.dart'),
+          contains('"dart:io"'),
+        ),
+      );
+    });
+
+    test('comment-like text inside a string is not a comment', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        "import 'stub.dart' if (dart.library.io) 'dart:io';\n"
+            "const note = '/* not a comment';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.code, 1);
+      expect(result.err, contains('"dart:io"'));
+    });
+
     test('tests of a web-safe package may use dart:io', () async {
       fs
         ..writeFile(

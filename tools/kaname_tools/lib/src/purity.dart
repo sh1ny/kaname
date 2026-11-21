@@ -74,13 +74,71 @@ final class PurityCheck {
   static final _quoted = RegExp(r'''r?['"]([^'"]+)['"]''');
 
   /// Every URI of the directives in [source], with the directive's kind.
+  ///
+  /// Comments are blanked first, so a `;` or a quote in a comment between a
+  /// directive's clauses neither ends the directive nor hides its URIs.
   static Iterable<(String kind, String uri)> _uris(String source) sync* {
-    for (final match in _directive.allMatches(source)) {
+    for (final match in _directive.allMatches(_withoutComments(source))) {
       final clauses = match[2]!.replaceAll(_condition, ' ');
       for (final quoted in _quoted.allMatches(clauses)) {
         yield (match[1]!, quoted[1]!);
       }
     }
+  }
+
+  /// [source] with every comment replaced by spaces, its line breaks kept,
+  /// and string literals (raw, triple-quoted and interpolated alike) left
+  /// as they are, so comment-like text in a string stays.
+  static String _withoutComments(String source) {
+    final out = StringBuffer();
+    var i = 0;
+    void blank(int end) {
+      for (; i < end; i++) {
+        out.write(source[i] == '\n' ? '\n' : ' ');
+      }
+    }
+
+    while (i < source.length) {
+      if (source.startsWith('//', i)) {
+        final end = source.indexOf('\n', i);
+        blank(end < 0 ? source.length : end);
+      } else if (source.startsWith('/*', i)) {
+        // Block comments nest in Dart.
+        var depth = 0;
+        var end = i;
+        while (end < source.length) {
+          if (source.startsWith('/*', end)) {
+            depth++;
+            end += 2;
+          } else if (source.startsWith('*/', end)) {
+            depth--;
+            end += 2;
+            if (depth == 0) break;
+          } else {
+            end++;
+          }
+        }
+        blank(end);
+      } else if (source[i] == "'" || source[i] == '"') {
+        final raw = i > 0 && source[i - 1] == 'r';
+        final quote = source.startsWith(source[i] * 3, i)
+            ? source[i] * 3
+            : source[i];
+        var end = i + quote.length;
+        while (end < source.length && !source.startsWith(quote, end)) {
+          end += !raw && source[end] == '\\' ? 2 : 1;
+        }
+        end = end + quote.length > source.length
+            ? source.length
+            : end + quote.length;
+        out.write(source.substring(i, end));
+        i = end;
+      } else {
+        out.write(source[i]);
+        i++;
+      }
+    }
+    return out.toString();
   }
 
   /// Runs the check; [CheckReport.packages] lists the pure members.

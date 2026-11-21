@@ -183,32 +183,72 @@ void main() {
   );
 
   group('refused Cache Storage keeps the bundle in memory', () {
-    Future<void> expectRefused(CacheStorageBundleStore store) async {
-      final copy = fixtureBundle(buildN);
+    final opener = BrowserBundleOpener.ofWindow(web.window);
+    final copy = fixtureBundle(buildN);
+    final announcement = BundleAnnounced(
+      epoch: 'e',
+      revision: 1,
+      bundle: copy.identity,
+      size: copy.bytes.length,
+      formatMajor: bundleFormatMajor,
+    );
 
-      expect(await store.save(copy), isA<BundleNotSaved>());
-      expect(await store.load(), isA<NoKeptBundle>());
-      // The copy the app holds in memory still opens; the next load would
-      // download it again.
-      final opened = await FakeBundleOpener().open(copy.bytes, copy.identity);
-      expect(opened, isA<BundleOpened>());
+    /// Runs the app's sync over [store], announces the bundle and returns
+    /// the sync and its downloader.
+    (StaticDataSync, FakeBundleDownloader) follow(BundleStore store) {
+      final source = FakeAnnouncementSource();
+      final downloader = FakeBundleDownloader();
+      final sync = StaticDataSync(
+        server: BundleServer(source: source, downloader: downloader),
+        store: store,
+        opener: opener,
+        indexer: const SearchBundleIndexer(),
+        timers: Timer.new,
+        onState: (_) {},
+        log: (_) {},
+      )..start();
+      addTearDown(sync.dispose);
+      // It waits for the kept copy's load (design D6).
+      source.current.emit(announcement);
+      return (sync, downloader);
     }
+
+    Future<void> expectRefused(CacheStorageBundleStore Function() store) async {
+      final (sync, downloader) = follow(store());
+      await waitFor(() => downloader.started.isNotEmpty);
+      downloader.last.complete(copy.bytes);
+      await waitFor(() => sync.state is BundleReady);
+      // The save was refused; the downloaded bundle is still searched.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      final ready = sync.state as BundleReady;
+      expect(ready.identity, copy.identity);
+      expect(
+        ready.index.search('jita').hits.map((hit) => hit.name),
+        contains('Jita'),
+      );
+      expect(await store().load(), isA<NoKeptBundle>());
+
+      // A fresh sync, as after a reload, has nothing kept: it downloads the
+      // bundle again.
+      final (_, again) = follow(store());
+      await waitFor(() => again.started.isNotEmpty);
+      expect(again.builds, [buildN]);
+    }
+
+    CacheStorageBundleStore over(web.CacheStorage? caches) =>
+        CacheStorageBundleStore(
+          caches: caches,
+          key: CacheStorageBundleStore.keyFor(web.window.location.origin),
+          opener: opener,
+        );
 
     test('missing caches, as off a secure context', () async {
       final global = web.window as JSObject;
-      if (global.has('caches')) {
-        // A secure test page has `caches`; a store built without it is the
-        // insecure page's store.
-        await expectRefused(
-          CacheStorageBundleStore(
-            caches: null,
-            key: CacheStorageBundleStore.keyFor(web.window.location.origin),
-            opener: FakeBundleOpener(),
-          ),
-        );
-      } else {
-        await expectRefused(storeOf(web.window));
-      }
+      // A secure test page has `caches`; a store built without it is the
+      // insecure page's store.
+      await expectRefused(
+        () => global.has('caches') ? over(null) : storeOf(web.window),
+      );
     });
 
     test('caches that refuse to open, as in a private window', () async {
@@ -216,13 +256,18 @@ void main() {
         ..['open'] = ((JSString _) => Future<JSAny?>.error(
           StateError('SecurityError'),
         ).toJS).toJS;
-      await expectRefused(
-        CacheStorageBundleStore(
-          caches: refusing as web.CacheStorage,
-          key: CacheStorageBundleStore.keyFor(web.window.location.origin),
-          opener: FakeBundleOpener(),
-        ),
-      );
+      await expectRefused(() => over(refusing as web.CacheStorage));
+    });
+
+    test('a cache that opens but refuses the write, as at the quota', () async {
+      final cache = JSObject()
+        ..['match'] = ((JSAny? _) => Future<JSAny?>.value().toJS).toJS
+        ..['put'] = ((JSAny? _, JSAny? _) => Future<JSAny?>.error(
+          StateError('QuotaExceededError'),
+        ).toJS).toJS;
+      final full = JSObject()
+        ..['open'] = ((JSString _) => Future<JSAny?>.value(cache).toJS).toJS;
+      await expectRefused(() => over(full as web.CacheStorage));
     });
   });
 }
