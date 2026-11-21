@@ -88,7 +88,20 @@ Uint8List inflateGzip(Uint8List bytes) {
     }
     position++;
   }
-  if (flags & 0x02 != 0) position += 2;
+  if (flags & 0x02 != 0) {
+    // The header's own checksum: the low 16 bits of the CRC-32 of the
+    // header bytes before it, which the browser checks too (pre-ship
+    // round 45).
+    if (position + 2 > length - 8) {
+      throw const FormatException('$notGzip: truncated header');
+    }
+    final expected = bytes[position] | bytes[position + 1] << 8;
+    final actual = getCrc32(Uint8List.sublistView(bytes, 0, position)) & 0xffff;
+    if (actual != expected) {
+      throw const FormatException('$notGzip: header CRC mismatch');
+    }
+    position += 2;
+  }
   if (position > length - 8) {
     throw const FormatException('$notGzip: truncated header');
   }

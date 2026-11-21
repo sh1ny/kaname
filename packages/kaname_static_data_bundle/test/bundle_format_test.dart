@@ -46,6 +46,48 @@ void main() {
       }
     });
 
+    // Pre-ship round 45: the browser checks FHCRC, so the native reader
+    // does too.
+    group('with a header checksum', () {
+      Uint8List withHeaderCrc({int flip = 0}) {
+        final header = [0x1f, 0x8b, 0x08, 0x02, 0, 0, 0, 0, 0, 0xff];
+        final crc = getCrc32(header) & 0xffff ^ flip;
+        // An empty final fixed block (03 00) and the empty input's trailer.
+        return Uint8List.fromList([
+          ...header,
+          crc & 0xff,
+          crc >> 8,
+          0x03,
+          0x00,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+        ]);
+      }
+
+      test('decodes a member whose header checksum matches', () {
+        expect(inflateGzip(withHeaderCrc()), isEmpty);
+      });
+
+      test('refuses a member with only its header checksum changed', () {
+        expect(
+          () => inflateGzip(withHeaderCrc(flip: 1)),
+          throwsA(
+            isA<FormatException>().having(
+              (e) => e.message,
+              'message',
+              contains('header CRC mismatch'),
+            ),
+          ),
+        );
+      });
+    });
+
     test('refuses a member whose data never reaches a final block', () {
       // One empty stored block, not marked final.
       final member = _member(const [0x00, 0x00, 0x00, 0xff, 0xff]);
