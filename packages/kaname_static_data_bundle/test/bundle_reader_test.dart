@@ -333,6 +333,19 @@ void main() {
       expect(refusalOf(bytes), isA<CorruptBundle>());
     });
 
+    // Pre-ship round 34: a header lists the sections its own minor
+    // defines, so a reader that knows a later section still opens it.
+    test('every known section belongs to format 1.0, and a section added in '
+        'a later minor is not required of an older bundle', () {
+      for (final section in BundleSection.values) {
+        expect(section.sinceMinor, 0, reason: section.file);
+        expect(section.isDefinedIn(0), isTrue, reason: section.file);
+      }
+      expect(sectionDefinedIn(sinceMinor: 1, formatMinor: 0), isFalse);
+      expect(sectionDefinedIn(sinceMinor: 1, formatMinor: 1), isTrue);
+      expect(sectionDefinedIn(sinceMinor: 1, formatMinor: 2), isTrue);
+    });
+
     // Pre-ship round 33: format 1.0 lists every section it defines.
     for (final file in ['types', 'mapSolarSystems', 'dynamicItemAttributes']) {
       test('a header and body that both leave out the $file section', () {

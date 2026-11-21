@@ -198,6 +198,20 @@ enum BundleSection {
 
   const BundleSection({this.columns});
 
+  /// The format minor version that added the section; every section of
+  /// format 1.0 has 0.
+  ///
+  /// A section added in a later minor sets it, so a reader that knows the
+  /// section still opens an older bundle whose header never lists it
+  /// ([isDefinedIn]). A later minor that adds a section returns its minor
+  /// for it here.
+  int get sinceMinor => 0;
+
+  /// Whether a bundle of format minor [formatMinor] defines the section, so
+  /// that its header must list it, present or absent.
+  bool isDefinedIn(int formatMinor) =>
+      sectionDefinedIn(sinceMinor: sinceMinor, formatMinor: formatMinor);
+
   /// The typed columns, or `null` for a raw-only section.
   ///
   /// A raw-only section's `typed` object is empty and it keeps its records'
@@ -252,3 +266,8 @@ enum BundleSection {
     return null;
   }
 }
+
+/// Whether a section added in format minor [sinceMinor] is defined by a
+/// bundle of format minor [formatMinor]: only when it is not newer.
+bool sectionDefinedIn({required int sinceMinor, required int formatMinor}) =>
+    sinceMinor <= formatMinor;

@@ -73,6 +73,24 @@ void main() {
       expect(attempts, [7]);
     });
 
+    test('a failed read of the stored bundle builds nothing and leaves the '
+        'stored bundle as it was', () async {
+      final store = InMemoryStaticDataStore()..seedBuild(7, BuildState.active);
+      await repair(store).run();
+      final before = store.bundles[7];
+      expect(before!.isCurrent, isTrue);
+      attempts.clear();
+      store.storedBundleError = StateError('read failed');
+
+      final result = await repair(store).run();
+
+      final step = (result as BundleRepairRan).step;
+      expect(step, isA<BundleFailed>());
+      expect((step as BundleFailed).reason, contains('read failed'));
+      expect(attempts, isEmpty);
+      expect(store.bundles[7], same(before));
+    });
+
     for (final (missing, sha256, size, bytesStored) in [
       ('hash', null, 3, true),
       ('size', 'hash-7', null, true),

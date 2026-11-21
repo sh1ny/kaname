@@ -59,6 +59,9 @@ final class InMemoryStaticDataStore implements StaticDataStore {
   /// Whether [close] was called.
   bool isClosed = false;
 
+  /// When set, [storedBundle] throws it, as a store whose read failed.
+  Object? storedBundleError;
+
   /// The stored builds and their states.
   Map<int, BuildState> get builds => Map.unmodifiable(_builds);
 
@@ -265,7 +268,10 @@ final class InMemoryStaticDataStore implements StaticDataStore {
       rawRecordsOf(build, file)..sort((a, b) => a.line.compareTo(b.line));
 
   @override
-  Future<StoredBundle?> storedBundle(int build) async => _bundles[build];
+  Future<StoredBundle?> storedBundle(int build) async {
+    if (storedBundleError case final error?) throw error;
+    return _bundles[build];
+  }
 
   @override
   Future<void> recordBundle(BundleWrite write) async {

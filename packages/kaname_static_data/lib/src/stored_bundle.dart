@@ -221,6 +221,8 @@ final class BundleFailed extends BundleStepResult {
 /// [buildBundle] and stored with its bytes in one transaction
 /// ([StaticDataStore.recordBundle]); a failure to build or store it is
 /// recorded as a [BundleWriteFailed] with its reason, at [clock]'s time.
+/// A failure to read the stored bundle builds and records nothing, so a
+/// stored bundle is never replaced on an unread state.
 /// Never throws: every failure is a [BundleFailed].
 Future<BundleStepResult> ensureBundle(
   StaticDataStore store,
@@ -228,10 +230,20 @@ Future<BundleStepResult> ensureBundle(
   BuildBundle buildBundle = buildStoredBundle,
   DateTime Function() clock = DateTime.now,
 }) async {
+  final StoredBundle? stored;
+  try {
+    stored = await store.storedBundle(build);
+  } on Object catch (error) {
+    // Nothing is known about the stored bundle, so nothing is recorded over
+    // it; the next repair reads again.
+    return BundleFailed(
+      build,
+      'bundle state read failed: ${describeFailure(error)}',
+    );
+  }
+  if (stored != null && stored.isCurrent) return BundleAlreadyCurrent(build);
   String reason;
   try {
-    final stored = await store.storedBundle(build);
-    if (stored != null && stored.isCurrent) return BundleAlreadyCurrent(build);
     final built = await buildBundle(store, build);
     await store.recordBundle(
       BundleWriteBuilt(build: build, at: clock(), built: built),
