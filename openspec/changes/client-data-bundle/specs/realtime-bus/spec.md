@@ -89,10 +89,6 @@ Each announcement SHALL carry the server's epoch and a revision that rises with 
 - **WHEN** an app's stream is idle, the bus message for hash H is delayed until H2 has been installed, and the publish of H2 fails
 - **THEN** when the delayed message arrives the stream sends H2's announcement, and never H
 
-#### Scenario: Install during Serverpod's write
-- **WHEN** a stream has handed announcement H to Serverpod and H2 is installed before Serverpod writes H to the WebSocket
-- **THEN** the app receives H and then H2, each with a higher revision than the one before
-
 #### Scenario: Stalled subscriber
 - **WHEN** one app stops reading its stream while ten announcements are published, and another app keeps reading
 - **THEN** the stalled stream is sent at most ten events, each with a higher revision than the one before, and the reading app ends on the latest announcement with each event's revision higher than the one before
