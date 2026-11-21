@@ -51,7 +51,32 @@ class EndpointStaticData extends _isc.EndpointRef {
   @override
   String get name => 'staticData';
 
-  /// Streams the bundle announcement.
+  /// Streams the announcement of the bundle the app may download.
+  ///
+  /// The first event is the announcement the announcer has installed, sent
+  /// once the announcer has installed its first one (a failed first refresh,
+  /// or none that succeeded 19 seconds after its start, installs "none"); an
+  /// event follows each change of the installed announcement. Needs no
+  /// sign-in.
+  ///
+  /// ## Carried constraint
+  ///
+  /// - **C20:** The stream is bounded by count, rate and lifetime. The server
+  ///   holds at most 2,000 of them (`BundleAnnouncementRuntime.maxStreams`)
+  ///   and refuses more by ending the stream at once without an event. Each
+  ///   ends after 30 minutes on the server's clock, also while its client
+  ///   reads nothing, because Serverpod's endpoint streams have no
+  ///   backpressure (A14): what the stream sends is bounded by rate, at most
+  ///   one event per change of the installed announcement, never by the
+  ///   client's reading. Whatever ends the stream (expiry, the client's
+  ///   disconnect, an error) removes its bus listener and frees its place.
+  ///   Every send carries the announcement installed at that moment, and
+  ///   only when its revision is higher than the last one this stream sent
+  ///   (C16): bus messages are wake-ups, never the payload, so a late or
+  ///   buffered message cannot send a retired announcement. The handoff is
+  ///   synchronous; Serverpod writes the value to the WebSocket one
+  ///   microtask later, and an announcement installed in that microtask
+  ///   follows at once.
   _ida.Stream<_ibnxtke0.BundleAnnouncement> bundleAnnouncements() =>
       caller.callStreamingServerEndpoint<
         _ida.Stream<_ibnxtke0.BundleAnnouncement>,
