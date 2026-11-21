@@ -100,6 +100,9 @@ final class FileBundleStore implements BundleStore {
         'sha256': copy.identity.sha256,
       });
       final sink = temporary.openWrite();
+      // close() returns the same `done` future and reports its error here;
+      // this handler only keeps the error from also counting as unhandled.
+      sink.done.ignore();
       try {
         sink
           ..add(utf8.encode('$header\n'))

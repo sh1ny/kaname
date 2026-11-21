@@ -61,84 +61,68 @@ final class PurityCheck {
 
   static const _skippedDirectories = {'build', '.dart_tool'};
 
-  /// An import or export up to its `;`: the default URI and every
-  /// configurable alternative (`if (dart.library.io) 'x_io.dart'`).
-  static final _directive = RegExp(
-    r'^\s*(import|export)\s+([^;]*);',
-    multiLine: true,
-  );
-
-  /// A configuration's test, whose quoted value is not a URI.
-  static final _condition = RegExp(r'\bif\s*\([^)]*\)');
-
-  static final _quoted = RegExp(r'''r?['"]([^'"]+)['"]''');
-
-  /// Every URI of the directives in [source], with the directive's kind.
+  /// Every URI of the import and export directives in [source], with the
+  /// directive's kind: the default URI and every configurable alternative
+  /// (`if (dart.library.io) 'x_io.dart'`).
   ///
-  /// Comments are blanked first, so a `;` or a quote in a comment between a
-  /// directive's clauses neither ends the directive nor hides its URIs.
+  /// Dart allows directives only before the first declaration, so the
+  /// scan reads [source]'s tokens from the start, past comments, string
+  /// literals and annotations, and stops at the first token that cannot
+  /// begin a directive. A directive may therefore share a line with
+  /// another, and import-like text in a comment or string is never read.
   static Iterable<(String kind, String uri)> _uris(String source) sync* {
-    for (final match in _directive.allMatches(_withoutComments(source))) {
-      final clauses = match[2]!.replaceAll(_condition, ' ');
-      for (final quoted in _quoted.allMatches(clauses)) {
-        yield (match[1]!, quoted[1]!);
-      }
-    }
-  }
-
-  /// [source] with every comment replaced by spaces, its line breaks kept,
-  /// and string literals (raw, triple-quoted and interpolated alike) left
-  /// as they are, so comment-like text in a string stays.
-  static String _withoutComments(String source) {
-    final out = StringBuffer();
+    final tokens = _DirectiveTokens(source).toList();
     var i = 0;
-    void blank(int end) {
-      for (; i < end; i++) {
-        out.write(source[i] == '\n' ? '\n' : ' ');
-      }
-    }
-
-    while (i < source.length) {
-      if (source.startsWith('//', i)) {
-        final end = source.indexOf('\n', i);
-        blank(end < 0 ? source.length : end);
-      } else if (source.startsWith('/*', i)) {
-        // Block comments nest in Dart.
-        var depth = 0;
-        var end = i;
-        while (end < source.length) {
-          if (source.startsWith('/*', end)) {
-            depth++;
-            end += 2;
-          } else if (source.startsWith('*/', end)) {
-            depth--;
-            end += 2;
-            if (depth == 0) break;
-          } else {
-            end++;
+    while (i < tokens.length) {
+      switch (tokens[i]) {
+        case _Word(text: 'library' || 'part' || 'import' || 'export') &&
+            final _Word keyword:
+          final kind = keyword.text;
+          // The directive ends at its `;`; a configuration's test, in
+          // parentheses, holds no URI.
+          var depth = 0;
+          for (i++; i < tokens.length; i++) {
+            switch (tokens[i]) {
+              case _Punct(text: ';') when depth == 0:
+                break;
+              case _Punct(text: '('):
+                depth++;
+                continue;
+              case _Punct(text: ')'):
+                depth--;
+                continue;
+              case _Str(:final value)
+                  when depth == 0 && (kind == 'import' || kind == 'export'):
+                yield (kind, value);
+                continue;
+              case _:
+                continue;
+            }
+            break;
           }
-        }
-        blank(end);
-      } else if (source[i] == "'" || source[i] == '"') {
-        final raw = i > 0 && source[i - 1] == 'r';
-        final quote = source.startsWith(source[i] * 3, i)
-            ? source[i] * 3
-            : source[i];
-        var end = i + quote.length;
-        while (end < source.length && !source.startsWith(quote, end)) {
-          end += !raw && source[end] == '\\' ? 2 : 1;
-        }
-        end = end + quote.length > source.length
-            ? source.length
-            : end + quote.length;
-        out.write(source.substring(i, end));
-        i = end;
-      } else {
-        out.write(source[i]);
-        i++;
+          i++;
+        case _Punct(text: '@'):
+          // An annotation: a dotted name and its optional arguments.
+          i++;
+          while (i < tokens.length) {
+            if (tokens[i] case _Word() || _Punct(text: '.')) {
+              i++;
+            } else {
+              break;
+            }
+          }
+          if (tokens.elementAtOrNull(i) case _Punct(text: '(')) {
+            var depth = 0;
+            for (; i < tokens.length; i++) {
+              if (tokens[i] case _Punct(text: '(')) depth++;
+              if (tokens[i] case _Punct(text: ')') when --depth == 0) break;
+            }
+            i++;
+          }
+        case _:
+          return;
       }
     }
-    return out.toString();
   }
 
   /// Runs the check; [CheckReport.packages] lists the pure members.
@@ -352,5 +336,150 @@ final class PurityCommand extends Command<int> {
       _output.out.writeln('$name is pure at $displayPath');
     }
     return exitSuccess;
+  }
+}
+
+/// A token of a Dart source's directive header, as [_DirectiveTokens]
+/// reads it.
+sealed class _Token {
+  const _Token();
+}
+
+/// An identifier or keyword.
+final class _Word extends _Token {
+  const _Word(this.text);
+
+  final String text;
+}
+
+/// A string literal; [value] is its text between the quotes.
+final class _Str extends _Token {
+  const _Str(this.value);
+
+  final String value;
+}
+
+/// Any other character outside whitespace, comments and strings.
+final class _Punct extends _Token {
+  const _Punct(this.text);
+
+  final String text;
+}
+
+/// The tokens of a Dart [source]: comments (nested block comments too) and
+/// whitespace are skipped, and each string literal (raw, triple-quoted or
+/// interpolated) is one [_Str].
+final class _DirectiveTokens extends Iterable<_Token> {
+  _DirectiveTokens(this.source);
+
+  final String source;
+
+  static final _wordStart = RegExp(r'[A-Za-z_$]');
+  static final _wordPart = RegExp(r'[A-Za-z0-9_$]');
+
+  @override
+  Iterator<_Token> get iterator => _tokens().iterator;
+
+  Iterable<_Token> _tokens() sync* {
+    var i = 0;
+    while (i < source.length) {
+      final c = source[i];
+      if (c.trim().isEmpty) {
+        i++;
+      } else if (source.startsWith('//', i) ||
+          (i == 0 && source.startsWith('#!'))) {
+        final end = source.indexOf('\n', i);
+        i = end < 0 ? source.length : end + 1;
+      } else if (source.startsWith('/*', i)) {
+        i = _blockCommentEnd(i);
+      } else if (c == "'" || c == '"') {
+        final (value, end) = _string(i, raw: false);
+        yield _Str(value);
+        i = end;
+      } else if (c == 'r' &&
+          i + 1 < source.length &&
+          (source[i + 1] == "'" || source[i + 1] == '"')) {
+        final (value, end) = _string(i + 1, raw: true);
+        yield _Str(value);
+        i = end;
+      } else if (_wordStart.hasMatch(c)) {
+        var end = i + 1;
+        while (end < source.length && _wordPart.hasMatch(source[end])) {
+          end++;
+        }
+        yield _Word(source.substring(i, end));
+        i = end;
+      } else {
+        yield _Punct(c);
+        i++;
+      }
+    }
+  }
+
+  /// The index after the block comment starting at [start]; block
+  /// comments nest in Dart.
+  int _blockCommentEnd(int start) {
+    var depth = 0;
+    var i = start;
+    while (i < source.length) {
+      if (source.startsWith('/*', i)) {
+        depth++;
+        i += 2;
+      } else if (source.startsWith('*/', i)) {
+        depth--;
+        i += 2;
+        if (depth == 0) return i;
+      } else {
+        i++;
+      }
+    }
+    return source.length;
+  }
+
+  /// The text of the string literal whose opening quote is at [start],
+  /// and the index after its closing quote.
+  (String, int) _string(int start, {required bool raw}) {
+    final quote = source.startsWith(source[start] * 3, start)
+        ? source[start] * 3
+        : source[start];
+    final text = StringBuffer();
+    var i = start + quote.length;
+    while (i < source.length && !source.startsWith(quote, i)) {
+      if (!raw && source[i] == r'\' && i + 1 < source.length) {
+        text.write(source.substring(i, i + 2));
+        i += 2;
+      } else if (!raw && source.startsWith(r'${', i)) {
+        final end = _interpolationEnd(i + 2);
+        text.write(source.substring(i, end));
+        i = end;
+      } else {
+        text.write(source[i]);
+        i++;
+      }
+    }
+    return (text.toString(), (i + quote.length).clamp(0, source.length));
+  }
+
+  /// The index after the `}` that closes an interpolation whose code
+  /// starts at [start], past nested braces, strings and comments.
+  int _interpolationEnd(int start) {
+    var depth = 1;
+    var i = start;
+    while (i < source.length) {
+      final c = source[i];
+      if (c == "'" || c == '"') {
+        i = _string(i, raw: false).$2;
+      } else if (source.startsWith('//', i)) {
+        final end = source.indexOf('\n', i);
+        i = end < 0 ? source.length : end + 1;
+      } else if (source.startsWith('/*', i)) {
+        i = _blockCommentEnd(i);
+      } else {
+        if (c == '{') depth++;
+        if (c == '}' && --depth == 0) return i + 1;
+        i++;
+      }
+    }
+    return source.length;
   }
 }

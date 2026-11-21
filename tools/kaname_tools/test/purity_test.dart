@@ -395,6 +395,34 @@ void main() {
       expect(result.err, contains('"dart:io"'));
     });
 
+    test('an import on the line of the library directive fails', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        "@JS('x') library; import 'dart:io';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.code, 1);
+      expect(result.err, contains('"dart:io"'));
+    });
+
+    test('an import shown in a multiline string passes', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        "import 'b.dart';\n"
+            "const usage = '''\n"
+            "import 'dart:io';\n"
+            "''';\n"
+            "final tip = 'see \${\"import 'dart:ffi';\"}';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.err, isEmpty);
+      expect(result.code, 0);
+    });
+
     test('tests of a web-safe package may use dart:io', () async {
       fs
         ..writeFile(

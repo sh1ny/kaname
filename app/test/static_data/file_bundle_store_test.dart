@@ -186,6 +186,31 @@ void main() {
     expect(recent.existsSync(), isTrue, reason: 'another save may own it');
   });
 
+  test(
+    'a failed write keeps the previous copy and lets no error escape',
+    () async {
+      final n = fixtureBundle(buildN);
+      await store().save(n);
+      // The temporary file cannot be created in a read-only directory.
+      await Process.run('chmod', ['555', directory.path]);
+      addTearDown(() => Process.run('chmod', ['755', directory.path]));
+      final escaped = <Object>[];
+
+      final outcome = await runZonedGuarded(() async {
+        final outcome = await store().save(fixtureBundle(buildN + 1));
+        // Give a stray sink error time to surface.
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        return outcome;
+      }, (error, _) => escaped.add(error));
+
+      expect(outcome, isA<BundleNotSaved>());
+      expect(escaped, isEmpty);
+      await Process.run('chmod', ['755', directory.path]);
+      expectLoaded(await store().load(), n);
+    },
+    testOn: 'posix',
+  );
+
   test('saved rollback loads the older build at an offline restart', () async {
     final n = fixtureBundle(buildN);
     await store().save(n);

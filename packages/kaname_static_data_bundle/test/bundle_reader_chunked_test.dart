@@ -246,15 +246,23 @@ void main() {
       refused(await chunked(Uint8List.fromList(utf8.encode('no header')), 1)),
       isA<CorruptBundle>(),
     );
+    // One type record replaced in place, so every section count still
+    // matches its header and only the record's shape is wrong.
+    final lines = text.substring(0, text.length - 1).split('\n');
+    final typesAt = lines.indexOf('{"section":"types"}');
+    expect(typesAt, greaterThan(0));
     final badRecord = Uint8List.fromList(
       utf8.encode(
-        '${text.substring(0, newlineAt)}\n'
-        '{"section":"types.jsonl"}\n[1,2]\n',
+        '${[...lines.take(typesAt + 1), '[1,2]', ...lines.skip(typesAt + 2)].join('\n')}\n',
       ),
     );
     expect(
       refused(await chunked(badRecord, fixtureBuild)),
-      isA<CorruptBundle>(),
+      isA<CorruptBundle>().having(
+        (r) => r.detail,
+        'detail',
+        allOf(contains('malformed'), contains('section types')),
+      ),
     );
   });
 
