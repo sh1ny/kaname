@@ -405,6 +405,10 @@ final class BundleAnnouncer {
     final sentBefore = _repairsSent;
     _sendOwedRepair();
     final refreshed = request();
+    // The latest tick decides the waiting check, since that check runs on the
+    // state its refresh reads: an earlier tick that could send none does not
+    // hold back a later tick that can (pre-ship round 38).
+    _waitingCheck = (mayRepair: !outstandingAtStart, sentBefore: sentBefore);
     // One check waits for the refreshes at a time: while a read hangs, the
     // ticks that pass add no further callbacks to it (C27).
     if (_repairChecksWaiting > 0) return;
@@ -412,7 +416,8 @@ final class BundleAnnouncer {
     unawaited(
       refreshed.then((_) {
         _repairChecksWaiting--;
-        if (!outstandingAtStart && _repairsSent == sentBefore) {
+        if (_waitingCheck case (mayRepair: true, :final sentBefore)
+            when _repairsSent == sentBefore) {
           _sendOwedRepair();
         }
       }),
@@ -420,6 +425,13 @@ final class BundleAnnouncer {
   }
 
   int _repairChecksWaiting = 0;
+
+  /// Whether the waiting repair check may send, and how many repairs had
+  /// been sent when the latest tick began: the latest tick's own terms.
+  ({bool mayRepair, int sentBefore}) _waitingCheck = (
+    mayRepair: false,
+    sentBefore: 0,
+  );
 
   bool _tickRepairsHeld = false;
 

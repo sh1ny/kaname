@@ -866,6 +866,35 @@ void main() {
       expect(location(), '/settings', reason: 'no repeated page entry');
     });
 
+    // Pre-ship round 38: resizing back and forth before the browser answers
+    // keeps the search closed and steps back once.
+    testWidgets('widening, narrowing and widening again before the browser '
+        'reports the Back steps back once and keeps the page', (tester) async {
+      await openOverLicences(tester);
+      history.holdBacks = true;
+
+      setWindowSize(tester, _wide);
+      await tester.pumpAndSettle();
+      setWindowSize(tester, _narrow);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(QuickSearchKeys.field),
+        findsNothing,
+        reason: 'the search stays closed while its Back is pending',
+      );
+      setWindowSize(tester, _wide);
+      await tester.pumpAndSettle();
+      await history.releaseBacks();
+      await tester.pumpAndSettle();
+
+      expect(history.backCalls, 1);
+      expect(location(), '/settings/licences');
+      expect(find.byType(LicensePage), findsOneWidget);
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      expect(location(), '/settings', reason: 'no repeated page entry');
+    });
+
     testWidgets('a branch switched away from with the search open comes '
         'back unmarked, its entry right after the other page', (tester) async {
       await openOverLicences(tester);

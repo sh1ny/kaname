@@ -154,10 +154,12 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     // The other kind of field replaces the one that held the text, so the
     // query and its results end together with it. A narrow search that was
     // open is left with its entry; on narrowing, the search opens empty if
-    // the location is marked. The provider and the location are changed
-    // after this frame builds.
+    // the location is marked and no Back off its entry is pending, since
+    // that Back is about to leave the entry (pre-ship round 38). The
+    // provider and the location are changed after this frame builds.
     final wasOpen = _searchOpen;
-    _searchOpen = !widget.inlineSearch && hasSearchMarker(_location);
+    _searchOpen =
+        !widget.inlineSearch && hasSearchMarker(_location) && !_backPending;
     _openPath = _location.path;
     _afterFrame(() {
       ref.read(quickSearchProvider.notifier).clear();
@@ -261,9 +263,13 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   bool _openWhenBack = false;
 
   /// Steps back off the marked entry, noting the Back until it is reported.
+  ///
+  /// It steps back once until the browser reports that Back: a second call
+  /// before then, such as from widening the window again, would leave the
+  /// page under the search.
   void _back() {
     final history = ref.read(browserHistoryProvider);
-    if (history == null) return;
+    if (history == null || _backPending) return;
     _backPending = true;
     history.back();
   }

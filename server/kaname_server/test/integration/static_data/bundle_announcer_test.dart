@@ -820,6 +820,61 @@ void main() {
       await created.settled;
     });
 
+    // Pre-ship round 38: the waiting check takes the latest tick's
+    // eligibility, so an earlier tick cannot hold back a later one's repair.
+    test('a later tick whose queued refresh finds a repair owed sends it, '
+        'though the waiting check came from a tick that could not', () async {
+      await seedBuild(session, 890, SdeBuildState.previous);
+      await seedBuild(session, 891, SdeBuildState.active);
+      await seedBundle(session, 891);
+      final replies = <Completer<WorkerReply>>[];
+      final created = announcer(
+        runRepair: () {
+          final reply = Completer<WorkerReply>();
+          replies.add(reply);
+          return reply.future;
+        },
+      );
+      await startAndSettle(created);
+      // Tick 1 begins with the start hook's repair outstanding, so it may
+      // send none; its read of the healthy state is held.
+      unawaited(created.sendRepair());
+      final gate = source.holdReads = Completer<void>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+      clock.elapse(const Duration(seconds: 60));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      replies.single.complete(
+        const BundleRepairFinished(
+          requestId: 1,
+          result: BundleRepairLockHeld(),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      // `sde:rollback` in another process makes 890, which has no bundle,
+      // active; tick 2 has nothing outstanding and queues its refresh.
+      await rollback(session);
+      source.holdReads = null;
+      clock.elapse(const Duration(seconds: 60));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(replies, hasLength(1), reason: 'nothing owed was read yet');
+      gate.complete();
+
+      await _eventually(
+        () => replies.length == 2,
+        "tick 2's refresh sends the owed repair",
+      );
+      replies.last.complete(
+        const BundleRepairFinished(
+          requestId: 2,
+          result: BundleRepairLockHeld(),
+        ),
+      );
+      await created.settled;
+    });
+
     // Pre-ship round 4: a read that never answers gathers no callbacks.
     test('ticks during a held read keep one repair check waiting', () async {
       await seedBuild(session, 880, SdeBuildState.active);
