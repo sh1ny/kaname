@@ -174,11 +174,15 @@ final class FakeTransfer implements BundleTransfer {
   FakeTransfer(
     this.identity, {
     required this.finishesOnCancel,
+    this.size = 0,
     this.reload = 0,
   });
 
   /// Which bundle is downloading.
   final BundleIdentity identity;
+
+  /// The announced size it was started with.
+  final int size;
 
   /// The reload number it was started with.
   final int reload;
@@ -233,10 +237,15 @@ final class FakeBundleDownloader implements BundleDownloader {
   }
 
   @override
-  BundleTransfer start(BundleIdentity bundle, {int reload = 0}) {
+  BundleTransfer start(
+    BundleIdentity bundle, {
+    required int size,
+    int reload = 0,
+  }) {
     final transfer = FakeTransfer(
       bundle,
       finishesOnCancel: finishesOnCancel,
+      size: size,
       reload: reload,
     );
     started.add(transfer);

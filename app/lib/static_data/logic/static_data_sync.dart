@@ -258,14 +258,17 @@ final class StaticDataSync {
       BundleAnnounced(:final bundle, :final formatMajor)
           when formatMajor != bundleFormatMajor =>
         _UnsupportedTarget(bundle, formatMajor),
-      BundleAnnounced(:final bundle) => _BundleTarget(bundle),
+      BundleAnnounced(:final bundle, :final size) => _BundleTarget(
+        bundle,
+        size,
+      ),
     };
     _target = target;
     if (!_sameTarget(previous, target)) _endAttempt();
     if (target is _BundleTarget &&
         target.identity != _held?.identity &&
         _attempt == null) {
-      _attempt = _Attempt(target.identity);
+      _attempt = _Attempt(target.identity, target.size);
     }
     _pump();
     _refresh();
@@ -313,6 +316,7 @@ final class StaticDataSync {
       // After refused bytes, ask past the HTTP cache that may hold them.
       final transfer = _server!.downloader.start(
         attempt.identity,
+        size: attempt.size,
         reload: attempt.refusals,
       );
       attempt.transfer = transfer;
@@ -323,6 +327,10 @@ final class StaticDataSync {
       switch (download) {
         case BundleDownloaded(bytes: final body):
           bytes = body;
+        case BundleDownloadFailed(failure: final BundleTooLarge failure):
+          // More bytes than announced: wrong bytes, maybe a cached copy.
+          _failed(attempt, _Failure.refused, failure.detail);
+          return;
         case BundleDownloadFailed(:final failure):
           _failed(attempt, _Failure.unreachable, failure.detail);
           return;
@@ -499,9 +507,12 @@ final class _UnsupportedTarget extends _Target {
 
 /// The server's bundle, which the app can read.
 final class _BundleTarget extends _Target {
-  const _BundleTarget(this.identity);
+  const _BundleTarget(this.identity, this.size);
 
   final BundleIdentity identity;
+
+  /// The announced compressed size.
+  final int size;
 }
 
 /// Where an attempt is.
@@ -525,9 +536,12 @@ enum _Failure { unreachable, refused }
 /// Every download, check, index and retry of the attempt acts only while it
 /// is the current attempt.
 final class _Attempt {
-  _Attempt(this.identity);
+  _Attempt(this.identity, this.size);
 
   final BundleIdentity identity;
+
+  /// The announced compressed size, which bounds the download.
+  final int size;
   _Phase phase = _Phase.pending;
   int failures = 0;
 

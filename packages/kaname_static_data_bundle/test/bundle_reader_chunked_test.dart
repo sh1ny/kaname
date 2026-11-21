@@ -289,20 +289,25 @@ void main() {
       expect(lines[dogmaAt + 1], startsWith('['));
       final same = withDogmaRecord(utf8.encode(lines[dogmaAt + 1]));
       expect(opened(openInflatedBundle(same, build: fixtureBuild)), isNotNull);
+      // The cases' starting line opens too, so each refusal is its defect.
+      final base = withDogmaRecord(utf8.encode('[1,{},{}]'));
+      expect(opened(openInflatedBundle(base, build: fixtureBuild)), isNotNull);
     });
 
+    // Each case starts from a valid raw-carrying line, `[1,{},{}]`, and
+    // breaks only what it names (pre-ship round 32).
     for (final (name, record) in [
       ('invalid JSON', utf8.encode('[1,{},{"a":}]')),
       ('a shape other than [key, typed, raw]', utf8.encode('[1,2]')),
-      ('a key that is not an integer', utf8.encode('[1.5,{},null]')),
-      ('trailing text', utf8.encode('[1,{},null] x')),
-      ('an unterminated string', utf8.encode('[1,{"a":"b},null]')),
-      ('a bad escape', utf8.encode(r'[1,{"a":"\q"},null]')),
+      ('a key that is not an integer', utf8.encode('[1.5,{},{}]')),
+      ('trailing text', utf8.encode('[1,{},{}] x')),
+      ('an unterminated string', utf8.encode('[1,{"a":"b},{}]')),
+      ('a bad escape', utf8.encode(r'[1,{"a":"\q"},{}]')),
       // Pre-ship round 31: a raw-carrying section's line has its raw JSON.
       ('null where its raw object belongs', utf8.encode('[1,{},null]')),
       (
         'malformed UTF-8',
-        [...utf8.encode('[1,{"a":"'), 0xC3, ...utf8.encode('"},null]')],
+        [...utf8.encode('[1,{"a":"'), 0xC3, ...utf8.encode('"},{}]')],
       ),
     ]) {
       test('holding $name is refused by both opens', () async {

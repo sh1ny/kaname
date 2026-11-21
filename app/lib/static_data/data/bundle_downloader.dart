@@ -87,6 +87,19 @@ final class BundleNetworkError extends BundleDownloadFailure {
   final String detail;
 }
 
+/// The body was longer than the announced size: the download stops as soon
+/// as it is, never holding more than [size] bytes.
+final class BundleTooLarge extends BundleDownloadFailure {
+  /// Creates the failure for a body past [size] bytes.
+  const BundleTooLarge(this.size);
+
+  /// The announced size the body exceeded.
+  final int size;
+
+  @override
+  String get detail => 'body longer than the announced $size bytes';
+}
+
 /// The download did not end within its time limit.
 final class BundleDownloadTimedOut extends BundleDownloadFailure {
   /// Creates the failure after [limit].
@@ -112,7 +125,9 @@ abstract interface class BundleTransfer {
 
 /// Downloads bundles from the server.
 abstract interface class BundleDownloader {
-  /// Starts downloading the bundle [bundle].
+  /// Starts downloading the bundle [bundle], announced as [size] bytes
+  /// compressed: a body longer than that fails with [BundleTooLarge] as
+  /// soon as it is, at its headers when its `Content-Length` says so.
   ///
   /// With [reload] above 0 the request asks past any HTTP cache: a browser
   /// may have cached a complete response whose bytes then failed their
@@ -121,7 +136,11 @@ abstract interface class BundleDownloader {
   /// which the server's route ignores, so no cached copy is reused, also
   /// after a new attempt or app load counts [reload] from 1 again; 0 keeps
   /// ordinary cache reuse.
-  BundleTransfer start(BundleIdentity bundle, {int reload = 0});
+  BundleTransfer start(
+    BundleIdentity bundle, {
+    required int size,
+    int reload = 0,
+  });
 }
 
 /// A [BundleDownloader] over `package:http`, from the server [server].
@@ -162,10 +181,15 @@ final class HttpBundleDownloader implements BundleDownloader {
   final String Function() _cacheToken;
 
   @override
-  BundleTransfer start(BundleIdentity bundle, {int reload = 0}) {
+  BundleTransfer start(
+    BundleIdentity bundle, {
+    required int size,
+    int reload = 0,
+  }) {
     final url = bundleUrl(server, bundle);
     return _HttpBundleTransfer(
       _clientFor,
+      size,
       reload > 0
           ? url.replace(queryParameters: {'reload': '$reload-${_cacheToken()}'})
           : url,
@@ -180,6 +204,7 @@ enum _Abort { cancelled, timedOut }
 final class _HttpBundleTransfer implements BundleTransfer {
   _HttpBundleTransfer(
     http.Client Function(Future<void> abort) clientFor,
+    this._size,
     this._url,
     this._timeout,
   ) {
@@ -189,6 +214,7 @@ final class _HttpBundleTransfer implements BundleTransfer {
   }
 
   late final http.Client _client;
+  final int _size;
   final Uri _url;
   final Duration _timeout;
   late final Timer _timer;
@@ -231,9 +257,18 @@ final class _HttpBundleTransfer implements BundleTransfer {
       }
       // A failed status is known from the headers; its body, which may be
       // slow or large, is never read: the abort below ends it.
-      outcome = response.statusCode == 200
-          ? BundleDownloaded(await response.stream.toBytes())
-          : BundleDownloadFailed(BundleHttpStatus(response.statusCode));
+      outcome = switch (response) {
+        http.StreamedResponse(statusCode: != 200) => BundleDownloadFailed(
+          BundleHttpStatus(response.statusCode),
+        ),
+        http.StreamedResponse(:final contentLength?)
+            when contentLength > _size =>
+          BundleDownloadFailed(BundleTooLarge(_size)),
+        _ => switch (await _body(response.stream)) {
+          final bytes? => BundleDownloaded(bytes),
+          null => BundleDownloadFailed(BundleTooLarge(_size)),
+        },
+      };
     } on http.RequestAbortedException {
       outcome = _abortedOutcome();
     } on http.ClientException catch (error) {
@@ -254,6 +289,18 @@ final class _HttpBundleTransfer implements BundleTransfer {
     if (!_abortTrigger.isCompleted) _abortTrigger.complete();
     _client.close();
     if (!_result.isCompleted) _result.complete(outcome);
+  }
+
+  /// The whole of [body], or null as soon as it is longer than the
+  /// announced size; leaving the loop cancels the body, and the abort after
+  /// it ends the connection.
+  Future<Uint8List?> _body(Stream<List<int>> body) async {
+    final received = BytesBuilder(copy: false);
+    await for (final chunk in body) {
+      if (received.length + chunk.length > _size) return null;
+      received.add(chunk);
+    }
+    return received.takeBytes();
   }
 
   BundleDownloadResult _abortedOutcome() => switch (_aborted) {

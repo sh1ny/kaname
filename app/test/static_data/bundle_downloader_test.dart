@@ -19,6 +19,10 @@ import 'support/bundle_fixture.dart';
 const hash = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 const bundle = BundleIdentity(build: 3714173, sha256: hash);
 
+/// The announced size the tests download with: the [HoldingServer]'s
+/// `Content-Length`.
+const bundleSize = 1000000;
+
 ConfiguredServer resolve({
   required bool isWeb,
   String define = '',
@@ -35,14 +39,21 @@ ConfiguredServer resolve({
 /// A local HTTP server that answers one bundle request with headers and
 /// the start of a body, then holds the body open.
 final class HoldingServer {
-  HoldingServer._(this._socket, this._status);
+  HoldingServer._(this._socket, this._status, this._contentLength);
 
-  /// Starts a server answering with [status] (`200 OK` by default).
-  static Future<HoldingServer> start({String status = '200 OK'}) async =>
-      HoldingServer._(
-        await ServerSocket.bind(InternetAddress.loopbackIPv4, 0),
-        status,
-      );
+  /// Starts a server answering with [status] (`200 OK` by default), with a
+  /// `Content-Length` of [bundleSize] or, without [contentLength], a body
+  /// that ends when the connection does.
+  static Future<HoldingServer> start({
+    String status = '200 OK',
+    bool contentLength = true,
+  }) async => HoldingServer._(
+    await ServerSocket.bind(InternetAddress.loopbackIPv4, 0),
+    status,
+    contentLength,
+  );
+
+  final bool _contentLength;
 
   final String _status;
 
@@ -75,7 +86,8 @@ final class HoldingServer {
               latin1.encode(
                 'HTTP/1.1 $_status\r\n'
                 'Content-Type: application/gzip\r\n'
-                'Content-Length: 1000000\r\n\r\n',
+                '${_contentLength ? 'Content-Length: $bundleSize' : 'Connection: close'}'
+                '\r\n\r\n',
               ),
             )
             ..add(Uint8List(1024));
@@ -182,7 +194,7 @@ void main() {
       server: ConfiguredServer(server.base),
     );
 
-    final transfer = downloader.start(bundle);
+    final transfer = downloader.start(bundle, size: bundleSize);
     await server.bodyStarted.future.timeout(const Duration(seconds: 5));
     expect(
       await server.requestLine.future,
@@ -213,7 +225,7 @@ void main() {
       final transfer = HttpBundleDownloader(
         server: ConfiguredServer(server.base),
         cacheToken: () => 'f00d',
-      ).start(bundle, reload: reload);
+      ).start(bundle, size: bundleSize, reload: reload);
 
       expect(await server.requestLine.future, line);
       transfer.cancel();
@@ -232,7 +244,7 @@ void main() {
       server.serve();
       final transfer = HttpBundleDownloader(
         server: ConfiguredServer(server.base),
-      ).start(bundle, reload: 1);
+      ).start(bundle, size: bundleSize, reload: 1);
       lines.add(await server.requestLine.future);
       transfer.cancel();
       await transfer.result;
@@ -277,7 +289,7 @@ void main() {
                 : server.base(scheme),
           ),
           timeout: limit ?? HttpBundleDownloader.defaultTimeout,
-        ).start(bundle);
+        ).start(bundle, size: bundleSize);
         if (!proxied) return go();
         return HttpOverrides.runZoned(
           go,
@@ -342,6 +354,40 @@ void main() {
     }
   });
 
+  // Pre-ship round 32: a body is never held past the announced size.
+  for (final (what, contentLength) in [
+    ('whose Content-Length exceeds it fails at its headers', true),
+    ('without a Content-Length fails once its bytes exceed it', false),
+  ]) {
+    test('a body beyond the announced size $what', () async {
+      final server = await HoldingServer.start(contentLength: contentLength);
+      addTearDown(server.close);
+      server.serve();
+      const size = 512;
+      final transfer = HttpBundleDownloader(
+        server: ConfiguredServer(server.base),
+      ).start(bundle, size: size);
+
+      final result = await transfer.result.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => fail('the transfer waited past the size'),
+      );
+
+      expect(
+        result,
+        isA<BundleDownloadFailed>().having(
+          (failed) => failed.failure,
+          'failure',
+          isA<BundleTooLarge>().having((f) => f.size, 'size', size),
+        ),
+      );
+      await server.closedByClient.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => fail('the server never saw the connection close'),
+      );
+    });
+  }
+
   test('the time limit ends a transfer whose body is held open', () async {
     final server = await HoldingServer.start();
     addTearDown(server.close);
@@ -350,7 +396,7 @@ void main() {
     final transfer = HttpBundleDownloader(
       server: ConfiguredServer(server.base),
       timeout: limit,
-    ).start(bundle);
+    ).start(bundle, size: bundleSize);
     await server.bodyStarted.future.timeout(const Duration(seconds: 5));
 
     expect(
@@ -373,7 +419,7 @@ void main() {
     addTearDown(server.close);
     server.serve();
     final transfer = HttpBundleDownloader(server: ConfiguredServer(server.base))
-        .start(bundle);
+        .start(bundle, size: bundleSize);
 
     expect(
       await transfer.result.timeout(
@@ -399,7 +445,7 @@ void main() {
     final transfer = HttpBundleDownloader(
       server: ConfiguredServer(Uri.parse('https://kaname.example/')),
       clientFor: (_) => client,
-    ).start(bundle);
+    ).start(bundle, size: bundleSize);
 
     expect(
       await transfer.result.timeout(const Duration(seconds: 5)),

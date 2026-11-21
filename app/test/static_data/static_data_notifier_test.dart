@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:kaname_app/server/data/server_address.dart';
 import 'package:kaname_app/server/logic/server_status.dart';
 import 'package:kaname_app/static_data/data/bundle_announcements.dart';
+import 'package:kaname_app/static_data/data/bundle_downloader.dart'
+    show BundleTooLarge;
 import 'package:kaname_app/static_data/data/bundle_store.dart';
 import 'package:kaname_app/static_data/data/file_bundle_store.dart';
 import 'package:kaname_app/static_data/logic/static_data_notifier.dart';
@@ -390,6 +392,25 @@ void main() {
       expect(restart.state, readyOn(copyN, updating: false));
     },
   );
+
+  // Pre-ship round 32: the announced size bounds the body, and a body past
+  // it counts as refused bytes, so the retry asks past the HTTP cache.
+  test('a download is bounded by the announced size, and a body beyond it '
+      'is retried past the HTTP cache', () async {
+    final h = harnessHolding(copyN);
+    await h.start();
+    await h.send(announce(copyN1));
+    expect(h.downloader.last.size, copyN1.bytes.length);
+
+    h.downloader.last.fail(BundleTooLarge(copyN1.bytes.length));
+    await pumpEventQueue();
+    await h.clock.elapse(oneMinute);
+
+    expect(h.downloader.started, hasLength(2));
+    expect(h.downloader.last.size, copyN1.bytes.length);
+    expect(h.downloader.last.reload, 1);
+    expect(h.state, readyOn(copyN, updating: true));
+  });
 
   test('a retry after refused bytes asks past the HTTP cache with a new '
       'reload number; a retry after a network failure does not', () async {
