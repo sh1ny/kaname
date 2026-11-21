@@ -38,6 +38,8 @@ const MimeType _gzip = MimeType('application', 'gzip');
 ///   HTTP caches hold. A new hash announced for a build retires the old
 ///   hash at once: a new request for it gets 404, while a response for it
 ///   already admitted is not cancelled and finishes from the bytes it holds.
+///   A 404 carries `Cache-Control: no-store`, since the URL can answer
+///   200 again after a restart or a rollback.
 ///   A matching `If-None-Match` gets 304 with the same headers and no body,
 ///   but only for a bundle held: a bundle no longer announced answers 404
 ///   to a conditional request too.
@@ -111,7 +113,11 @@ final class BundleRoute {
       null => null,
     };
     if (held == null || held.ref.formatMajor != bundleFormatMajor) {
-      return Response.notFound();
+      // The URL can answer 200 again after a restart or a rollback: no
+      // cache keeps the miss.
+      return Response.notFound(
+        headers: Headers.build((mh) => mh['cache-control'] = ['no-store']),
+      );
     }
     final etag = '"${held.ref.sha256}"';
     final headers = Headers.build((mh) {

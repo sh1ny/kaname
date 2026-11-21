@@ -11,16 +11,17 @@ import 'bundle_format.dart';
 const int recordMaxDepth = 512;
 
 /// Whether the bytes of [bytes] from [start] to [end] are one record line:
-/// UTF-8 JSON holding an array of an integer key, an object and an object
-/// or `null`, with only whitespace around it.
+/// UTF-8 JSON holding an array of an integer key, an object and, with
+/// [raw], an object (the record's raw JSON) or else `null`, with only
+/// whitespace around it.
 ///
 /// Every line it accepts, the reader's lazy decoding accepts too, yet it
 /// allocates no JSON values (design D12): the open checks the sections it
 /// does not decode without materializing them.
-bool isRecordLine(Uint8List bytes, int start, int end) {
+bool isRecordLine(Uint8List bytes, int start, int end, {required bool raw}) {
   final scanner = _Scanner(bytes, start, end);
   try {
-    scanner.recordLine();
+    scanner.recordLine(raw: raw);
     return true;
   } on _Malformed {
     return false;
@@ -73,7 +74,7 @@ final class _Scanner {
     }
   }
 
-  void recordLine() {
+  void recordLine({required bool raw}) {
     _whitespace();
     _expect(_openBracket);
     _whitespace();
@@ -95,10 +96,10 @@ final class _Scanner {
     _whitespace();
     _expect(_comma);
     _whitespace();
-    if (_peek == 0x6E) {
-      _literal('null');
-    } else {
+    if (raw) {
       _object(1);
+    } else {
+      _literal('null');
     }
     _whitespace();
     _expect(_closeBracket);

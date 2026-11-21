@@ -298,6 +298,8 @@ void main() {
       ('trailing text', utf8.encode('[1,{},null] x')),
       ('an unterminated string', utf8.encode('[1,{"a":"b},null]')),
       ('a bad escape', utf8.encode(r'[1,{"a":"\q"},null]')),
+      // Pre-ship round 31: a raw-carrying section's line has its raw JSON.
+      ('null where its raw object belongs', utf8.encode('[1,{},null]')),
       (
         'malformed UTF-8',
         [...utf8.encode('[1,{"a":"'), 0xC3, ...utf8.encode('"},null]')],
@@ -337,6 +339,39 @@ void main() {
     final record = jsonDecode(lines[typesAt + 1]) as List<Object?>;
     // Exact natively, rounded on the web.
     final replaced = jsonEncode([bundleMaxKey + 2, record[1], record[2]]);
+    final bytes = Uint8List.fromList(
+      utf8.encode(
+        '${[...lines.take(typesAt + 1), replaced, ...lines.skip(typesAt + 2)].join('\n')}\n',
+      ),
+    );
+    final corrupt = isA<CorruptBundle>().having(
+      (r) => r.detail,
+      'detail',
+      allOf(contains('malformed'), contains('section types')),
+    );
+
+    expect(refused(openInflatedBundle(bytes, build: fixtureBuild)), corrupt);
+    expect(
+      refused(
+        await openInflatedBundleChunked(
+          bytes,
+          build: fixtureBuild,
+          linesPerChunk: 3,
+        ),
+      ),
+      corrupt,
+    );
+  });
+
+  // Pre-ship round 31: a section that carries no raw JSON writes null.
+  test('a raw object in a section that carries none is refused by both '
+      'opens', () async {
+    final text = utf8.decode(inflatedFixture());
+    final lines = text.substring(0, text.length - 1).split('\n');
+    final typesAt = lines.indexOf('{"section":"types"}');
+    final record = jsonDecode(lines[typesAt + 1]) as List<Object?>;
+    expect(record[2], isNull);
+    final replaced = jsonEncode([record[0], record[1], <String, Object?>{}]);
     final bytes = Uint8List.fromList(
       utf8.encode(
         '${[...lines.take(typesAt + 1), replaced, ...lines.skip(typesAt + 2)].join('\n')}\n',

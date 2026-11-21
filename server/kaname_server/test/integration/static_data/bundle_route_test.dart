@@ -1113,6 +1113,10 @@ void _bundleRouteTests() {
 
       expect(plain.status, 404);
       expect(conditional.status, 404);
+      // Pre-ship round 31: the URL can answer 200 again after a restart or a
+      // rollback, so no cache may keep the miss.
+      expect(plain.headers.value('cache-control'), 'no-store');
+      expect(conditional.headers.value('cache-control'), 'no-store');
     });
 
     // Scenario: Too many downloads.

@@ -799,8 +799,12 @@ void main() {
     expect(h.state, readyOn(copyN1, updating: false));
   });
 
-  test('an announcement queued behind a held kept load is dropped when its '
-      'subscription is replaced before the load ends', () async {
+  // Pre-ship round 31 (owner's choice): an announcement already received
+  // is the latest known until a newer one replaces it; only later events of
+  // a replaced subscription are ignored.
+  test('an announcement queued behind a held kept load is taken when its '
+      'subscription is replaced and the new one has not answered by the end '
+      'of the load', () async {
     final h = harnessHolding(copyN);
     h.fakeStore!.holdLoad = true;
     await h.start();
@@ -823,9 +827,27 @@ void main() {
     h.fakeStore!.releaseLoads();
     await pumpEventQueue();
 
-    expect(h.downloader.started, isEmpty, reason: 'the replaced event');
-    expect(h.state, readyOn(copyN, updating: false));
+    expect(h.downloader.builds, [buildN + 1], reason: 'the received event');
   });
+
+  test(
+    'an announcement queued behind a held kept load is kept across an '
+    'automatic reconnect that has not answered by the end of the load',
+    () async {
+      final h = harnessHolding(copyN);
+      h.fakeStore!.holdLoad = true;
+      await h.start();
+      await h.send(announce(copyN1));
+      h.source.current.end();
+      await h.clock.elapse(const Duration(seconds: 5));
+      expect(h.source.subscribes, 2);
+
+      h.fakeStore!.releaseLoads();
+      await pumpEventQueue();
+
+      expect(h.downloader.builds, [buildN + 1]);
+    },
+  );
 
   test('an announcement received behind a held kept load is taken when its '
       'stream ends before the load does', () async {

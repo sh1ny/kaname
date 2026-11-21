@@ -4,11 +4,11 @@ import 'dart:typed_data';
 import 'package:kaname_static_data_bundle/src/record_shape.dart';
 import 'package:test/test.dart';
 
-bool check(Object line) {
+bool check(Object line, {required bool raw}) {
   final bytes = Uint8List.fromList(
     line is String ? utf8.encode(line) : line as List<int>,
   );
-  return isRecordLine(bytes, 0, bytes.length);
+  return isRecordLine(bytes, 0, bytes.length, raw: raw);
 }
 
 void main() {
@@ -23,8 +23,8 @@ void main() {
       '[9007199254740991,{},null]',
       '[-9007199254740991,{},null]',
     ]) {
-      expect(check(line), isTrue, reason: line);
-      expect(jsonDecode(line), isA<List<Object?>>(), reason: line);
+      final decoded = jsonDecode(line) as List<Object?>;
+      expect(check(line, raw: decoded[2] != null), isTrue, reason: line);
     }
   });
 
@@ -60,7 +60,18 @@ void main() {
       [...utf8.encode('[1,{},null]'), 0xC3],
       '[1,{"a":${'[' * 600}${']' * 600}},null]',
     ]) {
-      expect(check(line), isFalse, reason: '$line');
+      for (final raw in [false, true]) {
+        expect(check(line, raw: raw), isFalse, reason: '$line, raw: $raw');
+      }
     }
+  });
+
+  // Pre-ship round 31.
+  test('the raw position holds an object exactly in a raw-carrying '
+      'section', () {
+    expect(check('[1,{},{}]', raw: true), isTrue);
+    expect(check('[1,{},null]', raw: false), isTrue);
+    expect(check('[1,{},null]', raw: true), isFalse);
+    expect(check('[1,{},{}]', raw: false), isFalse);
   });
 }

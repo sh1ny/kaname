@@ -246,7 +246,12 @@ final class BundleBuilder {
         // shipping a bundle no app opens.
         final text = record.toString();
         final encoded = utf8.encode(text);
-        if (!isRecordLine(encoded, 0, encoded.length)) {
+        if (!isRecordLine(
+          encoded,
+          0,
+          encoded.length,
+          raw: section.carriesRaw,
+        )) {
           throw BundleBuildException(
             section,
             'record ${line.key} cannot be read back as a record line, '

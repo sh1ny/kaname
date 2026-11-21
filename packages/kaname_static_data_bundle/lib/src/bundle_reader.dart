@@ -499,7 +499,8 @@ final class _Bundle implements ClientBundle {
           'a record line before the first section marker',
         );
       } else {
-        if (current != null && !isRecordLine(_bytes, position, end)) {
+        if (current != null &&
+            !isRecordLine(_bytes, position, end, raw: current.carriesRaw)) {
           throw FormatException(
             'malformed record line in section ${current.file}',
           );

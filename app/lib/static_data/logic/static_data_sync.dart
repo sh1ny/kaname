@@ -177,9 +177,10 @@ final class StaticDataSync {
 
   void _subscribe() {
     final generation = ++_generation;
-    // An announcement waiting for the kept copy came from the subscription
-    // this replaces: only the current one's events act (design D15).
-    _waiting = null;
+    // An announcement waiting for the kept copy stays: it was received
+    // before this replacement and is the latest known until a newer one
+    // replaces it; only later events of the replaced subscription are
+    // ignored (design D15, pre-ship round 31).
     unawaited(_subscription?.cancel());
     _subscription = null;
     _reconnectTimer?.cancel();
