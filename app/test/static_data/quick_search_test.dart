@@ -47,12 +47,14 @@ final class Rig {
     Size size = _wide,
     String location = '/home',
     BrowserHistory? browserHistory,
+    bool settle = true,
   }) async {
     final harness = await pumpShell(
       tester,
       location: location,
       browserHistory: browserHistory,
       size: size,
+      settle: settle,
       target: target,
       health: health,
       bundleStore: store,
@@ -61,7 +63,7 @@ final class Rig {
     );
     // The status bar's health check ends, so no timeout timer stays pending.
     if (health.calls > 0) health.fail('down');
-    await tester.pumpAndSettle();
+    if (settle) await tester.pumpAndSettle();
     return harness;
   }
 }
@@ -1167,6 +1169,32 @@ void main() {
       expect(history.current, '/settings');
     });
 
+    // Pre-ship round 46: the bar asks for the frame its deferred work waits
+    // for, since nothing else may draw one.
+    testWidgets('a wide reload steps back with no other frame drawn', (
+      tester,
+    ) async {
+      history = FakeBrowserHistory(
+        tester,
+        restored: ['/home', '/settings', '/settings?search'],
+        restoredTagged: true,
+      );
+      harness = await Rig(kept: copyN).pump(
+        tester,
+        location: '/settings?search',
+        browserHistory: history,
+        settle: false,
+      );
+      // Draws only the frames something asked for, and runs due timers.
+      for (var i = 0; i < 20; i++) {
+        await tester.pump();
+        await tester.binding.delayed(Duration.zero);
+      }
+
+      expect(history.backCalls, 1);
+      expect(history.current, '/settings');
+    });
+
     testWidgets('a reloaded page with the search open on a wide window steps '
         'back over its entry', (tester) async {
       history = FakeBrowserHistory(
@@ -1194,6 +1222,38 @@ void main() {
             'back before stepping back',
       );
     });
+  });
+
+  // Pre-ship round 46: a close waiting for its entry to be recorded belongs
+  // to that entry; a browser report onto another one decides instead.
+  testWidgets('a close waiting for its entry yields to a browser Back onto '
+      'another search entry', (tester) async {
+    final history = FakeBrowserHistory(tester);
+    final harness = await Rig(kept: copyN)
+        .pump(tester, size: _narrow, browserHistory: history);
+    // The home page's search entry, then the settings page after it.
+    await tester.tap(find.byKey(QuickSearchKeys.openButton));
+    await tester.pumpAndSettle();
+    harness.router.go('/settings');
+    await tester.pumpAndSettle();
+    expect(history.entries, ['/home', '/home?search', '/settings']);
+
+    await tester.tap(find.byKey(QuickSearchKeys.openButton));
+    // One frame: the field is built and the router reports the push, but
+    // the timer that tags the entry has not run.
+    await tester.pump();
+    expect(history.current, '/settings?search');
+    await tester.tap(find.byKey(QuickSearchKeys.closeButton));
+    await tester.pump();
+    // Before the timer, the browser goes back twice, onto the search entry
+    // of the home page.
+    await history.pressBack();
+    await history.pressBack();
+    await tester.pumpAndSettle();
+
+    expect(history.current, '/home?search');
+    expect(history.backCalls, 0, reason: 'the stale close steps nowhere');
+    expect(find.byKey(QuickSearchKeys.field), findsOneWidget);
   });
 
   testWidgets('Escape on the close button closes the narrow search and '

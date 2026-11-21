@@ -126,29 +126,26 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   /// A page loaded with the marker. An entry the bar tagged when it pushed
   /// it, reopened by a reload or by Back or Forward from another site, is
   /// already right after the same location unmarked: a narrow window shows
-  /// its search, a wide one steps back over it. Any other marked load, such
-  /// as a typed or shared link, opens the page unmarked with the search
-  /// closed (pre-ship round 12, owner's choice): a history entry pushed
-  /// before the user acts on the page is one the browser's Back may skip.
+  /// its search, a wide one steps back over it. Either way the router's
+  /// first report replaced the entry and dropped its tag, so the entry is
+  /// tagged again once that report is recorded: Forward can return to it,
+  /// and a reload there must still find a pair (pre-ship rounds 40 and 43).
+  /// Any other marked load, such as a typed or shared link, opens the page
+  /// unmarked with the search closed (pre-ship round 12, owner's choice): a
+  /// history entry pushed before the user acts on the page is one the
+  /// browser's Back may skip.
   void _loadedMarked() {
     final history = ref.read(browserHistoryProvider);
-    if (history != null && history.loadedOnTaggedEntry) {
-      if (!widget.inlineSearch) {
-        _openPath = _location.path;
-        setState(() => _searchOpen = true);
-        // The router's first report replaces the entry and drops its tag:
-        // tag it again for the next reload.
-        _tagSearchEntry();
-      } else {
-        // The same report drops the tag here too, and Forward can return to
-        // this entry: once the report is recorded, tag it again and step
-        // back through the guarded Back (pre-ship rounds 40 and 43).
-        _backWhenRecorded = true;
-        _tagSearchEntry();
-      }
+    if (history == null || !history.loadedOnTaggedEntry) {
+      _dropMarker();
       return;
     }
-    _dropMarker();
+    final narrow = !widget.inlineSearch;
+    if (narrow) {
+      _openPath = _location.path;
+      setState(() => _searchOpen = true);
+    }
+    _awaitRecording(closeAfter: !narrow);
   }
 
   @override
@@ -158,15 +155,12 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     // The other kind of field replaces the one that held the text, so the
     // query and its results end together with it. A narrow search that was
     // open is left with its entry; on narrowing, the search opens empty if
-    // the location is marked and no Back off its entry is pending, since
-    // that Back is about to leave the entry (pre-ship round 38). The
-    // provider and the location are changed after this frame builds.
+    // the location is marked and the bar is not leaving its entry, since
+    // that Back is about to leave it (pre-ship round 38). The provider and
+    // the location are changed after this frame builds.
     final wasOpen = _searchOpen;
     _searchOpen =
-        !widget.inlineSearch &&
-        hasSearchMarker(_location) &&
-        !_backPending &&
-        !_backWhenRecorded;
+        !widget.inlineSearch && hasSearchMarker(_location) && !_wait.leaving;
     _openPath = _location.path;
     _afterFrame(() {
       ref.read(quickSearchProvider.notifier).clear();
@@ -183,10 +177,23 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     super.dispose();
   }
 
-  void _afterFrame(VoidCallback run) =>
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+  /// Runs [run] after the next frame, and asks for that frame: nothing else
+  /// may be drawing (pre-ship round 46).
+  void _afterFrame(VoidCallback run) {
+    final binding = WidgetsBinding.instance
+      ..addPostFrameCallback((_) {
         if (mounted) run();
       });
+    binding.scheduleFrame();
+  }
+
+  /// What the bar waits for from the browser's history. Every change to it
+  /// goes through the transitions below, and a deferred callback acts only
+  /// while the wait it was scheduled for is still current.
+  _HistoryWait _wait = const _Settled();
+
+  /// Numbers the recordings, so a deferred callback knows its own.
+  int _recordings = 0;
 
   /// Follows the location: the browser's Back or Forward, or a navigation
   /// made while the search was open. A marked location the app navigated to
@@ -197,20 +204,7 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   void _onLocation() {
     final marked = hasSearchMarker(_location);
     final fromBrowser = _reportedByBrowser(_locations!.value);
-    if (fromBrowser) _browserReports++;
-    if (_backPending && fromBrowser) {
-      _backPending = false;
-      if (_openWhenBack) {
-        _openWhenBack = false;
-        // Checked again when it runs: the frame between can widen the
-        // window, whose layout has no narrow search to close (round 39).
-        _afterFrame(() {
-          if (!widget.inlineSearch && !hasSearchMarker(_location)) {
-            _openSearch();
-          }
-        });
-      }
-    }
+    if (fromBrowser) _browserReported();
     final ownEntry = _searchOpen && _location.path == _openPath;
     if (marked && !fromBrowser && !ownEntry) {
       // Tied to this report: a Back or Forward the browser reports before
@@ -238,6 +232,26 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   /// How many locations the browser reported, by Back or Forward.
   int _browserReports = 0;
 
+  /// The browser reported a location: the answer to a Back the bar asked
+  /// for, or a navigation of the user's own. Either way that location now
+  /// decides whether the search is open, and a wait for a recording is
+  /// over: the entry it would tag or step back off may no longer be the
+  /// current one (pre-ship round 46).
+  void _browserReported() {
+    _browserReports++;
+    final reopen = switch (_wait) {
+      _SteppingBack(:final reopenAfter) => reopenAfter,
+      _Recording() || _Settled() => false,
+    };
+    _wait = const _Settled();
+    if (!reopen) return;
+    // Checked again when it runs: the frame between can widen the window,
+    // whose layout has no narrow search to open (pre-ship round 39).
+    _afterFrame(() {
+      if (!widget.inlineSearch && !hasSearchMarker(_location)) _openSearch();
+    });
+  }
+
   /// Escape closes the open narrow search also while focus is elsewhere in
   /// the shell, such as the page or the bottom navigation. Within the search
   /// its own shortcuts answer, and a route over the shell, such as a dialog,
@@ -264,85 +278,73 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   static bool _reportedByBrowser(RouteInformation location) =>
       location.state is Map;
 
+  /// Opens the narrow search: pushes the marked entry, or, while the bar is
+  /// leaving the last search's entry, waits for the browser's Back, since
+  /// a push now would land on that entry (pre-ship round 41).
   void _openSearch() {
-    if (_backPending || _backWhenRecorded) {
-      // The browser has yet to step back off the last search's entry, or a
-      // close is waiting to ask it to once the entry is recorded; an open
-      // now would push onto that entry and the Back would land on it. Both
-      // are one transition: the search opens once the Back is reported
-      // (pre-ship round 41).
-      _openWhenBack = true;
-      return;
+    switch (_wait) {
+      case _SteppingBack():
+        _wait = const _SteppingBack(reopenAfter: true);
+      case _Recording(closeAfter: true) && final recording:
+        _wait = recording.copyWith(reopenAfter: true);
+      case _Recording() || _Settled():
+        if (_searchOpen) return;
+        _openPath = _location.path;
+        setState(() => _searchOpen = true);
+        GoRouter.of(context).go(withSearchMarker(_location));
+        _awaitRecording(closeAfter: false);
     }
-    _openPath = _location.path;
-    setState(() => _searchOpen = true);
-    GoRouter.of(context).go(withSearchMarker(_location));
-    _tagSearchEntry();
   }
 
-  /// Whether the bar asked the browser to step back off a marked entry and
-  /// the browser has not reported the result yet.
-  bool _backPending = false;
-
-  /// Whether the search was opened during [_backPending]: it opens once the
-  /// Back is reported.
-  bool _openWhenBack = false;
-
-  /// Steps back off the marked entry, noting the Back until it is reported.
+  /// Waits for the browser to record the current marked entry, then tags
+  /// it, and with [closeAfter] steps back off it.
   ///
-  /// It steps back once until the browser reports that Back: a second call
-  /// before then, such as from widening the window again, would leave the
-  /// page under the search.
-  void _back() {
-    final history = ref.read(browserHistoryProvider);
-    if (history == null || _backPending) return;
-    _backPending = true;
-    history.back();
-  }
-
-  /// Whether the browser has yet to record the marked entry just pushed.
-  bool _entryPending = false;
-
-  /// Whether a close came while [_entryPending]: it steps back once the
-  /// entry is recorded.
-  bool _backWhenRecorded = false;
-
-  /// Tags the marked entry just pushed, so a reload keeps it as the pair it
-  /// is. The router reports the push after the next frame and the browser
-  /// records it after that report's own turn, so the tag waits for both,
-  /// and is skipped if the search or its entry has gone meanwhile. A close
-  /// that came before then steps back now, off the recorded entry, not off
-  /// the page under it.
-  void _tagSearchEntry() {
-    final history = ref.read(browserHistoryProvider);
-    if (history == null) return;
-    final path = _location.path;
-    _entryPending = true;
+  /// The router reports the entry after the next frame and the browser
+  /// records it after that report's own turn, so the work waits for both.
+  /// It is dropped if the browser reports a location meanwhile, which then
+  /// decides, or if the wait has moved on.
+  void _awaitRecording({required bool closeAfter}) {
+    if (ref.read(browserHistoryProvider) == null) return;
+    final id = ++_recordings;
+    _wait = _Recording(id: id, path: _location.path, closeAfter: closeAfter);
     _afterFrame(
       () => Timer.run(() {
-        _entryPending = false;
         if (!mounted) return;
-        if (_backWhenRecorded) {
-          _backWhenRecorded = false;
-          if (hasSearchMarker(_location)) {
-            // Tagged first: Forward can return to it, and a reload there
-            // must find a pair, not a shared link to unmark in place.
-            history.tagCurrentEntry();
-            _back();
-          } else if (_openWhenBack) {
-            // No Back is needed after all, so a reopen waits for none.
-            _openWhenBack = false;
-            if (!widget.inlineSearch) _openSearch();
-          }
-          return;
-        }
-        if (_searchOpen &&
-            hasSearchMarker(_location) &&
-            _location.path == path) {
-          history.tagCurrentEntry();
+        if (_wait case final _Recording recording when recording.id == id) {
+          _recorded(recording);
         }
       }),
     );
+  }
+
+  /// The entry [recording] waited for is recorded.
+  void _recorded(_Recording recording) {
+    _wait = const _Settled();
+    final history = ref.read(browserHistoryProvider);
+    if (history == null) return;
+    final marked = hasSearchMarker(_location);
+    final sameEntry = marked && _location.path == recording.path;
+    if (recording.closeAfter) {
+      if (sameEntry) {
+        history.tagCurrentEntry();
+        _stepBack(reopenAfter: recording.reopenAfter);
+      } else if (recording.reopenAfter && !widget.inlineSearch) {
+        // No Back is needed after all, so the reopen waits for none.
+        _openSearch();
+      }
+      return;
+    }
+    if (_searchOpen && sameEntry) history.tagCurrentEntry();
+  }
+
+  /// Steps back off the marked entry, once until the browser reports that
+  /// Back: a second Back, such as from widening the window again, would
+  /// leave the page under the search.
+  void _stepBack({bool reopenAfter = false}) {
+    final history = ref.read(browserHistoryProvider);
+    if (history == null || _wait is _SteppingBack) return;
+    _wait = _SteppingBack(reopenAfter: reopenAfter);
+    history.back();
   }
 
   /// Closes the search from inside the app: Escape, the close button or the
@@ -359,16 +361,21 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   }
 
   /// Leaves the marked location: in a browser by stepping back onto the
-  /// unmarked entry before it, elsewhere by removing the marker in place.
+  /// unmarked entry before it, once that entry is recorded, elsewhere by
+  /// removing the marker in place.
   void _leaveMarkedEntry() {
     if (!hasSearchMarker(_location)) return;
-    switch (ref.read(browserHistoryProvider)) {
-      case _? when _entryPending:
-        _backWhenRecorded = true;
-      case _?:
-        _back();
-      case null:
-        _dropMarker();
+    if (ref.read(browserHistoryProvider) == null) {
+      _dropMarker();
+      return;
+    }
+    switch (_wait) {
+      case final _Recording recording:
+        _wait = recording.copyWith(closeAfter: true, reopenAfter: false);
+      case _SteppingBack():
+        break;
+      case _Settled():
+        _stepBack();
     }
   }
 
@@ -514,4 +521,63 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
       ),
     ],
   );
+}
+
+/// What the top bar waits for from the browser's history.
+sealed class _HistoryWait {
+  const _HistoryWait();
+
+  /// Whether the bar is leaving the current marked entry, or will once it
+  /// is recorded.
+  bool get leaving;
+}
+
+/// Nothing: the history is as the bar left it.
+final class _Settled extends _HistoryWait {
+  const _Settled();
+
+  @override
+  bool get leaving => false;
+}
+
+/// The browser has yet to record the marked entry at [path], which the bar
+/// pushed or the page loaded on; once it does, the bar tags it and, with
+/// [closeAfter], steps back off it, then with [reopenAfter] opens the
+/// search again.
+final class _Recording extends _HistoryWait {
+  const _Recording({
+    required this.id,
+    required this.path,
+    required this.closeAfter,
+    this.reopenAfter = false,
+  });
+
+  /// Which recording this is, so a stale callback can tell.
+  final int id;
+
+  final String path;
+  final bool closeAfter;
+  final bool reopenAfter;
+
+  @override
+  bool get leaving => closeAfter;
+
+  _Recording copyWith({bool? closeAfter, bool? reopenAfter}) => _Recording(
+    id: id,
+    path: path,
+    closeAfter: closeAfter ?? this.closeAfter,
+    reopenAfter: reopenAfter ?? this.reopenAfter,
+  );
+}
+
+/// The bar asked the browser to step back off a marked entry and the
+/// browser has not reported the result yet; with [reopenAfter] the search
+/// opens again once it has.
+final class _SteppingBack extends _HistoryWait {
+  const _SteppingBack({this.reopenAfter = false});
+
+  final bool reopenAfter;
+
+  @override
+  bool get leaving => true;
 }

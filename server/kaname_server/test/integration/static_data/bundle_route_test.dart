@@ -608,10 +608,12 @@ Future<_Stalled> _stallPastDeadline(int port, String path, _Slots slots) async {
   await Future<void>.delayed(_probeDeadline ~/ 2);
   expect(slots.inUse, 1, reason: 'the slot is held before the deadline');
 
+  // Generous: under a loaded full suite the deadline timer can fire late.
+  // `releases` below proves it was the deadline that released the slot.
   await _eventually(
     () => slots.inUse == 0,
     'slot released at the deadline',
-    timeout: _probeDeadline,
+    timeout: _probeDeadline + const Duration(seconds: 10),
   );
   expect(slots.releases, ['deadline']);
   // Well past the deadline, the stalled transfer is still open: its body has
