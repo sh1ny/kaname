@@ -281,6 +281,58 @@ void main() {
       expect(refusalOf(bytes), isA<CorruptBundle>());
     });
 
+    // The fixture with [file]'s body lines left out and its header entry
+    // replaced.
+    Uint8List withEntry(
+      String file, {
+      required bool present,
+      required int records,
+    }) {
+      final text = utf8.decode(
+        const GZipDecoder().decodeBytes(fixtureBuilder().build().bytes),
+      );
+      final lines = text.substring(0, text.length - 1).split('\n');
+      final header = jsonDecode(lines.first) as Map<String, Object?>;
+      final edited = {
+        ...header,
+        'sections': [
+          for (final entry in header['sections']! as List<Object?>)
+            switch (entry) {
+              {'file': final String name} when name == file => {
+                'file': file,
+                'present': present,
+                'records': records,
+              },
+              _ => entry,
+            },
+        ],
+      };
+      final body = withoutSection(lines.skip(1).toList(), file);
+      return const GZipEncoder().encodeBytes(
+        utf8.encode('${[jsonEncode(edited), ...body].join('\n')}\n'),
+      );
+    }
+
+    test('an absent section whose header counts records', () {
+      final bytes = withEntry(
+        'dynamicItemAttributes',
+        present: false,
+        records: 3,
+      );
+
+      expect(refusalOf(bytes), isA<CorruptBundle>());
+    });
+
+    test('a present section whose header counts no records', () {
+      final bytes = withEntry(
+        'dynamicItemAttributes',
+        present: true,
+        records: 0,
+      );
+
+      expect(refusalOf(bytes), isA<CorruptBundle>());
+    });
+
     test('a section that appears twice', () {
       final bytes = editedBody(
         (body) => [...body, '{"section":"types"}', '[99,{},null]'],

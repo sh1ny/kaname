@@ -804,6 +804,21 @@ void main() {
     expect(h.state, readyOn(copyN, updating: false));
   });
 
+  test('an announcement received behind a held kept load is taken when its '
+      'stream ends before the load does', () async {
+    final h = harnessHolding(copyN);
+    h.fakeStore!.holdLoad = true;
+    await h.start();
+    await h.send(announce(copyN1));
+    h.source.current.end();
+    await pumpEventQueue();
+
+    h.fakeStore!.releaseLoads();
+    await pumpEventQueue();
+
+    expect(h.downloader.builds, [buildN + 1], reason: 'no repeat needed');
+  });
+
   test(
     'late event and ending from a replaced subscription change nothing',
     () async {

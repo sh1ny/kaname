@@ -211,8 +211,9 @@ final class StaticDataSync {
   void _streamEnded(int ended) {
     if (ended != _generation) return;
     // A later event or ending of the same subscription changes nothing.
+    // An announcement it delivered before it ended still waits for the kept
+    // copy: it is the latest received, and nothing replaced it.
     final next = ++_generation;
-    _waiting = null;
     unawaited(_subscription?.cancel());
     _subscription = null;
     _streamDown = true;
