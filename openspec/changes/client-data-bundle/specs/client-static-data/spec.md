@@ -157,6 +157,10 @@ At most one download, check and index SHALL run at a time. An announcement of an
 - **WHEN** build N+1's bundle is downloading and the stream announces build N+2
 - **THEN** the build N+1 transfer is cancelled, build N+2's download starts after it ends, and no retry is ever scheduled for build N+1
 
+#### Scenario: Newer announcement while a native TLS handshake stalls
+- **WHEN** a native app's download waits on a TLS handshake that the server accepted over TCP and never answers, and the stream announces another bundle
+- **THEN** the transfer ends at once and the next download starts; the stalled socket may stay open until the server closes it, because the platform offers no way to close it during the handshake
+
 #### Scenario: Repeated announcements while indexing
 - **WHEN** build N+1's bundle is indexing and the stream announces builds N+2, N+3 and N+4 before that indexing ends
 - **THEN** no other download or index starts until it ends, and then only build N+4's bundle is downloaded and indexed
