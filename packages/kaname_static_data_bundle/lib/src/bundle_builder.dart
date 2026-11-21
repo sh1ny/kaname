@@ -60,18 +60,22 @@ final class RawRecord {
 
 /// Thrown when the builder cannot write a bundle from its records.
 final class BundleBuildException implements Exception {
-  /// Creates the failure of [section] for [message].
+  /// Creates the failure of [section] for [message]; a null [section] is a
+  /// failure of the bundle as a whole, such as its build number.
   const BundleBuildException(this.section, this.message);
 
-  /// The section whose records cannot be written.
-  final BundleSection section;
+  /// The section whose records cannot be written, or null when the failure
+  /// is not one section's.
+  final BundleSection? section;
 
-  /// Why the records cannot be written.
+  /// Why the bundle cannot be written.
   final String message;
 
   @override
-  String toString() =>
-      'BundleBuildException: section ${section.file}: $message';
+  String toString() => switch (section) {
+    final section? => 'BundleBuildException: section ${section.file}: $message',
+    null => 'BundleBuildException: $message',
+  };
 }
 
 /// A bundle the builder wrote.
@@ -210,8 +214,17 @@ final class BundleBuilder {
   /// Writes the bundle of every record added so far.
   ///
   /// Throws a [BundleBuildException] when a record's JSON cannot be written,
-  /// or when the reader would refuse its line ([isRecordLine]).
+  /// when the reader would refuse its line ([isRecordLine]), or when
+  /// [buildNumber] is outside the range every reader reads exactly, from
+  /// `-bundleMaxKey` to [bundleMaxKey] (pre-ship round 48).
   BuiltBundle build() {
+    if (!_inKeyRange(buildNumber)) {
+      throw BundleBuildException(
+        null,
+        'build number $buildNumber is outside the range every reader reads, '
+        '-$bundleMaxKey to $bundleMaxKey',
+      );
+    }
     final records = {
       for (final section in BundleSection.values)
         section: _sections[section]?.length ?? 0,

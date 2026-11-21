@@ -59,6 +59,18 @@ void main() {
       expectNothingWritten(incomplete);
     });
 
+    // Pre-ship round 48: a build number the readers cannot read exactly is
+    // refused before a bundle is written.
+    test('a build number past 2^53 - 1 fails naming the build', () async {
+      const build = bundle.bundleMaxKey + 1;
+      final zip = SdeFixture.complete(build: build).writeTo(zips);
+
+      final failure = await failureOf(zip);
+
+      expect(failure.reason, contains('build number $build'));
+      expect(scratch.listSync(), isEmpty);
+    });
+
     test('a fixture zip builds a bundle with no server', () async {
       final fixture = SdeFixture.complete(build: 4242);
       fixture.files['_sde.jsonl'] = [

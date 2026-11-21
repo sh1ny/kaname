@@ -392,6 +392,24 @@ void main() {
     );
   });
 
+  // Pre-ship round 48: the header's build must be one every reader reads.
+  test('a build number outside the readers\' range is refused', () {
+    for (final build in const [bundleMaxKey + 1, -bundleMaxKey - 1]) {
+      expect(
+        () => BundleBuilder(buildNumber: build, releaseDate: null).build(),
+        throwsA(
+          isA<BundleBuildException>()
+              .having((e) => e.section, 'section', isNull)
+              .having((e) => e.message, 'message', contains('$build')),
+        ),
+      );
+    }
+    expect(
+      BundleBuilder(buildNumber: bundleMaxKey, releaseDate: null).build(),
+      isA<BuiltBundle>(),
+    );
+  });
+
   group('release date', () {
     test('comes from the first object whose build number equals the build', () {
       final objects = [

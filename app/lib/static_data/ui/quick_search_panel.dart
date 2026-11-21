@@ -93,7 +93,9 @@ class _QuickSearchPanelState extends State<QuickSearchPanel> {
     }
   }
 
-  /// Scrolls, without animation, so the highlighted row is in view.
+  /// Scrolls, without animation, so the highlighted row is in view; the
+  /// last hit of a truncated list brings the more-matches footer after it
+  /// too, when both fit, so keyboard users see it (pre-ship round 47).
   void _reveal() {
     if (!mounted || !_scroll.hasClients) return;
     // The row's bounds in the scroll view, after the notice, if any, and
@@ -101,8 +103,16 @@ class _QuickSearchPanelState extends State<QuickSearchPanel> {
     final notice = _noticeKey.currentContext?.size?.height ?? 0;
     final row = QuickSearchPanel.rowExtent(context);
     final top = notice + _listPadding + widget.active * row;
-    final bottom = top + row;
     final position = _scroll.position;
+    final end = position.maxScrollExtent + position.viewportDimension;
+    final bottom = switch (widget.state) {
+      SearchFound(:final results)
+          when results.more &&
+              widget.active == results.hits.length - 1 &&
+              end - top <= position.viewportDimension =>
+        end,
+      _ => top + row,
+    };
     if (top < position.pixels) {
       _scroll.jumpTo(top);
     } else if (bottom > position.pixels + position.viewportDimension) {
@@ -239,9 +249,9 @@ class _Found extends StatelessWidget {
     final colors = EmberColors.of(context);
     final l10n = AppLocalizations.of(context);
     final hits = results.hits;
-    // One scroll view holds the notice and the results, so both stay
-    // reachable when the panel is capped short (by the keyboard or by
-    // large text).
+    // One scroll view holds the notice, the results and the footer, so all
+    // of them stay reachable when the panel is capped short (by the
+    // keyboard or by large text).
     final scroll = CustomScrollView(
       controller: controller,
       shrinkWrap: true,
@@ -282,6 +292,24 @@ class _Found extends StatelessWidget {
               ),
             ),
           ),
+        // In the scroll view, so a footer that wraps (large text, a narrow
+        // window) never takes the results' room; the reveal of the last
+        // hit brings it into view (pre-ship rounds 47 and 48).
+        if (results.more)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                EmberSpace.md,
+                0,
+                EmberSpace.md,
+                EmberSpace.sm,
+              ),
+              child: Text(
+                l10n.searchMoreMatches,
+                style: EmberType.label.copyWith(color: colors.inkTertiary),
+              ),
+            ),
+          ),
       ],
     );
     return Column(
@@ -296,22 +324,6 @@ class _Found extends StatelessWidget {
           child: const SizedBox.shrink(),
         ),
         Flexible(child: scroll),
-        // Below the scroll view, not in it: arrow keys reveal only the
-        // highlighted row, so a footer after the last hit could stay out of
-        // view (pre-ship round 47).
-        if (results.more)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              EmberSpace.md,
-              0,
-              EmberSpace.md,
-              EmberSpace.sm,
-            ),
-            child: Text(
-              l10n.searchMoreMatches,
-              style: EmberType.label.copyWith(color: colors.inkTertiary),
-            ),
-          ),
       ],
     );
   }

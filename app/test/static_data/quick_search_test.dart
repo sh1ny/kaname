@@ -373,10 +373,11 @@ void main() {
   });
 
   // Pre-ship round 39: the Many matches scenario's visible notice.
-  // Pre-ship round 47: the notice stays in view without scrolling, so
-  // keyboard users see it too.
-  testWidgets('a truncated result list shows the more-matches notice in '
-      'view, and a full one has none', (tester) async {
+  // Pre-ship round 47: keyboard users reach the notice too.
+  testWidgets('arrows to the last hit of a truncated list bring the '
+      'more-matches notice into view, and a full list has none', (
+    tester,
+  ) async {
     final notice = find.text(
       lookupAppLocalizations(const Locale('en')).searchMoreMatches,
     );
@@ -393,11 +394,9 @@ void main() {
     expect(notice, findsNothing, reason: 'a few matches fit the list');
 
     await typeQuery(tester, 'rifter');
-    expect(notice, findsOneWidget, reason: 'shown before any scrolling');
     Rect panel() => tester.getRect(find.byKey(QuickSearchKeys.panel));
-    expect(panel().contains(tester.getCenter(notice)), isTrue);
 
-    // Arrows to the last hit keep it in view.
+    // Arrows to the last hit bring it into view, with no scroll gesture.
     for (var i = 0; i < 50; i++) {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pump();
@@ -407,6 +406,55 @@ void main() {
     expect(panel().contains(tester.getCenter(notice)), isTrue);
     final last = tester.getRect(find.byKey(QuickSearchKeys.result(49)));
     expect(last.bottom, lessThanOrEqualTo(tester.getRect(notice).top));
+  });
+
+  // Pre-ship round 48: a footer that wraps never takes the results' room.
+  testWidgets('a truncated list keeps a result in view when large text '
+      'wraps the more-matches notice in a short panel', (tester) async {
+    final results = SearchResults([
+      for (var i = 0; i < 50; i++)
+        SearchHit(
+          kind: SearchKind.type,
+          id: 700 + i,
+          name: 'Rifter $i',
+          context: 'Frigate',
+        ),
+    ], more: true);
+    // The room a keyboard leaves in a narrow landscape window.
+    const room = Size(240, 160);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: EmberTheme.dark(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: room,
+            textScaler: TextScaler.linear(3),
+          ),
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: room.width,
+              child: QuickSearchPanel(
+                state: SearchFound(results),
+                top: () => 0,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final panel = tester.getRect(find.byKey(QuickSearchKeys.panel));
+    final first = tester.getRect(find.byKey(QuickSearchKeys.result(0)));
+    expect(panel.height, lessThanOrEqualTo(room.height));
+    expect(first.top, greaterThanOrEqualTo(panel.top));
+    expect(
+      first.top,
+      lessThan(panel.bottom),
+      reason: 'the first result is in view, not pushed out by the footer',
+    );
   });
 
   testWidgets('arrows scroll the highlighted row fully into view', (
