@@ -333,6 +333,25 @@ void main() {
       expect(refusalOf(bytes), isA<CorruptBundle>());
     });
 
+    // Pre-ship round 29.
+    test('an absent section whose header counts a negative number of '
+        'records', () {
+      final bytes = withEntry(
+        'dynamicItemAttributes',
+        present: false,
+        records: -1,
+      );
+
+      expect(
+        refusalOf(bytes),
+        isA<CorruptBundle>().having(
+          (r) => r.detail,
+          'detail',
+          contains('dynamicItemAttributes'),
+        ),
+      );
+    });
+
     test('a record line before the first section marker', () {
       final bytes = editedBody((body) => ['[99,{},null]', ...body]);
 

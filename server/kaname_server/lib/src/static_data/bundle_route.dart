@@ -46,7 +46,10 @@ const MimeType _gzip = MimeType('application', 'gzip');
 ///   treats as a failed download. A transfer takes its place at admission and
 ///   gives it back when its body has been written, has failed or was
 ///   cancelled, or [bundleTransferDeadline] after admission, whichever comes
-///   first; a 304 or a 404 takes no lasting place. The body is a stream over
+///   first; a 304 or a 404 takes no lasting place. "Written" is the end of
+///   the body stream, which dart:io delivers once the socket has taken the
+///   earlier chunks; relic's flush and close after it, of the last piece
+///   dart:io buffers, are not visible to a handler (design D4). The body is a stream over
 ///   chunk views of the held bytes with the `Content-Length` of the bundle,
 ///   because a byte body gives the handler no sign of its end. A transfer
 ///   past its deadline loses its place at once, and its body ends at the next

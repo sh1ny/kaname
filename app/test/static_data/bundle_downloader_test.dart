@@ -178,23 +178,55 @@ void main() {
     );
   });
 
-  test('a reload number asks for the bundle URL with that reload query, '
-      'and none asks for the plain URL', () async {
+  test('a reload number asks for the bundle URL with that reload number and '
+      'a token, and none asks for the plain URL', () async {
     for (final (reload, line) in [
       (0, 'GET /base/static-data/bundle/3714173/$hash HTTP/1.1'),
-      (2, 'GET /base/static-data/bundle/3714173/$hash?reload=2 HTTP/1.1'),
+      (2, 'GET /base/static-data/bundle/3714173/$hash?reload=2-f00d HTTP/1.1'),
     ]) {
       final server = await HoldingServer.start();
       addTearDown(server.close);
       server.serve();
       final transfer = HttpBundleDownloader(
         server: ConfiguredServer(server.base),
+        cacheToken: () => 'f00d',
       ).start(bundle, reload: reload);
 
       expect(await server.requestLine.future, line);
       transfer.cancel();
       await transfer.result;
     }
+  });
+
+  // Pre-ship round 29: a reload number starts again at 1 in each attempt
+  // and app load, so the URL must not repeat one a cache may hold.
+  test('two downloads with the same reload number ask for different URLs, '
+      'each with a reload query', () async {
+    final lines = <String>[];
+    for (var i = 0; i < 2; i++) {
+      final server = await HoldingServer.start();
+      addTearDown(server.close);
+      server.serve();
+      final transfer = HttpBundleDownloader(
+        server: ConfiguredServer(server.base),
+      ).start(bundle, reload: 1);
+      lines.add(await server.requestLine.future);
+      transfer.cancel();
+      await transfer.result;
+    }
+
+    expect(
+      lines,
+      everyElement(
+        matches(
+          RegExp(
+            '^GET /base/static-data/bundle/3714173/$hash'
+            r'\?reload=1-[0-9a-f]+ HTTP/1\.1$',
+          ),
+        ),
+      ),
+    );
+    expect(lines.first, isNot(lines.last));
   });
 
   group('before response headers', () {

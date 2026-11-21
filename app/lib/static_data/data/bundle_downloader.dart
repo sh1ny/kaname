@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -115,9 +116,11 @@ abstract interface class BundleDownloader {
   ///
   /// With [reload] above 0 the request asks past any HTTP cache: a browser
   /// may have cached a complete response whose bytes then failed their
-  /// check, under the URL's immutable caching. Each [reload] number names
-  /// another URL (`?reload=<n>`), which the server's route ignores, so the
-  /// cached copy is never reused; 0 keeps ordinary cache reuse.
+  /// check, under the URL's immutable caching. Such a request names a URL
+  /// not asked before, `?reload=<n>-<token>` with a fresh random token,
+  /// which the server's route ignores, so no cached copy is reused, also
+  /// after a new attempt or app load counts [reload] from 1 again; 0 keeps
+  /// ordinary cache reuse.
   BundleTransfer start(BundleIdentity bundle, {int reload = 0});
 }
 
@@ -130,7 +133,17 @@ final class HttpBundleDownloader implements BundleDownloader {
     required this.server,
     this.timeout = defaultTimeout,
     this._clientFor = abortableBundleClient,
+    this._cacheToken = randomCacheToken,
   });
+
+  /// A random token for a reload query: 64 bits in hex.
+  static String randomCacheToken() {
+    final random = Random.secure();
+    return [
+      for (var i = 0; i < 2; i++)
+        random.nextInt(1 << 32).toRadixString(16).padLeft(8, '0'),
+    ].join();
+  }
 
   /// The time limit of one download (design D4's 2 minutes).
   static const defaultTimeout = Duration(minutes: 2);
@@ -143,12 +156,16 @@ final class HttpBundleDownloader implements BundleDownloader {
 
   final http.Client Function(Future<void> abort) _clientFor;
 
+  final String Function() _cacheToken;
+
   @override
   BundleTransfer start(BundleIdentity bundle, {int reload = 0}) {
     final url = bundleUrl(server, bundle);
     return _HttpBundleTransfer(
       _clientFor,
-      reload > 0 ? url.replace(queryParameters: {'reload': '$reload'}) : url,
+      reload > 0
+          ? url.replace(queryParameters: {'reload': '$reload-${_cacheToken()}'})
+          : url,
       timeout,
     );
   }

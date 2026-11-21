@@ -516,13 +516,19 @@ final class _Bundle implements ClientBundle {
   }
 
   /// Checks that each known section holds the records its header entry
-  /// counts: a present section has exactly that many record lines, an
-  /// absent or unlisted one has none, and an entry is present exactly when
-  /// it counts records.
+  /// counts: no entry counts below zero, a present section has exactly that
+  /// many record lines, an absent or unlisted one has none, and an entry is
+  /// present exactly when it counts records.
   ///
   /// Throws a [FormatException] naming the first section that does not.
   void _checkFraming() {
     for (final section in BundleSection.values) {
+      if (header.sections[section] case BundleSectionInfo(:final records)
+          when records < 0) {
+        throw FormatException(
+          'section ${section.file} counts $records records, below zero',
+        );
+      }
       if (header.sections[section]
           case BundleSectionInfo(:final present, :final records)
           when present != (records > 0)) {
