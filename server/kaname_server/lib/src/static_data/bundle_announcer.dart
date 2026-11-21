@@ -399,7 +399,9 @@ final class BundleAnnouncer {
     // sent on the tick that finds it, not one tick later (D9). At most one
     // is outstanding either way, and a tick sends at most one: the later
     // check sends only when no repair went out since the tick began, even if
-    // the early one was answered while the refresh ran.
+    // the early one was answered while the refresh ran, and none at all
+    // when a repair was already outstanding as the tick began (D9).
+    final outstandingAtStart = _repair != null;
     final sentBefore = _repairsSent;
     _sendOwedRepair();
     final refreshed = request();
@@ -410,7 +412,9 @@ final class BundleAnnouncer {
     unawaited(
       refreshed.then((_) {
         _repairChecksWaiting--;
-        if (_repairsSent == sentBefore) _sendOwedRepair();
+        if (!outstandingAtStart && _repairsSent == sentBefore) {
+          _sendOwedRepair();
+        }
       }),
     );
   }

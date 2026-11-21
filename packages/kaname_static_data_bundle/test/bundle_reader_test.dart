@@ -137,6 +137,31 @@ void main() {
     );
   });
 
+  // Pre-ship round 36: a second entry must not replace the first.
+  test('a header that lists a known section twice is refused', () {
+    final bytes = editedBundle((header) {
+      final sections = header['sections']! as List<Object?>;
+      final types = sections.firstWhere(
+        (entry) => entry is Map && entry['file'] == 'types',
+      );
+      return {
+        ...header,
+        'sections': [
+          {'file': 'types', 'present': false, 'records': 0},
+          ...sections.where((entry) => entry != types),
+          types,
+        ],
+      };
+    });
+
+    expect(
+      refused(
+        openBundle(bytes, build: fixtureBuild, sha256: bundleSha256(bytes)),
+      ),
+      isA<CorruptBundle>().having((r) => r.detail, 'detail', contains('types')),
+    );
+  });
+
   test('newer major is refused naming both versions', () {
     final bytes = editedBundle(
       (header) => {...header, 'formatMajor': 2, 'formatMinor': 3},

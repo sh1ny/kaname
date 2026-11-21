@@ -386,6 +386,11 @@ BundleHeader _parseHeader(Map<String, Object?> header, int build) {
       }:
         final section = BundleSection.fromFile(file);
         if (section != null) {
+          if (sections.containsKey(section)) {
+            throw FormatException(
+              'the header lists section ${section.file} twice',
+            );
+          }
           sections[section] = BundleSectionInfo(
             present: present,
             records: records,
