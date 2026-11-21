@@ -392,7 +392,9 @@ class _ResultRow extends StatelessWidget {
       child: Semantics(
         selected: active,
         child: MouseRegion(
-          onEnter: onHover == null ? null : (_) => onHover!(),
+          // Only a moving pointer takes the highlight: a row scrolled under
+          // a resting one, as the arrows scroll, does not.
+          onHover: onHover == null ? null : (_) => onHover!(),
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: active ? colors.hover : null,

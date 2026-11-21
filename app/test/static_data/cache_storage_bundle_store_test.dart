@@ -9,13 +9,18 @@ import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kaname_app/static_data/data/bundle_announcements.dart';
+import 'package:kaname_app/static_data/data/bundle_indexer.dart';
 import 'package:kaname_app/static_data/data/bundle_opener_web.dart';
 import 'package:kaname_app/static_data/data/bundle_store.dart';
 import 'package:kaname_app/static_data/data/cache_storage_bundle_store.dart';
+import 'package:kaname_app/static_data/logic/static_data_state.dart';
+import 'package:kaname_app/static_data/logic/static_data_sync.dart';
 import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart';
 import 'package:web/web.dart' as web;
 
 import 'support/bundle_fixture.dart';
+import 'support/static_data_fakes.dart';
 
 const buildN = 3714173;
 
@@ -72,6 +77,40 @@ void main() {
     // A new store over the same origin is the reloaded page. It has no
     // downloader: the bundle can only come from the entry.
     expectLoaded(await storeOf(web.window, opener: opener).load(), copy);
+
+    // The reloaded app's own sync, told the server still announces the kept
+    // bundle, searches it and downloads nothing.
+    final source = FakeAnnouncementSource();
+    final downloader = FakeBundleDownloader();
+    final sync = StaticDataSync(
+      server: BundleServer(source: source, downloader: downloader),
+      store: storeOf(web.window, opener: opener),
+      opener: opener,
+      indexer: const SearchBundleIndexer(),
+      timers: Timer.new,
+      onState: (_) {},
+      log: (_) {},
+    )..start();
+    addTearDown(sync.dispose);
+    source.current.emit(
+      BundleAnnounced(
+        epoch: 'e',
+        revision: 1,
+        bundle: copy.identity,
+        size: copy.bytes.length,
+        formatMajor: bundleFormatMajor,
+      ),
+    );
+    await waitFor(() => sync.state is BundleReady);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    final ready = sync.state as BundleReady;
+    expect(ready.identity, copy.identity);
+    expect(
+      ready.index.search('jita').hits.map((hit) => hit.name),
+      contains('Jita'),
+    );
+    expect(downloader.started, isEmpty, reason: 'no download on reload');
   });
 
   test('two same-origin contexts save while a third reads; every read is '

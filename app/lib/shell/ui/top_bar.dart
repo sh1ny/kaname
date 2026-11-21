@@ -239,18 +239,34 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
     _tagSearchEntry();
   }
 
+  /// Whether the browser has yet to record the marked entry just pushed.
+  bool _entryPending = false;
+
+  /// Whether a close came while [_entryPending]: it steps back once the
+  /// entry is recorded.
+  bool _backWhenRecorded = false;
+
   /// Tags the marked entry just pushed, so a reload keeps it as the pair it
   /// is. The router reports the push after the next frame and the browser
   /// records it after that report's own turn, so the tag waits for both,
-  /// and is skipped if the search or its entry has gone meanwhile.
+  /// and is skipped if the search or its entry has gone meanwhile. A close
+  /// that came before then steps back now, off the recorded entry, not off
+  /// the page under it.
   void _tagSearchEntry() {
     final history = ref.read(browserHistoryProvider);
     if (history == null) return;
     final path = _location.path;
+    _entryPending = true;
     _afterFrame(
       () => Timer.run(() {
-        if (mounted &&
-            _searchOpen &&
+        _entryPending = false;
+        if (!mounted) return;
+        if (_backWhenRecorded) {
+          _backWhenRecorded = false;
+          if (hasSearchMarker(_location)) history.back();
+          return;
+        }
+        if (_searchOpen &&
             hasSearchMarker(_location) &&
             _location.path == path) {
           history.tagCurrentEntry();
@@ -277,6 +293,8 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
   void _leaveMarkedEntry() {
     if (!hasSearchMarker(_location)) return;
     switch (ref.read(browserHistoryProvider)) {
+      case _? when _entryPending:
+        _backWhenRecorded = true;
       case final history?:
         history.back();
       case null:

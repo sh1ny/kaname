@@ -1,6 +1,7 @@
 @TestOn('vm')
 library;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -358,6 +359,38 @@ void main() {
     expect(first.top, greaterThanOrEqualTo(panel.top));
   });
 
+  testWidgets('a resting pointer does not take the highlight from the '
+      'arrows while they scroll', (tester) async {
+    final semantics = tester.ensureSemantics();
+    final many = fixtureBundle(
+      100,
+      extraTypes: {for (var i = 0; i < 30; i++) 700 + i: 'Rifter $i'},
+    );
+    await Rig(kept: many).pump(tester, size: _narrow);
+    await tester.tap(find.byKey(QuickSearchKeys.openButton));
+    await tester.pumpAndSettle();
+    await typeQuery(tester, 'rifter');
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(
+      location: tester.getCenter(find.byKey(QuickSearchKeys.result(4))),
+    );
+    await mouse.moveBy(const Offset(1, 0));
+    await tester.pump();
+    bool selected(int index) =>
+        isSelectedNode(tester, find.byKey(QuickSearchKeys.result(index)));
+    expect(selected(4), isTrue, reason: 'moving the pointer highlights');
+
+    for (var i = 0; i < 25; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    expect(selected(29), isTrue, reason: 'the arrows reach the last row');
+    semantics.dispose();
+  });
+
   testWidgets('a new query opens its results at the top', (tester) async {
     final many = fixtureBundle(
       100,
@@ -694,6 +727,32 @@ void main() {
       expect(history.backCalls, 1);
       expect(find.byKey(QuickSearchKeys.field), findsNothing);
       expect(location(), '/settings/licences');
+    });
+
+    testWidgets('Escape right after opening, before the browser records '
+        'the search entry, closes the search and stays on the page', (
+      tester,
+    ) async {
+      history = FakeBrowserHistory(tester);
+      harness = await Rig(kept: copyN).pump(
+        tester,
+        size: _narrow,
+        location: '/settings',
+        browserHistory: history,
+      );
+      harness.router.go('/settings/licences');
+      await tester.pumpAndSettle();
+
+      // No frame between them: the router has not reported the entry yet.
+      await tester.tap(find.byKey(QuickSearchKeys.openButton));
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(QuickSearchKeys.field), findsNothing);
+      expect(history.backCalls, 1);
+      expect(history.current, '/settings/licences');
+      expect(location(), '/settings/licences', reason: 'the page stays');
+      expect(find.byType(LicensePage), findsOneWidget);
     });
 
     testWidgets('after Back and Forward reopen the search, closing it steps '
