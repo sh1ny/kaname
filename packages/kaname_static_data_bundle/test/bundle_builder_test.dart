@@ -155,6 +155,61 @@ void main() {
       );
     });
 
+    test('a key at the bundle key bound builds and reopens; one past it '
+        'fails the build, typed and raw alike', () {
+      for (final key in [bundleMaxKey, -bundleMaxKey]) {
+        final builder = fixtureBuilder()
+          ..addTyped(
+            BundleSection.typeDogma,
+            TypedRecord(key: key, values: const {}, raw: {'_key': key}),
+          )
+          ..addRaw(
+            BundleSection.fighterAbilities,
+            RawRecord(key: '$key', line: 99, record: {'_key': key}),
+          );
+        final built = builder.build();
+
+        final bundle = switch (openBundle(
+          built.bytes,
+          build: fixtureBuild,
+          sha256: built.sha256,
+        )) {
+          BundleOpened(:final bundle) => bundle,
+          BundleRefused(:final refusal) => fail('refused: $refusal'),
+        };
+        expect(
+          bundle.records(BundleSection.typeDogma).map((r) => r.key),
+          contains(key),
+        );
+        expect(
+          bundle.records(BundleSection.fighterAbilities).map((r) => r.key),
+          contains(key),
+        );
+      }
+      for (final key in [bundleMaxKey + 1, -bundleMaxKey - 1]) {
+        expect(
+          () => fixtureBuilder().addTyped(
+            BundleSection.typeDogma,
+            TypedRecord(key: key, values: const {}, raw: {'_key': key}),
+          ),
+          throwsA(
+            isA<BundleBuildException>().having(
+              (e) => e.message,
+              'message',
+              contains('$key'),
+            ),
+          ),
+        );
+        expect(
+          () => fixtureBuilder().addRaw(
+            BundleSection.fighterAbilities,
+            RawRecord(key: '$key', line: 1, record: {'_key': key}),
+          ),
+          throwsA(isA<BundleBuildException>()),
+        );
+      }
+    });
+
     test('typed input is refused when it does not fit the section', () {
       final builder = fixtureBuilder();
 

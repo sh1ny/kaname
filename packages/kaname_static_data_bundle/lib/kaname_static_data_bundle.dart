@@ -8,7 +8,7 @@ library;
 
 export 'src/bundle_builder.dart';
 export 'src/bundle_format.dart'
-    show bundleFormatMajor, bundleFormatMinor, bundleLocales;
+    show bundleFormatMajor, bundleFormatMinor, bundleLocales, bundleMaxKey;
 export 'src/bundle_models.dart';
 export 'src/bundle_reader.dart';
 export 'src/bundle_section.dart';

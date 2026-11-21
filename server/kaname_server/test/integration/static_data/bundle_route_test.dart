@@ -992,10 +992,15 @@ Future<_Answer> _fetch(int port, String path, {String? ifNoneMatch}) async {
   }
 }
 
-/// 16 clients that read the first bytes of [path] and then stop reading.
-Future<List<_RawClient>> _stalledClients(int port, String path) async {
+/// [count] clients, 16 by default, that read the first bytes of [path] and
+/// then stop reading.
+Future<List<_RawClient>> _stalledClients(
+  int port,
+  String path, {
+  int count = 16,
+}) async {
   final clients = <_RawClient>[];
-  for (var i = 0; i < 16; i++) {
+  for (var i = 0; i < count; i++) {
     final client = await _RawClient.get(port, path);
     addTearDown(client.destroy);
     await client.firstBytes;
@@ -1153,6 +1158,49 @@ void _bundleRouteTests() {
         const Duration(seconds: 30),
       );
       expect(resumed, lessThan(bundle.size));
+    });
+
+    // Pre-ship round 27: the real route frees a slot as soon as its
+    // response ends, not at the deadline.
+    test('with the clock held, a completed download frees its slot for the '
+        'next GET', () async {
+      final bundle = await rig.store(
+        100,
+        models.SdeBuildState.active,
+        content: 'x' * _bigContent,
+      );
+      await rig.announcer.request();
+      await _stalledClients(rig.port, rig.pathOf(bundle), count: 15);
+
+      // Each download takes the one free slot; one that kept it would make
+      // the next answer 503.
+      for (var i = 0; i < 3; i++) {
+        final answer = await _fetch(rig.port, rig.pathOf(bundle));
+        expect(answer.status, 200, reason: 'download ${i + 1}');
+        expect(answer.body, hasLength(bundle.size));
+      }
+    });
+
+    test('with the clock held, a client that disconnects mid-body frees its '
+        'slot for the next GET', () async {
+      final bundle = await rig.store(
+        100,
+        models.SdeBuildState.active,
+        content: 'x' * _bigContent,
+      );
+      await rig.announcer.request();
+      final stalled = await _stalledClients(rig.port, rig.pathOf(bundle));
+      expect((await _fetch(rig.port, rig.pathOf(bundle))).status, 503);
+
+      stalled.first.destroy();
+
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      var status = 503;
+      while (status == 503 && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        status = (await _fetch(rig.port, rig.pathOf(bundle))).status;
+      }
+      expect(status, 200, reason: 'the disconnect freed no slot');
     });
 
     // Scenario: Database not answering.

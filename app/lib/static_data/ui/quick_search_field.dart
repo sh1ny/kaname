@@ -92,12 +92,15 @@ class _QuickSearchFieldState extends ConsumerState<QuickSearchField> {
     if (event is KeyUpEvent) return KeyEventResult.ignored;
     final count = _count(ref.read(quickSearchProvider));
     final key = event.logicalKey;
+    // Move from the row shown highlighted: results that replaced a longer
+    // list can leave the index past their end (see [_shownActive]).
+    final shown = _shownActive(count);
     if (key == LogicalKeyboardKey.arrowDown && count > 0) {
-      setState(() => _active = (_active + 1).clamp(0, count - 1));
+      setState(() => _active = (shown + 1).clamp(0, count - 1));
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowUp && count > 0) {
-      setState(() => _active = (_active - 1).clamp(-1, count - 1));
+      setState(() => _active = (shown - 1).clamp(-1, count - 1));
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.escape) {
@@ -113,6 +116,11 @@ class _QuickSearchFieldState extends ConsumerState<QuickSearchField> {
     }
     return KeyEventResult.ignored;
   }
+
+  /// The highlighted row among [count] results: the last one when the
+  /// index is past their end, as it is when shorter results replaced the
+  /// list it was moved over.
+  int _shownActive(int count) => _active < count ? _active : count - 1;
 
   void _changed(String text) {
     setState(() => _active = -1);
@@ -136,7 +144,7 @@ class _QuickSearchFieldState extends ConsumerState<QuickSearchField> {
     final colors = EmberColors.of(context);
     final state = ref.watch(quickSearchProvider);
     final count = _count(state);
-    final active = _active < count ? _active : count - 1;
+    final active = _shownActive(count);
     final showPanel =
         state is! SearchBlank && (widget.onClose != null || _focus.hasFocus);
     return OverlayPortal(

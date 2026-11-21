@@ -17,6 +17,14 @@ const int bundleFormatMajor = 1;
 /// at the end or a header key is a minor change (C2).
 const int bundleFormatMinor = 0;
 
+/// The largest record key a bundle holds, 2^53 - 1; keys run from
+/// `-bundleMaxKey` to `bundleMaxKey`.
+///
+/// Every key in that range decodes as the same `int` on native platforms
+/// and on the web, where JSON numbers are doubles; the builder refuses any
+/// other key and the reader's record check accepts exactly these.
+const int bundleMaxKey = 9007199254740991;
+
 /// The locales a bundle built by this package holds names in.
 const List<String> bundleLocales = ['en'];
 

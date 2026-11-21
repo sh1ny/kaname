@@ -20,7 +20,8 @@ void main() {
       r'[2,{"a":"\"\\\/\b\f\n\r\t\u00e9"},null]',
       '[3,{"name":{"en":"Ægir ✓ 🚀"}},{"x":[1,-0.5,2e10,3E-2,true,false,null]}]',
       '[4,{"a":{"b":{"c":[[[]]]}}},{"":""}]',
-      '[123456789012345678,{},null]',
+      '[9007199254740991,{},null]',
+      '[-9007199254740991,{},null]',
     ]) {
       expect(check(line), isTrue, reason: line);
       expect(jsonDecode(line), isA<List<Object?>>(), reason: line);
@@ -38,6 +39,8 @@ void main() {
       '[01,{},null]',
       '[1.0,{},null]',
       '[1234567890123456789,{},null]',
+      '[9007199254740992,{},null]',
+      '[-9007199254740992,{},null]',
       '[1,{"a":1.},null]',
       '[1,{"a":-},null]',
       '[1,{"a":tru},null]',

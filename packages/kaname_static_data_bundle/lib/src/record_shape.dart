@@ -3,6 +3,8 @@ library;
 
 import 'dart:typed_data';
 
+import 'bundle_format.dart';
+
 /// Whether the bytes of [bytes] from [start] to [end] are one record line:
 /// UTF-8 JSON holding an array of an integer key, an object and an object
 /// or `null`, with only whitespace around it.
@@ -75,10 +77,15 @@ final class _Scanner {
     _whitespace();
     final keyStart = _i;
     _number(integer: true);
-    // At most 18 digits: every such key decodes as an `int` on every
-    // platform.
-    final signed = _bytes[keyStart] == _minus ? 1 : 0;
-    if (_i - keyStart - signed > 18) _fail();
+    // A key in the range the builder writes ([bundleMaxKey]): every such
+    // key decodes as the same `int` on every platform.
+    final digitsStart = _bytes[keyStart] == _minus ? keyStart + 1 : keyStart;
+    if (_i - digitsStart > 16) _fail();
+    var magnitude = 0;
+    for (var k = digitsStart; k < _i; k++) {
+      magnitude = magnitude * 10 + (_bytes[k] - _zero);
+    }
+    if (magnitude > bundleMaxKey) _fail();
     _whitespace();
     _expect(_comma);
     _whitespace();

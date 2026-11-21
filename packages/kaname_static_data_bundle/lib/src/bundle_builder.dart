@@ -120,8 +120,9 @@ final class BundleBuilder {
   ///
   /// Throws a [BundleBuildException] when [section] is raw-only, when a
   /// value is keyed by a name that is not one of the section's columns or
-  /// does not match its column's kind, or when [record]'s key was already
-  /// added to [section].
+  /// does not match its column's kind, when [record]'s key is outside
+  /// the bundle key range ([bundleMaxKey]), or when it was already added
+  /// to [section].
   void addTyped(BundleSection section, TypedRecord record) {
     final columns = section.columns;
     if (columns == null) {
@@ -130,6 +131,7 @@ final class BundleBuilder {
         'is raw-only and takes raw records, not typed record ${record.key}',
       );
     }
+    _checkKeyRange(section, record.key);
     final keys = _typedKeys.putIfAbsent(section, () => {});
     if (!keys.add(record.key)) {
       throw BundleBuildException(
@@ -168,7 +170,8 @@ final class BundleBuilder {
   /// Adds [record] to the raw-only [section].
   ///
   /// Throws a [BundleBuildException] when [section] is typed or when the
-  /// record's key is not a decimal integer (assumption A2).
+  /// record's key is not a decimal integer (assumption A2) in the bundle
+  /// key range ([bundleMaxKey]).
   void addRaw(BundleSection section, RawRecord record) {
     if (!section.isRawOnly) {
       throw BundleBuildException(
@@ -185,9 +188,22 @@ final class BundleBuilder {
         'key "${record.key}" on line ${record.line} is not an integer',
       );
     }
+    _checkKeyRange(section, key);
     _lines(section).add(
       _Line(key: key, line: record.line, typed: const {}, raw: record.record),
     );
+  }
+
+  /// Throws a [BundleBuildException] when [key] is outside the range every
+  /// reader decodes exactly ([bundleMaxKey]).
+  static void _checkKeyRange(BundleSection section, int key) {
+    if (key > bundleMaxKey || key < -bundleMaxKey) {
+      throw BundleBuildException(
+        section,
+        'key $key is outside the bundle key range of plus or minus '
+        '$bundleMaxKey',
+      );
+    }
   }
 
   /// Writes the bundle of every record added so far.

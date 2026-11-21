@@ -329,6 +329,47 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('after a narrower query replaces the list, Arrow Up moves '
+      'from the row shown highlighted', (tester) async {
+    await Rig(kept: copyN).pump(tester);
+    await tester.tap(find.byKey(QuickSearchKeys.field));
+    await tester.pump();
+    int shown() {
+      var count = 0;
+      while (find.byKey(QuickSearchKeys.result(count)).evaluate().isNotEmpty) {
+        count++;
+      }
+      return count;
+    }
+
+    bool selected(int index) =>
+        isSelectedNode(tester, find.byKey(QuickSearchKeys.result(index)));
+    tester.testTextInput.enterText('i');
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pumpAndSettle();
+    final wide = shown();
+
+    // The narrower query waits for its debounce while the arrows still move
+    // over the wide list, past the end of the narrow one.
+    tester.testTextInput.enterText('jita');
+    await tester.pump();
+    for (var i = 0; i < wide; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    }
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pumpAndSettle();
+    expect(shown(), 1);
+    expect(wide, greaterThan(2));
+    expect(selected(0), isTrue, reason: 'the last row shown is highlighted');
+
+    // One step up from the first row leaves the list, as from any first
+    // row; a stale index past the end would clamp back onto it.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pump();
+
+    expect(selected(0), isFalse);
+  });
+
   testWidgets('arrows scroll the highlighted row fully into view', (
     tester,
   ) async {
