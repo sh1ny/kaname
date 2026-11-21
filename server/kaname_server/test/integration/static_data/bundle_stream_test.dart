@@ -522,6 +522,13 @@ void main() {
         'the stalled streams to free their places',
       );
       await rig.listenersAre(0);
+      // Every stream, the stalled ones included, was ended by the server
+      // and its end handed to Serverpod while the transport still does not
+      // read, apart from freeing its place.
+      await _until(
+        () => bundleAnnouncementRuntime.endedByServer == stalledCount + 1,
+        'the server to end every stream',
+      );
       final admitted = rig.subscribe();
       await admitted.waitFor(1);
       expect(proxy.bytesFromTarget, held, reason: 'still no reads');

@@ -100,7 +100,13 @@ class StaticDataEndpoint extends Endpoint {
       expiry?.cancel();
       runtime.openStreams--;
       await busSubscription?.cancel();
-      if (closeController) await controller.close();
+      if (closeController) {
+        // The sync controller hands Serverpod the end at once, whether or
+        // not the transport can take it.
+        final closed = controller.close();
+        runtime.endedByServer++;
+        await closed;
+      }
     }
 
     controller

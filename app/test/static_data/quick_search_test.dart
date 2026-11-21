@@ -370,6 +370,38 @@ void main() {
     expect(selected(0), isFalse);
   });
 
+  // Pre-ship round 39: the Many matches scenario's visible notice.
+  testWidgets('a truncated result list ends with the more-matches notice, '
+      'and a full one has none', (tester) async {
+    final notice = find.text(
+      lookupAppLocalizations(const Locale('en')).searchMoreMatches,
+    );
+    final many = fixtureBundle(
+      100,
+      extraTypes: {for (var i = 0; i < 60; i++) 700 + i: 'Rifter $i'},
+    );
+    await Rig(kept: many).pump(tester, size: _narrow);
+    await tester.tap(find.byKey(QuickSearchKeys.openButton));
+    await tester.pumpAndSettle();
+
+    await typeQuery(tester, 'rifter 1');
+    expect(find.byKey(QuickSearchKeys.result(0)), findsOneWidget);
+    expect(notice, findsNothing, reason: 'a few matches fit the list');
+
+    await typeQuery(tester, 'rifter');
+    await tester.scrollUntilVisible(
+      notice,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byKey(QuickSearchKeys.panel),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(notice, findsOneWidget);
+  });
+
   testWidgets('arrows scroll the highlighted row fully into view', (
     tester,
   ) async {
@@ -830,6 +862,32 @@ void main() {
       await history.pressBack();
       await tester.pumpAndSettle();
       expect(location(), '/settings', reason: 'no repeated page entry');
+    });
+
+    // Pre-ship round 39: the reopen that waited for the Back rechecks the
+    // layout when it runs.
+    testWidgets('a reopen waiting for the close\'s Back adds no entry when '
+        'the window widens in the frame that handles the Back', (tester) async {
+      await openOverLicences(tester);
+      history.holdBacks = true;
+      await tester.tap(find.byKey(QuickSearchKeys.closeButton));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(QuickSearchKeys.openButton));
+      await tester.pumpAndSettle();
+
+      await history.releaseBacks();
+      setWindowSize(tester, _wide);
+      await tester.pumpAndSettle();
+
+      expect(location(), '/settings/licences');
+      expect(
+        history.current,
+        '/settings/licences',
+        reason: 'no search entry the wide layout cannot close',
+      );
+      await history.pressBack();
+      await tester.pumpAndSettle();
+      expect(location(), '/settings');
     });
 
     testWidgets('after Back and Forward reopen the search, closing it steps '

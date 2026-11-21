@@ -162,6 +162,22 @@ void main() {
     );
   });
 
+  // Pre-ship round 39: the native decoder also takes zlib framing, which the
+  // browser's gzip DecompressionStream refuses.
+  test('valid bundle lines in zlib framing are refused as not gzip', () {
+    final lines = const GZipDecoder().decodeBytes(
+      fixtureBuilder().build().bytes,
+    );
+    final bytes = Uint8List.fromList(const ZLibEncoder().encode(lines));
+
+    expect(
+      refused(
+        openBundle(bytes, build: fixtureBuild, sha256: bundleSha256(bytes)),
+      ),
+      isA<CorruptBundle>().having((r) => r.detail, 'detail', contains('gzip')),
+    );
+  });
+
   test('newer major is refused naming both versions', () {
     final bytes = editedBundle(
       (header) => {...header, 'formatMajor': 2, 'formatMinor': 3},

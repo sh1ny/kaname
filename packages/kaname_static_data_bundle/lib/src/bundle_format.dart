@@ -54,8 +54,19 @@ Uint8List deterministicGzip(Uint8List data, {required int level}) {
 
 /// Inflates the gzip file [bytes], checking its CRC.
 ///
-/// Throws a [FormatException] when [bytes] is not a valid gzip file.
+/// Throws a [FormatException] when [bytes] is not a valid gzip file. The
+/// gzip framing (magic and deflate method) is checked first, because the
+/// native decoder also takes zlib framing, which the browser's gzip
+/// `DecompressionStream` refuses (pre-ship round 39).
 Uint8List inflateGzip(Uint8List bytes) {
+  if (bytes.length < 18 ||
+      bytes[0] != 0x1f ||
+      bytes[1] != 0x8b ||
+      bytes[2] != 0x08) {
+    throw const FormatException(
+      'not a valid gzip file: no gzip header with the deflate method',
+    );
+  }
   try {
     return const GZipDecoder().decodeBytes(
       bytes,

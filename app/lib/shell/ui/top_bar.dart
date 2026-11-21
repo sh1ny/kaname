@@ -194,7 +194,13 @@ class _ShellTopBarState extends ConsumerState<ShellTopBar> {
       _backPending = false;
       if (_openWhenBack) {
         _openWhenBack = false;
-        if (!widget.inlineSearch && !marked) _afterFrame(_openSearch);
+        // Checked again when it runs: the frame between can widen the
+        // window, whose layout has no narrow search to close (round 39).
+        _afterFrame(() {
+          if (!widget.inlineSearch && !hasSearchMarker(_location)) {
+            _openSearch();
+          }
+        });
       }
     }
     final ownEntry = _searchOpen && _location.path == _openPath;

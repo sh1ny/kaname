@@ -35,6 +35,11 @@ final class BundleAnnouncementRuntime {
   /// How many announcement streams are open now.
   int openStreams = 0;
 
+  /// How many announcement streams the server has ended itself, at their
+  /// expiry, by handing Serverpod the stream's end; a stream its client
+  /// cancelled is not counted.
+  int endedByServer = 0;
+
   /// Forgets everything.
   void reset() {
     announcer = null;
@@ -43,6 +48,7 @@ final class BundleAnnouncementRuntime {
     clock = const SystemClock();
     maxStreams = defaultMaxStreams;
     openStreams = 0;
+    endedByServer = 0;
   }
 }
 
