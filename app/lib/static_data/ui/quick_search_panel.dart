@@ -32,7 +32,9 @@ class QuickSearchPanel extends StatefulWidget {
   /// What the search shows.
   final QuickSearchState state;
 
-  /// The highlighted result's index, or -1 when none is highlighted.
+  /// The highlighted result's index, or -1 when none is highlighted; the
+  /// count of results is the more-matches notice after a truncated list,
+  /// which highlights no row and is scrolled into view.
   final int active;
 
   /// Called with a result's index when the pointer moves onto it.
@@ -104,6 +106,14 @@ class _QuickSearchPanelState extends State<QuickSearchPanel> {
     final row = QuickSearchPanel.rowExtent(context);
     final top = notice + _listPadding + widget.active * row;
     final position = _scroll.position;
+    if (widget.state case SearchFound(:final results)
+        when widget.active >= results.hits.length) {
+      // The stop after the last hit: the more-matches notice at the end,
+      // from its first line when it is taller than the panel.
+      final footer = notice + 2 * _listPadding + results.hits.length * row;
+      _scroll.jumpTo(min(footer, position.maxScrollExtent));
+      return;
+    }
     final end = position.maxScrollExtent + position.viewportDimension;
     final bottom = switch (widget.state) {
       SearchFound(:final results)

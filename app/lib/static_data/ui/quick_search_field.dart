@@ -83,8 +83,12 @@ class _QuickSearchFieldState extends ConsumerState<QuickSearchField> {
 
   void _onFocusChanged() => setState(() {});
 
+  /// The places the arrow keys stop at: every result and, after a
+  /// truncated list's last one, its more-matches notice, which highlights
+  /// no row but scrolls the notice into view however short the panel is
+  /// (pre-ship round 49).
   int _count(QuickSearchState state) => switch (state) {
-    SearchFound(:final results) => results.hits.length,
+    SearchFound(:final results) => results.hits.length + (results.more ? 1 : 0),
     SearchBlank() || SearchNotLoaded() => 0,
   };
 

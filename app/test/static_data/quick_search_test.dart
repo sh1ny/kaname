@@ -406,6 +406,22 @@ void main() {
     expect(panel().contains(tester.getCenter(notice)), isTrue);
     final last = tester.getRect(find.byKey(QuickSearchKeys.result(49)));
     expect(last.bottom, lessThanOrEqualTo(tester.getRect(notice).top));
+
+    // One more press stops on the notice, highlighting no row, and Up
+    // returns to the last hit.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(panel().contains(tester.getCenter(notice)), isTrue);
+    expect(
+      isSelectedNode(tester, find.byKey(QuickSearchKeys.result(49))),
+      isFalse,
+    );
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+    await tester.pumpAndSettle();
+    expect(
+      isSelectedNode(tester, find.byKey(QuickSearchKeys.result(49))),
+      isTrue,
+    );
   });
 
   // Pre-ship round 48: a footer that wraps never takes the results' room.
@@ -455,6 +471,41 @@ void main() {
       lessThan(panel.bottom),
       reason: 'the first result is in view, not pushed out by the footer',
     );
+
+    // The arrow stop after the last hit (pre-ship round 49) shows the
+    // notice, though it does not fit beside a row.
+    Widget panelAt(int active) => MaterialApp(
+      theme: EmberTheme.dark(),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: MediaQuery(
+        data: const MediaQueryData(
+          size: room,
+          textScaler: TextScaler.linear(3),
+        ),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: room.width,
+            child: QuickSearchPanel(
+              state: SearchFound(results),
+              top: () => 0,
+              active: active,
+            ),
+          ),
+        ),
+      ),
+    );
+    final notice = find.text(
+      lookupAppLocalizations(const Locale('en')).searchMoreMatches,
+    );
+    await tester.pumpWidget(panelAt(49));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(panelAt(50));
+    await tester.pumpAndSettle();
+    expect(notice, findsOneWidget);
+    final shown = tester.getRect(find.byKey(QuickSearchKeys.panel));
+    expect(shown.contains(tester.getTopLeft(notice)), isTrue);
   });
 
   testWidgets('arrows scroll the highlighted row fully into view', (
