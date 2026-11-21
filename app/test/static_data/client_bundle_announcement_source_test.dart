@@ -130,16 +130,55 @@ void main() {
     });
 
     test('opens one wire subscription for each subscribe, and cancelling '
-        'closes it', () async {
+        'after the first event closes it', () async {
       final first = source.subscribe().listen((_) {});
       final second = source.subscribe().listen((_) {});
       await pumpEventQueue();
       expect(fake.opened, hasLength(2));
+      fake.opened[0].add(_named());
+      fake.opened[1].add(_named());
+      await pumpEventQueue();
 
       await first.cancel();
 
       expect(fake.cancelled, [true, false]);
       await second.cancel();
+      expect(fake.cancelled, [true, true]);
+    });
+
+    // The generated client sends the server its close command only once
+    // the server acknowledged the open, which precedes the first event.
+    test('a cancel before the first event closes the wire subscription '
+        'once that event arrives, without delivering it', () async {
+      final events = <BundleAnnouncement>[];
+      final subscription = source.subscribe().listen(events.add);
+      await pumpEventQueue();
+      subscription.pause();
+
+      await subscription.cancel();
+      await pumpEventQueue();
+      expect(fake.cancelled, [false]);
+      expect(fake.opened.single.isPaused, isFalse);
+
+      fake.opened.single.add(_named());
+      await pumpEventQueue();
+
+      expect(fake.cancelled, [true]);
+      expect(events, isEmpty);
+    });
+
+    test('a cancel before the first event lets a failed or ended wire '
+        'subscription go', () async {
+      final failed = source.subscribe().listen((_) {}, onError: (_) {});
+      final ended = source.subscribe().listen((_) {});
+      await pumpEventQueue();
+      await failed.cancel();
+      await ended.cancel();
+
+      fake.opened[0].addError(StateError('connection lost'));
+      await fake.opened[1].close();
+      await pumpEventQueue();
+
       expect(fake.cancelled, [true, true]);
     });
   });

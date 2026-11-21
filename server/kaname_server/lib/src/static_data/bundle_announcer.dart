@@ -195,7 +195,8 @@ final class OrmBundleStateSource implements BundleStateSource {
 /// and the installed announcement stands.
 ///
 /// The first announcement is installed when the first refresh succeeds, or as
-/// none when it fails or has not succeeded 19 seconds after [start], whether
+/// none when it fails or has not succeeded 19 seconds after [start] or an
+/// earlier [armFirstInstall], whether
 /// or not its database work has ended, so a stream's first event arrives
 /// within 20 seconds of subscribing, delivery included (C29).
 ///
@@ -277,10 +278,16 @@ final class BundleAnnouncer {
   Timer? _firstInstallTimer;
   bool _stopped = false;
 
-  /// Starts the announcer: the first refresh now, a refresh and a repair
-  /// check every 60 seconds, and the 20-second limit of the first
-  /// announcement.
-  void start() {
+  /// Starts the 19-second limit of the first announcement, and nothing
+  /// else: no refresh and no tick.
+  ///
+  /// The server calls it before its API listener accepts subscriptions, so
+  /// a stream opened while the rest of the startup still runs (migrations,
+  /// future calls, a database that does not answer) gets its first event in
+  /// time too (C29). Calling it again, or [start] after it, does not restart
+  /// the limit.
+  void armFirstInstall() {
+    if (_stopped || _firstInstallTimer != null) return;
     _firstInstallTimer = _clock.once(firstInstallLimit, () {
       if (_installed != null) return;
       _log(
@@ -290,6 +297,13 @@ final class BundleAnnouncer {
       );
       unawaited(_install(null, null));
     });
+  }
+
+  /// Starts the announcer: the first refresh now, a refresh and a repair
+  /// check every 60 seconds, and, unless [armFirstInstall] already did, the
+  /// 19-second limit of the first announcement.
+  void start() {
+    armFirstInstall();
     _tickTimer = _clock.periodic(tickInterval, _onTick);
     unawaited(request());
   }

@@ -11,13 +11,19 @@ import 'src/static_data/static_data_start.dart';
 /// build, say), a check (design D6, D8). The check runs detached, so
 /// requests are served meanwhile. The bundle announcer starts in every run
 /// mode, before the static-data work, so the first announcement is installed
-/// as soon as the database answers (D4, C29), and the bundle route is
+/// as soon as the database answers (D4, C29); its 19-second limit is armed
+/// before the server starts, because the API listener accepts subscriptions
+/// before `pod.start()` returns. The bundle route is
 /// registered before the server starts, because the API server takes middleware
 /// only before it starts.
 Future<void> run(List<String> args) async {
   final pod = Serverpod(args);
   final announcer = buildBundleAnnouncer(pod);
   pod.server.addMiddleware(BundleRoute(announcer: announcer).middleware);
+  // The API listener accepts subscriptions before pod.start() returns, while
+  // later startup work can still wait on the database; the first
+  // announcement's limit runs from before that (C29).
+  announcer.armFirstInstall();
   await pod.start();
   startBundleAnnouncer(pod, announcer);
   startStaticData(pod);

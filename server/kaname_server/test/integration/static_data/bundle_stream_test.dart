@@ -578,6 +578,54 @@ void main() {
       expect(bundleAnnouncementRuntime.openStreams, 0);
     });
 
+    test('a subscription opened before the announcer starts gets none '
+        '19 s after the limit was armed, then the real state', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      // As in run(): the runtime and the limit are set up before the server
+      // finishes starting, and the announcer starts later.
+      rig._publish(rig.streamClock);
+      rig.announcer.armFirstInstall();
+      final feed = rig.subscribe();
+      await rig.listenersAre(1);
+
+      rig.announcerClock.elapse(BundleAnnouncer.firstInstallLimit);
+      await feed.waitFor(1);
+      expect(_builds(feed.events), [null]);
+
+      rig.announcer.start();
+      await feed.waitFor(2);
+      expect(_builds(feed.events), [null, 100]);
+    });
+
+    test('an app subscription cancelled before the server acknowledged it '
+        'is closed on the server once the acknowledgement arrives', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      final proxy = await TcpProxy.start('127.0.0.1', server.port);
+      addTearDown(proxy.close);
+      final client = wire.Client('http://127.0.0.1:${proxy.port}/');
+      addTearDown(client.close);
+      // A first stream opens the client's WebSocket.
+      final kept = _Feed(client.staticData.bundleAnnouncements());
+      addTearDown(kept.close);
+      await kept.waitFor(1);
+      await rig.listenersAre(1);
+
+      proxy.holdTargetReads();
+      final early = ClientBundleAnnouncementSource(
+        client.staticData.bundleAnnouncements,
+      ).subscribe().listen((_) {});
+      // The server opens the stream; its acknowledgement waits at the proxy.
+      await rig.listenersAre(2);
+      await early.cancel();
+      proxy.releaseTargetReads();
+
+      await rig.listenersAre(1);
+      expect(bundleAnnouncementRuntime.openStreams, 1);
+    });
+
     // Scenario: Stream limit.
     test('stream 2,001 is refused, health stays under 1 s, and a later '
         'announcement still reaches the admitted streams', () async {

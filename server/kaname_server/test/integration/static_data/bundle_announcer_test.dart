@@ -518,6 +518,34 @@ void main() {
       expect(namedBuilds(bus.published).last, 830);
     });
 
+    test('the limit armed before start installs none at 19 s without a '
+        'read, and start neither reads late nor rearms it', () async {
+      await seedBuild(session, 835, SdeBuildState.active);
+      await seedBundle(session, 835);
+      final created = announcer()..armFirstInstall();
+      var installed = false;
+      unawaited(created.firstInstalled.then((_) => installed = true));
+
+      clock.elapse(const Duration(seconds: 18));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(installed, isFalse);
+      created.armFirstInstall();
+      clock.elapse(const Duration(seconds: 1));
+      await created.firstInstalled;
+      expect(namedBuilds([created.installed!]), [null]);
+      expect(source.reads, 0, reason: 'arming starts no refresh');
+
+      await startAndSettle(created);
+      clock.elapse(const Duration(seconds: 19));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(namedBuilds(bus.published), [null, 835]);
+      expect(
+        logs.where((entry) => entry.$2.contains('no refresh succeeded')),
+        hasLength(1),
+      );
+    });
+
     // Scenario: Lock held at start (A missing active bundle is repaired).
     test('ticks while a repair request is outstanding send no second '
         'RunBundleRepair and the tick after its reply can send one', () async {
