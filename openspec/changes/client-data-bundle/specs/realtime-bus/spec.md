@@ -71,7 +71,7 @@ The server SHALL offer an unauthenticated stream that first sends, within 20 sec
 - **THEN** the first event says no bundle is available
 
 ### Requirement: Announcements are ordered and bounded
-Each announcement SHALL carry the server's epoch and a revision that rises with each change, and a stream SHALL never send a revision lower than or equal to one it already sent. The server SHALL hold at most 2,000 announcement streams, refusing more, SHALL end each after 30 minutes, and SHALL send each stream at most one event per change of the installed announcement. Every send SHALL carry the announcement installed at that moment, never an earlier copy.
+Each announcement SHALL carry the server's epoch and a revision that rises with each change, and a stream SHALL never send a revision lower than or equal to one it already sent. The server SHALL hold at most 2,000 announcement streams, refusing more, SHALL end each after 30 minutes, and SHALL send each stream at most one event per change of the installed announcement. Each send SHALL carry the announcement installed when the stream hands it to Serverpod, never an earlier copy.
 
 #### Scenario: Changes during subscribe
 - **WHEN** an app subscribes and two changes, to build B and then to build C, are published before its first event is sent, and the first event names build C
@@ -88,6 +88,10 @@ Each announcement SHALL carry the server's epoch and a revision that rises with 
 #### Scenario: Late wake-up for a retired announcement
 - **WHEN** an app's stream is idle, the bus message for hash H is delayed until H2 has been installed, and the publish of H2 fails
 - **THEN** when the delayed message arrives the stream sends H2's announcement, and never H
+
+#### Scenario: Install during Serverpod's write
+- **WHEN** a stream has handed announcement H to Serverpod and H2 is installed before Serverpod writes H to the WebSocket
+- **THEN** the app receives H and then H2, each with a higher revision than the one before
 
 #### Scenario: Stalled subscriber
 - **WHEN** one app stops reading its stream while ten announcements are published, and another app keeps reading
