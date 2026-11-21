@@ -373,8 +373,10 @@ void main() {
   });
 
   // Pre-ship round 39: the Many matches scenario's visible notice.
-  testWidgets('a truncated result list ends with the more-matches notice, '
-      'and a full one has none', (tester) async {
+  // Pre-ship round 47: the notice stays in view without scrolling, so
+  // keyboard users see it too.
+  testWidgets('a truncated result list shows the more-matches notice in '
+      'view, and a full one has none', (tester) async {
     final notice = find.text(
       lookupAppLocalizations(const Locale('en')).searchMoreMatches,
     );
@@ -391,17 +393,20 @@ void main() {
     expect(notice, findsNothing, reason: 'a few matches fit the list');
 
     await typeQuery(tester, 'rifter');
-    await tester.scrollUntilVisible(
-      notice,
-      200,
-      scrollable: find
-          .descendant(
-            of: find.byKey(QuickSearchKeys.panel),
-            matching: find.byType(Scrollable),
-          )
-          .first,
-    );
+    expect(notice, findsOneWidget, reason: 'shown before any scrolling');
+    Rect panel() => tester.getRect(find.byKey(QuickSearchKeys.panel));
+    expect(panel().contains(tester.getCenter(notice)), isTrue);
+
+    // Arrows to the last hit keep it in view.
+    for (var i = 0; i < 50; i++) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
     expect(notice, findsOneWidget);
+    expect(panel().contains(tester.getCenter(notice)), isTrue);
+    final last = tester.getRect(find.byKey(QuickSearchKeys.result(49)));
+    expect(last.bottom, lessThanOrEqualTo(tester.getRect(notice).top));
   });
 
   testWidgets('arrows scroll the highlighted row fully into view', (

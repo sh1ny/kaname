@@ -342,7 +342,7 @@ _Prepared _prepare(Uint8List bytes, int build) {
     final Map<String, Object?> header => header,
     _ => throw const FormatException('the header is not a JSON object'),
   };
-  final major = switch (header['formatMajor']) {
+  final major = switch (_wholeNumber(header['formatMajor'])) {
     final int major => major,
     _ => throw const FormatException('the header has no formatMajor'),
   };
@@ -351,16 +351,13 @@ _Prepared _prepare(Uint8List bytes, int build) {
       BundleRefused(
         UnsupportedFormat(
           bundleMajor: major,
-          bundleMinor: switch (header['formatMinor']) {
-            final int minor => minor,
-            _ => null,
-          },
+          bundleMinor: _wholeNumber(header['formatMinor']),
           supportedMajor: bundleFormatMajor,
         ),
       ),
     );
   }
-  final bundleBuild = switch (header['build']) {
+  final bundleBuild = switch (_wholeNumber(header['build'])) {
     final int build => build,
     _ => throw const FormatException('the header has no build'),
   };
@@ -380,10 +377,12 @@ BundleHeader _parseHeader(Map<String, Object?> header, int build) {
   for (final entry in _list(header['sections'], 'sections')) {
     switch (entry) {
       case {
-        'file': final String file,
-        'present': final bool present,
-        'records': final int records,
-      }:
+            'file': final String file,
+            'present': final bool present,
+            'records': final Object? count,
+          }
+          when _wholeNumber(count) != null:
+        final records = _wholeNumber(count)!;
         final section = BundleSection.fromFile(file);
         if (section != null) {
           if (sections.containsKey(section)) {
@@ -402,7 +401,7 @@ BundleHeader _parseHeader(Map<String, Object?> header, int build) {
   }
   return BundleHeader(
     formatMajor: bundleFormatMajor,
-    formatMinor: switch (header['formatMinor']) {
+    formatMinor: switch (_wholeNumber(header['formatMinor'])) {
       final int minor when minor >= 0 => minor,
       final int minor => throw FormatException(
         'the header has formatMinor $minor, below zero',
@@ -428,6 +427,22 @@ BundleHeader _parseHeader(Map<String, Object?> header, int build) {
 List<Object?> _list(Object? value, String name) => switch (value) {
   final List<Object?> list => list,
   _ => throw FormatException('the header has no $name list'),
+};
+
+/// [value] as an integer, when it is one that every platform reads the
+/// same: a whole number from `-bundleMaxKey` to [bundleMaxKey], whatever
+/// its literal. The web decodes every JSON number as a double, so `1.0`
+/// there is the `int` 1 and must be here too; a whole number past that
+/// range is one the web cannot hold exactly (pre-ship round 47). Null for
+/// anything else.
+int? _wholeNumber(Object? value) => switch (value) {
+  final int whole when whole <= bundleMaxKey && whole >= -bundleMaxKey => whole,
+  final double real
+      when real.isFinite &&
+          real == real.roundToDouble() &&
+          real.abs() <= bundleMaxKey =>
+    real.toInt(),
+  _ => null,
 };
 
 Object? _decodeJson(Uint8List bytes, int start, int end) =>
@@ -709,8 +724,8 @@ extension type _Fields._((BundleRecord, BundleSection) _of) {
   );
 
   int? integer(String field) => switch (_value(field)) {
-    final int? value => value,
-    _ => _wrong(field),
+    null => null,
+    final value => _wholeNumber(value) ?? _wrong(field),
   };
 
   double? real(String field) => switch (_value(field)) {

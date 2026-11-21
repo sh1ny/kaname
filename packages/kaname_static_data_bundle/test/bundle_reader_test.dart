@@ -113,6 +113,86 @@ void main() {
     );
   });
 
+  // Pre-ship round 47: the web decodes every JSON number as a double, so a
+  // whole number reads the same whatever its literal, on every platform,
+  // and one the web cannot hold exactly is refused everywhere.
+  group('whole numbers', () {
+    test('header integers written as 1.0 open as integers', () {
+      final bytes = editedBundle(
+        (header) => {
+          ...header,
+          'formatMajor': 1.0,
+          'formatMinor': 0.0,
+          'build': fixtureBuild.toDouble(),
+          'sections': [
+            for (final section in header['sections']! as List<Object?>)
+              {
+                ...section! as Map<String, Object?>,
+                'records': ((section as Map)['records'] as int).toDouble(),
+              },
+          ],
+        },
+      );
+      expect(utf8.decode(GZipDecoder().decodeBytes(bytes)), contains('1.0'));
+
+      final bundle = opened(
+        openBundle(bytes, build: fixtureBuild, sha256: bundleSha256(bytes)),
+      );
+
+      expect(bundle.header.formatMinor, 0);
+      expect(bundle.header.build, fixtureBuild);
+      expect(bundle.types, isNotEmpty);
+    });
+
+    test('a typed integer written as 25.0 reads as 25', () {
+      final bytes = editedBody(
+        (body) => [
+          for (final line in body)
+            line.replaceFirst('"groupID":25,', '"groupID":25.0,'),
+        ],
+      );
+
+      final bundle = opened(
+        openBundle(bytes, build: fixtureBuild, sha256: bundleSha256(bytes)),
+      );
+
+      expect(bundle.types.first.groupId, 25);
+    });
+
+    test('a typed integer with a fraction is refused', () {
+      final bytes = editedBody(
+        (body) => [
+          for (final line in body)
+            line.replaceFirst('"groupID":25,', '"groupID":25.5,'),
+        ],
+      );
+
+      expect(
+        refused(
+          openBundle(bytes, build: fixtureBuild, sha256: bundleSha256(bytes)),
+        ),
+        isA<CorruptBundle>().having(
+          (r) => r.detail,
+          'detail',
+          contains('malformed groupID'),
+        ),
+      );
+    });
+
+    test('a header integer past 2^53 - 1 is refused', () {
+      final bytes = editedBundle(
+        (header) => {...header, 'formatMinor': bundleMaxKey + 1},
+      );
+
+      expect(
+        refused(
+          openBundle(bytes, build: fixtureBuild, sha256: bundleSha256(bytes)),
+        ),
+        isA<CorruptBundle>(),
+      );
+    });
+  });
+
   // Pre-ship round 35: a negative minor would define no section at all.
   test('a negative minor with no sections and no body is refused', () {
     final text = utf8.decode(

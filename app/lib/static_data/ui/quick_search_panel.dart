@@ -239,9 +239,9 @@ class _Found extends StatelessWidget {
     final colors = EmberColors.of(context);
     final l10n = AppLocalizations.of(context);
     final hits = results.hits;
-    // One scroll view holds the notice, the results and the footer, so all
-    // of them stay reachable when the panel is capped short (by the
-    // keyboard or by large text).
+    // One scroll view holds the notice and the results, so both stay
+    // reachable when the panel is capped short (by the keyboard or by
+    // large text).
     final scroll = CustomScrollView(
       controller: controller,
       shrinkWrap: true,
@@ -282,21 +282,6 @@ class _Found extends StatelessWidget {
               ),
             ),
           ),
-        if (results.more)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                EmberSpace.md,
-                0,
-                EmberSpace.md,
-                EmberSpace.sm,
-              ),
-              child: Text(
-                l10n.searchMoreMatches,
-                style: EmberType.label.copyWith(color: colors.inkTertiary),
-              ),
-            ),
-          ),
       ],
     );
     return Column(
@@ -311,6 +296,22 @@ class _Found extends StatelessWidget {
           child: const SizedBox.shrink(),
         ),
         Flexible(child: scroll),
+        // Below the scroll view, not in it: arrow keys reveal only the
+        // highlighted row, so a footer after the last hit could stay out of
+        // view (pre-ship round 47).
+        if (results.more)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              EmberSpace.md,
+              0,
+              EmberSpace.md,
+              EmberSpace.sm,
+            ),
+            child: Text(
+              l10n.searchMoreMatches,
+              style: EmberType.label.copyWith(color: colors.inkTertiary),
+            ),
+          ),
       ],
     );
   }
