@@ -332,13 +332,88 @@ Result: both builds pass through Caddy; the route added in round 21 fixes the
 finding above. The Caddy container, the server, Chrome and the server's
 embedded Postgres were stopped afterwards.
 
-### Other browsers
+### Other browsers (11.7)
 
-| Browser | Result |
-|---|---|
-| Edge (Chromium) | pending: owner check |
-| Safari (WebKit) | pending: owner check |
-| Firefox | pending: owner check. No Firefox is installed in this WSL, and the repo's headless driver (`puppeteer` for Dart) drives Chrome only, so a run needs a download and a WebDriver BiDi setup beyond this task; nothing was installed. |
+Run on 2026-11-22 by the owner, by hand, in desktop browsers on Windows 11
+(NT 10.0.26300) reaching the stack in WSL2 through `localhost`, a secure
+context, so SubtleCrypto is available over plain HTTP. Read from each
+browser's own DevTools Network panel, with "Disable cache" ticked and the
+site's data cleared before every load.
+
+**Stack.** The web build of the change's head (`mise run build:web`, release
+`--wasm` with its dart2js fallback, built for this run) was served by the real
+Caddy image (`caddy:2` pinned by digest, as in 11.6) with the repo's
+`deploy/Caddyfile`, in front of the development server (development run mode,
+real imported builds 3720952 and 3714173, both with bundles). Two origins
+were run side by side:
+
+- `localhost:8088` served the build unchanged: the loader chooses.
+- `localhost:8089` served a copy whose `flutter_bootstrap.js` reports no
+  WebAssembly GC support (`supportsWasmGC:B()` replaced by
+  `supportsWasmGC:!1`), so that every browser loads the JS build there.
+
+**Which build each browser gets.** Flutter's loader offers the wasm build only
+to Blink: its default `wasmAllowList` is
+`{blink: true, gecko: false, webkit: false}`, and `app/web/flutter_bootstrap.js`
+keeps that default. So the wasm build runs in Chromium-based browsers only;
+Firefox and Safari always get the JS build, on either origin. "wasm where
+supported" in 11.7 is read accordingly.
+
+**Superseding an in-flight download.** Browser throttling slows the app's
+own files as well (under a 3G profile `main.dart.wasm` and `skwasm.wasm` took
+about two minutes each, so the app started after the rotation and downloaded
+only the new bundle; that run is not counted). Instead, the server-to-Caddy
+leg was throttled: for these runs Caddy's upstream was a local TCP relay
+(`server:8080` became `server:18080` in a temporary copy of the Caddyfile,
+nothing else changed) that forwards each connection at about 50 kB/s, reading
+from the server only as fast as it forwards, so the transfer stays in flight at
+the server. The relay logged each connection's open and close and, for the
+Firefox run, each request line with its time. With the bundle download
+pending, `mise run sde:rollback` rotated the active build; the next
+announcement named the other build's bundle.
+
+| Browser | Build | Files fetched | `/v1/websocket` | Bundle over the network | Search `tritan` |
+|---|---|---|---|---|---|
+| Vivaldi 8.3.4191.47 (Chromium) | wasm (8088) | `main.dart.wasm`, `main.dart.mjs`, `skwasm.wasm` | 101 | 200, 2,858 kB | Tritanium (Mineral) and others listed |
+| Vivaldi 8.3.4191.47 | JS (8089) | `main.dart.js`, `canvaskit.wasm` | 101 | 200, 2,858 kB | listed |
+| Firefox 160.0.1 | JS (8088: the loader's choice) | `main.dart.js`, `canvaskit.wasm` | 101 | 200, 2.86 MB | listed |
+| Firefox 160.0.1 | JS (8089) | same | 101 | 200, 2.86 MB | listed |
+| Edge 158.0.4370.33 (Chromium) | wasm (8088) | `main.dart.wasm`, `main.dart.mjs`, `skwasm.wasm` | 101 | 200, 2.9 MB (and, with the cache enabled, from the HTTP cache) | listed |
+| Edge 158.0.4370.33 | JS (8089) | `main.dart.js`, `canvaskit.wasm` | 101 | 200, 2.9 MB, 59.5 s through the throttle | listed |
+| Safari | | | | | not run: no macOS or iOS device in this setup. Over the network from one, the origin would be plain HTTP on a LAN address, not a secure context, so SubtleCrypto would be missing; a run needs a Mac running the stack, or an HTTPS origin |
+
+Without "Disable cache", a reload after clearing site data showed the bundle
+request answered from the browser's HTTP cache: the route serves it with
+`Cache-Control: public, max-age=31536000, immutable` (the URL carries the
+hash). The app cleared from Cache Storage still requested it, and opened and
+indexed what the browser returned.
+
+Supersede (A4, A17, C26):
+
+| | Vivaldi, wasm | Vivaldi, JS | Firefox, JS | Edge, wasm |
+|---|---|---|---|---|
+| Held download | build 3714173 (`ea5eb0a0...`) | build 3720952 (`3855319e...`) | build 3714173 (`ea5eb0a0...`) | build 3720952 (`3855319e...`) |
+| Rotation command returned | 11:20:56.0 | 11:24:56.0 | 11:27:52.9 | 11:39:15.3 |
+| Caddy closed the old transfer's upstream connection (relay log) | 11:21:18.332, after 1,620,270 bytes | 11:24:57.113, after 890,000 bytes | 11:28:02.100, after 1,095,577 bytes | 11:39:24.058, after 1,456,080 bytes |
+| Old request in the browser | stopped at 1,615 kB, 33.6 s (shown as 200 with the partial size) | stopped at 885 kB, 18.3 s (same) | `NS_BINDING_ABORTED` at 1.10 MB, 23.7 s | stopped at 1.5 MB, 30.2 s (shown as 200 with the partial size) |
+| Replacement request reached the server | 11:21:18.338 (new upstream connection, 6 ms after the close) | on a pooled upstream connection, so not timed by the relay; in the browser's waterfall it starts where the old request ends | 11:28:02.131, request line logged, 31 ms after the close | 11:39:24.062, request line logged, 4 ms after the close (the other open tabs requested the new bundle in the same instant, so of the two requests from this origin at that time one is Edge's) |
+| Replacement completed | 2,858 kB (build 3720952) | 2,857 kB (build 3714173) | 2.86 MB (build 3720952); 2,857,510 bytes on the relay's connection | 2.9 MB, 59.7 s (build 3714173) |
+
+In every run the browser aborted the old download and Caddy closed its
+connection to the server before the replacement request reached the server
+(where the relay could time it). Other open tabs of the same origin took the
+new announcement and downloaded the new bundle at the same moment, as they
+should. A server restart during the session (the background job running it
+hit a time limit) showed as WebSocket reconnects in the open tabs, after which
+the announcement stream resumed. Vivaldi's console showed one
+`[Violation] 'setTimeout' handler took <N>ms` on the wasm build, a Chromium
+long-task notice, not an error. Edge's Issues panel listed "Deprecated feature
+used" warnings; Edge also ran extensions that injected their own scripts
+into the page (`index.js`, `injection-topics.js` and others in its Network
+list), which are not the app's.
+
+After the runs the development database's active build was 3720952 again,
+with 3714173 held as the previous build.
 
 ## Reproduction notes
 
