@@ -25,6 +25,14 @@ import 'workspace.dart';
 /// resolved workspace; without one the check fails and asks for
 /// `mise run resolve`.
 ///
+/// The web-safe packages, [webSafePackages], also import no `dart:io`,
+/// `dart:ffi` or `dart:isolate` (C28, design D23 of `client-data-bundle`):
+/// `kaname_static_data_bundle` and `kaname_core` run in the app's web build,
+/// and this check, run by `mise run check`, catches such an import long before
+/// a web build would. The rule covers the files under the package's `lib/`,
+/// which is what a web build compiles; its tests and tools run on the Dart VM
+/// and may use `dart:io`.
+///
 /// There is no exemption list (decision C4). A package that needs Flutter
 /// belongs in `app_packages/`, which this check does not cover. An allowlist
 /// of exceptions was considered and rejected (design D6): it is one more
@@ -38,12 +46,108 @@ final class PurityCheck {
   /// Top-level directories whose members must be pure Dart.
   static const List<String> pureRoots = ['packages', 'tools'];
 
+  /// Packages, by name, whose libraries must also be web-safe.
+  static const Set<String> webSafePackages = {
+    'kaname_core',
+    'kaname_static_data_bundle',
+  };
+
+  /// Libraries a web-safe package's `lib/` must not import or export.
+  static const Set<String> webUnsafeLibraries = {
+    'dart:io',
+    'dart:ffi',
+    'dart:isolate',
+  };
+
   static const _skippedDirectories = {'build', '.dart_tool'};
 
-  static final _directive = RegExp(
-    r'''^\s*(import|export)\s+r?['"]([^'"]+)['"]''',
-    multiLine: true,
-  );
+  /// Every URI of the import and export directives in [source], with the
+  /// directive's kind: the default URI and every configurable alternative
+  /// (`if (dart.library.io) 'x_io.dart'`).
+  ///
+  /// Dart allows directives only before the first declaration, so the
+  /// scan reads [source]'s tokens from the start, past comments, string
+  /// literals and annotations, and stops at the first token that cannot
+  /// begin a directive. A directive may therefore share a line with
+  /// another, and import-like text in a comment or string is never read.
+  static Iterable<(String kind, String uri)> _uris(String source) sync* {
+    final tokens = _DirectiveTokens(source).toList();
+    var i = 0;
+    while (i < tokens.length) {
+      switch (tokens[i]) {
+        case _Word(text: 'library' || 'part' || 'import' || 'export') &&
+            final _Word keyword:
+          final kind = keyword.text;
+          // The directive ends at its `;`; a configuration's test, in
+          // parentheses, holds no URI. Adjacent string literals are one URI,
+          // as Dart joins them.
+          final takesUris = kind == 'import' || kind == 'export';
+          var depth = 0;
+          StringBuffer? uri;
+          for (i++; i < tokens.length; i++) {
+            final token = tokens[i];
+            if (token case _Str(:final value) when depth == 0 && takesUris) {
+              (uri ??= StringBuffer()).write(value);
+              continue;
+            }
+            if (uri != null) {
+              yield (kind, uri.toString());
+              uri = null;
+            }
+            switch (token) {
+              case _Punct(text: ';') when depth == 0:
+                break;
+              case _Punct(text: '('):
+                depth++;
+                continue;
+              case _Punct(text: ')'):
+                depth--;
+                continue;
+              case _:
+                continue;
+            }
+            break;
+          }
+          if (uri != null) yield (kind, uri.toString());
+          i++;
+        case _Punct(text: '@'):
+          // An annotation: one name, each further `.name`, optional type
+          // arguments in balanced `<>` followed by more `.name`s (a named
+          // constructor), and optional arguments; the next word, such as
+          // `import`, is not part of it.
+          i++;
+          if (tokens.elementAtOrNull(i) case _Word()) i++;
+          void skipNames() {
+            while (tokens.elementAtOrNull(i) is _Punct &&
+                (tokens[i] as _Punct).text == '.' &&
+                tokens.elementAtOrNull(i + 1) is _Word) {
+              i += 2;
+            }
+          }
+
+          skipNames();
+          if (tokens.elementAtOrNull(i) case _Punct(text: '<')) {
+            var depth = 0;
+            for (; i < tokens.length; i++) {
+              if (tokens[i] case _Punct(text: '<')) depth++;
+              if (tokens[i] case _Punct(text: '>') when --depth == 0) break;
+            }
+            i++;
+            skipNames();
+          }
+          if (tokens.elementAtOrNull(i) case _Punct(text: '(')) {
+            var depth = 0;
+            for (; i < tokens.length; i++) {
+              if (tokens[i] case _Punct(text: '(')) depth++;
+              if (tokens[i] case _Punct(text: ')') when --depth == 0) break;
+            }
+            i++;
+          }
+        case _:
+          return;
+      }
+    }
+  }
 
   /// Runs the check; [CheckReport.packages] lists the pure members.
   CheckReport run() {
@@ -70,6 +174,8 @@ final class PurityCheck {
         ..._dependencyProblems(directory, pubspec),
         ..._transitiveProblems(directory, pubspec, roots),
         ..._importProblems(directory),
+        if (webSafePackages.contains(pubspec.name))
+          ..._webSafetyProblems(directory),
       ];
       if (found.isEmpty) {
         pure.add(WorkspacePackage(pubspec.name, directory));
@@ -149,8 +255,19 @@ final class PurityCheck {
       dependency.sdk == 'flutter' ||
       dependency.name.startsWith('serverpod');
 
-  List<String> _importProblems(String directory) {
+  List<String> _importProblems(String directory) => _scanTree(directory, _scan);
+
+  List<String> _webSafetyProblems(String directory) =>
+      _scanTree(p.posix.join(directory, 'lib'), _scanWebSafety);
+
+  /// Applies [scan] to every `.dart` file under [directory], skipping links
+  /// and generated trees.
+  List<String> _scanTree(
+    String directory,
+    List<String> Function(String path) scan,
+  ) {
     final problems = <String>[];
+    if (_fileSystem.kindOf(directory) != FsEntryKind.directory) return problems;
     void walk(String current) {
       for (final FsEntry(:name, :kind) in _fileSystem.list(current)) {
         final path = p.posix.join(current, name);
@@ -160,7 +277,7 @@ final class PurityCheck {
           case FsEntryKind.directory:
             if (!_skippedDirectories.contains(name)) walk(path);
           case FsEntryKind.file:
-            if (name.endsWith('.dart')) problems.addAll(_scan(path));
+            if (name.endsWith('.dart')) problems.addAll(scan(path));
         }
       }
     }
@@ -170,10 +287,18 @@ final class PurityCheck {
   }
 
   List<String> _scan(String path) => [
-    for (final match in _directive.allMatches(_fileSystem.readAsString(path)))
-      if (_isForbidden(match[2]!))
-        '$path: ${match[1]} of "${match[2]}" is not allowed in a pure-Dart '
+    for (final (kind, uri) in _uris(_fileSystem.readAsString(path)))
+      if (_isForbidden(uri))
+        '$path: $kind of "$uri" is not allowed in a pure-Dart '
             'package $_rule',
+  ];
+
+  List<String> _scanWebSafety(String path) => [
+    for (final (kind, uri) in _uris(_fileSystem.readAsString(path)))
+      if (webUnsafeLibraries.contains(uri))
+        '$path: $kind of "$uri" is not allowed in a web-safe '
+            'package (rule: web-safe packages import no dart:io, dart:ffi or '
+            'dart:isolate)',
   ];
 
   static bool _isForbidden(String uri) =>
@@ -235,5 +360,204 @@ final class PurityCommand extends Command<int> {
       _output.out.writeln('$name is pure at $displayPath');
     }
     return exitSuccess;
+  }
+}
+
+/// A token of a Dart source's directive header, as [_DirectiveTokens]
+/// reads it.
+sealed class _Token {
+  const _Token();
+}
+
+/// An identifier or keyword.
+final class _Word extends _Token {
+  const _Word(this.text);
+
+  final String text;
+}
+
+/// A string literal; [value] is its value: the text between the quotes,
+/// with a non-raw literal's escapes decoded as Dart decodes them (an
+/// interpolation is kept as its source text).
+final class _Str extends _Token {
+  const _Str(this.value);
+
+  final String value;
+}
+
+/// Any other character outside whitespace, comments and strings.
+final class _Punct extends _Token {
+  const _Punct(this.text);
+
+  final String text;
+}
+
+/// The tokens of a Dart [source]: comments (nested block comments too) and
+/// whitespace are skipped, and each string literal (raw, triple-quoted or
+/// interpolated) is one [_Str].
+final class _DirectiveTokens extends Iterable<_Token> {
+  _DirectiveTokens(this.source);
+
+  final String source;
+
+  static final _wordStart = RegExp(r'[A-Za-z_$]');
+  static final _wordPart = RegExp(r'[A-Za-z0-9_$]');
+
+  @override
+  Iterator<_Token> get iterator => _tokens().iterator;
+
+  Iterable<_Token> _tokens() sync* {
+    var i = 0;
+    while (i < source.length) {
+      final c = source[i];
+      if (c.trim().isEmpty) {
+        i++;
+      } else if (source.startsWith('//', i) ||
+          (i == 0 && source.startsWith('#!'))) {
+        final end = source.indexOf('\n', i);
+        i = end < 0 ? source.length : end + 1;
+      } else if (source.startsWith('/*', i)) {
+        i = _blockCommentEnd(i);
+      } else if (c == "'" || c == '"') {
+        final (value, end) = _string(i, raw: false);
+        yield _Str(value);
+        i = end;
+      } else if (c == 'r' &&
+          i + 1 < source.length &&
+          (source[i + 1] == "'" || source[i + 1] == '"')) {
+        final (value, end) = _string(i + 1, raw: true);
+        yield _Str(value);
+        i = end;
+      } else if (_wordStart.hasMatch(c)) {
+        var end = i + 1;
+        while (end < source.length && _wordPart.hasMatch(source[end])) {
+          end++;
+        }
+        yield _Word(source.substring(i, end));
+        i = end;
+      } else {
+        yield _Punct(c);
+        i++;
+      }
+    }
+  }
+
+  /// The index after the block comment starting at [start]; block
+  /// comments nest in Dart.
+  int _blockCommentEnd(int start) {
+    var depth = 0;
+    var i = start;
+    while (i < source.length) {
+      if (source.startsWith('/*', i)) {
+        depth++;
+        i += 2;
+      } else if (source.startsWith('*/', i)) {
+        depth--;
+        i += 2;
+        if (depth == 0) return i;
+      } else {
+        i++;
+      }
+    }
+    return source.length;
+  }
+
+  /// The value of the string literal whose opening quote is at [start],
+  /// and the index after its closing quote.
+  (String, int) _string(int start, {required bool raw}) {
+    final quote = source.startsWith(source[start] * 3, start)
+        ? source[start] * 3
+        : source[start];
+    final text = StringBuffer();
+    var i = start + quote.length;
+    while (i < source.length && !source.startsWith(quote, i)) {
+      if (!raw && source[i] == r'\' && i + 1 < source.length) {
+        i = _escape(i + 1, text);
+      } else if (!raw && source.startsWith(r'${', i)) {
+        final end = _interpolationEnd(i + 2);
+        text.write(source.substring(i, end));
+        i = end;
+      } else {
+        text.write(source[i]);
+        i++;
+      }
+    }
+    return (text.toString(), (i + quote.length).clamp(0, source.length));
+  }
+
+  /// Writes the character the escape after the backslash at [start] - 1
+  /// stands for to [text], and returns the index after the escape.
+  ///
+  /// As in Dart: `\n`, `\r`, `\t`, `\b`, `\f` and `\v` are control
+  /// characters, `\xHH`, `\uHHHH` and `\u{H...}` code points, and any
+  /// other escaped character stands for itself.
+  int _escape(int start, StringBuffer text) {
+    final c = source[start];
+    const controls = {
+      'n': '\n',
+      'r': '\r',
+      't': '\t',
+      'b': '\b',
+      'f': '\f',
+      'v': '\v',
+    };
+    if (controls[c] case final control?) {
+      text.write(control);
+      return start + 1;
+    }
+    if (c == 'x') {
+      if (_hex(start + 1, 2) case final code?) {
+        text.writeCharCode(code);
+        return start + 3;
+      }
+    } else if (c == 'u' && source.startsWith('{', start + 1)) {
+      final close = source.indexOf('}', start + 2);
+      final code = close > start + 2
+          ? _hex(start + 2, close - start - 2)
+          : null;
+      if (code != null && code <= 0x10FFFF) {
+        text.writeCharCode(code);
+        return close + 1;
+      }
+    } else if (c == 'u') {
+      if (_hex(start + 1, 4) case final code?) {
+        text.writeCharCode(code);
+        return start + 5;
+      }
+    }
+    text.write(c);
+    return start + 1;
+  }
+
+  /// The value of the [length] hexadecimal digits at [start], or `null`.
+  int? _hex(int start, int length) {
+    if (start + length > source.length) return null;
+    final digits = source.substring(start, start + length);
+    return RegExp(r'^[0-9A-Fa-f]+$').hasMatch(digits)
+        ? int.parse(digits, radix: 16)
+        : null;
+  }
+
+  /// The index after the `}` that closes an interpolation whose code
+  /// starts at [start], past nested braces, strings and comments.
+  int _interpolationEnd(int start) {
+    var depth = 1;
+    var i = start;
+    while (i < source.length) {
+      final c = source[i];
+      if (c == "'" || c == '"') {
+        i = _string(i, raw: false).$2;
+      } else if (source.startsWith('//', i)) {
+        final end = source.indexOf('\n', i);
+        i = end < 0 ? source.length : end + 1;
+      } else if (source.startsWith('/*', i)) {
+        i = _blockCommentEnd(i);
+      } else {
+        if (c == '{') depth++;
+        if (c == '}' && --depth == 0) return i + 1;
+        i++;
+      }
+    }
+    return source.length;
   }
 }

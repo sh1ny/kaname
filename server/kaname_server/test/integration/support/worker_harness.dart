@@ -5,6 +5,7 @@ import 'package:kaname_server/src/static_data/postgres_connection_settings.dart'
 import 'package:kaname_server/src/workers/compute_worker.dart';
 import 'package:kaname_server/src/workers/worker_messages.dart';
 import 'package:kaname_server/src/workers/worker_process.dart';
+import 'package:kaname_static_data/kaname_static_data.dart' show BuildBundle;
 
 /// A compute worker isolate driven directly by a test, without a supervisor.
 ///
@@ -29,13 +30,15 @@ final class WorkerHarness {
   List<WorkerLog> get logs => received.whereType<WorkerLog>().toList();
 
   /// Spawns a worker that [sourceFactory] (default: production) supplies
-  /// sources for, and starts it as [name] with [postgres].
+  /// sources for and that builds bundles with [buildBundle] (default:
+  /// production), and starts it as [name] with [postgres].
   ///
   /// With [sendStart] false the start message is withheld.
   static Future<WorkerHarness> start({
     required PostgresConnectionSettings postgres,
     String name = 'test-compute',
     SdeSourceFactory? sourceFactory,
+    BuildBundle? buildBundle,
     bool sendStart = true,
   }) async {
     final process = await IsolateWorkerProcess.spawn<ComputeWorkerBootstrap>(
@@ -44,6 +47,7 @@ final class WorkerHarness {
       bootstrap: (replyPort) => ComputeWorkerBootstrap(
         replyPort: replyPort,
         sourceFactory: sourceFactory,
+        buildBundle: buildBundle,
       ),
     );
     final harness = WorkerHarness._(process);
@@ -81,6 +85,14 @@ final class WorkerHarness {
     final id = _nextId++;
     final answer = waitFor<WorkerReply>((reply) => reply.requestId == id);
     sendMessage(RunBuildCheck(requestId: id, source: source));
+    return answer;
+  }
+
+  /// Sends a [RunBundleRepair] and completes with the worker's answer.
+  Future<WorkerReply> runBundleRepair() {
+    final id = _nextId++;
+    final answer = waitFor<WorkerReply>((reply) => reply.requestId == id);
+    sendMessage(RunBundleRepair(requestId: id));
     return answer;
   }
 

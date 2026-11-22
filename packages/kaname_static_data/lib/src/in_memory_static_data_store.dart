@@ -1,8 +1,15 @@
 /// A [StaticDataStore] that keeps everything in memory.
 library;
 
+import 'dart:typed_data';
+
+import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
+    show bundleFormatMajor, bundleFormatMinor, bundleSha256;
+
 import 'sde_rows.dart';
 import 'static_data_store.dart';
+import 'stored_bundle.dart';
+import 'typed_files.dart';
 
 /// A stored import record with its id.
 final class StoredImportRecord {
@@ -38,6 +45,8 @@ final class InMemoryStaticDataStore implements StaticDataStore {
   final List<CheckRecord> _checks = [];
   final List<SwitchRecord> _switches = [];
   final List<BuildDiffRecord> _diffs = [];
+  final Map<int, StoredBundle> _bundles = {};
+  final Map<int, ({String sha256, Uint8List bytes})> _bundleBytes = {};
   int _nextRecordId = 1;
   bool _holdsLock = false;
 
@@ -49,6 +58,13 @@ final class InMemoryStaticDataStore implements StaticDataStore {
 
   /// Whether [close] was called.
   bool isClosed = false;
+
+  /// When set, [storedBundle] throws it, as a store whose read failed.
+  Object? storedBundleError;
+
+  /// When set, [bundleBytesIntact] throws it, as a store whose byte read
+  /// failed.
+  Object? bundleBytesError;
 
   /// The stored builds and their states.
   Map<int, BuildState> get builds => Map.unmodifiable(_builds);
@@ -67,6 +83,17 @@ final class InMemoryStaticDataStore implements StaticDataStore {
 
   /// The stored comparisons, oldest first.
   List<BuildDiffRecord> get diffs => List.unmodifiable(_diffs);
+
+  /// The stored bundle metadata, by build.
+  Map<int, StoredBundle> get bundles => Map.unmodifiable(_bundles);
+
+  /// The stored bundle bytes of [build] with their hash, or `null`.
+  ({String sha256, Uint8List bytes})? bundleBytesOf(int build) =>
+      _bundleBytes[build];
+
+  /// Puts bundle metadata for [build] with no bytes, for tests that start
+  /// from a stored bundle, such as one of another format version.
+  void seedBundle(StoredBundle bundle) => _bundles[bundle.build] = bundle;
 
   /// The typed rows of [table] for [build].
   List<TypedRow> typedRows(int build, String table) =>
@@ -97,6 +124,8 @@ final class InMemoryStaticDataStore implements StaticDataStore {
     _typed.remove(build);
     _raw.remove(build);
     _held.remove(build);
+    _bundles.remove(build);
+    _bundleBytes.remove(build);
     _diffs.removeWhere((d) => d.fromBuild == build || d.toBuild == build);
   }
 
@@ -232,6 +261,69 @@ final class InMemoryStaticDataStore implements StaticDataStore {
       }
     }
     return newest;
+  }
+
+  @override
+  Future<List<TypedRow>> readTypedRows(int build, TypedFile file) async =>
+      typedRows(build, file.table);
+
+  @override
+  Future<List<RawRecord>> readRawRecords(int build, String file) async =>
+      rawRecordsOf(build, file)..sort((a, b) => a.line.compareTo(b.line));
+
+  @override
+  Future<StoredBundle?> storedBundle(int build) async {
+    if (storedBundleError case final error?) throw error;
+    return _bundles[build];
+  }
+
+  @override
+  Future<bool> bundleBytesIntact(
+    int build, {
+    required String sha256,
+    required int size,
+  }) async {
+    if (bundleBytesError case final error?) throw error;
+    final stored = _bundleBytes[build];
+    return stored != null &&
+        stored.sha256 == sha256 &&
+        stored.bytes.length == size &&
+        bundleSha256(stored.bytes) == sha256;
+  }
+
+  /// Replaces the stored bytes of [build] with [bytes], keeping its hash and
+  /// metadata, as a storage fault that corrupts them would.
+  void corruptBundleBytes(int build, Uint8List bytes) {
+    final stored = _bundleBytes[build]!;
+    _bundleBytes[build] = (sha256: stored.sha256, bytes: bytes);
+  }
+
+  @override
+  Future<void> recordBundle(BundleWrite write) async {
+    switch (write) {
+      case BundleWriteBuilt(:final build, :final at, :final built):
+        _bundles[build] = StoredBundle(
+          build: build,
+          outcome: BundleOutcome.built,
+          formatMajor: bundleFormatMajor,
+          formatMinor: bundleFormatMinor,
+          builtAt: at,
+          sha256: built.sha256,
+          size: built.bytes.length,
+          bytesStored: true,
+        );
+        _bundleBytes[build] = (sha256: built.sha256, bytes: built.bytes);
+      case BundleWriteFailed(:final build, :final at, :final reason):
+        _bundles[build] = StoredBundle(
+          build: build,
+          outcome: BundleOutcome.failed,
+          formatMajor: bundleFormatMajor,
+          formatMinor: bundleFormatMinor,
+          builtAt: at,
+          reason: reason,
+        );
+        _bundleBytes.remove(build);
+    }
   }
 
   @override

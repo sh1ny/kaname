@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:serverpod/serverpod.dart';
 
 import '../workers/worker_messages.dart';
+import 'bundle_announcement_runtime.dart';
 import 'static_data_check_call.dart';
 import 'static_data_start_hook.dart';
 
@@ -29,6 +30,7 @@ StaticDataStartHook? startStaticData(Serverpod pod) {
     withSession: <T>(action) => pod.withSession(action),
     scheduleDailyCheck: () => scheduleDailyCheck(pod),
     log: (level, message) => _log(pod, level, message),
+    announcer: bundleAnnouncementRuntime.announcer,
   );
   if (hook == null) {
     _log(

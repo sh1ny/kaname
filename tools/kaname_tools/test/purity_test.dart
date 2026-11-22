@@ -249,4 +249,280 @@ void main() {
       ),
     );
   });
+  group('web-safe packages', () {
+    setUp(
+      () => fs
+        ..writeFile(
+          'pubspec.yaml',
+          'name: kaname_workspace\n'
+              'workspace:\n'
+              '  - app\n'
+              '  - packages/kaname_core\n'
+              '  - packages/kaname_static_data_bundle\n'
+              '  - tools/kaname_tools\n',
+        )
+        ..writeFile(
+          'packages/kaname_static_data_bundle/pubspec.yaml',
+          pubspecSource('kaname_static_data_bundle'),
+        )
+        ..writeFile(
+          'packages/kaname_static_data_bundle/lib/bundle.dart',
+          '// bundle\n',
+        ),
+    );
+
+    test('dart:io, dart:ffi or dart:isolate in lib fails with file', () async {
+      fs
+        ..writeFile(
+          'packages/kaname_core/lib/src/a.dart',
+          "import 'dart:io';\n",
+        )
+        ..writeFile(
+          'packages/kaname_static_data_bundle/lib/src/b.dart',
+          "import 'dart:ffi' as ffi;\n",
+        )
+        ..writeFile(
+          'packages/kaname_static_data_bundle/lib/src/c.dart',
+          "export 'dart:isolate' show Isolate;\n",
+        );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.code, 1);
+      expect(
+        result.err,
+        allOf(
+          contains('packages/kaname_core/lib/src/a.dart'),
+          contains('"dart:io"'),
+          contains('web-safe'),
+        ),
+      );
+      expect(
+        result.err,
+        allOf(
+          contains('packages/kaname_static_data_bundle/lib/src/b.dart'),
+          contains('"dart:ffi"'),
+        ),
+      );
+      expect(
+        result.err,
+        allOf(
+          contains('packages/kaname_static_data_bundle/lib/src/c.dart'),
+          contains('"dart:isolate"'),
+        ),
+      );
+      expect(result.out, isNot(contains('kaname_core is pure')));
+    });
+
+    test('a conditional alternative naming dart:io or dart:ffi fails '
+        'with file', () async {
+      fs
+        ..writeFile(
+          'packages/kaname_core/lib/src/a.dart',
+          "import 'stub.dart' if (dart.library.io) 'dart:io';\n",
+        )
+        ..writeFile(
+          'packages/kaname_static_data_bundle/lib/src/b.dart',
+          "export 'stub.dart'\n"
+              "    if (dart.library.js_interop == 'true') 'web.dart'\n"
+              "    if (dart.library.ffi) 'dart:ffi' show Pointer;\n",
+        );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.code, 1);
+      expect(
+        result.err,
+        allOf(
+          contains('packages/kaname_core/lib/src/a.dart'),
+          contains('"dart:io"'),
+        ),
+      );
+      expect(
+        result.err,
+        allOf(
+          contains('packages/kaname_static_data_bundle/lib/src/b.dart'),
+          contains('"dart:ffi"'),
+        ),
+      );
+    });
+
+    test('a conditional directive with safe alternatives passes', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        "import 'stub.dart'\n"
+            "    if (dart.library.js_interop == 'true') 'web.dart'\n"
+            "    if (dart.library.html) 'html.dart';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.err, isEmpty);
+      expect(result.code, 0);
+    });
+
+    test('a conditional alternative after a comment holding a semicolon '
+        'fails with file', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        "import 'stub.dart' /* native fallback; see below */\n"
+            "    // the io one; for tools\n"
+            "    if (dart.library.io) 'dart:io';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.code, 1);
+      expect(
+        result.err,
+        allOf(
+          contains('packages/kaname_core/lib/src/a.dart'),
+          contains('"dart:io"'),
+        ),
+      );
+    });
+
+    test('comment-like text inside a string is not a comment', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        "import 'stub.dart' if (dart.library.io) 'dart:io';\n"
+            "const note = '/* not a comment';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.code, 1);
+      expect(result.err, contains('"dart:io"'));
+    });
+
+    test('an import on the line of the library directive fails', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        "@JS('x') library; import 'dart:io';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.code, 1);
+      expect(result.err, contains('"dart:io"'));
+    });
+
+    // Pre-ship round 37: an annotation may take type arguments.
+    test('an import after a generic annotation fails', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        "@Tag<Map<String, List<int>>>('x')\n"
+            "import 'b.dart';\n"
+            "@p.Tag<int>.named()\n"
+            "import 'dart:io';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.code, 1);
+      expect(result.err, contains('"dart:io"'));
+    });
+
+    test('an import after argument-free annotations fails', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        "import 'b.dart';\n"
+            "@deprecated\n"
+            "import 'c.dart';\n"
+            "@meta.internal import 'dart:io';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.code, 1);
+      expect(result.err, contains('"dart:io"'));
+    });
+
+    for (final (name, directive) in [
+      ('a \\u escape', r"import 'dart:\u0069o';"),
+      ('a \\u{} escape', r"import 'dart:\u{69}o';"),
+      ('a \\x escape', r"import 'dart:\x69o';"),
+      ('a needless escape', r"import 'dart:\io';"),
+      ('adjacent strings', "import 'dart:' \"io\";"),
+      ('adjacent raw strings', "import r'dart:' r'io';"),
+      (
+        'an escaped conditional alternative',
+        r"import 'a.dart' if (dart.library.io) 'dart:\x69o';",
+      ),
+    ]) {
+      test('a URI naming dart:io through $name fails', () async {
+        fs.writeFile('packages/kaname_core/lib/src/a.dart', '$directive\n');
+
+        final result = await runTool(fs, ['purity']);
+
+        expect(result.code, 1);
+        expect(result.err, contains('"dart:io"'));
+      });
+    }
+
+    test('a raw string keeps its backslash, so it names no dart: '
+        'library', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        r"import r'dart:\u0069o';"
+            '\n',
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.err, isNot(contains('"dart:io"')));
+    });
+
+    test('an import shown in a multiline string passes', () async {
+      fs.writeFile(
+        'packages/kaname_core/lib/src/a.dart',
+        "import 'b.dart';\n"
+            "const usage = '''\n"
+            "import 'dart:io';\n"
+            "''';\n"
+            "final tip = 'see \${\"import 'dart:ffi';\"}';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.err, isEmpty);
+      expect(result.code, 0);
+    });
+
+    test('tests of a web-safe package may use dart:io', () async {
+      fs
+        ..writeFile(
+          'packages/kaname_core/test/a_test.dart',
+          "import 'dart:io';\n",
+        )
+        ..writeFile(
+          'packages/kaname_static_data_bundle/tool/build.dart',
+          "import 'dart:io';\n",
+        );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.err, isEmpty);
+      expect(result.code, 0);
+      expect(
+        result.out,
+        contains(
+          'kaname_static_data_bundle is pure at '
+          'packages/kaname_static_data_bundle/',
+        ),
+      );
+    });
+
+    test('packages that are not web-safe may use dart:io', () async {
+      fs.writeFile(
+        'tools/kaname_tools/lib/src/io.dart',
+        "import 'dart:io';\nimport 'dart:isolate';\n",
+      );
+
+      final result = await runTool(fs, ['purity']);
+
+      expect(result.err, isEmpty);
+      expect(result.code, 0);
+    });
+  });
 }

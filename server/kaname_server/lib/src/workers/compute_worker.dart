@@ -46,7 +46,11 @@ SdeSource defaultSdeSourceFactory(
 /// What [ComputeWorker.entryPoint] receives at spawn.
 final class ComputeWorkerBootstrap {
   /// Creates the bootstrap.
-  const ComputeWorkerBootstrap({required this.replyPort, this.sourceFactory});
+  const ComputeWorkerBootstrap({
+    required this.replyPort,
+    this.sourceFactory,
+    this.buildBundle,
+  });
 
   /// The port the worker sends to the main isolate: first its own command
   /// port (the handshake), then encoded [WorkerReply] and [WorkerLog]
@@ -56,13 +60,18 @@ final class ComputeWorkerBootstrap {
   /// The test hook that replaces [defaultSdeSourceFactory]; production
   /// spawns leave it `null`. It must be a top-level or static function.
   final SdeSourceFactory? sourceFactory;
+
+  /// The test hook that replaces [buildStoredBundle] in the worker's jobs;
+  /// production spawns leave it `null`. It must be a top-level or static
+  /// function.
+  final BuildBundle? buildBundle;
 }
 
 /// The worker that runs imports and build checks (and, in later changes,
 /// other long jobs) on its own isolate.
 ///
 /// The main isolate spawns it with [entryPoint], sends a [WorkerStart], and
-/// then [RunImport] and [RunBuildCheck] requests. The worker handles every request in its own
+/// then [RunImport], [RunBuildCheck] and [RunBundleRepair] requests. The worker handles every request in its own
 /// async task (design D14), opens a Postgres connection of its own for each
 /// import from the start message's settings and closes it with the job, so a
 /// Postgres outage fails only the jobs running at that moment and the next
@@ -85,16 +94,23 @@ final class ComputeWorkerBootstrap {
 ///
 /// ## Carried constraint
 ///
-/// - **C9:** only imports are one at a time on the compute worker, and the
-///   static-data advisory lock enforces it, not the worker: it accepts any
-///   number of requests at once. Each later job kind (bundle builds, fit
-///   calls) sets its own bound in its own change.
+/// - **C9:** only imports, build checks and bundle builds are one at a time
+///   on the compute worker, and the static-data advisory lock enforces it,
+///   not the worker: it accepts any number of requests at once. A bundle
+///   build runs inside a build check or a [RunBundleRepair] request, both
+///   under that lock (C7), so it never runs on the endpoint isolate. Each
+///   later job kind (fit calls) sets its own bound in its own change.
 final class ComputeWorker {
   /// Creates a worker that sends encoded messages with [send].
   ///
-  /// [sourceFactory] defaults to [defaultSdeSourceFactory].
-  ComputeWorker({required this._send, SdeSourceFactory? sourceFactory})
-    : _sourceFactory = sourceFactory ?? defaultSdeSourceFactory;
+  /// [sourceFactory] defaults to [defaultSdeSourceFactory] and [buildBundle]
+  /// to [buildStoredBundle].
+  ComputeWorker({
+    required this._send,
+    SdeSourceFactory? sourceFactory,
+    BuildBundle? buildBundle,
+  }) : _sourceFactory = sourceFactory ?? defaultSdeSourceFactory,
+       _buildBundle = buildBundle ?? buildStoredBundle;
 
   /// The name used before a [WorkerStart] names the worker.
   static const String defaultName = 'compute';
@@ -106,6 +122,7 @@ final class ComputeWorker {
     final worker = ComputeWorker(
       send: bootstrap.replyPort.send,
       sourceFactory: bootstrap.sourceFactory,
+      buildBundle: bootstrap.buildBundle,
     );
     inbox.listen(worker.handle);
     bootstrap.replyPort.send(inbox.sendPort);
@@ -113,6 +130,7 @@ final class ComputeWorker {
 
   final void Function(Map<String, Object?> message) _send;
   final SdeSourceFactory _sourceFactory;
+  final BuildBundle _buildBundle;
   final WorkerMessageCodec _codec = workerInboxCodec();
   final WorkerMessageCodec _replyCodec = workerOutboxCodec();
   WorkerStart? _start;
@@ -172,6 +190,19 @@ final class ComputeWorker {
         } else {
           unawaited(_runBuildCheck(request, start));
         }
+      case final RunBundleRepair request:
+        final start = _start;
+        if (start == null) {
+          _log(WorkerLogLevel.warning, 'rejected $request before the start');
+          _reply(
+            WorkerError(
+              requestId: request.requestId,
+              reason: 'the worker has not received its start message',
+            ),
+          );
+        } else {
+          unawaited(_runBundleRepair(request, start));
+        }
       default:
         _log(
           WorkerLogLevel.warning,
@@ -229,6 +260,8 @@ final class ComputeWorker {
             source: _sourceFactory(request.source, client, scratchRoot),
             differ: store.differ(),
             scratchRoot: scratchRoot,
+            buildBundle: _buildBundle,
+            onBundle: _logBundleStep,
           );
           final result = await job.run();
           _logCheck(result);
@@ -241,6 +274,39 @@ final class ComputeWorker {
     }
     _reply(BuildCheckFinished(requestId: request.requestId, result: result));
   }
+
+  Future<void> _runBundleRepair(
+    RunBundleRepair request,
+    WorkerStart start,
+  ) async {
+    BundleRepairResult result;
+    try {
+      result = await _withJobStore(
+        requestId: request.requestId,
+        start: start,
+        unreachable: () => const BundleRepairFailed('Postgres unreachable'),
+        job: (store, client) =>
+            BundleRepairJob(store: store, buildBundle: _buildBundle).run(),
+      );
+    } on Object catch (error) {
+      _log(WorkerLogLevel.error, 'bundle repair failed unexpectedly: $error');
+      result = BundleRepairFailed('unexpected error: ${error.runtimeType}');
+    }
+    switch (result) {
+      case BundleRepairRan(step: BundleFailed()) || BundleRepairFailed():
+        _log(WorkerLogLevel.warning, describeBundleRepair(result));
+      case BundleRepairRan() ||
+          BundleRepairLockHeld() ||
+          BundleRepairNoActiveBuild():
+        _log(WorkerLogLevel.info, describeBundleRepair(result));
+    }
+    _reply(BundleRepairFinished(requestId: request.requestId, result: result));
+  }
+
+  void _logBundleStep(BundleStepResult result) => _log(
+    result is BundleFailed ? WorkerLogLevel.warning : WorkerLogLevel.info,
+    describeBundleStep(result),
+  );
 
   void _logCheck(BuildCheckResult result) {
     switch (result) {

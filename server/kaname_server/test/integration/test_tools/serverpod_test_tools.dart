@@ -17,6 +17,8 @@ import 'dart:io' as _idi;
 import 'package:kaname_server/src/generated/future_calls.dart' as _ibdqg5o2;
 import 'package:kaname_server/src/generated/health/health_report.dart'
     as _iaouzw49;
+import 'package:kaname_server/src/generated/static_data/bundle_announcement.dart'
+    as _imyjqkwl;
 import 'package:serverpod/serverpod.dart' as _is;
 import 'package:serverpod_test/serverpod_test.dart' as _ist;
 import 'package:kaname_server/src/generated/protocol.dart';
@@ -155,6 +157,8 @@ class TestEndpoints {
   late final futureCalls = _FutureCalls();
 
   late final _HealthEndpoint health;
+
+  late final _StaticDataEndpoint staticData;
 }
 
 class _InternalTestEndpoints extends TestEndpoints
@@ -165,6 +169,7 @@ class _InternalTestEndpoints extends TestEndpoints
     _is.EndpointDispatch endpoints,
   ) {
     health = _HealthEndpoint(endpoints, serializationManager);
+    staticData = _StaticDataEndpoint(endpoints, serializationManager);
   }
 }
 
@@ -205,6 +210,43 @@ class _HealthEndpoint {
         await _localUniqueSession.close();
       }
     });
+  }
+}
+
+class _StaticDataEndpoint {
+  _StaticDataEndpoint(this._endpointDispatch, this._serializationManager);
+
+  final _is.EndpointDispatch _endpointDispatch;
+
+  final _is.SerializationManager _serializationManager;
+
+  _ida.Stream<_imyjqkwl.BundleAnnouncement> bundleAnnouncements(
+    _ist.TestSessionBuilder sessionBuilder,
+  ) {
+    var _localTestStreamManager =
+        _ist.TestStreamManager<_imyjqkwl.BundleAnnouncement>();
+    _ist.callStreamFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'staticData',
+            method: 'bundleAnnouncements',
+          );
+      var _localCallContext = await _endpointDispatch
+          .getMethodStreamCallContext(
+            createSessionCallback: (_) => _localUniqueSession,
+            endpointPath: 'staticData',
+            methodName: 'bundleAnnouncements',
+            arguments: {},
+            requestedInputStreams: [],
+            serializationManager: _serializationManager,
+          );
+      await _localTestStreamManager.callStreamMethod(
+        _localCallContext,
+        _localUniqueSession,
+        {},
+      );
+    }, _localTestStreamManager.outputStreamController);
+    return _localTestStreamManager.outputStreamController.stream;
   }
 }
 

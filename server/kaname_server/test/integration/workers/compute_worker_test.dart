@@ -14,9 +14,12 @@ import 'package:kaname_server/src/workers/worker_process.dart';
 import 'package:kaname_server/src/workers/worker_supervisor.dart';
 import 'package:kaname_static_data/kaname_static_data.dart';
 import 'package:kaname_static_data/testing.dart';
+import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
+    show BuiltBundle;
 import 'package:serverpod/serverpod.dart' show Session;
 import 'package:test/test.dart';
 
+import '../support/announcer_support.dart';
 import '../support/migrated_database.dart';
 import '../support/tcp_proxy.dart';
 import '../support/worker_harness.dart';
@@ -141,6 +144,29 @@ SdeSource twoPhaseSourceFactory(
   ),
   _ => throw ArgumentError('the test factory reads local zips only'),
 };
+
+/// The folder of [heldBundleBuild]'s gate files, one per test process.
+Directory get bundleGate =>
+    Directory('${Directory.systemTemp.path}/kaname_bundle_gate_$pid');
+
+/// A bundle build with a synchronous step a test releases: it builds the
+/// bundle, creates `started` in [bundleGate], then holds its isolate, polling
+/// without yielding, until `release` exists there. Run on the endpoint
+/// isolate, that step would hold every endpoint call until its release; it
+/// gives up after 30 s and throws, so the build fails. Top-level because it
+/// crosses into the worker isolate.
+Future<BuiltBundle> heldBundleBuild(StaticDataStore store, int build) async {
+  final built = await buildStoredBundle(store, build);
+  File('${bundleGate.path}/started').writeAsStringSync('');
+  final release = File('${bundleGate.path}/release');
+  final until = DateTime.now().add(const Duration(seconds: 30));
+  while (!release.existsSync()) {
+    if (DateTime.now().isAfter(until)) {
+      throw StateError('the held bundle step was never released');
+    }
+  }
+  return built;
+}
 
 Future<void> _until(File gate) async {
   while (!gate.existsSync()) {
@@ -690,6 +716,122 @@ void main() {
         )).single.build,
         2801,
       );
+    });
+
+    // Scenario: Bundle builds run on the compute worker (C9).
+    test('health answers under 1 s during a bundle build', () async {
+      // Build 2850 is active with no bundle, so the repair builds one, with
+      // a synchronous step this test releases.
+      if (bundleGate.existsSync()) bundleGate.deleteSync(recursive: true);
+      bundleGate.createSync(recursive: true);
+      addTearDown(() => bundleGate.deleteSync(recursive: true));
+      final worker = await WorkerHarness.start(
+        postgres: settings,
+        buildBundle: heldBundleBuild,
+      );
+      addTearDown(worker.close);
+      final zip = SdeFixture.complete(build: 2850).writeTo(scratch);
+      expect(
+        (await worker.runImport(
+          LocalZipSource(zip.path),
+        ) as ImportFinished).outcome,
+        ImportOutcome.succeeded,
+      );
+      expect(await SdeBundle.db.find(session), isEmpty);
+      final announced = await TestAnnouncer.start(session);
+      addTearDown(announced.announcer.stop);
+      expect(announced.announcer.installed, isA<BundleAnnouncementNone>());
+
+      // A transaction of the test holds an exclusive lock on `sde_type`,
+      // which the bundle build reads, so the build is held mid-statement
+      // while health is called.
+      final release = Completer<void>();
+      final locked = Completer<void>();
+      final holder = session.db.transaction((transaction) async {
+        await session.db.unsafeExecute(
+          'LOCK TABLE sde_type IN ACCESS EXCLUSIVE MODE',
+          transaction: transaction,
+        );
+        locked.complete();
+        await release.future;
+      });
+      addTearDown(() async {
+        if (!release.isCompleted) release.complete();
+        await holder;
+      });
+      await locked.future;
+
+      final answer = worker.runBundleRepair();
+      var answered = false;
+      unawaited(answer.then((_) => answered = true));
+      final deadline = DateTime.now().add(const Duration(seconds: 20));
+      var building = false;
+      while (!building && DateTime.now().isBefore(deadline)) {
+        final rows = await session.db.unsafeQuery(
+          'SELECT query FROM pg_stat_activity '
+          "WHERE application_name = 'kaname-static-data' "
+          'AND datname = current_database() '
+          "AND state = 'active' AND wait_event_type = 'Lock'",
+        );
+        building = rows.any(
+          (row) => (row.single! as String).contains('"sde_type"'),
+        );
+        if (!building) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      }
+      expect(building, isTrue, reason: 'the bundle build never started');
+      expect(answered, isFalse);
+
+      final latencies = <Duration>[];
+      for (var i = 0; i < 5; i++) {
+        final stopwatch = Stopwatch()..start();
+        final report = await endpoints.health.check(sessionBuilder);
+        latencies.add(stopwatch.elapsed);
+        expect(report.postgres, DependencyStatus.up);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      for (final latency in latencies) {
+        expect(latency, lessThan(const Duration(seconds: 1)));
+      }
+      expect(answered, isFalse, reason: 'the bundle build was still held');
+      expect(await SdeBundle.db.find(session), isEmpty);
+
+      // The build goes on once the lock is released, and its synchronous
+      // step then holds the worker isolate until a health call has answered.
+      // On the endpoint isolate that step would hold the call itself: it
+      // would answer only after the step gave up, and the failed build
+      // below would show it.
+      release.complete();
+      await holder;
+      await _until(File('${bundleGate.path}/started'))
+          .timeout(const Duration(seconds: 20));
+      expect(answered, isFalse, reason: 'the synchronous step is running');
+      final stopwatch = Stopwatch()..start();
+      final report = await endpoints.health.check(sessionBuilder);
+      final duringStep = stopwatch.elapsed;
+      File('${bundleGate.path}/release').writeAsStringSync('');
+      expect(report.postgres, DependencyStatus.up);
+      expect(duringStep, lessThan(const Duration(seconds: 1)));
+      final reply = await answer;
+      await announced.reply(reply);
+      expect(reply, isA<BundleRepairFinished>(), reason: '$reply');
+      final result = (reply as BundleRepairFinished).result;
+      expect(result, isA<BundleRepairRan>());
+      final step = (result as BundleRepairRan).step;
+      expect(step, isA<BundleBuilt>());
+      expect(step.build, 2850);
+      final stored = (await SdeBundle.db.find(session)).single;
+      expect(stored.outcome, SdeBundleOutcome.built);
+      expect(stored.sha256, (step as BundleBuilt).sha256);
+      expect(
+        (await SdeBundleBytes.db.find(session)).single.sha256,
+        step.sha256,
+      );
+      // The announcer, reacting to this `BundleRepairFinished`, announces
+      // build 2850's bundle.
+      expect(announced.lastNamed.build, 2850);
+      expect(announced.lastNamed.sha256, step.sha256);
     });
 
     test(

@@ -10,6 +10,7 @@ workspace:
   - app_packages/kaname_ember_ui
   - packages/kaname_core
   - packages/kaname_static_data
+  - packages/kaname_static_data_bundle
   - server/kaname_client
   - server/kaname_server
   - spikes/kaname_grid_spike

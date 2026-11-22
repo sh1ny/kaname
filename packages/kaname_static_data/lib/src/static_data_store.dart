@@ -6,6 +6,8 @@ import 'package:kaname_core/kaname_core.dart';
 import 'import_report.dart';
 import 'sde_rows.dart';
 import 'sde_source.dart';
+import 'stored_bundle.dart';
+import 'typed_files.dart';
 
 /// How an import ended, or `running` while it holds the lock.
 enum ImportOutcome {
@@ -276,6 +278,10 @@ final class ImportRecord {
 ///   settings page sends a request to the compute worker instead. This was
 ///   rejected because the lock is a session lock on the worker's connection,
 ///   so an import could start between an import and a switch made elsewhere.
+/// - **C5:** every statement that removes a build's rows also removes its
+///   `sde_bundle` and `sde_bundle_bytes` rows in the same transaction: the
+///   staged build's removal ([dropStagedBuild]) and the switch's removal of
+///   the old previous build ([StaticDataWriter.switchTo]).
 abstract interface class StaticDataStore {
   /// Tries to take the static-data lock without waiting.
   ///
@@ -315,8 +321,8 @@ abstract interface class StaticDataStore {
   /// Removes the staged build, if any, in a transaction of its own that
   /// commits before this returns.
   ///
-  /// Deletes the build's typed rows, untyped records, diff records and build
-  /// row, and returns the build number, or `null` when none was staged. The
+  /// Deletes the build's typed rows, untyped records, diff records, bundle
+  /// (metadata and bytes, C5) and build row, and returns the build number, or `null` when none was staged. The
   /// import calls it before its long transaction, so a failed import leaves
   /// the old staged build gone and never holds more than three builds.
   /// Never touches the active or the previous build.
@@ -345,6 +351,39 @@ abstract interface class StaticDataStore {
 
   /// The newest stored comparison of [fromBuild] with [toBuild], or `null`.
   Future<BuildDiffRecord?> diff(int fromBuild, int toBuild);
+
+  /// The typed rows of [file] stored for [build], with their stored typed
+  /// values and raw JSON.
+  Future<List<TypedRow>> readTypedRows(int build, TypedFile file);
+
+  /// The untyped records of the file named [file] stored for [build], in
+  /// line order, duplicates kept.
+  Future<List<RawRecord>> readRawRecords(int build, String file);
+
+  /// The metadata of [build]'s stored bundle, or `null` when none is stored.
+  ///
+  /// Never reads the bundle's bytes (C11).
+  Future<StoredBundle?> storedBundle(int build);
+
+  /// Whether the stored bytes of [build] with [sha256] are [size] bytes
+  /// long and hash to [sha256]; `false` when none are stored.
+  ///
+  /// Reads the bytes, so only a bundle repair calls it ([ensureBundle] with
+  /// `verifyBytes`), never a metadata read (C11).
+  Future<bool> bundleBytesIntact(
+    int build, {
+    required String sha256,
+    required int size,
+  });
+
+  /// Records [write] for its build, in a transaction of its own.
+  ///
+  /// It replaces the build's bundle metadata. A [BundleWriteBuilt] stores
+  /// the bytes in the same transaction and deletes the bytes of any other
+  /// hash of the build, so a build has at most one set of bytes; a
+  /// [BundleWriteFailed] deletes the build's bytes. Only valid under the
+  /// lock (C7).
+  Future<void> recordBundle(BundleWrite write);
 
   /// Runs [body] in one transaction.
   ///
@@ -383,7 +422,7 @@ abstract interface class StaticDataWriter {
   ///
   /// In order: clears the active and previous markers; deletes the old
   /// previous build's rows from every typed table and the untyped records,
-  /// its diff records and its build row; makes the old active build
+  /// its diff records, its bundle (C5) and its build row; makes the old active build
   /// `previous`; makes [build] `active`; clears the hold on every build older
   /// than [build]; and inserts a `succeeded` forward [SwitchRecord].
   Future<void> switchTo(int build, {required DateTime at});

@@ -27,13 +27,15 @@ flowchart LR
     RT[realtime worker isolate: hot polling loops]
     DW[Discord worker isolate: gateway + REST queue]
     CW[compute worker isolate: static-data import, bundles, fit engine]
+    Bus[RealtimeBus: typed topics, main isolate publishes]
   end
   PG[(Postgres: truth, static-data builds, change logs)]
   RD[(Redis: ESI budget, refresh locks, messages)]
   CCP[CCP: ESI, SSO, SDE, image server]
   DC[Discord]
   Web & Desk & Mob -->|RPC + WebSocket streams| Caddy --> Main
-  Main <-->|typed messages + RealtimeBus| RT & DW & CW
+  Main <-->|typed messages| RT & DW & CW
+  Main <-->|publishes, streams subscribe| Bus
   Main & RT & CW --> PG & RD
   Main & RT -->|ESI via the shared scheduler, atomic budget in Redis| CCP
   CW -->|SDE download| CCP
@@ -46,9 +48,10 @@ flowchart LR
 | App (Flutter) | All UI on six platforms; offline cache of own data and org records only (ADR 0006); presentation state (ADR 0010) | Local store, the static-data bundle in use | Server via Serverpod RPC and streams; nothing else when connected (ADR 0005) |
 | Solo engine | Personal modules without a server (desktop solo, mobile solo-lite) | Device tokens, local copies of the member's data | ESI and SSO directly, through the same scheduler and job code with an in-process adapter (ADR 0007, ADR 0009) |
 | Server main isolate | Endpoints, capabilities, privacy scope, future-call adapter for jobs, sync change log | Postgres data, token vault | Postgres, Redis, CCP services through the scheduler, workers via messages (ADR 0009) |
-| Realtime worker | Location, fleet and killmail loops, within the loop bounds (ADR 0007) | In-memory loop state only | ESI via the scheduler; publishes on the RealtimeBus; events reach subscribers through the privacy scope |
+| Realtime worker | Location, fleet and killmail loops, within the loop bounds (ADR 0007) | In-memory loop state only | ESI via the scheduler; reports changes to the main isolate as typed replies, and the main isolate publishes them on the RealtimeBus (only the main isolate publishes, ADR 0014); events reach subscribers through the delivery scope |
+| RealtimeBus | Fan-out of server events to client streams on typed, versioned topics (ADR 0008, ADR 0014) | Subscriptions only, per stream | Serverpod messages with local scope while one instance runs; every delivery passes its topic's public or scoped delivery scope |
 | Discord worker | Gateway, role and nickname sync, message delivery | Per-route Discord queues | Discord REST and gateway; bus events through the privacy scope |
-| Compute worker | Static-data import, client bundle builds, fit-engine calls | Static-data builds | Postgres; CCP's SDE download; FitEngine over FFI |
+| Compute worker | Static-data import, client bundle builds, fit-engine calls | Static-data builds and their bundles | Postgres; CCP's SDE download; FitEngine over FFI; typed replies to the main isolate |
 | Shared packages (pure Dart) | Domain model and rules, static data, ESI client and scheduler, SSO, sync, job logic behind the job-runner interface, FitEngine interface | None | Imported by server, app and solo engine (ADR 0003) |
 | FitEngine adapter | Fit calculations | None | EVEShipFit engine over FFI or WASM (ADR 0011) |
 | Caddy | TLS termination, static web app | Certificates | HTTP to the server |
@@ -62,7 +65,9 @@ flowchart LR
 | Character data in solo | Device (the character's one token holder) | Until handed over or deleted | Local sync recipes | Device local store; ESI upstream |
 | Refresh tokens | Token vault (server or device), single-flight per character | Until revoked or dead | New token saved as soon as CCP returns it; a crash before the save means re-login (ADR 0007) | Encrypted in Postgres or on the device; key outside the database |
 | Static-data builds | Whichever job holds the static-data lock: the importer, the check job's switch (compute worker) and the rollback job | Active, previous and at most one staged; at most three at any moment | New build imported side by side, switched atomically; rollback swaps active and previous (ADR 0004) | Postgres per build; CCP's SDE upstream |
-| Client data bundle | Server build job (solo: local importer) | One per build | Swapped in at a safe point | Generated from the active build |
+| Client data bundle (server) | Check job and bundle repair on the compute worker, under the static-data lock (solo: local builder) | One per stored build, removed with its build | A missing, failed or other-format active bundle is rebuilt by the next check, start or 60-second repair (ADR 0013) | Postgres `sde_bundle` and `sde_bundle_bytes` |
+| Announced bundle and its served bytes | `BundleAnnouncer` in the server main isolate, one refresh at a time | Process lifetime; at most the announced and previous bundles held | Re-read at start, after each check and repair reply, and every 60 s; published on the RealtimeBus | Derived from `sde_build` and `sde_bundle` |
+| Client data bundle (device) | `StaticDataNotifier` in the app, one save at a time | Until the next save replaces it | Downloaded when the announced build and hash differ from the bundle the device holds (it keeps only its current one), swapped in at a safe point, then saved whole | Server's stored bundle |
 | Rate buckets, governor tier, negative cache | Scheduler code in each calling isolate, through one atomic check-and-spend | Rolling 15-minute window; backoff caps | Reservation before send; response headers correct it | Redis (server) or memory (solo) |
 | Per-user change log | Server sync layer | Bounded by compaction (set in M4) | Clients resync from a snapshot | Postgres |
 | Collaborative event logs | Server realtime layer | Per object | Gap → client resync | Postgres |
@@ -73,8 +78,8 @@ flowchart LR
 - **ESI:** OpenAPI 3.1 spec at one pinned compatibility date. The generated client and route catalogue are regenerated only by a deliberate bump PR with contract tests (ADR 0007).
 - **SSO v2:** confidential web flow for the server, PKCE for devices. JWTs are checked offline against CCP's JWKS.
 - **SDE:** CCP's build-numbered JSONL. Known columns are typed and the full record is kept as JSON. Never generated code (ADR 0004).
-- **Client data bundle:** versioned by static-data build. Its format is defined in M1.
-- **Server ↔ app:** Serverpod `.spy.yaml` models and endpoints; the generated client is the only contract. Additive-first schema changes; a server refuses to start on a database from a newer version.
+- **Client data bundle:** one gzip JSON Lines file per static-data build, with a major and minor format version; readers accept any minor of a major they know (ADR 0013).
+- **Server ↔ app:** Serverpod `.spy.yaml` models and endpoints through the generated client, plus one plain HTTP route beside it: `GET /static-data/bundle/<build>/<sha256>` for the client data bundle (ADR 0013). Additive-first schema changes; a server refuses to start on a database from a newer version.
 - **Sync protocol:** per-user change log with sequence; field-level merge for personal records (ADR 0008). Defined in M4 and versioned with the server.
 - **Cross-isolate messages:** typed, serializable models (ADR 0009). Workers reach Postgres through their own per-job connections from a typed start message (ADR 0012).
 - **FitEngine:** Kaname's Dart interface. The pinned engine is reached over its C ABI or WASM build (ADR 0011).
@@ -112,4 +117,6 @@ Accepted, not superseded. Proposed ADRs are drafts and are not listed.
 | [0009](../docs/adr/0009-server-process-and-isolates.md) | One process; main, realtime, Discord and compute isolates; pure-Dart jobs behind a runner | — |
 | [0010](../docs/adr/0010-flutter-app-state.md) | Riverpod 3 in the presentation layer only, no codegen or persist | — |
 | [0011](../docs/adr/0011-fit-engine-behind-an-interface.md) | Kaname `FitEngine` interface over EVEShipFit's pinned engine | — |
-| [0012](../docs/adr/0012-worker-isolate-access.md) | Workers reach Postgres through their own per-job connections; Redis, vault, privacy scope and bus still open (R56) | — |
+| [0012](../docs/adr/0012-worker-isolate-access.md) | Workers reach Postgres through their own per-job connections; the bus is settled by ADR 0014 (workers send typed replies, only the main isolate publishes); Redis, vault and privacy scope still open (R56) | — |
+| [0013](../docs/adr/0013-client-data-bundle.md) | One versioned gzip JSON Lines bundle per SDE build, public data only, served by build and hash; same builder on server and device | — |
+| [0014](../docs/adr/0014-realtime-bus-topics.md) | RealtimeBus topics typed and versioned, public or scoped, local delivery first, only the main isolate publishes | — |

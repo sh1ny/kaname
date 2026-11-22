@@ -6,6 +6,7 @@ import 'package:http/testing.dart';
 import 'package:kaname_server/src/generated/future_calls.dart'
     show ServerpodFutureCallsGetter;
 import 'package:kaname_server/src/generated/protocol.dart';
+import 'package:kaname_server/src/static_data/bundle_announcer.dart';
 import 'package:kaname_server/src/static_data/postgres_connection_settings.dart';
 import 'package:kaname_server/src/static_data/static_data_check_call.dart';
 import 'package:kaname_server/src/static_data/static_data_runtime.dart';
@@ -18,6 +19,7 @@ import 'package:serverpod/protocol.dart'
 import 'package:serverpod/serverpod.dart' show Session;
 import 'package:test/test.dart';
 
+import '../support/announcer_support.dart';
 import '../support/migrated_database.dart';
 import '../test_tools/serverpod_test_tools.dart';
 
@@ -114,7 +116,21 @@ void main() {
         log: (level, message) {},
       )..start();
       addTearDown(supervisor.stop);
-      staticDataRuntime.supervisor = supervisor;
+      final source = ScriptedSource(
+        OrmBundleStateSource(<T>(action) => action(session)),
+      );
+      final announcer = BundleAnnouncer(
+        source: source,
+        bus: RecordingBus(),
+        clock: FakeClock(),
+        log: (level, message) {},
+      )..start();
+      addTearDown(announcer.stop);
+      await announcer.settled;
+      final readsBefore = source.reads;
+      staticDataRuntime
+        ..supervisor = supervisor
+        ..announcer = announcer;
       // The call does not wait for the worker (C9); a call made before the
       // worker runs is answered "worker not running".
       await supervisor.ready;
@@ -134,6 +150,13 @@ void main() {
       final check = (await SdeCheck.db.find(session)).single;
       expect(check.outcome, SdeCheckOutcome.failed);
       expect(check.failureReason, contains('CCP unreachable'));
+      // The worker's answer, sent after it prunes and unlocks, makes the
+      // announcer refresh: wait for that read to start, then to end.
+      while (source.reads == readsBefore && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      await announcer.settled;
+      expect(source.reads, greaterThan(readsBefore));
     }, timeout: const Timeout(Duration(seconds: 90)));
 
     test('the call returns at once and logs "worker not running" while the '

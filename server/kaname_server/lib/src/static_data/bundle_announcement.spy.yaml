@@ -1,0 +1,13 @@
+### What the announcement stream sends: which static-data bundle apps should
+### hold (design D8, ADR 0014).
+###
+### `epoch` is a random id chosen at each server start, and `revision` rises
+### with each change of the installed announcement within an epoch; an app
+### ignores a revision it has passed within the same epoch and takes any
+### announcement of a new epoch. The sealed children say whether a bundle is
+### announced. The model is also the payload of the static-data bus topic.
+class: BundleAnnouncement
+sealed: true
+fields:
+  epoch: String
+  revision: int

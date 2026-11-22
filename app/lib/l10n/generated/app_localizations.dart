@@ -357,6 +357,126 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'View licences'**
   String get aboutLicencesOpen;
+
+  /// Screen-reader name of the quick search field.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get searchLabel;
+
+  /// Hint inside the quick search field.
+  ///
+  /// In en, this message translates to:
+  /// **'Search types and systems'**
+  String get searchPlaceholder;
+
+  /// Label of the top-bar button that opens the full-width search on narrow windows.
+  ///
+  /// In en, this message translates to:
+  /// **'Open search'**
+  String get searchOpen;
+
+  /// Label of the control that closes the full-width search.
+  ///
+  /// In en, this message translates to:
+  /// **'Close search'**
+  String get searchClose;
+
+  /// Screen-reader name of the list of search results.
+  ///
+  /// In en, this message translates to:
+  /// **'Search results'**
+  String get searchResults;
+
+  /// Screen-reader announcement of how many results the search found.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No results} =1{1 result} other{{count} results}}'**
+  String searchResultCount(int count);
+
+  /// Shown when a search finds nothing.
+  ///
+  /// In en, this message translates to:
+  /// **'No matches'**
+  String get searchNoMatches;
+
+  /// Note under a full result list: more records matched than are shown.
+  ///
+  /// In en, this message translates to:
+  /// **'More matches exist. Type more to narrow them.'**
+  String get searchMoreMatches;
+
+  /// Kind label of a search result that is an item type.
+  ///
+  /// In en, this message translates to:
+  /// **'Type'**
+  String get searchKindType;
+
+  /// Kind label of a search result that is a solar system.
+  ///
+  /// In en, this message translates to:
+  /// **'Solar system'**
+  String get searchKindSolarSystem;
+
+  /// Name shown for a search result that has no English name.
+  ///
+  /// In en, this message translates to:
+  /// **'Record {id}'**
+  String searchUnnamed(int id);
+
+  /// Heading of the search panel when the app holds no static data bundle.
+  ///
+  /// In en, this message translates to:
+  /// **'Static data not loaded yet'**
+  String get searchNotLoaded;
+
+  /// Why there is no static data: the app is still starting.
+  ///
+  /// In en, this message translates to:
+  /// **'Starting up. Static data will load in a moment.'**
+  String get searchReasonStarting;
+
+  /// Why there is no static data: a bundle is being fetched.
+  ///
+  /// In en, this message translates to:
+  /// **'Static data is downloading.'**
+  String get searchReasonDownloading;
+
+  /// Why there is no static data: the build has no server address.
+  ///
+  /// In en, this message translates to:
+  /// **'No server is configured.'**
+  String get searchReasonNoServer;
+
+  /// Why there is no static data: the server did not answer. Shows no technical detail.
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not be reached.'**
+  String get searchReasonUnreachable;
+
+  /// Why there is no static data: the server has not built a bundle.
+  ///
+  /// In en, this message translates to:
+  /// **'The server has no static data yet.'**
+  String get searchReasonServerHasNoBundle;
+
+  /// Why there is no static data: the downloaded bundle failed its checks.
+  ///
+  /// In en, this message translates to:
+  /// **'The downloaded static data could not be used.'**
+  String get searchReasonRefused;
+
+  /// Why there is no static data: the server's bundle format is newer than this app reads.
+  ///
+  /// In en, this message translates to:
+  /// **'Update the app to load the latest static data.'**
+  String get searchReasonAppUpdate;
+
+  /// Notice beside results when the server's bundle format is newer than this app reads.
+  ///
+  /// In en, this message translates to:
+  /// **'Update the app to load the latest static data. Search keeps using the data you have.'**
+  String get searchNoticeAppUpdate;
 }
 
 class _AppLocalizationsDelegate

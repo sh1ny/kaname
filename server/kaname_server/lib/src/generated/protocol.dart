@@ -17,10 +17,14 @@ import 'package:serverpod/serverpod.dart' as _is;
 
 import 'health/dependency_status.dart' as _iztepymd;
 import 'health/health_report.dart' as _if75m2mz;
+import 'static_data/bundle_announcement.dart' as _iothyv29;
 import 'static_data/sde_build.dart' as _iqvvlz0n;
 import 'static_data/sde_build_diff.dart' as _i6rvvlmq;
 import 'static_data/sde_build_diff_outcome.dart' as _iby3hddy;
 import 'static_data/sde_build_state.dart' as _isyk7irp;
+import 'static_data/sde_bundle.dart' as _ijqwsv4v;
+import 'static_data/sde_bundle_bytes.dart' as _imonpi0j;
+import 'static_data/sde_bundle_outcome.dart' as _iquqzrxf;
 import 'static_data/sde_check.dart' as _ig50l1bg;
 import 'static_data/sde_check_outcome.dart' as _illgk9kj;
 import 'static_data/sde_import.dart' as _iucgsa1v;
@@ -45,10 +49,14 @@ import 'static_data/tables/sde_type.dart' as _i19vm38w;
 import 'static_data/tables/sde_type_dogma.dart' as _ib14m8bx;
 export 'health/dependency_status.dart';
 export 'health/health_report.dart';
+export 'static_data/bundle_announcement.dart';
 export 'static_data/sde_build.dart';
 export 'static_data/sde_build_diff.dart';
 export 'static_data/sde_build_diff_outcome.dart';
 export 'static_data/sde_build_state.dart';
+export 'static_data/sde_bundle.dart';
+export 'static_data/sde_bundle_bytes.dart';
+export 'static_data/sde_bundle_outcome.dart';
 export 'static_data/sde_check.dart';
 export 'static_data/sde_check_outcome.dart';
 export 'static_data/sde_import.dart';
@@ -87,10 +95,15 @@ class Protocol extends _is.DatabaseSerializationManager
         types: const [
           _is.getType<_iztepymd.DependencyStatus>,
           _is.getType<_if75m2mz.HealthReport>,
+          _is.getType<_iothyv29.BundleAnnouncementNamed>,
+          _is.getType<_iothyv29.BundleAnnouncementNone>,
           _is.getType<_iqvvlz0n.SdeBuild>,
           _is.getType<_i6rvvlmq.SdeBuildDiff>,
           _is.getType<_iby3hddy.SdeBuildDiffOutcome>,
           _is.getType<_isyk7irp.SdeBuildState>,
+          _is.getType<_ijqwsv4v.SdeBundle>,
+          _is.getType<_imonpi0j.SdeBundleBytes>,
+          _is.getType<_iquqzrxf.SdeBundleOutcome>,
           _is.getType<_ig50l1bg.SdeCheck>,
           _is.getType<_illgk9kj.SdeCheckOutcome>,
           _is.getType<_iucgsa1v.SdeImport>,
@@ -115,10 +128,15 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_ib14m8bx.SdeTypeDogma>,
           _is.getType<_iztepymd.DependencyStatus?>,
           _is.getType<_if75m2mz.HealthReport?>,
+          _is.getType<_iothyv29.BundleAnnouncementNamed?>,
+          _is.getType<_iothyv29.BundleAnnouncementNone?>,
           _is.getType<_iqvvlz0n.SdeBuild?>,
           _is.getType<_i6rvvlmq.SdeBuildDiff?>,
           _is.getType<_iby3hddy.SdeBuildDiffOutcome?>,
           _is.getType<_isyk7irp.SdeBuildState?>,
+          _is.getType<_ijqwsv4v.SdeBundle?>,
+          _is.getType<_imonpi0j.SdeBundleBytes?>,
+          _is.getType<_iquqzrxf.SdeBundleOutcome?>,
           _is.getType<_ig50l1bg.SdeCheck?>,
           _is.getType<_illgk9kj.SdeCheckOutcome?>,
           _is.getType<_iucgsa1v.SdeImport?>,
@@ -150,10 +168,15 @@ class Protocol extends _is.DatabaseSerializationManager
           'SdeJson',
           'DependencyStatus',
           'HealthReport',
+          'BundleAnnouncementNamed',
+          'BundleAnnouncementNone',
           'SdeBuild',
           'SdeBuildDiff',
           'SdeBuildDiffOutcome',
           'SdeBuildState',
+          'SdeBundle',
+          'SdeBundleBytes',
+          'SdeBundleOutcome',
           'SdeCheck',
           'SdeCheckOutcome',
           'SdeImport',
@@ -347,6 +370,140 @@ class Protocol extends _is.DatabaseSerializationManager
           ],
           type: 'btree',
           isUnique: false,
+          isPrimary: false,
+        ),
+      ],
+      managed: true,
+    ),
+    _isp.TableDefinition(
+      name: 'sde_bundle',
+      dartName: 'SdeBundle',
+      schema: 'public',
+      module: 'kaname',
+      columns: [
+        _isp.ColumnDefinition(
+          name: 'id',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'serial',
+        ),
+        _isp.ColumnDefinition(
+          name: 'build',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'outcome',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'protocol:SdeBundleOutcome',
+        ),
+        _isp.ColumnDefinition(
+          name: 'reason',
+          columnType: _isp.ColumnType.text,
+          isNullable: true,
+          dartType: 'String?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'formatMajor',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'formatMinor',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'sha256',
+          columnType: _isp.ColumnType.text,
+          isNullable: true,
+          dartType: 'String?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'size',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: true,
+          dartType: 'int?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'builtAt',
+          columnType: _isp.ColumnType.timestampWithoutTimeZone,
+          isNullable: false,
+          dartType: 'DateTime',
+        ),
+      ],
+      foreignKeys: [],
+      indexes: [
+        _isp.IndexDefinition(
+          indexName: 'sde_bundle_build_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'build',
+            ),
+          ],
+          type: 'btree',
+          isUnique: true,
+          isPrimary: false,
+        ),
+      ],
+      managed: true,
+    ),
+    _isp.TableDefinition(
+      name: 'sde_bundle_bytes',
+      dartName: 'SdeBundleBytes',
+      schema: 'public',
+      module: 'kaname',
+      columns: [
+        _isp.ColumnDefinition(
+          name: 'id',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'serial',
+        ),
+        _isp.ColumnDefinition(
+          name: 'build',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'sha256',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'String',
+        ),
+        _isp.ColumnDefinition(
+          name: 'bytes',
+          columnType: _isp.ColumnType.bytea,
+          isNullable: false,
+          dartType: 'dart:typed_data:ByteData',
+        ),
+      ],
+      foreignKeys: [],
+      indexes: [
+        _isp.IndexDefinition(
+          indexName: 'sde_bundle_bytes_build_sha256_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'build',
+            ),
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'sha256',
+            ),
+          ],
+          type: 'btree',
+          isUnique: true,
           isPrimary: false,
         ),
       ],
@@ -1671,6 +1828,12 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _if75m2mz.HealthReport) {
       return _if75m2mz.HealthReport.fromJson(data) as T;
     }
+    if (t == _iothyv29.BundleAnnouncementNamed) {
+      return _iothyv29.BundleAnnouncementNamed.fromJson(data) as T;
+    }
+    if (t == _iothyv29.BundleAnnouncementNone) {
+      return _iothyv29.BundleAnnouncementNone.fromJson(data) as T;
+    }
     if (t == _iqvvlz0n.SdeBuild) {
       return _iqvvlz0n.SdeBuild.fromJson(data) as T;
     }
@@ -1682,6 +1845,15 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (t == _isyk7irp.SdeBuildState) {
       return _isyk7irp.SdeBuildState.fromJson(data) as T;
+    }
+    if (t == _ijqwsv4v.SdeBundle) {
+      return _ijqwsv4v.SdeBundle.fromJson(data) as T;
+    }
+    if (t == _imonpi0j.SdeBundleBytes) {
+      return _imonpi0j.SdeBundleBytes.fromJson(data) as T;
+    }
+    if (t == _iquqzrxf.SdeBundleOutcome) {
+      return _iquqzrxf.SdeBundleOutcome.fromJson(data) as T;
     }
     if (t == _ig50l1bg.SdeCheck) {
       return _ig50l1bg.SdeCheck.fromJson(data) as T;
@@ -1756,6 +1928,18 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _is.getType<_if75m2mz.HealthReport?>()) {
       return (data != null ? _if75m2mz.HealthReport.fromJson(data) : null) as T;
     }
+    if (t == _is.getType<_iothyv29.BundleAnnouncementNamed?>()) {
+      return (data != null
+              ? _iothyv29.BundleAnnouncementNamed.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_iothyv29.BundleAnnouncementNone?>()) {
+      return (data != null
+              ? _iothyv29.BundleAnnouncementNone.fromJson(data)
+              : null)
+          as T;
+    }
     if (t == _is.getType<_iqvvlz0n.SdeBuild?>()) {
       return (data != null ? _iqvvlz0n.SdeBuild.fromJson(data) : null) as T;
     }
@@ -1770,6 +1954,17 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (t == _is.getType<_isyk7irp.SdeBuildState?>()) {
       return (data != null ? _isyk7irp.SdeBuildState.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_ijqwsv4v.SdeBundle?>()) {
+      return (data != null ? _ijqwsv4v.SdeBundle.fromJson(data) : null) as T;
+    }
+    if (t == _is.getType<_imonpi0j.SdeBundleBytes?>()) {
+      return (data != null ? _imonpi0j.SdeBundleBytes.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_iquqzrxf.SdeBundleOutcome?>()) {
+      return (data != null ? _iquqzrxf.SdeBundleOutcome.fromJson(data) : null)
           as T;
     }
     if (t == _is.getType<_ig50l1bg.SdeCheck?>()) {
@@ -1878,10 +2073,15 @@ class Protocol extends _is.DatabaseSerializationManager
       _idp9h2tz.SdeJson => 'SdeJson',
       _iztepymd.DependencyStatus => 'DependencyStatus',
       _if75m2mz.HealthReport => 'HealthReport',
+      _iothyv29.BundleAnnouncementNamed => 'BundleAnnouncementNamed',
+      _iothyv29.BundleAnnouncementNone => 'BundleAnnouncementNone',
       _iqvvlz0n.SdeBuild => 'SdeBuild',
       _i6rvvlmq.SdeBuildDiff => 'SdeBuildDiff',
       _iby3hddy.SdeBuildDiffOutcome => 'SdeBuildDiffOutcome',
       _isyk7irp.SdeBuildState => 'SdeBuildState',
+      _ijqwsv4v.SdeBundle => 'SdeBundle',
+      _imonpi0j.SdeBundleBytes => 'SdeBundleBytes',
+      _iquqzrxf.SdeBundleOutcome => 'SdeBundleOutcome',
       _ig50l1bg.SdeCheck => 'SdeCheck',
       _illgk9kj.SdeCheckOutcome => 'SdeCheckOutcome',
       _iucgsa1v.SdeImport => 'SdeImport',
@@ -1924,6 +2124,10 @@ class Protocol extends _is.DatabaseSerializationManager
         return 'DependencyStatus';
       case _if75m2mz.HealthReport():
         return 'HealthReport';
+      case _iothyv29.BundleAnnouncementNamed():
+        return 'BundleAnnouncementNamed';
+      case _iothyv29.BundleAnnouncementNone():
+        return 'BundleAnnouncementNone';
       case _iqvvlz0n.SdeBuild():
         return 'SdeBuild';
       case _i6rvvlmq.SdeBuildDiff():
@@ -1932,6 +2136,12 @@ class Protocol extends _is.DatabaseSerializationManager
         return 'SdeBuildDiffOutcome';
       case _isyk7irp.SdeBuildState():
         return 'SdeBuildState';
+      case _ijqwsv4v.SdeBundle():
+        return 'SdeBundle';
+      case _imonpi0j.SdeBundleBytes():
+        return 'SdeBundleBytes';
+      case _iquqzrxf.SdeBundleOutcome():
+        return 'SdeBundleOutcome';
       case _ig50l1bg.SdeCheck():
         return 'SdeCheck';
       case _illgk9kj.SdeCheckOutcome():
@@ -1999,6 +2209,12 @@ class Protocol extends _is.DatabaseSerializationManager
     if (dataClassName == 'HealthReport') {
       return deserialize<_if75m2mz.HealthReport>(data['data']);
     }
+    if (dataClassName == 'BundleAnnouncementNamed') {
+      return deserialize<_iothyv29.BundleAnnouncementNamed>(data['data']);
+    }
+    if (dataClassName == 'BundleAnnouncementNone') {
+      return deserialize<_iothyv29.BundleAnnouncementNone>(data['data']);
+    }
     if (dataClassName == 'SdeBuild') {
       return deserialize<_iqvvlz0n.SdeBuild>(data['data']);
     }
@@ -2010,6 +2226,15 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (dataClassName == 'SdeBuildState') {
       return deserialize<_isyk7irp.SdeBuildState>(data['data']);
+    }
+    if (dataClassName == 'SdeBundle') {
+      return deserialize<_ijqwsv4v.SdeBundle>(data['data']);
+    }
+    if (dataClassName == 'SdeBundleBytes') {
+      return deserialize<_imonpi0j.SdeBundleBytes>(data['data']);
+    }
+    if (dataClassName == 'SdeBundleOutcome') {
+      return deserialize<_iquqzrxf.SdeBundleOutcome>(data['data']);
     }
     if (dataClassName == 'SdeCheck') {
       return deserialize<_ig50l1bg.SdeCheck>(data['data']);
@@ -2099,6 +2324,10 @@ class Protocol extends _is.DatabaseSerializationManager
         return _iqvvlz0n.SdeBuild.t;
       case _i6rvvlmq.SdeBuildDiff:
         return _i6rvvlmq.SdeBuildDiff.t;
+      case _ijqwsv4v.SdeBundle:
+        return _ijqwsv4v.SdeBundle.t;
+      case _imonpi0j.SdeBundleBytes:
+        return _imonpi0j.SdeBundleBytes.t;
       case _ig50l1bg.SdeCheck:
         return _ig50l1bg.SdeCheck.t;
       case _iucgsa1v.SdeImport:

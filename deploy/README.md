@@ -3,8 +3,12 @@
 One Docker Compose file runs the whole Kaname stack: `postgres` (16), `redis`
 (8), the `server`, and `caddy`, plus a one-shot `migrate` step that applies the
 database migrations before the server starts. Caddy serves the web app at `/`,
-routes `/api/` to the server with the prefix removed, and passes `/livez` and
-`/readyz` through. Locally the stack serves plain HTTP at `http://localhost/`,
+routes `/api/` to the server with the prefix removed, and passes `/livez`,
+`/readyz` and `/v1/websocket` through unchanged. The generated client always
+opens its WebSocket at `/v1/websocket` on the origin, whatever path the app's
+API is configured under, and the static-data announcements arrive over it; a
+proxy in front of the server must forward that path unchanged, or apps never
+learn of a new bundle while every HTTP route still works. Locally the stack serves plain HTTP at `http://localhost/`,
 published on `127.0.0.1` only, so it is not reachable from the network. There
 is no TLS yet; a deployment guide will add it.
 

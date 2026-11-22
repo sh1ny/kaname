@@ -2,7 +2,13 @@
 library;
 
 import 'package:kaname_static_data/kaname_static_data.dart'
-    show BuildCheckFailed, BuildStaged, DailyBuildCheckSchedule;
+    show
+        BuildCheckFailed,
+        BuildStaged,
+        BundleFailed,
+        BundleRepairFailed,
+        BundleRepairRan,
+        DailyBuildCheckSchedule;
 import 'package:serverpod/serverpod.dart';
 
 import '../generated/protocol.dart';
@@ -10,6 +16,7 @@ import '../workers/compute_worker.dart';
 import '../workers/worker_messages.dart';
 import '../workers/worker_supervisor.dart';
 
+import 'bundle_announcer.dart';
 import 'postgres_settings_resolver.dart';
 import 'static_data_runtime.dart';
 import 'sweep_running_imports.dart';
@@ -37,6 +44,11 @@ const Set<String> _startRunModes = {
 /// Serverpod does not export the enum).
 const String _monolithRole = 'monolith';
 
+/// Whether the server in [runMode] with [role] runs a compute worker, that
+/// is, gets a start hook from [staticDataStartHookFor].
+bool runsStaticDataWorker({required String runMode, required String role}) =>
+    role == _monolithRole && _startRunModes.contains(runMode);
+
 /// Builds the start hook for a server running in [runMode] with [role], or
 /// returns `null` when this server must do no static-data work.
 ///
@@ -61,8 +73,9 @@ StaticDataStartHook? staticDataStartHookFor({
   required ScheduleDailyCheck scheduleDailyCheck,
   DateTime Function()? now,
   SpawnWorker? spawn,
+  BundleAnnouncer? announcer,
 }) {
-  if (role != _monolithRole || !_startRunModes.contains(runMode)) return null;
+  if (!runsStaticDataWorker(runMode: runMode, role: role)) return null;
   final supervisor = WorkerSupervisor(
     name: 'compute',
     spawn: spawn ?? isolateComputeWorkerSpawn(),
@@ -79,6 +92,7 @@ StaticDataStartHook? staticDataStartHookFor({
     scheduleDailyCheck: scheduleDailyCheck,
     log: log,
     now: now,
+    announcer: announcer,
   );
 }
 
@@ -105,6 +119,9 @@ StaticDataStartHook? staticDataStartHookFor({
 ///    finds a newer one. The check's own record says how it ended; a failed
 ///    one (CCP unreachable, say) leaves no active build on a first start, so
 ///    the next start tries again.
+/// 5. when no check is due, sends a [RunBundleRepair] instead, so the active
+///    build's bundle is built when it is missing, failed or of another
+///    format version (D20). A check that runs repairs the bundle itself.
 ///
 /// ## Carried constraint
 ///
@@ -126,6 +143,7 @@ final class StaticDataStartHook {
     required this.scheduleDailyCheck,
     required this.log,
     DateTime Function()? now,
+    this.announcer,
   }) : _now = now ?? DateTime.now;
 
   /// The compute worker's supervisor.
@@ -140,17 +158,34 @@ final class StaticDataStartHook {
   /// Receives the hook's log lines.
   final WorkerLogSink log;
 
+  /// The announcer the worker's replies go to, or `null` where none runs.
+  final BundleAnnouncer? announcer;
+
   final DateTime Function() _now;
 
   /// Starts the worker, schedules the daily check and runs a check when one
   /// is due.
   ///
-  /// Completes with the worker's answer to the check, or with `null` when no
-  /// check was due or the start-time work failed.
+  /// Completes with the worker's answer to the check, or, when no check was
+  /// due, to the bundle repair ([BundleRepairFinished]); with `null` when
+  /// the start-time work failed.
   Future<WorkerReply?> run() async {
+    // The announcer's ticks send no repair until the start-up decision and
+    // the check or repair it makes have ended (D10); a check releases them
+    // as soon as it is answered.
+    announcer?.holdTickRepairs();
+    try {
+      return await _run();
+    } finally {
+      announcer?.releaseTickRepairs();
+    }
+  }
+
+  Future<WorkerReply?> _run() async {
     supervisor.start();
     staticDataRuntime
       ..supervisor = supervisor
+      ..announcer = announcer
       ..log = log;
     try {
       final swept = await withSession(
@@ -186,7 +221,20 @@ final class StaticDataStartHook {
         hasActiveBuild: hasActiveBuild,
         now: _now(),
       )) {
-        return null;
+        // One repair at a time per server: the announcer's own repair tick
+        // shares this request while it is outstanding.
+        final repair =
+            await (announcer?.sendRepair() ?? supervisor.runBundleRepair());
+        log(switch (repair) {
+          BundleRepairFinished(
+            result: BundleRepairRan(step: BundleFailed()) ||
+                BundleRepairFailed(),
+          ) =>
+            WorkerLogLevel.warning,
+          BundleRepairFinished() => WorkerLogLevel.info,
+          _ => WorkerLogLevel.warning,
+        }, 'static data: start-up bundle repair answered: $repair');
+        return repair;
       }
       log(
         WorkerLogLevel.info,
@@ -197,6 +245,10 @@ final class StaticDataStartHook {
                   'build',
       );
       final reply = await supervisor.runBuildCheck(const CcpLatestSource());
+      // The check has ended and freed the lock, so the ticks may send
+      // repairs again, even while the refresh its reply asks for hangs.
+      announcer?.releaseTickRepairs();
+      await announcer?.workerReplied(reply);
       log(switch (reply) {
         BuildCheckFinished(result: BuildCheckFailed() || BuildStaged()) =>
           WorkerLogLevel.warning,
@@ -213,7 +265,9 @@ final class StaticDataStartHook {
   /// Stops the worker for good and withdraws it from [staticDataRuntime].
   Future<void> stop() {
     if (identical(staticDataRuntime.supervisor, supervisor)) {
-      staticDataRuntime.supervisor = null;
+      staticDataRuntime
+        ..supervisor = null
+        ..announcer = null;
     }
     return supervisor.stop();
   }

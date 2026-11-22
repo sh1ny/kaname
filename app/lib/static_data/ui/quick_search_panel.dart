@@ -1,0 +1,486 @@
+import 'dart:math';
+
+import 'package:flutter/material.dart';
+import 'package:kaname_ember_ui/kaname_ember_ui.dart';
+import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart';
+
+import '../../l10n/generated/app_localizations.dart';
+import '../../shell/ui/scrim.dart';
+import '../logic/quick_search.dart';
+import '../logic/static_data_state.dart';
+import 'quick_search_keys.dart';
+
+/// The panel under the search field: the matches, or the reason there are
+/// none (design D21, D22).
+///
+/// A floating Lifted Card with the Float shadow. [state] decides what it
+/// shows; [active] is the index of the highlighted result, or -1 for none.
+/// With [fullWidth] it spans the window, so only its lower corners are
+/// rounded. It paints nothing for [SearchBlank]: the caller shows no panel
+/// then.
+class QuickSearchPanel extends StatefulWidget {
+  /// Creates the panel for [state].
+  const QuickSearchPanel({
+    required this.state,
+    this.active = -1,
+    this.onHover,
+    this.fullWidth = false,
+    this.top,
+    super.key,
+  });
+
+  /// What the search shows.
+  final QuickSearchState state;
+
+  /// The highlighted result's index, or -1 when none is highlighted; the
+  /// count of results is the more-matches notice after a truncated list,
+  /// which highlights no row and is scrolled into view.
+  final int active;
+
+  /// Called with a result's index when the pointer moves onto it.
+  final ValueChanged<int>? onHover;
+
+  /// Whether the panel spans the window's width.
+  final bool fullWidth;
+
+  /// Measures where the panel's top edge is in the window, so it fits
+  /// between there and the keyboard; null, or a null answer, allows for a
+  /// top bar instead.
+  final double? Function()? top;
+
+  /// The height of one result row at the default text size.
+  static const double rowHeight = 32;
+
+  /// The height of one result row at [context]'s text scale: [rowHeight],
+  /// or more when scaled text needs it, so a row never clips its line.
+  static double rowExtent(BuildContext context) {
+    const style = EmberType.body;
+    final line = style.fontSize! * style.height!;
+    final scaled =
+        MediaQuery.textScalerOf(context).scale(style.fontSize!) * style.height!;
+    return rowHeight + max(0.0, scaled - line);
+  }
+
+  @override
+  State<QuickSearchPanel> createState() => _QuickSearchPanelState();
+}
+
+class _QuickSearchPanelState extends State<QuickSearchPanel> {
+  final _scroll = ScrollController();
+
+  /// The notice above the results, whose height the reveal skips.
+  final _noticeKey = GlobalKey(debugLabel: 'search notice');
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(QuickSearchPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A new query's results open at the top; a notice-only update keeps the
+    // same results, and the offset.
+    if ((oldWidget.state, widget.state)
+        case (
+          SearchFound(results: final before),
+          SearchFound(results: final after),
+        )
+        when !identical(before, after) && _scroll.hasClients) {
+      _scroll.jumpTo(0);
+    }
+    // A notice that appears or goes moves the rows, and new results under
+    // an unchanged highlight start at the top: either can leave the
+    // highlighted row out of view with the same index (PR #15).
+    if (widget.active >= 0 &&
+        (widget.active != oldWidget.active ||
+            !identical(widget.state, oldWidget.state))) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _reveal());
+    }
+  }
+
+  /// Scrolls, without animation, so the highlighted row is in view; the
+  /// last hit of a truncated list brings the more-matches footer after it
+  /// too, when both fit, so keyboard users see it (pre-ship round 47).
+  void _reveal() {
+    if (!mounted || !_scroll.hasClients) return;
+    // The row's bounds in the scroll view, after the notice, if any, and
+    // the list's padding.
+    final notice = _noticeKey.currentContext?.size?.height ?? 0;
+    final row = QuickSearchPanel.rowExtent(context);
+    final top = notice + _listPadding + widget.active * row;
+    final position = _scroll.position;
+    if (widget.state case SearchFound(:final results)
+        when widget.active >= results.hits.length) {
+      // The stop after the last hit: the more-matches notice at the end,
+      // from its first line when it is taller than the panel.
+      final footer = notice + 2 * _listPadding + results.hits.length * row;
+      _scroll.jumpTo(min(footer, position.maxScrollExtent));
+      return;
+    }
+    final end = position.maxScrollExtent + position.viewportDimension;
+    final bottom = switch (widget.state) {
+      SearchFound(:final results)
+          when results.more &&
+              widget.active == results.hits.length - 1 &&
+              end - top <= position.viewportDimension =>
+        end,
+      _ => top + row,
+    };
+    if (top < position.pixels) {
+      _scroll.jumpTo(top);
+    } else if (bottom > position.pixels + position.viewportDimension) {
+      _scroll.jumpTo(bottom - position.viewportDimension);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = EmberColors.of(context);
+    final l10n = AppLocalizations.of(context);
+    final radius = widget.fullWidth
+        ? const BorderRadius.vertical(bottom: Radius.circular(EmberRadius.l))
+        : BorderRadius.circular(EmberRadius.l);
+    // The panel floats over the page, so it also takes the window's own
+    // keyboard inset: a scaffold that drops the inset for its body must not
+    // hide the keyboard from it. The media query rebuilds it as either
+    // changes.
+    final media = MediaQuery.of(context);
+    final keyboard = max(
+      media.viewInsets.bottom,
+      MediaQueryData.fromView(View.of(context)).viewInsets.bottom,
+    );
+    final top = widget.top?.call() ?? 120;
+    // It never reaches under the keyboard, even when less than a row fits:
+    // whatever room there is scrolls to every result.
+    final maxHeight = (media.size.height - keyboard - top - EmberSpace.sm)
+        .clamp(0.0, QuickSearchPanel.rowExtent(context) * 11);
+    final content = switch (widget.state) {
+      SearchBlank() => const SizedBox.shrink(),
+      SearchNotLoaded(:final reason) => _NotLoaded(
+        key: QuickSearchKeys.notLoaded,
+        message: _reasonMessage(l10n, reason),
+      ),
+      SearchFound(:final results, :final notice) => _Found(
+        results: results,
+        notice: notice,
+        active: widget.active,
+        onHover: widget.onHover,
+        controller: _scroll,
+        noticeKey: _noticeKey,
+      ),
+    };
+    return DecoratedBox(
+      decoration: BoxDecoration(boxShadow: floatShadow(context)),
+      child: DecoratedBox(
+        key: QuickSearchKeys.panel,
+        decoration: BoxDecoration(
+          color: colors.raised,
+          borderRadius: radius,
+          border: Border.all(color: colors.hairline),
+        ),
+        child: ClipRRect(
+          borderRadius: radius,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight),
+            child: content,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The padding around the result list.
+const double _listPadding = 6;
+
+/// The localised message for why the app holds no bundle (design D21).
+String _reasonMessage(AppLocalizations l10n, NoBundleReason reason) =>
+    switch (reason) {
+      Starting() => l10n.searchReasonStarting,
+      Downloading() => l10n.searchReasonDownloading,
+      NoServerConfigured() => l10n.searchReasonNoServer,
+      ServerUnreachable() => l10n.searchReasonUnreachable,
+      ServerHasNoBundle() => l10n.searchReasonServerHasNoBundle,
+      BundleRefusedReason() => l10n.searchReasonRefused,
+      AppUpdateNeededReason() => l10n.searchReasonAppUpdate,
+    };
+
+class _NotLoaded extends StatelessWidget {
+  const _NotLoaded({required this.message, super.key});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = EmberColors.of(context);
+    final l10n = AppLocalizations.of(context);
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      // Scrolls when the panel is capped shorter than the message.
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(EmberSpace.md),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.searchNotLoaded,
+              style: EmberType.uiHeading.copyWith(color: colors.ink),
+            ),
+            const SizedBox(height: EmberSpace.xs),
+            Text(
+              message,
+              style: EmberType.body.copyWith(color: colors.inkSecondary),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Found extends StatelessWidget {
+  const _Found({
+    required this.results,
+    required this.notice,
+    required this.active,
+    required this.onHover,
+    required this.controller,
+    required this.noticeKey,
+  });
+
+  final SearchResults results;
+  final BundleNotice? notice;
+  final int active;
+  final ValueChanged<int>? onHover;
+  final ScrollController controller;
+  final GlobalKey noticeKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = EmberColors.of(context);
+    final l10n = AppLocalizations.of(context);
+    final hits = results.hits;
+    // One scroll view holds the notice, the results and the footer, so all
+    // of them stay reachable when the panel is capped short (by the
+    // keyboard or by large text).
+    final scroll = CustomScrollView(
+      controller: controller,
+      shrinkWrap: true,
+      slivers: [
+        if (notice case final notice?)
+          SliverToBoxAdapter(
+            child: KeyedSubtree(
+              key: noticeKey,
+              child: _Notice(notice: notice),
+            ),
+          ),
+        if (hits.isEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(EmberSpace.md),
+              child: Text(
+                l10n.searchNoMatches,
+                style: EmberType.body.copyWith(color: colors.inkSecondary),
+              ),
+            ),
+          )
+        else
+          SliverSemantics(
+            container: true,
+            explicitChildNodes: true,
+            label: l10n.searchResults,
+            sliver: SliverPadding(
+              padding: const EdgeInsets.all(_listPadding),
+              sliver: SliverFixedExtentList.builder(
+                itemExtent: QuickSearchPanel.rowExtent(context),
+                itemCount: hits.length,
+                itemBuilder: (context, index) => _ResultRow(
+                  key: QuickSearchKeys.result(index),
+                  hit: hits[index],
+                  active: index == active,
+                  onHover: onHover == null ? null : () => onHover!(index),
+                ),
+              ),
+            ),
+          ),
+        // In the scroll view, so a footer that wraps (large text, a narrow
+        // window) never takes the results' room; the reveal of the last
+        // hit brings it into view (pre-ship rounds 47 and 48).
+        if (results.more)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                EmberSpace.md,
+                0,
+                EmberSpace.md,
+                EmberSpace.sm,
+              ),
+              child: Text(
+                l10n.searchMoreMatches,
+                style: EmberType.label.copyWith(color: colors.inkTertiary),
+              ),
+            ),
+          ),
+      ],
+    );
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Announces the count to screen readers when it changes; outside
+        // the scroll view, which leaves out what it does not show.
+        Semantics(
+          liveRegion: true,
+          label: l10n.searchResultCount(hits.length),
+          child: const SizedBox.shrink(),
+        ),
+        Flexible(child: scroll),
+      ],
+    );
+  }
+}
+
+class _Notice extends StatelessWidget {
+  const _Notice({required this.notice});
+
+  final BundleNotice notice;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = EmberColors.of(context);
+    final l10n = AppLocalizations.of(context);
+    final message = switch (notice) {
+      AppUpdateNeeded() => l10n.searchNoticeAppUpdate,
+    };
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+      child: DecoratedBox(
+        key: QuickSearchKeys.notice,
+        decoration: BoxDecoration(
+          color: colors.warnBg,
+          borderRadius: BorderRadius.circular(EmberRadius.l),
+          border: Border.all(color: colors.warnLine),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ExcludeSemantics(
+                child: Icon(
+                  Icons.info_outline,
+                  size: EmberSize.icon,
+                  color: colors.warnStrong,
+                ),
+              ),
+              const SizedBox(width: EmberSpace.sm),
+              Expanded(
+                child: Text(
+                  message,
+                  style: EmberType.body.copyWith(
+                    fontSize: 12.5,
+                    color: colors.warnInk,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ResultRow extends StatelessWidget {
+  const _ResultRow({
+    required this.hit,
+    required this.active,
+    required this.onHover,
+    super.key,
+  });
+
+  final SearchHit hit;
+  final bool active;
+  final VoidCallback? onHover;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = EmberColors.of(context);
+    final l10n = AppLocalizations.of(context);
+    final kind = switch (hit.kind) {
+      SearchKind.type => l10n.searchKindType,
+      SearchKind.solarSystem => l10n.searchKindSolarSystem,
+    };
+    final name = hit.name ?? l10n.searchUnnamed(hit.id);
+    return MergeSemantics(
+      child: Semantics(
+        selected: active,
+        child: MouseRegion(
+          // Only a moving pointer takes the highlight: a row scrolled under
+          // a resting one, as the arrows scroll, does not.
+          onHover: onHover == null ? null : (_) => onHover!(),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: active ? colors.hover : null,
+              borderRadius: BorderRadius.circular(EmberRadius.m),
+            ),
+            child: Row(
+              children: [
+                // The Ember edge marks the highlighted row, as the current
+                // card's does (DESIGN.md, Containers).
+                Container(
+                  width: 3,
+                  margin: const EdgeInsets.symmetric(vertical: 6),
+                  decoration: BoxDecoration(
+                    color: active ? colors.accent : null,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 7),
+                Flexible(
+                  flex: 3,
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: EmberType.body.copyWith(color: colors.ink),
+                  ),
+                ),
+                if (hit.context case final context?) ...[
+                  const SizedBox(width: EmberSpace.sm),
+                  Flexible(
+                    flex: 2,
+                    child: Text(
+                      context,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: EmberType.body.copyWith(
+                        color: colors.inkSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                Padding(
+                  padding: const EdgeInsets.only(
+                    left: EmberSpace.sm,
+                    right: EmberSpace.sm,
+                  ),
+                  child: Text(
+                    kind,
+                    maxLines: 1,
+                    style: EmberType.label.copyWith(color: colors.inkTertiary),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

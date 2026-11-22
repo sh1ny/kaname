@@ -15,6 +15,8 @@ import 'dart:async' as _ida;
 import 'package:http/http.dart' as _i85jenna;
 import 'package:kaname_client/src/protocol/health/health_report.dart'
     as _ipujyub9;
+import 'package:kaname_client/src/protocol/static_data/bundle_announcement.dart'
+    as _ibnxtke0;
 import 'package:serverpod_client/serverpod_client.dart' as _isc;
 
 import 'protocol.dart' as _il2as5qe;
@@ -40,6 +42,48 @@ class EndpointHealth extends _isc.EndpointRef {
       caller.callServerEndpoint<_ipujyub9.HealthReport>('health', 'check', {});
 }
 
+/// The static-data endpoint: the announcement stream of the client data
+/// bundle.
+/// {@category Endpoint}
+class EndpointStaticData extends _isc.EndpointRef {
+  EndpointStaticData(_isc.EndpointCaller caller) : super(caller);
+
+  @override
+  String get name => 'staticData';
+
+  /// Streams the announcement of the bundle the app may download.
+  ///
+  /// The first event is the announcement the announcer has installed, sent
+  /// once the announcer has installed its first one (a failed first refresh,
+  /// or none that succeeded 19 seconds after its start, installs "none"); an
+  /// event follows each change of the installed announcement. Needs no
+  /// sign-in.
+  ///
+  /// ## Carried constraint
+  ///
+  /// - **C20:** The stream is bounded by count, rate and lifetime. The server
+  ///   holds at most 2,000 of them (`BundleAnnouncementRuntime.maxStreams`)
+  ///   and refuses more by ending the stream at once without an event. Each
+  ///   ends after 30 minutes on the server's clock, also while its client
+  ///   reads nothing, because Serverpod's endpoint streams have no
+  ///   backpressure (A14): what the stream sends is bounded by rate, at most
+  ///   one event per change of the installed announcement, never by the
+  ///   client's reading. Whatever ends the stream (expiry, the client's
+  ///   disconnect, an error) removes its bus listener and frees its place.
+  ///   Every send carries the announcement installed at that moment, and
+  ///   only when its revision is higher than the last one this stream sent
+  ///   (C16): bus messages are wake-ups, never the payload, so a late or
+  ///   buffered message cannot send a retired announcement. The handoff is
+  ///   synchronous; Serverpod writes the value to the WebSocket one
+  ///   microtask later, and an announcement installed in that microtask
+  ///   follows at once.
+  _ida.Stream<_ibnxtke0.BundleAnnouncement> bundleAnnouncements() =>
+      caller.callStreamingServerEndpoint<
+        _ida.Stream<_ibnxtke0.BundleAnnouncement>,
+        _ibnxtke0.BundleAnnouncement
+      >('staticData', 'bundleAnnouncements', {}, {});
+}
+
 class Client extends _isc.ServerpodClientShared {
   Client(
     String host, {
@@ -63,12 +107,18 @@ class Client extends _isc.ServerpodClientShared {
          httpClientOverride: httpClientOverride,
        ) {
     health = EndpointHealth(this);
+    staticData = EndpointStaticData(this);
   }
 
   late final EndpointHealth health;
 
+  late final EndpointStaticData staticData;
+
   @override
-  Map<String, _isc.EndpointRef> get endpointRefLookup => {'health': health};
+  Map<String, _isc.EndpointRef> get endpointRefLookup => {
+    'health': health,
+    'staticData': staticData,
+  };
 
   @override
   Map<String, _isc.ModuleEndpointCaller> get moduleLookup => {};

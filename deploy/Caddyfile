@@ -3,6 +3,20 @@
 {
 	auto_https off
 	admin off
+
+	servers {
+		timeouts {
+			# Closes a connection whose client has stopped reading: a write
+			# that makes no progress for this long aborts it, which frees the
+			# bytes a stalled bundle download pins in the server (design D4,
+			# C19). It is an idle limit, reset before every write, not a limit
+			# on the whole response, so a slow but moving download and the
+			# 30-minute announcement WebSockets (whose writes complete) are
+			# not cut. Caddy's own default is 1m; it is set here so the
+			# stack's behaviour does not follow a default.
+			write_idle 1m
+		}
+	}
 }
 
 :80 {
@@ -15,6 +29,15 @@
 	# The bare prefix is also the API's, never the web app's.
 	handle /api {
 		respond "Not Found" 404
+	}
+
+	# The generated client opens its WebSocket at /v1/websocket on the
+	# origin, whatever path the app is configured with, so the web app's
+	# streams (the static-data announcements) arrive here, not under /api/.
+	# The path passes through unchanged; without this route they would get
+	# the single-page-app fallback.
+	handle /v1/websocket {
+		reverse_proxy server:8080
 	}
 
 	# Health probes pass through unchanged.

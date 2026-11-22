@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
+import 'package:kaname_server/src/static_data/bundle_announcer.dart';
 import 'package:kaname_server/src/static_data/postgres_connection_settings.dart';
 import 'package:kaname_server/src/static_data/static_data_check_call.dart';
 import 'package:kaname_server/src/static_data/static_data_runtime.dart';
@@ -17,6 +18,7 @@ import 'package:serverpod/protocol.dart'
 import 'package:serverpod/serverpod.dart' show Constant, Session;
 import 'package:test/test.dart';
 
+import '../support/announcer_support.dart';
 import '../support/migrated_database.dart';
 import '../support/worker_harness.dart';
 import '../test_tools/serverpod_test_tools.dart';
@@ -147,6 +149,7 @@ void main() {
       DateTime? now,
       DateTime Function()? clock,
       Duration spawnDelay = Duration.zero,
+      BundleAnnouncer? announcer,
     }) {
       final hook = staticDataStartHookFor(
         runMode: 'development',
@@ -155,6 +158,7 @@ void main() {
         log: (level, message) => logs.add((level, message)),
         scheduleDailyCheck: () => scheduleDailyCheck(session.serverpod),
         now: clock ?? () => now ?? _afternoon,
+        announcer: announcer,
         spawn: (name) async {
           await Future<void>.delayed(spawnDelay);
           return isolateComputeWorkerSpawn(sourceFactory: sourceFactory)(name);
@@ -280,6 +284,143 @@ void main() {
       expect(calls.single.scheduling, isA<CronFutureCallScheduling>());
     });
 
+    // Scenario: Every stored build has its bundle / Start with no due check
+    // (D20, C7).
+    test(
+      'start with no due check repairs the bundle and announces it',
+      () async {
+        // Build 3000 is active with no bundle, and today's check already ran.
+        final importer = await WorkerHarness.start(postgres: settings);
+        addTearDown(importer.close);
+        final imported = await importer.runImport(LocalZipSource(_zipPath));
+        expect((imported as ImportFinished).outcome, ImportOutcome.succeeded);
+        await checkedAt(DateTime.utc(2026, 1, 2, 12));
+        expect(await SdeBundle.db.find(session), isEmpty);
+
+        final announced = await TestAnnouncer.start(
+          session,
+          runRepair: () => staticDataRuntime.supervisor!.runBundleRepair(),
+        );
+        addTearDown(announced.announcer.stop);
+        expect(announced.announcer.installed, isA<BundleAnnouncementNone>());
+
+        final reply = await hook(
+          fakeCcpFactory,
+          announcer: announced.announcer,
+        ).run();
+        await announced.announcer.settled;
+
+        // The announcer, reacting to this `BundleRepairFinished`, announces
+        // build 3000's bundle.
+        expect(announced.lastNamed.build, 3000);
+        expect(reply, isA<BundleRepairFinished>(), reason: '$reply');
+        final result = (reply as BundleRepairFinished).result;
+        final step = (result as BundleRepairRan).step;
+        expect(step, isA<BundleBuilt>());
+        expect(step.build, 3000);
+        expect(announced.lastNamed.sha256, (step as BundleBuilt).sha256);
+        final stored = (await SdeBundle.db.find(session)).single;
+        expect(stored.build, 3000);
+        expect(stored.outcome, SdeBundleOutcome.built);
+        expect(stored.sha256, step.sha256);
+        expect(await SdeBundleBytes.db.count(session), 1);
+        expect(await SdeCheck.db.count(session), 1, reason: 'no check ran');
+      },
+    );
+
+    // Pre-ship round 7: the repair tick waits for the start-up work.
+    test('a tick during the start-up work sends no repair before the due '
+        'check has run', () async {
+      // Build 3000 is active with no bundle and no check has run, so the
+      // catch-up check is due and the announcer owes a repair.
+      final importer = await WorkerHarness.start(postgres: settings);
+      addTearDown(importer.close);
+      final imported = await importer.runImport(LocalZipSource(_zipPath));
+      expect((imported as ImportFinished).outcome, ImportOutcome.succeeded);
+      await SdeCheck.db.deleteWhere(
+        session,
+        where: (t) => t.id.notEquals(null),
+      );
+      var repairs = 0;
+      final announced = await TestAnnouncer.start(
+        session,
+        runRepair: () {
+          repairs++;
+          return staticDataRuntime.supervisor!.runBundleRepair();
+        },
+      );
+      addTearDown(announced.announcer.stop);
+      await announced.announcer.settled;
+
+      final running = hook(
+        fakeCcpFactory,
+        announcer: announced.announcer,
+        spawnDelay: const Duration(seconds: 2),
+      ).run();
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      announced.clock.elapse(const Duration(seconds: 60));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(repairs, 0, reason: 'the tick waits for the start-up work');
+
+      final reply = await running;
+      expect(reply, isA<BuildCheckFinished>(), reason: '$reply');
+      expect(repairs, 0, reason: 'the check did the repair');
+      expect(await SdeCheck.db.count(session), 1);
+    });
+
+    // Pre-ship round 8: the hold ends when the check is answered.
+    test('a tick after the start-up check is answered sends the owed repair '
+        'while the refresh it causes is held', () async {
+      final importer = await WorkerHarness.start(postgres: settings);
+      addTearDown(importer.close);
+      final imported = await importer.runImport(LocalZipSource(_zipPath));
+      expect((imported as ImportFinished).outcome, ImportOutcome.succeeded);
+      await SdeCheck.db.deleteWhere(
+        session,
+        where: (t) => t.id.notEquals(null),
+      );
+      var repairs = 0;
+      final announced = await TestAnnouncer.start(
+        session,
+        runRepair: () {
+          repairs++;
+          return staticDataRuntime.supervisor!.runBundleRepair();
+        },
+      );
+      addTearDown(announced.announcer.stop);
+      final gate = announced.source.holdReads = Completer<void>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+
+      final running = hook(
+        fakeCcpFactory,
+        announcer: announced.announcer,
+      ).run();
+      // The check ends with its reply; the refresh that reply asks for
+      // stays held.
+      final checked = DateTime.now().add(const Duration(seconds: 60));
+      while (await SdeCheck.db.count(session) == 0 ||
+          announced.source.reads < 2) {
+        if (DateTime.now().isAfter(checked)) fail('the check never ended');
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      announced.clock.elapse(const Duration(seconds: 60));
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      expect(
+        repairs,
+        1,
+        reason:
+            'the tick sends the repair the last read '
+            'owed, the hold having ended with the check',
+      );
+
+      gate.complete();
+      expect(await running, isA<BuildCheckFinished>());
+    });
+
     test(
       'a restart after today\'s check runs none and keeps one daily call',
       () async {
@@ -290,8 +431,9 @@ void main() {
         await hooks.removeLast().stop();
         final second = await hook(fakeCcpFactory).run();
 
-        expect(first, isNull);
-        expect(second, isNull);
+        // No check runs; each start sends a bundle repair instead.
+        expect(first, isA<BundleRepairFinished>());
+        expect(second, isA<BundleRepairFinished>());
         expect(await SdeCheck.db.count(session), 1);
         expect(await dailyCalls(), hasLength(1));
       },
@@ -438,7 +580,11 @@ void main() {
       await checkedAt(_afternoon);
       final reply = await hook(fakeCcpFactory).run();
 
-      expect(reply, isNull, reason: 'a build is active');
+      expect(
+        reply,
+        isA<BundleRepairFinished>(),
+        reason: 'a build is active, so no check runs',
+      );
       final record = (await SdeImport.db.find(session)).single;
       expect(record.outcome, SdeImportOutcome.failed);
       expect(record.failureReason, 'interrupted');

@@ -11,6 +11,8 @@ dependencies:
   http: ^1.6.0
   kaname_core:
     path: ../kaname_core
+  kaname_static_data_bundle:
+    path: ../kaname_static_data_bundle
   path: ^1.9.1
 
 dev_dependencies:

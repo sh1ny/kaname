@@ -140,4 +140,81 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get aboutLicencesOpen => 'View licences';
+
+  @override
+  String get searchLabel => 'Search';
+
+  @override
+  String get searchPlaceholder => 'Search types and systems';
+
+  @override
+  String get searchOpen => 'Open search';
+
+  @override
+  String get searchClose => 'Close search';
+
+  @override
+  String get searchResults => 'Search results';
+
+  @override
+  String searchResultCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count results',
+      one: '1 result',
+      zero: 'No results',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get searchNoMatches => 'No matches';
+
+  @override
+  String get searchMoreMatches =>
+      'More matches exist. Type more to narrow them.';
+
+  @override
+  String get searchKindType => 'Type';
+
+  @override
+  String get searchKindSolarSystem => 'Solar system';
+
+  @override
+  String searchUnnamed(int id) {
+    return 'Record $id';
+  }
+
+  @override
+  String get searchNotLoaded => 'Static data not loaded yet';
+
+  @override
+  String get searchReasonStarting =>
+      'Starting up. Static data will load in a moment.';
+
+  @override
+  String get searchReasonDownloading => 'Static data is downloading.';
+
+  @override
+  String get searchReasonNoServer => 'No server is configured.';
+
+  @override
+  String get searchReasonUnreachable => 'The server could not be reached.';
+
+  @override
+  String get searchReasonServerHasNoBundle =>
+      'The server has no static data yet.';
+
+  @override
+  String get searchReasonRefused =>
+      'The downloaded static data could not be used.';
+
+  @override
+  String get searchReasonAppUpdate =>
+      'Update the app to load the latest static data.';
+
+  @override
+  String get searchNoticeAppUpdate =>
+      'Update the app to load the latest static data. Search keeps using the data you have.';
 }

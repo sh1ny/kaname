@@ -13,6 +13,8 @@ dependencies:
     path: ../../packages/kaname_core
   kaname_static_data:
     path: ../../packages/kaname_static_data
+  kaname_static_data_bundle:
+    path: ../../packages/kaname_static_data_bundle
   meta: ^1.19.0
   path: ^1.9.1
   postgres: 3.6.0
@@ -20,6 +22,12 @@ dependencies:
   yaml: ^3.1.3
 
 dev_dependencies:
+  # Dev-only: the stream tests drive the app's own, plain-Dart reconnect
+  # loop (StaticDataSync) against the real server.
+  kaname_app:
+    path: ../../app
+  kaname_client:
+    path: ../kaname_client
   lints: ^6.0.0
   serverpod_cli: 4.1.2
   serverpod_test: 4.1.2

@@ -13,12 +13,14 @@
 !app_packages/kaname_ember_ui/pubspec.yaml
 !packages/kaname_core/pubspec.yaml
 !packages/kaname_static_data/pubspec.yaml
+!packages/kaname_static_data_bundle/pubspec.yaml
 !spikes/kaname_grid_spike/pubspec.yaml
 !tools/kaname_tools/pubspec.yaml
 
 # The server packages' sources, and the workspace packages the server imports.
 !packages/kaname_core/lib/**
 !packages/kaname_static_data/lib/**
+!packages/kaname_static_data_bundle/lib/**
 !server/kaname_client/pubspec.yaml
 !server/kaname_client/lib/**
 !server/kaname_server/pubspec.yaml

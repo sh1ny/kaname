@@ -11,6 +11,7 @@ import 'sde_limits.dart';
 import 'sde_source.dart';
 import 'stale_import_work.dart';
 import 'static_data_store.dart';
+import 'stored_bundle.dart';
 import 'zip_sde_archive.dart' show describeFailure;
 
 /// How a check for a new build ended.
@@ -111,10 +112,19 @@ final class BuildCheckFailed extends BuildCheckResult {
 ///    for the pair is stored. A failed comparison stores a `failed` diff row
 ///    with its reason in a transaction of its own and the switch goes on
 ///    (D10).
-/// 6. Switch in one transaction ([StaticDataWriter.switchTo]). When it fails,
+/// 6. Build and store the new build's client data bundle ([ensureBundle])
+///    unless a built bundle of the current format is stored (D1). A failed
+///    bundle build is recorded and the switch goes on (D10). The first
+///    build's bundle is built right after the import activates it, in the
+///    same check (D20).
+/// 7. Switch in one transaction ([StaticDataWriter.switchTo]). When it fails,
 ///    insert a `failed` forward [SwitchRecord]; the build stays staged and the
 ///    check is `staged`.
-/// 7. Insert the check record, with [CheckRecord.checkedAt] the job's start
+/// 8. Whatever the check's outcome, as long as the lock is held, repair the
+///    active build's bundle when it is missing, failed or of another format
+///    version, unless this check already attempted that build's bundle
+///    (D20). A check that could not take the lock builds nothing.
+/// 9. Insert the check record, with [CheckRecord.checkedAt] the job's start
 ///    time and the announced build, prune the import, check and switch records
 ///    beyond [keepRecords], release the lock and close the store, whatever
 ///    the outcome.
@@ -124,6 +134,10 @@ final class BuildCheckFailed extends BuildCheckResult {
 ///
 /// ## Carried constraints
 ///
+/// - **C7:** bundle builds and repairs run only under the static-data lock:
+///   inside this check job, on every outcome that holds the lock, and in the
+///   repair request the compute worker runs at start or for the announcer's
+///   tick ([BundleRepairJob]).
 /// - **C3:** Auto-update is always on. `static-data-settings` adds the toggle
 ///   as a stored setting, and the check job must then stage instead of
 ///   switching when it is off. This is a deliberate gap.
@@ -148,6 +162,8 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
     this.batchSize = 500,
     this.keepRecords = 100,
     this.scratchRoot,
+    this.buildBundle = buildStoredBundle,
+    this.onBundle,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
@@ -172,7 +188,17 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
   /// The per-database directory of the sources' temporary directories.
   final Directory? scratchRoot;
 
+  /// Builds a stored build's bundle; [buildStoredBundle] in production.
+  final BuildBundle buildBundle;
+
+  /// Sees the result of every bundle step the job runs, for logging.
+  final void Function(BundleStepResult result)? onBundle;
+
   final DateTime Function() _clock;
+
+  /// The builds whose bundle this run has attempted, so none is built twice
+  /// in one check.
+  final Set<int> _bundleAttempted = {};
 
   @override
   String get name => 'take-latest-build';
@@ -194,6 +220,7 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
         scratchRoot: scratchRoot,
       );
       final result = await _check(startedAt);
+      await _repairActiveBundle();
       await store.insertCheck(_recordOf(result, startedAt));
       await _quietly(() async {
         await store.pruneRecords(keep: keepRecords);
@@ -206,6 +233,7 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
         'unexpected error: ${describeFailure(error)}',
       );
       if (locked) {
+        await _repairActiveBundle();
         await _quietly(() => store.insertCheck(_recordOf(result, startedAt)));
       }
       return result;
@@ -249,6 +277,7 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
         case ImportSkipped(:final reason):
           return BuildCheckFailed(reason, latestBuild: announced);
         case ImportSucceeded(state: BuildState.active, :final build):
+          await _bundle(build);
           return BuildSwitched(build);
         case ImportSucceeded(:final build):
           return _compareAndSwitch(active, build);
@@ -266,6 +295,7 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
   /// Compares [active] with the staged [build] and switches to it.
   Future<BuildCheckResult> _compareAndSwitch(int? active, int build) async {
     if (active != null) await _compare(active, build);
+    await _bundle(build);
     final at = _clock();
     try {
       await store.inTransaction((writer) => writer.switchTo(build, at: at));
@@ -315,6 +345,31 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
     }
     await _quietly(() => store.insertDiff(record));
   }
+
+  /// Builds and stores [build]'s bundle unless one of the current format is
+  /// stored or this run already attempted it.
+  ///
+  /// Never throws: a failure is recorded by [ensureBundle].
+  Future<void> _bundle(int build) async {
+    if (!_bundleAttempted.add(build)) return;
+    final result = await ensureBundle(
+      store,
+      build,
+      buildBundle: buildBundle,
+      clock: _clock,
+    );
+    try {
+      onBundle?.call(result);
+    } on Object {
+      // Logging must not change the check.
+    }
+  }
+
+  /// Repairs the active build's bundle, if there is an active build.
+  Future<void> _repairActiveBundle() => _quietly(() async {
+    final active = _buildIn(await store.storedBuilds(), BuildState.active);
+    if (active != null) await _bundle(active);
+  });
 
   static CheckRecord _recordOf(BuildCheckResult result, DateTime checkedAt) {
     final (outcome, latest, reason) = switch (result) {

@@ -1,0 +1,16 @@
+### The bytes of one built client data bundle (D3), found by the build and
+### SHA-256 that its URL names, never by build alone. A rebuild of the same
+### build deletes the superseded hash's row in the same transaction, so a
+### build has at most one row. `bytes` is `ByteData`, stored as `bytea` and
+### read whole (A10); only the announcer's byte load reads it.
+class: SdeBundleBytes
+table: sde_bundle_bytes
+serverOnly: true
+fields:
+  build: int
+  sha256: String
+  bytes: ByteData
+indexes:
+  sde_bundle_bytes_build_sha256_idx:
+    fields: build, sha256
+    unique: true
