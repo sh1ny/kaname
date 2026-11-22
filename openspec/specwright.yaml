@@ -12,13 +12,13 @@ github:
     login: sh1ny
     after_fixes: true
 
-# Claude plans; OMP implements and launches Claude for cross-model review.
+# Claude plans; OMP implements. Design and pre-ship reviews try the OMP, Codex, then Claude CLIs, skipping the current harness.
 # Use the Claude CLI's configured model and thinking defaults.
 review:
   cross_model: true
-  order: [claude]
+  order: [omp, codex, claude]
   timeout: 20m
-  max_diff_kb: 1280
+  max_diff_kb: 1536
   preship: true
 
 # Paths reserve locations only; setup creates no planning documents.
