@@ -2,7 +2,7 @@
 
 Kaname (要, "linchpin") is an open-source EVE Online corporation/alliance suite: one Flutter app for web, desktop and mobile, backed by Serverpod 4.1, with a personal console for every pilot. Licence: AGPL-3.0, except separately licensed vendored assets. Status: M0 (walking skeleton). The root pub workspace holds `app/` (placeholder screen), `packages/kaname_core/` and `tools/kaname_tools/`; strategy, architecture and roadmap are in `openspec/`. No product features yet.
 
-These instructions apply to Claude Code and OMP. Claude plans; OMP implements and launches Claude for cross-model review. This project does not install Codex skills or agents.
+These instructions apply to Claude Code and OMP. Claude plans; OMP implements. Design and pre-ship reviews try the OMP, Codex, then Claude CLIs, skipping the current harness. This project does not install Codex skills or agents.
 
 ## Environment and tools
 
@@ -46,7 +46,7 @@ These rules also apply to delegated agents. Before planning specs/design/tasks o
 
 - Specwright 0.34.0 is installed for Claude Code and OMP only: shared skills in `.claude/skills/`, harness-specific agents in `.claude/agents/` and `.omp/agents/`, schema in `openspec/schemas/specwright/`. Existing OpenSpec skills/commands remain in both harness directories.
 - `openspec/config.yaml` contains the mandatory branch/apply/archive/finish hooks. Project planning is reserved for `specwright-roadmap`; setup does not start a change or write planning documents. Default future paths are `openspec/strategy.md`, `architecture.md`, `roadmap.md`, and `docs/adr/`.
-- Settings are in `openspec/specwright.yaml`: Git PR finish, KintsugiBot, owner merge, `@codex review` requests posted as `sh1ny`, Claude-only cross-model design/pre-ship reviews, group commits, strict pre-push OpenSpec validation. No packs, external planning store, cheap tier or automatic releases.
+- Settings are in `openspec/specwright.yaml`: Git PR finish, KintsugiBot, owner merge, `@codex review` requests posted as `sh1ny`, cross-model design/pre-ship reviews through OMP, then Codex, then Claude (`review.order: [omp, codex, claude]`), group commits, strict pre-push OpenSpec validation. No packs, external planning store, cheap tier or automatic releases.
 - `[user]` tasks are checked only by the owner. `[evidence]` tasks require their nonempty committed evidence. Never archive a deferred review or unticked user task; follow the installed workflow guards.
 - **specwright#170 workaround:** `.omp/agents/specwright-implementer.md` uses `model: pi/task`, not upstream `pi/smol`. The light implementer stays `pi/smol`; reviewer stays `pi/slow`. Re-apply/check after every Specwright update until #170 is fixed.
 - **specwright#140 workaround:** both `.claude/agents/specwright-implementer*.md` include `ToolSearch, mcp__dart__*` in `tools:`. Updates overwrite tools; re-apply after every update until #140 is fixed.
