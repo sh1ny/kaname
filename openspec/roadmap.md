@@ -11,17 +11,18 @@ Status is derived: a change is done when archived on `main`; a milestone is done
 **Exit criteria:**
 - Kaname's generator reads the ESI spec at one pinned compatibility date and produces a reproducible typed client and route catalogue (rate group, scopes, roles and cache behavior). Recorded responses exercise the generated contract. (agent)
 - Every ESI call goes through the shared scheduler. Tests prove atomic budget reservation across server isolates and in solo, response-header correction, four governor tiers, priorities, shared negative caching and conditional polling with downtime handling. (agent)
-- Call logs retain route, status, cost, latency and bucket for seven days, distinguish refused calls from errors, contain no tokens, and enforce ADR 0006 visibility. (agent)
+- Call logs retain route, status, cost, latency and bucket for seven days, distinguish refused calls from errors, and contain no tokens. Privacy-scoped reads return the viewer's own rows; admins also get route-level totals and errors under ADR 0006, never another member's rows in M2. (agent)
 - Refresh tokens are encrypted with an install key kept outside the database. Tests prove one holder per character, single-flight refresh and rotation recovery, and re-login when a rotated token is lost. (agent)
-- The server uses confidential SSO and maps the validated character to a Serverpod identity; native solo uses PKCE. Both validate JWT claims against CCP's JWKS and derive requested scopes under ADR 0006. (agent)
+- The server uses confidential SSO and maps the validated character to a Serverpod identity; native solo uses PKCE. Both validate JWT claims against CCP's JWKS and request only enabled-module scopes permitted by configured policy and, for optional classes, recorded opt-ins. Missing policy or required opt-in grants no scope. Full organisation sharing and consent stay in M4. (agent)
+- Signed-in callers with the required admin scope can run static-data admin actions; anonymous and non-admin callers cannot. No shared-key fallback remains, and public status stays readable (ADR 0015). (agent)
 - The owner signs in with a test character through both flows and sees a scoped ESI call succeed in each, without concurrent token holders for that character. Use an owner-provided native registration; the shared native client ID decision (R45) stays open. (user)
 
 **Changes** (in order; each about one PR):
 1. `esi-client-generator` - pinned ESI spec and compatibility date, typed client and route catalogue.
 2. `esi-request-scheduler` - atomic budgets (Redis on server, in-process in solo), bucket mirrors, four-tier governor, priorities, negative cache and conditional polling; prerequisite `esi-client-generator`.
-3. `esi-call-log` - scheduler outcomes, seven-day retention, secret-free logging and ADR 0006 visibility; prerequisite `esi-request-scheduler`.
+3. `esi-call-log` - scheduler outcomes, seven-day retention, secret-free logging and scoped own-row and admin aggregate reads; prerequisite `esi-request-scheduler`.
 4. `esi-token-vault` - install-key encryption, one token holder per ADR 0005, single-flight refresh and rotation recovery.
-5. `esi-sso` - confidential server flow and native PKCE, JWT/JWKS verification, Serverpod identity and a scoped ESI call through the platform; prerequisites `esi-call-log`, `esi-token-vault`.
+5. `esi-sso` - confidential server flow and native PKCE, JWT/JWKS verification, Serverpod identity, configured policy and recorded opt-in inputs for scopes, a scoped ESI call, and the static-data admin key cutover; prerequisites `esi-call-log`, `esi-token-vault`.
 
 ## Next: M3 - Identity and access
 
