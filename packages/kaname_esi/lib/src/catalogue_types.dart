@@ -171,10 +171,9 @@ final class EsiRoute {
 final class EsiCatalogue {
   /// Creates a catalogue from its two indexes; the generator writes both.
   const EsiCatalogue({
-    required Map<String, EsiRoute> byOperationId,
-    required Map<String, EsiRoute> byMethodAndPath,
-  }) : _byOperationId = byOperationId,
-       _byMethodAndPath = byMethodAndPath;
+    required this._byOperationId,
+    required this._byMethodAndPath,
+  });
 
   final Map<String, EsiRoute> _byOperationId;
   final Map<String, EsiRoute> _byMethodAndPath;
