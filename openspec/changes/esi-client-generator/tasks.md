@@ -120,8 +120,8 @@ Test paths: `tools/kaname_tools/test/` (abbreviated `tools/…`) and `packages/k
 
 ## 7. Contract fixtures
 
-- [ ] 7.1 Write Kaname-written exchange files under `packages/kaname_esi/test/exchanges/` in three sets (conforming, negative, forward-compatibility), holding no data copied from ESI (C7), and failing tests `esi/contract_test.dart` ("Fixture transport", "Exact assertion", "Snapshot bump breaks an asserted behaviour", the last by asserting a deliberately altered expectation fails with the operation named) and `esi/contract_coverage_test.dart` ("Every construct covered", which checks that each listed inbound and outbound construct has a tagged exchange). Verify they fail for the right reason, then pass with the generated client; flip their rows green.
-- [ ] 7.2 C7: confirm the text of C7 is in `specs/esi-client/spec.md` → "Contract tests over recorded exchanges"; tick when present.
+- [x] 7.1 Write Kaname-written exchange files under `packages/kaname_esi/test/exchanges/` in three sets (conforming, negative, forward-compatibility), holding no data copied from ESI (C7), and failing tests `esi/contract_test.dart` ("Fixture transport", "Exact assertion", "Snapshot bump breaks an asserted behaviour", the last by asserting a deliberately altered expectation fails with the operation named) and `esi/contract_coverage_test.dart` ("Every construct covered", which checks that each listed inbound and outbound construct has a tagged exchange). Verify they fail for the right reason, then pass with the generated client; flip their rows green.
+- [x] 7.2 C7: confirm the text of C7 is in `specs/esi-client/spec.md` → "Contract tests over recorded exchanges"; tick when present.
 
 ## 8. Third-party notices
 
