@@ -399,23 +399,33 @@ void main() {
     }, timeout: _slow);
 
     // C6: the header the server receives is Caddy's own, never the
-    // caller's, on every route Caddy passes to the server.
+    // caller's, on every route Caddy passes to the server. Two callers with
+    // known, distinct addresses: the host, which reaches Caddy through the
+    // network's gateway, and a container at a fixed address.
     test("Caddy replaces a caller's X-Forwarded-For with the address the "
         'connection came from', () async {
-      final origin = await startCaddyBeforeEcho();
+      final stack = await startCaddyBeforeEcho();
       const spoofed = '198.51.100.77';
       for (final path in ['/v1/websocket', '/api/ping', '/livez', '/readyz']) {
         final client = HttpClient();
         addTearDown(() => client.close(force: true));
-        final request = await client.getUrl(Uri.parse('$origin$path'));
+        final request = await client.getUrl(Uri.parse('${stack.origin}$path'));
         request.headers.set('X-Forwarded-For', spoofed);
         final response = await request.close();
-        final forwarded = (await utf8.decoder.bind(response).join()).trim();
+        final fromHost = (await utf8.decoder.bind(response).join()).trim();
         expect(response.statusCode, 200, reason: path);
-        expect(forwarded, isNot(contains(spoofed)), reason: path);
-        // One address, the one Caddy received the connection from.
-        expect(forwarded, isNot(contains(',')), reason: path);
-        expect(InternetAddress.tryParse(forwarded), isNotNull, reason: path);
+        expect(fromHost, echoGateway, reason: 'host caller, $path');
+
+        final fromContainer = await echoFromContainer(
+          stack,
+          path,
+          forwarded: spoofed,
+        );
+        expect(
+          fromContainer,
+          echoContainerCaller,
+          reason: 'container caller, $path',
+        );
       }
     }, timeout: _slow);
 

@@ -77,9 +77,9 @@ and CIDR ranges separated by commas. Unset or empty trusts nobody, and an
 invalid entry stops the server at start-up, naming the entry.
 
 The server reads only the last 2 KiB and the rightmost 20 entries of that
-header. When a trusted proxy's header is missing or empty, holds an entry
-that is not an IP address, or has no untrusted address within those bounds,
-the server counts the stream for the proxy's own address: every client
+header, from the right. When a trusted proxy's header is missing or empty,
+reaches an entry that is not an IP address before the client's address, or
+has no untrusted address within those bounds, the server counts the stream for the proxy's own address: every client
 behind that proxy then shares its 16 places. The server logs a warning with
 the reason `no usable forwarded header` and the proxy's address, at most
 once a minute per proxy. Seeing it means the proxy in front is not sending

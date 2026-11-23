@@ -179,14 +179,25 @@ Future<String> startRelay() async {
   return origin;
 }
 
-/// Starts the shipped `deploy/Caddyfile` in front of an echo upstream and
-/// returns its origin on a loopback port.
+/// The subnet of [startCaddyBeforeEcho]'s network, its gateway, and the
+/// fixed address of the container caller [echoFromContainer] starts.
+const echoSubnet = '10.213.47.0/24';
+const echoGateway = '10.213.47.1';
+const echoContainerCaller = '10.213.47.50';
+
+/// The shipped Caddy in front of an echo upstream, from
+/// [startCaddyBeforeEcho].
+typedef EchoStack = ({String origin, String network, String front});
+
+/// Starts the shipped `deploy/Caddyfile` in front of an echo upstream.
 ///
-/// Both run on their own network, where the upstream answers to `server`,
-/// so every route of the Caddyfile reaches it. The upstream answers each
-/// request with the `X-Forwarded-For` header it received, as Caddy sent it.
-/// All of it is removed at the end of the test.
-Future<String> startCaddyBeforeEcho() async {
+/// Both run on their own network, [echoSubnet] with the gateway
+/// [echoGateway], where the upstream answers to `server`, so every route
+/// of the Caddyfile reaches it. The upstream answers each request with the
+/// `X-Forwarded-For` header it received, as Caddy sent it. Caddy is
+/// published on a loopback port, which host callers reach through the
+/// gateway. All of it is removed at the end of the test.
+Future<EchoStack> startCaddyBeforeEcho() async {
   final scratch = await Directory.systemTemp.createTemp('kaname-echo-');
   addTearDown(() => scratch.delete(recursive: true));
   File('${scratch.path}/Caddyfile').writeAsStringSync('''
@@ -200,7 +211,15 @@ Future<String> startCaddyBeforeEcho() async {
 }
 ''');
   final network = 'kaname-echo-$pid';
-  final created = await run('docker', ['network', 'create', network]);
+  final created = await run('docker', [
+    'network',
+    'create',
+    '--subnet',
+    echoSubnet,
+    '--gateway',
+    echoGateway,
+    network,
+  ]);
   expect(created.exitCode, 0, reason: created.output);
   // Teardowns run last first: the containers go before their network.
   addTearDown(() => run('docker', ['network', 'rm', network]));
@@ -248,7 +267,35 @@ Future<String> startCaddyBeforeEcho() async {
   );
   final origin = 'http://127.0.0.1:$port';
   await _untilServing(origin);
-  return origin;
+  return (origin: origin, network: network, front: front);
+}
+
+/// Sends GET [path] to [stack]'s Caddy from a container at
+/// [echoContainerCaller] with `X-Forwarded-For: [forwarded]`, and returns
+/// the body: the header the upstream received.
+Future<String> echoFromContainer(
+  EchoStack stack,
+  String path, {
+  required String forwarded,
+}) async {
+  final result = await run('docker', [
+    'run',
+    '--rm',
+    '--network',
+    stack.network,
+    '--ip',
+    echoContainerCaller,
+    caddyImage(),
+    'wget',
+    '-q',
+    '-O',
+    '-',
+    '--header',
+    'X-Forwarded-For: $forwarded',
+    'http://${stack.front}$path',
+  ]);
+  expect(result.exitCode, 0, reason: result.output);
+  return result.output.trim();
 }
 
 /// Polls [origin]'s `/readyz` until it answers 200.

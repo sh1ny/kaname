@@ -1274,8 +1274,22 @@ void main() {
       await seedBundle(session, 100);
       await rig.start();
       final steps = <(int, StreamStep)>[];
-      bundleAnnouncementRuntime.onStreamStep = (stream, step) =>
-          steps.add((stream, step));
+      // Streams whose listen came after a microtask queued at their
+      // admission: Serverpod yielded between opening and listening.
+      final listenedLate = <int>{};
+      final listened = <int>{};
+      bundleAnnouncementRuntime.onStreamStep = (stream, step) {
+        steps.add((stream, step));
+        switch (step) {
+          case StreamStep.admitted:
+            scheduleMicrotask(() {
+              if (!listened.contains(stream)) listenedLate.add(stream);
+            });
+          case StreamStep.listened:
+            listened.add(stream);
+          case StreamStep.sent:
+        }
+      };
 
       for (final count in [1, 16]) {
         steps.clear();
@@ -1297,6 +1311,14 @@ void main() {
             StreamStep.sent,
           ], reason: 'stream $stream: admitted, listened, then sent');
         }
+        // A6 assumes Serverpod listens to the endpoint's stream in the same
+        // handling of the open message that called the endpoint, with no
+        // yield between them, however many subscriptions arrive at once.
+        expect(
+          listenedLate,
+          isEmpty,
+          reason: 'every stream is listened to before any microtask runs',
+        );
         for (final feed in feeds) {
           expect(_builds(feed.events).first, 100);
           expect(feed.errors, isEmpty);
