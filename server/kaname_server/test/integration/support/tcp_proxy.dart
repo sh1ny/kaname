@@ -110,6 +110,19 @@ final class TcpProxy {
       onDone: () => unawaited(client.close().catchError((_) {})),
       cancelOnError: true,
     );
+    // A timed-out client may have closed before held replies are released.
+    // A write failure ends that forwarding stream, not the test's zone.
+    unawaited(
+      client.done.then<void>(
+        (_) => reads.cancel(),
+        onError: (Object error, StackTrace stack) {
+          if (error is! SocketException) {
+            Error.throwWithStackTrace(error, stack);
+          }
+          return reads.cancel();
+        },
+      ),
+    );
     _targetReads.add(reads);
     if (_holdingTargetReads) reads.pause();
   }
