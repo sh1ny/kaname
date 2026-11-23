@@ -130,4 +130,4 @@ Test paths: `tools/kaname_tools/test/` (abbreviated `tools/…`) and `packages/k
 
 ## 9. Integration
 
-- [ ] 9.1 Run `mise run check` end to end (or, when the gaming check exits 1, push and rely on CI's three-OS `check` job) and confirm every stage passes, including `esi:check`, `format:check` on the generated files, purity, notices and licences. Every test-map row is green.
+- [x] 9.1 Run `mise run check` end to end (or, when the gaming check exits 1, push and rely on CI's three-OS `check` job) and confirm every stage passes, including `esi:check`, `format:check` on the generated files, purity, notices and licences. Every test-map row is green.
