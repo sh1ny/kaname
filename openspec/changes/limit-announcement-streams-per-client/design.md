@@ -230,6 +230,7 @@ The design review ran eight rounds on OMP. Every round returned REVISE, each wit
 - **No ninth review round.** The round-8 fixes and the Q1 change have not been reviewed. The owner may ask for another review before apply.
 - **Custom front-proxy topologies are the operator's to check.** No such topology ships. The README's two checks (before trusting the proxy, then end to end before going public, repeated after any network change) are the guard (C6).
 - **Refusal-log counts are a guide** (C9): the suppressed counts of clients that stop, or of evicted pairs, are never reported.
+- **A full refusal log's oldest-pair lookup is bounded, not one step** (pre-ship round 6, F1; the owner waived it as an accepted gap, 2026-11-23). D6 looks only at the oldest pair, which it finds as the map's first entry. On the Dart VM a removed entry leaves a deleted slot that iteration skips until the map compacts its backing array, so with 4,096 pairs tracked during a refusal flood a lookup can step over a bounded number of deleted slots.
 
 ## ADRs
 
