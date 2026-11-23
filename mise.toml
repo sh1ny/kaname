@@ -339,6 +339,7 @@ run = [
   { task = "format:check" },
   { task = "tokens:check" },
   { task = "l10n:check" },
+  { task = "esi:check" },
   { task = "test" },
   { task = "notices:check" },
   { task = "licences" },
