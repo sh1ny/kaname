@@ -253,13 +253,15 @@ void main() {
           recovery: job,
         );
         addTearDown(hook.stop);
-        expect(await hook.run(), isNull);
+        final startup = hook.run();
         await supervisor.ready;
         await _until(() async => (await operation())?.failureReason);
         expect(job.admissionOpen, isFalse);
         ready = true;
         await untilOpen(job);
         expect((await operation())?.failureReason, 'server restarted');
+        await hook.stop();
+        expect(await startup, isNull);
         expect(logs.any((line) => line.contains('sweep failed')), isTrue);
       },
     );

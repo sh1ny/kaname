@@ -499,9 +499,9 @@ Skills: `impeccable` (with DESIGN.md), `flutter-build-responsive-layout`, `flutt
 
 ## 13. Integration and evidence
 
-- [ ] 13.1 Write the failing stack test "the status reports admin actions configured with KANAME_ADMIN_KEY and not configured without it" (D29) and make it pass through the compose stack; verify it passes.
-- [ ] 13.2 [evidence] Capture screenshots of the Static data section (connected, busy, admin, unavailable) and the change report page, in light and dark and at 390 px, plus the server log of one update now and one rollback showing no key → evidence/settings-ui.md
-- [ ] 13.3 Run `mise run check`, `mise run test:server` and `mise exec -- openspec validate static-data-settings --strict`; verify all three pass and every test map row is green.
+- [x] 13.1 Write the failing stack test "the status reports admin actions configured with KANAME_ADMIN_KEY and not configured without it" (D29) and make it pass through the compose stack; verify it passes.
+- [x] 13.2 [evidence] Capture screenshots of the Static data section (connected, busy, admin, unavailable) and the change report page, in light and dark and at 390 px, plus the server log of one update now and one rollback showing no key → evidence/settings-ui.md
+- [x] 13.3 Run `mise run check`, `mise run test:server` and `mise exec -- openspec validate static-data-settings --strict`; verify all three pass and every test map row is green.
 
 ## Workflow follow-up
 

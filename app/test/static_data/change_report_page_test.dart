@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kaname_app/l10n/generated/app_localizations.dart';
+import 'package:kaname_app/server/data/server_address.dart';
 import 'package:kaname_app/settings/logic/change_report_source.dart';
 import 'package:kaname_app/settings/ui/change_report_page.dart';
 import 'package:kaname_app/shell/logic/router.dart';
@@ -11,6 +12,8 @@ import 'package:kaname_app/static_data/data/report_client.dart';
 import 'package:kaname_client/kaname_client.dart';
 import 'package:kaname_ember_ui/kaname_ember_ui.dart';
 
+import '../server/fake_server_health.dart';
+import '../support/fake_browser_history.dart';
 import '../support/pump_shell.dart';
 
 class _Client implements StaticDataReportClient {
@@ -223,19 +226,40 @@ void main() {
   });
 
   testWidgets('Back from the report', (tester) async {
+    final history = FakeBrowserHistory(tester);
+    final health = FakeServerHealth();
     final harness = await pumpShell(
       tester,
       location: '/settings',
       size: const Size(1440, 900),
+      target: ConfiguredServer(Uri.parse('http://localhost:8080/')),
+      browserHistory: history,
+      health: health,
     );
-    harness.router.go(staticDataReportPath);
+    health.answer(
+      HealthReport(
+        version: '1',
+        postgres: DependencyStatus.up,
+        redis: DependencyStatus.up,
+      ),
+    );
     await tester.pumpAndSettle();
+
+    Future<void> openReport() async {
+      final link = find.text('View change report');
+      await tester.ensureVisible(link);
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+      expect(history.current, staticDataReportPath);
+      expect(find.text('Change report'), findsOneWidget);
+    }
+
+    await openReport();
     await tester.tap(find.text('Back to Settings'));
     await tester.pumpAndSettle();
     expect(harness.router.routeInformationProvider.value.uri.path, '/settings');
-    harness.router.go(staticDataReportPath);
-    await tester.pumpAndSettle();
-    harness.router.pop();
+    await openReport();
+    await history.pressBack();
     await tester.pumpAndSettle();
     expect(harness.router.routeInformationProvider.value.uri.path, '/settings');
   });

@@ -430,6 +430,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sdLastImport => 'Last import';
 
   @override
+  String get sdImportFileCounts => 'Import file counts';
+
+  @override
   String sdImportCountsCutOff(int count) {
     return 'Only some file counts are shown ($count files total).';
   }

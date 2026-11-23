@@ -856,6 +856,12 @@ abstract class AppLocalizations {
   /// **'Last import'**
   String get sdLastImport;
 
+  /// Heading above record counts for the files in the latest import.
+  ///
+  /// In en, this message translates to:
+  /// **'Import file counts'**
+  String get sdImportFileCounts;
+
   /// Static data Settings label or message: Only some file counts are shown (count files total)..
   ///
   /// In en, this message translates to:

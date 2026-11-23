@@ -98,7 +98,7 @@ final class StaticDataSection extends ConsumerWidget {
                     child: Text(l10n.sdRefresh),
                   ),
                   TextButton(
-                    onPressed: () => context.push(staticDataReportPath),
+                    onPressed: () => context.go(staticDataReportPath),
                     child: Text(l10n.sdOpenReport),
                   ),
                 ],
@@ -106,6 +106,15 @@ final class StaticDataSection extends ConsumerWidget {
           ],
         ),
         if (configured) StaticDataAdminControls(status: snapshot),
+        if (snapshot?.latestImport case final imported?
+            when (imported.fileCounts?.isNotEmpty ?? false) ||
+                imported.fileCountsCutOff) ...[
+          const Divider(height: 1),
+          _Group(
+            title: l10n.sdImportFileCounts,
+            children: copy.importCounts(imported),
+          ),
+        ],
       ],
     );
   }
@@ -292,20 +301,18 @@ final class _StatusCopy {
     ),
     SettingsRow(label: l10n.sdLastCheck, value: check(value.latestCheck)),
     SettingsRow(label: l10n.sdLastImport, value: imported(value.latestImport)),
-    if (value.latestImport case StaticDataImportStatus(
-      :final fileCounts,
-      :final fileCount,
-      :final fileCountsCutOff,
-    )) ...[
-      if (fileCounts != null)
-        for (final entry in fileCounts.entries)
-          SettingsRow(
-            label: entry.key,
-            value: NumberFormat.decimalPattern(l10n.localeName)
-                .format(entry.value),
-          ),
-      if (fileCountsCutOff) Text(l10n.sdImportCountsCutOff(fileCount)),
-    ],
     SettingsRow(label: l10n.sdLastSwitch, value: switched(value.latestSwitch)),
   ];
+
+  List<Widget> importCounts(StaticDataImportStatus value) {
+    final counts = value.fileCounts;
+    final format = NumberFormat.decimalPattern(l10n.localeName);
+    return [
+      if (counts != null)
+        for (final entry in counts.entries)
+          SettingsRow(label: entry.key, value: format.format(entry.value)),
+      if (value.fileCountsCutOff)
+        Text(l10n.sdImportCountsCutOff(value.fileCount)),
+    ];
+  }
 }

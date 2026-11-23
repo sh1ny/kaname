@@ -599,6 +599,10 @@
   "@sdLastImport": {
     "description": "Static data Settings label or message: Last import."
   },
+  "sdImportFileCounts": "Import file counts",
+  "@sdImportFileCounts": {
+    "description": "Heading above record counts for the files in the latest import."
+  },
   "sdImportCountsCutOff": "Only some file counts are shown ({count} files total).",
   "@sdImportCountsCutOff": {
     "description": "Static data Settings label or message: Only some file counts are shown (count files total)..",

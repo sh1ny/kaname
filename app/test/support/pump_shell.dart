@@ -10,6 +10,7 @@ import 'package:kaname_app/server/data/server_health.dart';
 import 'package:kaname_app/server/logic/server_status.dart';
 import 'package:kaname_app/settings/data/theme_preference_store.dart';
 import 'package:kaname_app/settings/logic/app_version.dart';
+import 'package:kaname_app/settings/logic/change_report_source.dart';
 import 'package:kaname_app/settings/logic/theme_choice_notifier.dart';
 import 'package:kaname_app/shell/data/browser_history.dart';
 import 'package:kaname_app/shell/logic/browser_history_provider.dart';
@@ -17,6 +18,8 @@ import 'package:kaname_app/shell/logic/slot_registry.dart';
 import 'package:kaname_app/static_data/data/bundle_announcements.dart';
 import 'package:kaname_app/static_data/data/bundle_downloader.dart';
 import 'package:kaname_app/static_data/data/bundle_store.dart';
+import 'package:kaname_app/static_data/logic/admin_session_notifier.dart';
+import 'package:kaname_app/static_data/logic/server_static_data_status_notifier.dart';
 import 'package:kaname_app/static_data/logic/static_data_notifier.dart';
 
 import '../server/fake_server_health.dart';
@@ -98,6 +101,9 @@ Future<ShellHarness> pumpShell(
         serverHealthProvider.overrideWithValue(health ?? FakeServerHealth()),
         serverCheckTimeoutProvider.overrideWithValue(checkTimeout),
         appVersionProvider.overrideWithValue(version),
+        staticDataStatusClientProvider.overrideWithValue(null),
+        changeReportClientProvider.overrideWithValue(null),
+        staticDataAdminClientProvider.overrideWithValue(null),
         bundleStoreProvider.overrideWithValue(bundleStore ?? FakeBundleStore()),
         bundleOpenerProvider.overrideWithValue(FakeBundleOpener()),
         staticDataTimersProvider.overrideWithValue(FakeClock().start),
