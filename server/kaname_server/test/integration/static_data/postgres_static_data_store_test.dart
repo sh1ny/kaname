@@ -809,6 +809,15 @@ void main() {
       });
       expect((await store.diff(2, 3))!.failureReason, 'other pair');
       expect(await store.diff(1, 3), isNull);
+      final rows = await session.db.unsafeQuery('''
+        SELECT "fromBuild", "toBuild", "reportBytes",
+          octet_length(report::text) FROM sde_build_diff
+        ORDER BY "fromBuild", "toBuild"
+      ''');
+      expect(rows, hasLength(2));
+      expect(rows.first[2], rows.first[3]);
+      expect(rows.first[2], isA<int>().having((n) => n > 0, 'positive', true));
+      expect(rows.last[2], isNull);
     });
 
     test('when a store is open then session timeouts are five minutes and '

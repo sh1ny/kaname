@@ -386,6 +386,56 @@ void main() {
     });
   });
 
+  test('an unsent update-now request completes both futures', () async {
+    final job = supervisor.runUpdateNow(
+      const CcpLatestSource(),
+      operationId: '4cb9f715-3142-454e-aaf4-da50675c5f03',
+    );
+    expect(await job.started, same(await job.finished));
+    expect(await job.finished, isA<NotDispatched>());
+  });
+
+  test(
+    'update-now refusal completes started with the same final reply',
+    () async {
+      supervisor.start();
+      await supervisor.ready;
+      final job = supervisor.runUpdateNow(
+        const CcpLatestSource(),
+        operationId: '4cb9f715-3142-454e-aaf4-da50675c5f03',
+      );
+      final request =
+          workerInboxCodec().decode(workers.single.sent.last) as RunBuildCheck;
+      expect(request.trigger, CheckTrigger.updateNow);
+      workers.single.reply(
+        BuildCheckFinished(
+          requestId: request.requestId,
+          result: const BuildCheckFailed('import already running'),
+        ),
+      );
+      expect(await job.started, same(await job.finished));
+      expect(await job.finished, isA<BuildCheckFinished>());
+    },
+  );
+
+  test('a worker stopping after start completes the finished future', () async {
+    supervisor.start();
+    await supervisor.ready;
+    final job = supervisor.runUpdateNow(
+      const CcpLatestSource(),
+      operationId: '4cb9f715-3142-454e-aaf4-da50675c5f03',
+    );
+    final request =
+        workerInboxCodec().decode(workers.single.sent.last) as RunBuildCheck;
+    workers.single.reply(BuildCheckStarted(requestId: request.requestId));
+    expect(await job.started, isA<BuildCheckStarted>());
+    await supervisor.stop();
+    expect(
+      await job.finished,
+      isA<WorkerError>().having((r) => r.reason, 'reason', 'worker stopped'),
+    );
+  });
+
   test('the import is not sent again after a crash', () async {
     supervisor.start();
     await supervisor.ready;

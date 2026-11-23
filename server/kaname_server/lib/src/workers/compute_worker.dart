@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:kaname_core/kaname_core.dart';
 import 'package:kaname_static_data/kaname_static_data.dart';
 
+import '../generated/static_data/sde_admin_operation_outcome.dart';
 import '../static_data/postgres_static_data_store.dart';
 import '../static_data/scratch_root.dart';
 import 'import_report_summary.dart';
@@ -182,13 +183,30 @@ final class ComputeWorker {
         if (start == null) {
           _log(WorkerLogLevel.warning, 'rejected $request before the start');
           _reply(
-            WorkerError(
+            BuildCheckFinished(
               requestId: request.requestId,
-              reason: 'the worker has not received its start message',
+              notEntered: true,
+              result: const BuildCheckFailed(
+                'the worker has not received its start message',
+              ),
             ),
           );
         } else {
           unawaited(_runBuildCheck(request, start));
+        }
+      case final RunRollback request:
+        final start = _start;
+        if (start == null) {
+          _reply(
+            RollbackFinished(
+              requestId: request.requestId,
+              expectedRevision: request.expectedRevision,
+              outcome: RollbackOutcome.failed,
+              reason: 'the worker has not received its start message',
+            ),
+          );
+        } else {
+          unawaited(_runRollback(request, start));
         }
       case final RunBundleRepair request:
         final start = _start;
@@ -248,21 +266,39 @@ final class ComputeWorker {
 
   Future<void> _runBuildCheck(RunBuildCheck request, WorkerStart start) async {
     BuildCheckResult result;
+    TakeLatestBuildJob? runningJob;
     try {
       result = await _withJobStore(
         requestId: request.requestId,
         start: start,
         unreachable: () => const BuildCheckFailed('Postgres unreachable'),
         job: (store, client) async {
+          final operationId = request.operationId;
           final scratchRoot = sdeScratchRootFor(start.postgres);
           final job = TakeLatestBuildJob(
             store: store,
             source: _sourceFactory(request.source, client, scratchRoot),
             differ: store.differ(),
+            trigger: request.trigger,
+            operationId: operationId,
+            onLockAcquired: operationId == null
+                ? null
+                : () async {
+                    if (!await store.markAdminOperationRunning(operationId)) {
+                      return false;
+                    }
+                    _reply(BuildCheckStarted(requestId: request.requestId));
+                    return true;
+                  },
+            onFinished: operationId == null
+                ? null
+                : (result) => _finishUpdateNow(store, operationId, result),
             scratchRoot: scratchRoot,
             buildBundle: _buildBundle,
             onBundle: _logBundleStep,
+            onWarning: (message) => _log(WorkerLogLevel.warning, message),
           );
+          runningJob = job;
           final result = await job.run();
           _logCheck(result);
           return result;
@@ -272,7 +308,106 @@ final class ComputeWorker {
       _log(WorkerLogLevel.error, 'build check failed unexpectedly: $error');
       result = BuildCheckFailed('unexpected error: ${error.runtimeType}');
     }
-    _reply(BuildCheckFinished(requestId: request.requestId, result: result));
+    _reply(
+      BuildCheckFinished(
+        requestId: request.requestId,
+        result: result,
+        notEntered: runningJob == null,
+        lookupStartedAt: runningJob?.lookupStartedAt,
+      ),
+    );
+  }
+
+  Future<void> _finishUpdateNow(
+    PostgresStaticDataStore store,
+    String operationId,
+    BuildCheckResult result,
+  ) async {
+    if (!store.jobConnectionOpen) return;
+    final end = switch (result) {
+      // A successful build change ended its row; uncertainty goes to D26.
+      BuildSwitched() ||
+      SwitchUnconfirmed() ||
+      BuildCheckFailed(reason: 'import outcome unknown') => null,
+      BuildUpToDate(:final build) => (
+        SdeAdminOperationOutcome.upToDate,
+        null,
+        build,
+      ),
+      BuildOlder(:final activeBuild) => (
+        SdeAdminOperationOutcome.older,
+        null,
+        activeBuild,
+      ),
+      BuildHeld() => (SdeAdminOperationOutcome.held, null, null),
+      BuildStaged(:final reason) => (
+        SdeAdminOperationOutcome.staged,
+        reason,
+        null,
+      ),
+      BuildCheckFailed(reason: 'import already running') => (
+        SdeAdminOperationOutcome.importRunning,
+        'import already running',
+        null,
+      ),
+      BuildCheckFailed(:final reason) => (
+        SdeAdminOperationOutcome.failed,
+        reason,
+        null,
+      ),
+    };
+    if (end == null) return;
+    final (outcome, reason, activeBuild) = end;
+    try {
+      await store.finishAdminOperation(
+        operationId,
+        outcome: outcome,
+        reason: reason,
+        activeBuild: activeBuild,
+      );
+    } on Object catch (error) {
+      _log(
+        WorkerLogLevel.warning,
+        'could not end update-now operation: $error',
+      );
+    }
+  }
+
+  Future<void> _runRollback(RunRollback request, WorkerStart start) async {
+    RollbackResult result;
+    try {
+      result = await _withJobStore<RollbackResult>(
+        requestId: request.requestId,
+        start: start,
+        unreachable: () => const RollbackFailed('Postgres unreachable'),
+        job: (store, _) => RollbackJob(
+          store: store,
+          control: store.rollbackControl(
+            operationId: request.operationId,
+            expectedRevision: request.expectedRevision,
+          ),
+          onWarning: (text) => _log(WorkerLogLevel.warning, text),
+        ).run(),
+      );
+    } on Object catch (error) {
+      _log(WorkerLogLevel.warning, 'rollback outcome unknown: $error');
+      result = const RollbackUnconfirmed();
+    }
+    _reply(
+      RollbackFinished(
+        requestId: request.requestId,
+        expectedRevision: request.expectedRevision,
+        outcome: result.outcome,
+        activeBuild: switch (result) {
+          RollbackSucceeded(:final toBuild) => toBuild,
+          _ => null,
+        },
+        reason: switch (result) {
+          RollbackFailed(:final reason) => reason,
+          _ => null,
+        },
+      ),
+    );
   }
 
   Future<void> _runBundleRepair(
@@ -328,6 +463,8 @@ final class ComputeWorker {
         _log(WorkerLogLevel.warning, 'build $build stays staged: $reason');
       case BuildCheckFailed(:final reason):
         _log(WorkerLogLevel.warning, 'build check failed: $reason');
+      case SwitchUnconfirmed(:final build):
+        _log(WorkerLogLevel.warning, 'switch outcome unknown for $build');
     }
   }
 

@@ -1,6 +1,8 @@
 /// The server's start-time static-data work.
 library;
 
+import 'dart:async';
+
 import 'package:kaname_static_data/kaname_static_data.dart'
     show
         BuildCheckFailed,
@@ -8,7 +10,9 @@ import 'package:kaname_static_data/kaname_static_data.dart'
         BundleFailed,
         BundleRepairFailed,
         BundleRepairRan,
-        DailyBuildCheckSchedule;
+        CheckTrigger,
+        DailyBuildCheckSchedule,
+        SwitchUnconfirmed;
 import 'package:serverpod/serverpod.dart';
 
 import '../generated/protocol.dart';
@@ -16,7 +20,11 @@ import '../workers/compute_worker.dart';
 import '../workers/worker_messages.dart';
 import '../workers/worker_supervisor.dart';
 
+import 'admin_operation_settler.dart';
+import 'admission_connection_attempt.dart';
+import 'admission_recovery.dart';
 import 'bundle_announcer.dart';
+import 'postgres_connection_settings.dart';
 import 'postgres_settings_resolver.dart';
 import 'static_data_runtime.dart';
 import 'sweep_running_imports.dart';
@@ -76,10 +84,21 @@ StaticDataStartHook? staticDataStartHookFor({
   BundleAnnouncer? announcer,
 }) {
   if (!runsStaticDataWorker(runMode: runMode, role: role)) return null;
+  PostgresConnectionSettings? settings;
+  final dedicatedSettingsReady = Completer<void>();
+  PostgresConnectionSettings settingsForDedicatedSession() =>
+      settings ?? (throw StateError('Postgres settings not ready'));
   final supervisor = WorkerSupervisor(
     name: 'compute',
     spawn: spawn ?? isolateComputeWorkerSpawn(),
-    resolveSettings: () => withSession(resolveWorkerPostgresSettings),
+    resolveSettings: () async {
+      final resolved = await withSession(resolveWorkerPostgresSettings);
+      settings = resolved;
+      if (!dedicatedSettingsReady.isCompleted) {
+        dedicatedSettingsReady.complete();
+      }
+      return resolved;
+    },
     sweep: (reason) =>
         withSession((session) => sweepRunningImports(session, reason: reason)),
     terminateBackend: (backend) =>
@@ -93,6 +112,23 @@ StaticDataStartHook? staticDataStartHookFor({
     log: log,
     now: now,
     announcer: announcer,
+    settler: AdminOperationSettler(
+      open: () => openAdmissionConnection(
+        settingsForDedicatedSession(),
+        applicationName: 'kaname-admin-settler',
+      ),
+      log: log,
+      onBuildChange: () => announcer?.request(),
+    ),
+    recovery: AdmissionRecovery(
+      open: () => openAdmissionConnection(
+        settingsForDedicatedSession(),
+        applicationName: 'kaname-admin-recovery',
+      ),
+      log: log,
+      workerReady: () => supervisor.isRunning,
+    ),
+    dedicatedSettingsReady: dedicatedSettingsReady.future,
   );
 }
 
@@ -144,6 +180,9 @@ final class StaticDataStartHook {
     required this.log,
     DateTime Function()? now,
     this.announcer,
+    this.settler,
+    this.recovery,
+    this.dedicatedSettingsReady,
   }) : _now = now ?? DateTime.now;
 
   /// The compute worker's supervisor.
@@ -160,6 +199,15 @@ final class StaticDataStartHook {
 
   /// The announcer the worker's replies go to, or `null` where none runs.
   final BundleAnnouncer? announcer;
+
+  /// Owns admin settlement for this worker, when admin commands are enabled.
+  final AdminOperationSettler? settler;
+
+  /// Ends prior processes' open rows before this process can admit new work.
+  final AdmissionRecovery? recovery;
+
+  /// Resolves startup configuration before recovery can open its own session.
+  final Future<void>? dedicatedSettingsReady;
 
   final DateTime Function() _now;
 
@@ -185,8 +233,15 @@ final class StaticDataStartHook {
     supervisor.start();
     staticDataRuntime
       ..supervisor = supervisor
+      ..settler = settler
+      ..recovery = recovery
       ..announcer = announcer
       ..log = log;
+    if (dedicatedSettingsReady case final ready?) {
+      unawaited(ready.then((_) => recovery?.start()));
+    } else {
+      recovery?.start();
+    }
     try {
       final swept = await withSession(
         (session) => sweepRunningImports(session, reason: 'interrupted'),
@@ -244,13 +299,18 @@ final class StaticDataStartHook {
             : 'static data: no active build; checking CCP for the latest '
                   'build',
       );
-      final reply = await supervisor.runBuildCheck(const CcpLatestSource());
+      final reply = await supervisor.runBuildCheck(
+        const CcpLatestSource(),
+        trigger: CheckTrigger.start,
+      );
       // The check has ended and freed the lock, so the ticks may send
       // repairs again, even while the refresh its reply asks for hangs.
       announcer?.releaseTickRepairs();
       await announcer?.workerReplied(reply);
       log(switch (reply) {
-        BuildCheckFinished(result: BuildCheckFailed() || BuildStaged()) =>
+        BuildCheckFinished(
+          result: BuildCheckFailed() || BuildStaged() || SwitchUnconfirmed(),
+        ) =>
           WorkerLogLevel.warning,
         BuildCheckFinished() => WorkerLogLevel.info,
         _ => WorkerLogLevel.warning,
@@ -264,9 +324,13 @@ final class StaticDataStartHook {
 
   /// Stops the worker for good and withdraws it from [staticDataRuntime].
   Future<void> stop() {
+    settler?.stop();
+    recovery?.stop();
     if (identical(staticDataRuntime.supervisor, supervisor)) {
       staticDataRuntime
         ..supervisor = null
+        ..settler = null
+        ..recovery = null
         ..announcer = null;
     }
     return supervisor.stop();

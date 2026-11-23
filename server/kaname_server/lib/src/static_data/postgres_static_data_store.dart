@@ -9,6 +9,7 @@ import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
     show bundleFormatMajor, bundleFormatMinor, bundleSha256;
 import 'package:postgres/postgres.dart' as pg;
 
+import '../generated/static_data/sde_admin_operation_outcome.dart';
 import 'import_record_view.dart';
 import 'postgres_connection_settings.dart';
 import 'postgres_static_data_differ.dart';
@@ -87,6 +88,9 @@ const _buildColumns = [
 /// The columns of `sde_check`, without `id`.
 const _checkColumns = [
   StoredColumn('checkedAt', _timestamp),
+  StoredColumn('trigger', _text),
+  StoredColumn('lookupStarted', StoredColumnType.boolean),
+  StoredColumn('lookupStartedAt', _timestamp, nullable: true),
   StoredColumn('latestBuild', _bigint, nullable: true),
   StoredColumn('outcome', _text),
   StoredColumn('failureReason', _text, nullable: true),
@@ -110,6 +114,7 @@ const _diffColumns = [
   StoredColumn('outcome', _text),
   StoredColumn('failureReason', _text, nullable: true),
   StoredColumn('report', _jsonb, nullable: true),
+  StoredColumn('reportBytes', _bigint, nullable: true),
 ];
 
 /// The columns of `sde_import`, without `id`.
@@ -226,6 +231,7 @@ final class PostgresStaticDataStore implements StaticDataStore {
   final PostgresConnectionSettings _settings;
   bool _closed = false;
   String? _adminOperationId;
+  pg.ServerException? _statementFailure;
 
   /// Opens a connection for one job from [settings] and sets its timeouts.
   ///
@@ -358,6 +364,38 @@ final class PostgresStaticDataStore implements StaticDataStore {
     if (result.affectedRows == 0) return false;
     _adminOperationId = operationId;
     return true;
+  }
+
+  /// Ends an admitted check that did not already end in its build transaction.
+  Future<void> finishAdminOperation(
+    String operationId, {
+    required SdeAdminOperationOutcome outcome,
+    String? reason,
+    int? activeBuild,
+  }) async {
+    await _connection.execute(
+      'UPDATE "sde_admin_operation" SET "state" = \'ended\', '
+      '"endedAt" = clock_timestamp() AT TIME ZONE \'UTC\', '
+      r'"outcome" = $2::text, "failureReason" = $3::text, '
+      r'"activeBuild" = $4::bigint '
+      r'WHERE "operationId" = $1::text::uuid AND "state" <> '
+      "'ended'",
+      parameters: [operationId, outcome.name, reason, activeBuild],
+    );
+  }
+
+  /// Binds a worker rollback to its admitted operation and confirmation.
+  RollbackControl rollbackControl({
+    required String operationId,
+    required int expectedRevision,
+  }) => _PostgresRollbackControl(this, operationId, expectedRevision);
+
+  @override
+  Future<bool> autoUpdate() async {
+    final rows = await _connection.execute(
+      'SELECT "autoUpdate" FROM "sde_setting_write" ORDER BY "id" DESC LIMIT 1',
+    );
+    return (rows.singleOrNull?.single as bool?) ?? true;
   }
 
   @override
@@ -497,6 +535,9 @@ final class PostgresStaticDataStore implements StaticDataStore {
       _insertRows(_connection, 'sde_check', _checkColumns, [
         [
           record.checkedAt,
+          record.trigger.name,
+          record.lookupStartedAt != null,
+          record.lookupStartedAt,
           record.latestBuild,
           record.outcome.name,
           record.failureReason,
@@ -546,16 +587,33 @@ final class PostgresStaticDataStore implements StaticDataStore {
 
   @override
   Future<void> insertDiff(BuildDiffRecord record) =>
-      _insertRows(_connection, 'sde_build_diff', _diffColumns, [
-        [
-          record.fromBuild,
-          record.toBuild,
-          record.createdAt,
-          record.outcome.name,
-          record.failureReason,
-          record.report,
-        ],
-      ]);
+      _connection.runTx((tx) async {
+        final from = record.fromBuild;
+        final to = record.toBuild;
+        await tx.execute(
+          'INSERT INTO "sde_build_diff" ("fromBuild", "toBuild", "createdAt", '
+          '"outcome", "failureReason", "report", "reportBytes") '
+          r'VALUES ($1::bigint, $2::bigint, $3::timestamp, $4::text, '
+          r'$5::text, $6::jsonb, CASE WHEN $4 = '
+          "'succeeded' "
+          r'THEN octet_length($6::jsonb::text) END)',
+          parameters: [
+            from,
+            to,
+            record.createdAt.toUtc(),
+            record.outcome.name,
+            record.failureReason,
+            _parameter(_diffColumns[5], record.report),
+          ],
+        );
+        await tx.execute(
+          'DELETE FROM "sde_build_diff" WHERE "fromBuild" = \$1::bigint '
+          'AND "toBuild" = \$2::bigint AND "id" <> ('
+          'SELECT "id" FROM "sde_build_diff" WHERE "fromBuild" = \$1::bigint '
+          'AND "toBuild" = \$2::bigint ORDER BY "createdAt" DESC, "id" DESC LIMIT 1)',
+          parameters: [from, to],
+        );
+      });
 
   @override
   Future<BuildDiffRecord?> diff(int fromBuild, int toBuild) async {
@@ -721,6 +779,10 @@ final class PostgresStaticDataStore implements StaticDataStore {
     onStatementStart: onStatementStart,
   );
 
+  @override
+  bool confirmedStatementFailure(Object error) =>
+      jobConnectionOpen && identical(_statementFailure, error);
+
   /// C22 (static-data-settings): writes use the job's own lock connection.
   /// Losing that connection removes the lock; a fresh read of the builds
   /// cannot prove the outcome of the old job.
@@ -728,19 +790,138 @@ final class PostgresStaticDataStore implements StaticDataStore {
   Future<T> inTransaction<T>(
     Future<T> Function(StaticDataWriter writer) body, {
     int? activatingBuild,
-  }) => _connection.runTx((tx) async {
-    final operationId = _adminOperationId;
-    if (activatingBuild != null && operationId != null) {
-      await _endBuildOperation(tx, operationId, activatingBuild);
-    }
-    return body(_PostgresWriter(tx, operationId));
-  });
+  }) {
+    _statementFailure = null;
+    return _connection.runTx((tx) async {
+      try {
+        final operationId = _adminOperationId;
+        if (activatingBuild != null && operationId != null) {
+          await _endBuildOperation(tx, operationId, activatingBuild);
+        }
+        return await body(_PostgresWriter(tx, operationId));
+      } on pg.ServerException catch (error) {
+        _statementFailure = error;
+        rethrow;
+      }
+    });
+  }
 
   @override
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
     await _connection.close();
+  }
+}
+
+final class _PostgresRollbackControl implements RollbackControl {
+  const _PostgresRollbackControl(
+    this._store,
+    this._operationId,
+    this._expectedRevision,
+  );
+
+  final PostgresStaticDataStore _store;
+  final String _operationId;
+  final int _expectedRevision;
+
+  @override
+  Future<RollbackResult?> claim() async {
+    final connection = _store._connection;
+    final row = await _readOperation(connection);
+    if (row == null || row[0] != 'waiting') return _endedResult(row);
+    final revision = await connection.execute(
+      'SELECT "revision" FROM "sde_build_revision" WHERE "id" = 1',
+    );
+    if ((revision.singleOrNull?.single ?? 0) != _expectedRevision) {
+      const failed = RollbackFailed(
+        'builds changed',
+        outcome: RollbackOutcome.buildsChanged,
+      );
+      if (await _finish(connection, 'buildsChanged', null)) return failed;
+      return _endedResult(await _readOperation(connection));
+    }
+    if (await _store.markAdminOperationRunning(_operationId)) return null;
+    return _endedResult(await _readOperation(connection));
+  }
+
+  @override
+  Future<void> finish(RollbackFailed failure) async {
+    final outcome = switch (failure.outcome) {
+      RollbackOutcome.buildsChanged => 'buildsChanged',
+      RollbackOutcome.noPrevious => 'noPrevious',
+      RollbackOutcome.importRunning => 'importRunning',
+      _ => 'rollbackFailed',
+    };
+    await _finish(_store._connection, outcome, failure.reason);
+  }
+
+  @override
+  Future<RollbackResult> reconcile(SwitchRecord failure) {
+    Future<RollbackResult> reconcileOn(PostgresStaticDataStore store) =>
+        store._connection.runTx((tx) async {
+          // D5/C37: this fence is first. Only its winner writes the record.
+          if (await _finish(tx, 'rollbackFailed', failure.failureReason)) {
+            await _insertRows(tx, 'sde_switch', _switchColumns, [
+              _switchValues(failure),
+            ]);
+            return RollbackFailed(failure.failureReason!);
+          }
+          return _endedResult(await _readOperation(tx));
+        });
+    return _store.jobConnectionOpen
+        ? reconcileOn(_store)
+        : _store._withRecoveryConnection(reconcileOn);
+  }
+
+  Future<bool> _finish(
+    pg.Session session,
+    String outcome,
+    String? reason,
+  ) async {
+    final result = await session.execute(
+      'UPDATE "sde_admin_operation" SET "state" = \'ended\', '
+      '"endedAt" = clock_timestamp() AT TIME ZONE \'UTC\', '
+      r'"outcome" = $3::text, "failureReason" = $4::text '
+      r'WHERE "operationId" = $1::text::uuid AND "expectedRevision" = $2::bigint '
+      'AND "kind" = \'rollback\' AND "state" <> \'ended\'',
+      parameters: [_operationId, _expectedRevision, outcome, reason],
+    );
+    return result.affectedRows == 1;
+  }
+
+  Future<pg.ResultRow?> _readOperation(pg.Session session) async {
+    final rows = await session.execute(
+      'SELECT "state", "outcome", "activeBuild", "failureReason" '
+      'FROM "sde_admin_operation" '
+      r'WHERE "operationId" = $1::text::uuid AND "expectedRevision" = $2::bigint '
+      'AND "kind" = \'rollback\'',
+      parameters: [_operationId, _expectedRevision],
+    );
+    return rows.singleOrNull;
+  }
+
+  RollbackResult _endedResult(pg.ResultRow? row) {
+    if (row == null || row[0] != 'ended') return const RollbackUnconfirmed();
+    return switch ((row[1], row[2], row[3])) {
+      ('rolledBack', final int build, _) => RollbackSucceeded(toBuild: build),
+      ('buildsChanged', _, _) => const RollbackFailed(
+        'builds changed',
+        outcome: RollbackOutcome.buildsChanged,
+      ),
+      ('noPrevious', _, _) => const RollbackFailed(
+        'no previous build',
+        outcome: RollbackOutcome.noPrevious,
+      ),
+      ('importRunning', _, _) => const RollbackFailed(
+        'import running',
+        outcome: RollbackOutcome.importRunning,
+      ),
+      ('rollbackFailed' || 'failed', _, final String reason) => RollbackFailed(
+        reason,
+      ),
+      _ => const RollbackUnconfirmed(),
+    };
   }
 }
 

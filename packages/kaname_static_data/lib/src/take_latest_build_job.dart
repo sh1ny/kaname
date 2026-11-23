@@ -90,15 +90,23 @@ final class BuildCheckFailed extends BuildCheckResult {
   final int? latestBuild;
 }
 
+/// The original lock holder could not establish the switch outcome (D5).
+final class SwitchUnconfirmed extends BuildCheckResult {
+  /// Creates the result for the attempted target.
+  const SwitchUnconfirmed(this.build);
+
+  /// The target build, not necessarily active.
+  final int build;
+}
+
 /// Checks CCP for a new build, imports it, compares it and switches to it.
 ///
 /// One lock hold covers every step (D2). The steps, in order:
 ///
-/// 1. Take the store's lock without waiting. When another import or switch
-///    holds it, insert a `failed` check record "import already running" and
-///    stop; that insert is the only write made without the lock.
-/// 2. Mark stale `running` import records `failed` and delete stale scratch
-///    directories ([sweepStaleImportWork]), as [ImportSdeJob] does.
+/// 1. Take the store's lock without waiting. If another job holds it, record
+///    "import already running" for a daily or start-up check, and stop.
+/// 2. Under the lock, read the auto-update setting once and sweep stale
+///    import records and scratch directories ([sweepStaleImportWork]).
 /// 3. Read the build CCP announces. When CCP cannot be reached the check is
 ///    `failed` with the source's reason, which names CCP.
 /// 4. Decide: announced older than the active build gives `older`, equal gives
@@ -117,9 +125,9 @@ final class BuildCheckFailed extends BuildCheckResult {
 ///    bundle build is recorded and the switch goes on (D10). The first
 ///    build's bundle is built right after the import activates it, in the
 ///    same check (D20).
-/// 7. Switch in one transaction ([StaticDataWriter.switchTo]). When it fails,
-///    insert a `failed` forward [SwitchRecord]; the build stays staged and the
-///    check is `staged`.
+/// 7. Switch or restore in one transaction. If it throws, read the active
+///    build on the original locked connection. Record a failed switch only
+///    when this read confirms failure (D5).
 /// 8. Whatever the check's outcome, as long as the lock is held, repair the
 ///    active build's bundle when it is missing, failed or of another format
 ///    version, unless this check already attempted that build's bundle
@@ -129,8 +137,7 @@ final class BuildCheckFailed extends BuildCheckResult {
 ///    beyond [keepRecords], release the lock and close the store, whatever
 ///    the outcome.
 ///
-/// The job never throws: every failure is a [BuildCheckFailed]. A job and its
-/// store are used once.
+/// A job and its store are used once.
 ///
 /// ## Carried constraints
 ///
@@ -138,13 +145,11 @@ final class BuildCheckFailed extends BuildCheckResult {
 ///   inside this check job, on every outcome that holds the lock, and in the
 ///   repair request the compute worker runs at start or for the announcer's
 ///   tick ([BundleRepairJob]).
-/// - **C3:** Auto-update is always on. `static-data-settings` adds the toggle
-///   as a stored setting, and the check job must then stage instead of
-///   switching when it is off. This is a deliberate gap.
-/// - **C4:** A build imported by the `sde:import` development task stays
-///   staged even when it is newer than the active build. The check switches
-///   only to CCP's announced build. "Update now from a local zip" in
-///   `static-data-settings` must switch it. This is a deliberate gap.
+/// - **C3 (static-data-settings):** importing a local ZIP in staging or
+///   production and explicitly switching to a ZIP-imported build remain
+///   unsupported. This job promotes only the build CCP announces.
+/// - **C38 (static-data-settings):** after CCP names a build, even an
+///   unexpected terminal check failure records that build.
 final class TakeLatestBuildJob implements Job<BuildCheckResult> {
   /// Creates a job that reads CCP's build from [source] and works through
   /// [store], comparing builds with [differ].
@@ -158,12 +163,17 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
     required this.store,
     required this.source,
     required this.differ,
+    this.trigger = CheckTrigger.daily,
+    this.operationId,
+    this.onLockAcquired,
+    this.onFinished,
     this.limits = const SdeLimits(),
     this.batchSize = 500,
     this.keepRecords = 100,
     this.scratchRoot,
     this.buildBundle = buildStoredBundle,
     this.onBundle,
+    this.onWarning,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now;
 
@@ -175,6 +185,27 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
 
   /// Compares the active build with the new one.
   final StaticDataDiffer differ;
+
+  /// What asked for this check.
+  final CheckTrigger trigger;
+
+  /// The claimed admin operation for an update-now check.
+  final String? operationId;
+
+  /// Called under the job lock before doing work.
+  ///
+  /// The update-now worker claims its durable operation here and returns
+  /// false if the operation can no longer be run.
+  final Future<bool> Function()? onLockAcquired;
+
+  /// Persists an admin job's final outcome before closing the job store.
+  final Future<void> Function(BuildCheckResult)? onFinished;
+
+  DateTime? _lookupStartedAt;
+  int? _announcedBuild;
+
+  /// When the job holding the lock first asked CCP, if it got that far.
+  DateTime? get lookupStartedAt => _lookupStartedAt;
 
   /// The bounds of the import.
   final SdeLimits limits;
@@ -194,8 +225,10 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
   /// Sees the result of every bundle step the job runs, for logging.
   final void Function(BundleStepResult result)? onBundle;
 
+  /// Logs report and post-check write failures without replacing the outcome.
+  final void Function(String message)? onWarning;
+
   final DateTime Function() _clock;
-  bool _importLostConnection = false;
 
   /// The builds whose bundle this run has attempted, so none is built twice
   /// in one check.
@@ -206,56 +239,90 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
 
   @override
   Future<BuildCheckResult> run() async {
+    try {
+      final result = await _run();
+      if (onFinished case final finish?) await finish(result);
+      return result;
+    } finally {
+      await _quietly(store.close);
+    }
+  }
+
+  Future<void> _recordCheck(BuildCheckResult result, DateTime startedAt) async {
+    final record = _recordOf(result, startedAt);
+    await _bestEffort(
+      'store check',
+      () => store.jobConnectionOpen
+          ? store.insertCheck(record)
+          : store.insertCheckAfterConnectionLoss(record),
+    );
+  }
+
+  Future<BuildCheckResult> _run() async {
     final startedAt = _clock();
-    _importLostConnection = false;
+    _lookupStartedAt = null;
+    _announcedBuild = null;
     var locked = false;
+    var entered = false;
     try {
       locked = await store.tryLock();
       if (!locked) {
         const result = BuildCheckFailed('import already running');
-        await store.insertCheck(_recordOf(result, startedAt));
+        if (trigger != CheckTrigger.updateNow) {
+          await _recordCheck(result, startedAt);
+        }
         return result;
       }
+      if (onLockAcquired case final enter?) {
+        if (!await enter()) {
+          return const BuildCheckFailed('admin operation is no longer open');
+        }
+      }
+      entered = true;
+      final autoUpdate = await store.autoUpdate();
       await sweepStaleImportWork(
         store: store,
         at: startedAt,
         scratchRoot: scratchRoot,
       );
-      final result = await _check(startedAt);
-      if (_importLostConnection) {
-        await _quietly(
-          () => store.insertCheckAfterConnectionLoss(
-            _recordOf(result, startedAt),
-          ),
-        );
-        return result;
+      final result = await _check(
+        startedAt,
+        promote: autoUpdate || trigger == CheckTrigger.updateNow,
+      );
+      if (store.jobConnectionOpen) {
+        await _repairActiveBundle();
       }
-      await _repairActiveBundle();
-      await store.insertCheck(_recordOf(result, startedAt));
-      await _quietly(() async {
-        await store.pruneRecords(keep: keepRecords);
-        await store.pruneChecks(keep: keepRecords);
-        await store.pruneSwitches(keep: keepRecords);
-      });
+      await _recordCheck(result, startedAt);
+      if (store.jobConnectionOpen) {
+        await _bestEffort('prune import records', () async {
+          await store.pruneRecords(keep: keepRecords);
+          await store.pruneChecks(keep: keepRecords);
+          await store.pruneSwitches(keep: keepRecords);
+        });
+      }
       return result;
     } on Object catch (error) {
       final result = BuildCheckFailed(
         'unexpected error: ${describeFailure(error)}',
+        latestBuild: _announcedBuild,
       );
-      if (locked) {
-        await _repairActiveBundle();
-        await _quietly(() => store.insertCheck(_recordOf(result, startedAt)));
+      if (entered) {
+        if (store.jobConnectionOpen) await _repairActiveBundle();
+        await _recordCheck(result, startedAt);
       }
       return result;
     } finally {
       if (locked) await _quietly(store.unlock);
-      await _quietly(store.close);
     }
   }
 
-  Future<BuildCheckResult> _check(DateTime startedAt) async {
+  Future<BuildCheckResult> _check(
+    DateTime startedAt, {
+    required bool promote,
+  }) async {
     final int? announced;
     try {
+      _lookupStartedAt = _clock().toUtc();
       announced = await source.announcedBuild();
     } on SdeSourceException catch (error) {
       return BuildCheckFailed(error.reason);
@@ -263,6 +330,7 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
     if (announced == null) {
       return const BuildCheckFailed('CCP announced no build number');
     }
+    _announcedBuild = announced;
     final builds = await store.storedBuilds();
     final active = _buildIn(builds, BuildState.active);
     if (active != null && announced < active) {
@@ -270,7 +338,16 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
     }
     if (announced == active) return BuildUpToDate(announced);
     final stored = _storedAs(builds, announced);
-    if (stored != null && stored.held) return BuildHeld(announced);
+    if (stored != null && stored.held) {
+      final operation = operationId;
+      if (trigger != CheckTrigger.updateNow ||
+          operation == null ||
+          active == null ||
+          stored.state != BuildState.previous) {
+        return BuildHeld(announced);
+      }
+      return _compareAndSwitch(active, announced, restoring: operation);
+    }
 
     if (stored == null) {
       final attempt = await importBuild(
@@ -281,19 +358,19 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
         clock: _clock,
         batchSize: batchSize,
       );
-      _importLostConnection = !store.jobConnectionOpen;
       switch (attempt.result) {
         case ImportFailed(:final reason) ||
             ImportSkipped(:final reason) ||
             ImportUnconfirmed(:final reason):
           return BuildCheckFailed(reason, latestBuild: announced);
         case ImportSucceeded(state: BuildState.active, :final build):
-          if (!_importLostConnection) await _bundle(build);
+          if (store.jobConnectionOpen) await _bundle(build);
           return BuildSwitched(build);
         case ImportSucceeded(:final build):
-          if (_importLostConnection) {
+          if (!store.jobConnectionOpen) {
             return BuildStaged(build, 'connection lost');
           }
+          if (!promote) return BuildStaged(build, 'auto-update is off');
           return _compareAndSwitch(active, build);
       }
     }
@@ -303,19 +380,47 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
         latestBuild: announced,
       );
     }
+    if (!promote) return BuildStaged(announced, 'auto-update is off');
     return _compareAndSwitch(active, announced);
   }
 
-  /// Compares [active] with the staged [build] and switches to it.
-  Future<BuildCheckResult> _compareAndSwitch(int? active, int build) async {
+  /// Compares the pair, prepares its bundle, and switches or restores it.
+  Future<BuildCheckResult> _compareAndSwitch(
+    int? active,
+    int build, {
+    String? restoring,
+  }) async {
     if (active != null) await _compare(active, build);
-    await _bundle(build);
+    if (!store.jobConnectionOpen) {
+      return BuildCheckFailed('connection lost', latestBuild: build);
+    }
+    final bundle = await _bundle(build, verifyBytes: restoring != null);
+    if (bundle case BundleFailed(:final reason) when restoring != null) {
+      return BuildCheckFailed(reason, latestBuild: build);
+    }
+    if (!store.jobConnectionOpen) {
+      return BuildCheckFailed('connection lost', latestBuild: build);
+    }
     final at = _clock();
     try {
-      await store.inTransaction((writer) => writer.switchTo(build, at: at));
+      await store.inTransaction(
+        (writer) => restoring == null
+            ? writer.switchTo(build, at: at)
+            : writer.restoreHeld(at: at, operationId: restoring),
+      );
     } on Object catch (error) {
+      if (!store.jobConnectionOpen) return SwitchUnconfirmed(build);
+      final int? current;
+      try {
+        current = _buildIn(await store.storedBuilds(), BuildState.active);
+      } on Object catch (readError) {
+        _warn('could not confirm switch: ${describeFailure(readError)}');
+        return SwitchUnconfirmed(build);
+      }
+      if (current == build) return BuildSwitched(build, replacedBuild: active);
       final reason = 'unexpected error: ${describeFailure(error)}';
-      await _quietly(
+      await _bestEffort(
+        'store failed switch',
         () => store.insertFailedSwitch(
           SwitchRecord(
             kind: SwitchKind.forward,
@@ -327,7 +432,9 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
           ),
         ),
       );
-      return BuildStaged(build, reason);
+      return restoring == null
+          ? BuildStaged(build, reason)
+          : BuildCheckFailed(reason, latestBuild: build);
     }
     return BuildSwitched(build, replacedBuild: active);
   }
@@ -336,10 +443,10 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
   ///
   /// A failure is stored as a `failed` row and never stops the switch (D10).
   Future<void> _compare(int from, int to) async {
-    final existing = await store.diff(from, to);
-    if (existing != null && existing.outcome == DiffOutcome.succeeded) return;
     BuildDiffRecord record;
     try {
+      final existing = await store.diff(from, to);
+      if (existing?.outcome == DiffOutcome.succeeded) return;
       final report = await differ.compare(from, to);
       record = BuildDiffRecord(
         fromBuild: from,
@@ -349,43 +456,66 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
         report: report.toSdeJson(),
       );
     } on Object catch (error) {
+      final reason = 'comparison failed: ${describeFailure(error)}';
+      _warn(reason);
+      if (!store.jobConnectionOpen) return;
       record = BuildDiffRecord(
         fromBuild: from,
         toBuild: to,
         createdAt: _clock(),
         outcome: DiffOutcome.failed,
-        failureReason: 'comparison failed: ${describeFailure(error)}',
+        failureReason: reason,
       );
     }
-    await _quietly(() => store.insertDiff(record));
+    try {
+      await store.insertDiff(record);
+    } on Object catch (error) {
+      _warn(
+        'could not store comparison $from → $to: ${describeFailure(error)}',
+      );
+    }
+  }
+
+  void _warn(String message) {
+    try {
+      onWarning?.call(message);
+    } on Object {
+      // Logging must not change the check.
+    }
   }
 
   /// Builds and stores [build]'s bundle unless one of the current format is
   /// stored or this run already attempted it.
   ///
   /// Never throws: a failure is recorded by [ensureBundle].
-  Future<void> _bundle(int build) async {
-    if (!_bundleAttempted.add(build)) return;
+  Future<BundleStepResult?> _bundle(
+    int build, {
+    bool verifyBytes = false,
+  }) async {
+    if (!_bundleAttempted.add(build)) return null;
     final result = await ensureBundle(
       store,
       build,
       buildBundle: buildBundle,
       clock: _clock,
+      verifyBytes: verifyBytes,
     );
     try {
       onBundle?.call(result);
     } on Object {
       // Logging must not change the check.
     }
+    return result;
   }
 
   /// Repairs the active build's bundle, if there is an active build.
-  Future<void> _repairActiveBundle() => _quietly(() async {
-    final active = _buildIn(await store.storedBuilds(), BuildState.active);
-    if (active != null) await _bundle(active);
-  });
+  Future<void> _repairActiveBundle() =>
+      _bestEffort('repair active bundle', () async {
+        final active = _buildIn(await store.storedBuilds(), BuildState.active);
+        if (active != null) await _bundle(active);
+      });
 
-  static CheckRecord _recordOf(BuildCheckResult result, DateTime checkedAt) {
+  CheckRecord _recordOf(BuildCheckResult result, DateTime checkedAt) {
     final (outcome, latest, reason) = switch (result) {
       BuildSwitched(:final build) => (CheckOutcome.switched, build, null),
       BuildUpToDate(:final build) => (CheckOutcome.upToDate, build, null),
@@ -401,9 +531,16 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
         latestBuild,
         reason,
       ),
+      SwitchUnconfirmed(:final build) => (
+        CheckOutcome.failed,
+        build,
+        'switch outcome unknown',
+      ),
     };
     return CheckRecord(
       checkedAt: checkedAt,
+      trigger: trigger,
+      lookupStartedAt: _lookupStartedAt,
       outcome: outcome,
       latestBuild: latest,
       failureReason: reason,
@@ -422,6 +559,14 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
       if (stored.build == build) return stored;
     }
     return null;
+  }
+
+  Future<void> _bestEffort(String action, Future<void> Function() run) async {
+    try {
+      await run();
+    } on Object catch (error) {
+      _warn('could not $action: ${describeFailure(error)}');
+    }
   }
 
   static Future<void> _quietly(Future<void> Function() action) async {

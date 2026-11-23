@@ -59,6 +59,12 @@ final class InMemoryStaticDataStore implements StaticDataStore {
   /// Whether [close] was called.
   bool isClosed = false;
 
+  /// The committed auto-update value; null stands for an empty write log.
+  bool? autoUpdateSetting;
+
+  @override
+  Future<bool> autoUpdate() async => autoUpdateSetting ?? true;
+
   /// When set, [storedBundle] throws it, as a store whose read failed.
   Object? storedBundleError;
 
@@ -257,6 +263,9 @@ final class InMemoryStaticDataStore implements StaticDataStore {
   bool get jobConnectionOpen => !isClosed;
 
   @override
+  bool confirmedStatementFailure(Object error) => jobConnectionOpen;
+
+  @override
   Future<DateTime?> newestCheckedAt() async {
     DateTime? newest;
     for (final CheckRecord(:checkedAt) in _checks) {
@@ -282,7 +291,18 @@ final class InMemoryStaticDataStore implements StaticDataStore {
       _keepNewest(_switches, keep, (s) => s.at);
 
   @override
-  Future<void> insertDiff(BuildDiffRecord record) async => _diffs.add(record);
+  Future<void> insertDiff(BuildDiffRecord record) async {
+    final index = _diffs.indexWhere(
+      (stored) =>
+          stored.fromBuild == record.fromBuild &&
+          stored.toBuild == record.toBuild,
+    );
+    if (index < 0) {
+      _diffs.add(record);
+    } else if (!record.createdAt.isBefore(_diffs[index].createdAt)) {
+      _diffs[index] = record;
+    }
+  }
 
   @override
   Future<BuildDiffRecord?> diff(int fromBuild, int toBuild) async {

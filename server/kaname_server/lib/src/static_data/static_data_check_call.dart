@@ -64,13 +64,15 @@ class StaticDataCheckCall extends FutureCall {
     final announcer = staticDataRuntime.announcer;
     unawaited(
       supervisor
-          .runBuildCheck(const CcpLatestSource())
+          .runBuildCheck(const CcpLatestSource(), trigger: CheckTrigger.daily)
           .then(
             (reply) {
               if (announcer != null) unawaited(announcer.workerReplied(reply));
               log(switch (reply) {
                 BuildCheckFinished(
-                  result: BuildCheckFailed() || BuildStaged(),
+                  result: BuildCheckFailed() ||
+                      BuildStaged() ||
+                      SwitchUnconfirmed(),
                 ) =>
                   WorkerLogLevel.warning,
                 BuildCheckFinished() => WorkerLogLevel.info,

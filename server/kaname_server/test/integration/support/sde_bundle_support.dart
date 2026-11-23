@@ -6,6 +6,9 @@ import 'package:serverpod/serverpod.dart' show Session;
 
 /// Every table the static-data store writes, for the reset between tests.
 const storeTables = [
+  'sde_admin_operation',
+  'sde_build_revision',
+  'sde_setting_write',
   'sde_import',
   'sde_check',
   'sde_switch',

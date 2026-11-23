@@ -58,6 +58,18 @@ final class StoredBuild {
   final bool held;
 }
 
+/// What asked for a check (D10).
+enum CheckTrigger {
+  /// The scheduled daily check.
+  daily,
+
+  /// The start-up check.
+  start,
+
+  /// An explicit request from an admin.
+  updateNow,
+}
+
 /// How a check for a new build ended.
 enum CheckOutcome {
   /// CCP's latest build is the active build.
@@ -85,12 +97,20 @@ final class CheckRecord {
   const CheckRecord({
     required this.checkedAt,
     required this.outcome,
+    this.trigger = CheckTrigger.daily,
+    this.lookupStartedAt,
     this.latestBuild,
     this.failureReason,
   });
 
   /// When the check job started.
   final DateTime checkedAt;
+
+  /// What asked for this check.
+  final CheckTrigger trigger;
+
+  /// When the job under the lock first asked CCP, or null if it did not.
+  final DateTime? lookupStartedAt;
 
   /// The latest build CCP named, when known.
   final int? latestBuild;
@@ -276,6 +296,10 @@ typedef ImportRecordEnd = ({
 /// import, and its own check after connection loss may be written. The last
 /// may say switched or staged only when the exact import record proved it;
 /// otherwise it is failed. These paths change no builds and prune nothing.
+/// D5 exception: fresh admin rollback reconciliation may record failure for
+/// the original locked build pair only in the transaction that first wins
+/// the conditional end of that exact operation. It cannot prune or change
+/// the builds or revision.
 ///
 /// ## Carried constraints
 ///
@@ -294,6 +318,13 @@ typedef ImportRecordEnd = ({
 abstract interface class StaticDataStore {
   /// Whether the original job connection is still open.
   bool get jobConnectionOpen;
+
+  /// Proves [error] came from a transaction statement, before COMMIT, and
+  /// that the original job connection still holds its lock.
+  bool confirmedStatementFailure(Object error);
+
+  /// The newest committed auto-update setting, on until the first write.
+  Future<bool> autoUpdate();
 
   /// Tries to take the static-data lock without waiting.
   ///

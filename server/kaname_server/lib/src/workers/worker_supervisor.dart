@@ -4,6 +4,7 @@ library;
 import 'dart:async';
 
 import 'package:kaname_core/kaname_core.dart';
+import 'package:kaname_static_data/kaname_static_data.dart' show CheckTrigger;
 
 import '../static_data/postgres_connection_settings.dart';
 import 'worker_messages.dart';
@@ -124,6 +125,7 @@ final class WorkerSupervisor {
   final WorkerMessageCodec _inbox = workerInboxCodec();
   final WorkerMessageCodec _outbox = workerOutboxCodec();
   final Map<int, Completer<WorkerReply>> _pending = {};
+  final Map<int, Completer<WorkerReply>> _pendingStarts = {};
   final Map<int, BackendIdentity> _backends = {};
   final Completer<void> _ready = Completer<void>();
   final Completer<void> _stopSignal = Completer<void>();
@@ -140,6 +142,9 @@ final class WorkerSupervisor {
 
   /// Whether a worker is running now and can take requests.
   bool get isRunning => _process != null;
+
+  /// The current database backend for this exact worker request (D26).
+  BackendIdentity? backendForRequest(int requestId) => _backends[requestId];
 
   /// Starts the worker and the supervision loop.
   ///
@@ -165,9 +170,70 @@ final class WorkerSupervisor {
   /// Completes with the worker's [BuildCheckFinished], or with a
   /// [WorkerError] when no worker runs, the worker refuses the request, or
   /// the worker exits before it answers.
-  Future<WorkerReply> runBuildCheck(ImportSourceSpec source) {
-    final request = RunBuildCheck(requestId: _nextRequestId++, source: source);
+  Future<WorkerReply> runBuildCheck(
+    ImportSourceSpec source, {
+    required CheckTrigger trigger,
+  }) {
+    if (trigger == CheckTrigger.updateNow) {
+      throw ArgumentError.value(trigger, 'trigger', 'use runUpdateNow');
+    }
+    final request = RunBuildCheck(
+      requestId: _nextRequestId++,
+      source: source,
+      trigger: trigger,
+    );
     return _send(request);
+  }
+
+  /// Requests an update-now check for a stored [operationId] (D4).
+  ///
+  /// If the worker never acknowledges entry, `started` completes with the
+  /// same terminal reply as `finished`.
+  ///
+  /// C9 (static-data-settings): after the endpoint answers, the supervisor
+  /// still owns the update-now and rollback finished futures. The settler
+  /// settles the operation, requests a refresh when builds changed, and
+  /// releases the admin-job slot regardless of the endpoint's answer.
+  ({Future<WorkerReply> started, Future<WorkerReply> finished}) runUpdateNow(
+    ImportSourceSpec source, {
+    required String operationId,
+    void Function(int requestId)? onRequestId,
+  }) {
+    final id = _nextRequestId++;
+    onRequestId?.call(id);
+    if (_process == null) {
+      final reply = Future<WorkerReply>.value(NotDispatched(requestId: id));
+      return (started: reply, finished: reply);
+    }
+    final start = Completer<WorkerReply>();
+    _pendingStarts[id] = start;
+    final finished = _send(
+      RunBuildCheck(
+        requestId: id,
+        source: source,
+        trigger: CheckTrigger.updateNow,
+        operationId: operationId,
+      ),
+    );
+    return (started: start.future, finished: finished);
+  }
+
+  /// Requests a rollback for [operationId] at the caller's revision (D5).
+  Future<WorkerReply> runRollback({
+    required String operationId,
+    required int expectedRevision,
+    void Function(int requestId)? onRequestId,
+  }) {
+    final id = _nextRequestId++;
+    onRequestId?.call(id);
+    if (_process == null) return Future.value(NotDispatched(requestId: id));
+    return _send(
+      RunRollback(
+        requestId: id,
+        operationId: operationId,
+        expectedRevision: expectedRevision,
+      ),
+    );
   }
 
   /// Asks the worker to repair the active build's client data bundle.
@@ -281,16 +347,26 @@ final class WorkerSupervisor {
     switch (message) {
       case WorkerLog(:final workerName, :final level, message: final text):
         _log(level, 'worker "$workerName": $text');
-      case JobConnectionOpened(:final backend):
-        _backends[backend.pid] = backend;
-      case JobConnectionClosed(:final backendPid):
-        _backends.remove(backendPid);
+      case JobConnectionOpened(:final requestId, :final backend):
+        _backends[requestId] = backend;
+      case JobConnectionClosed(:final requestId, :final backendPid):
+        if (_backends[requestId]?.pid == backendPid) {
+          _backends.remove(requestId);
+        }
+      case BuildCheckStarted(requestId: final int id):
+        final pending = _pendingStarts.remove(id);
+        if (pending != null) {
+          pending.complete(message);
+        } else {
+          _logLine(WorkerLogLevel.warning, 'unmatched start reply: $message');
+        }
       case final WorkerReply reply:
         final pending = switch (reply.requestId) {
           final int id => _pending.remove(id),
           null => null,
         };
         if (pending != null) {
+          _pendingStarts.remove(reply.requestId)?.complete(reply);
           pending.complete(reply);
         } else {
           _logLine(WorkerLogLevel.warning, 'unmatched reply: $reply');
@@ -307,7 +383,9 @@ final class WorkerSupervisor {
     final pending = _pending.entries.toList();
     _pending.clear();
     for (final MapEntry(:key, :value) in pending) {
-      value.complete(WorkerError(requestId: key, reason: reason));
+      final reply = WorkerError(requestId: key, reason: reason);
+      _pendingStarts.remove(key)?.complete(reply);
+      value.complete(reply);
     }
   }
 

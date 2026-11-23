@@ -1,16 +1,24 @@
-/// The holder through which the daily-check future call reaches the worker.
+/// Process-wide ownership of static-data work.
 library;
 
 import 'package:meta/meta.dart';
 
 import '../workers/worker_messages.dart';
 import '../workers/worker_supervisor.dart';
+import 'admin_operation_settler.dart';
+import 'admission_recovery.dart';
 import 'bundle_announcer.dart';
 
-/// Holds the compute worker's supervisor for the daily-check future call.
+/// Holds the worker, its settler, and the announcer outside request sessions.
 final class StaticDataRuntime {
   /// The supervisor the start hook published, or `null` when none runs.
   WorkerSupervisor? supervisor;
+
+  /// Settles admin work after the endpoint session has closed.
+  AdminOperationSettler? settler;
+
+  /// Gates admission until the start-up recovery transaction is acknowledged.
+  AdmissionRecovery? recovery;
 
   /// The announcer the worker's replies go to, or `null` when none runs.
   BundleAnnouncer? announcer;
@@ -24,6 +32,10 @@ final class StaticDataRuntime {
   @visibleForTesting
   void reset() {
     supervisor = null;
+    settler?.stop();
+    settler = null;
+    recovery?.stop();
+    recovery = null;
     announcer = null;
     log = _discard;
   }

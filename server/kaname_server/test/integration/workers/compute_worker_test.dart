@@ -25,6 +25,11 @@ import '../support/tcp_proxy.dart';
 import '../support/worker_harness.dart';
 import '../test_tools/serverpod_test_tools.dart';
 
+Future<BuiltBundle> _blockNewBundle(StaticDataStore store, int build) =>
+    build == 2721
+    ? Completer<BuiltBundle>().future
+    : buildStoredBundle(store, build);
+
 /// A source that waits for the file `<zip>.go` before it opens the zip, so a
 /// test can look at the worker while an import is in progress. It is a
 /// top-level factory because it crosses into the worker isolate.
@@ -239,6 +244,7 @@ String _describe(BuildCheckResult result) => switch (result) {
   BuildStaged(:final build, :final reason) => 'staged $build: $reason',
   BuildCheckFailed(:final reason, :final latestBuild) =>
     'failed $latestBuild: $reason',
+  SwitchUnconfirmed(:final build) => 'switch outcome unknown for $build',
 };
 
 Future<List<String>> _sdeTables(Session session) async {
@@ -260,6 +266,7 @@ void main() {
       const BuildStaged(9, 'switch failed'),
       const BuildCheckFailed('CCP unreachable'),
       const BuildCheckFailed('import failed', latestBuild: 9),
+      const SwitchUnconfirmed(9),
     ];
     for (final result in results) {
       final decoded = codec.decode(
@@ -318,6 +325,22 @@ void main() {
       // The worker is still serving: a second request is answered.
       final second = await worker.runImport(const LocalZipSource('/none.zip'));
       expect(second, isA<ImportFinished>());
+    });
+
+    test('a check that cannot open Postgres reports not entered', () async {
+      final reply = await worker.runBuildCheck(
+        const CcpLatestSource(),
+      ) as BuildCheckFinished;
+      expect(reply.notEntered, isTrue);
+      expect(reply.lookupStartedAt, isNull);
+      expect(
+        reply.result,
+        isA<BuildCheckFailed>().having(
+          (r) => r.reason,
+          'reason',
+          'Postgres unreachable',
+        ),
+      );
     });
 
     test('when the message has an unknown type then the worker logs it, '
@@ -603,6 +626,214 @@ void main() {
         SdeBuildState.active,
       );
     });
+
+    test('a development import stages without a report until the check '
+        'switches', () async {
+      final importer = await WorkerHarness.start(postgres: settings);
+      addTearDown(importer.close);
+      for (final build in [2730, 2731]) {
+        final zip = SdeFixture.complete(build: build).writeTo(scratch);
+        final reply = await importer.runImport(LocalZipSource(zip.path));
+        expect((reply as ImportFinished).outcome, ImportOutcome.succeeded);
+      }
+      final staged = await SdeBuild.db.find(
+        session,
+        where: (t) => t.state.equals(SdeBuildState.staged),
+      );
+      expect(staged.single.build, 2731);
+      expect(await SdeBuildDiff.db.find(session), isEmpty);
+      ccpAnnounces(2731);
+      final checker = await WorkerHarness.start(
+        postgres: settings,
+        sourceFactory: fakeCcpCheckFactory,
+      );
+      addTearDown(checker.close);
+      final reply = await checker.runBuildCheck(const CcpLatestSource());
+      expect((reply as BuildCheckFinished).result, isA<BuildSwitched>());
+      final diff = (await SdeBuildDiff.db.find(session)).single;
+      expect(
+        (diff.fromBuild, diff.toBuild, diff.outcome),
+        (2730, 2731, SdeBuildDiffOutcome.succeeded),
+      );
+      expect(await SdeImport.db.count(session), 2);
+    });
+
+    test('with auto-update on the daily import of N+1 switches in place '
+        'and removes N-1 with its rows', () async {
+      final worker = await WorkerHarness.start(
+        postgres: settings,
+        sourceFactory: fakeCcpCheckFactory,
+      );
+      addTearDown(worker.close);
+      for (final build in [2710, 2711, 2712]) {
+        ccpAnnounces(build);
+        final reply = await worker.runBuildCheck(const CcpLatestSource());
+        expect((reply as BuildCheckFinished).result, isA<BuildSwitched>());
+      }
+      final builds = await SdeBuild.db.find(session, orderBy: (t) => t.build);
+      expect(builds.map((b) => (b.build, b.state)), [
+        (2711, SdeBuildState.previous),
+        (2712, SdeBuildState.active),
+      ]);
+      final rows = await session.db.unsafeQuery(
+        'SELECT DISTINCT build FROM sde_type ORDER BY build',
+      );
+      expect(rows.map((r) => r.single), [2711, 2712]);
+    });
+
+    test(
+      'a worker stop after comparison preserves the report for retry',
+      () async {
+        final worker = await WorkerHarness.start(
+          postgres: settings,
+          sourceFactory: fakeCcpCheckFactory,
+          buildBundle: _blockNewBundle,
+        );
+        var stopped = false;
+        addTearDown(() async {
+          if (!stopped) await worker.close();
+        });
+        ccpAnnounces(2720);
+        final initial = await worker.runBuildCheck(const CcpLatestSource());
+        expect((initial as BuildCheckFinished).result, isA<BuildSwitched>());
+        ccpAnnounces(2721);
+        worker.sendMessage(
+          const RunBuildCheck(
+            requestId: 22,
+            source: CcpLatestSource(),
+            trigger: CheckTrigger.daily,
+          ),
+        );
+        SdeBuildDiff? saved;
+        final deadline = Stopwatch()..start();
+        while (saved == null &&
+            deadline.elapsed < const Duration(seconds: 10)) {
+          saved = await SdeBuildDiff.db.findFirstRow(session);
+          if (saved == null) {
+            await Future<void>.delayed(const Duration(milliseconds: 10));
+          }
+        }
+        expect(saved?.outcome, SdeBuildDiffOutcome.succeeded);
+        final connection = worker.received
+            .whereType<JobConnectionOpened>()
+            .last;
+        await worker.close();
+        stopped = true;
+        await session.db.unsafeQuery(
+          'SELECT pg_terminate_backend(${connection.backend.pid}, 1000)',
+        );
+        final builds = await SdeBuild.db.find(session, orderBy: (t) => t.build);
+        expect(builds.map((b) => (b.build, b.state)), [
+          (2720, SdeBuildState.active),
+          (2721, SdeBuildState.staged),
+        ]);
+        expect(await SdeSwitch.db.find(session), isEmpty);
+        final imports = await SdeImport.db.find(session);
+
+        final restarted = await WorkerHarness.start(
+          postgres: settings,
+          sourceFactory: fakeCcpCheckFactory,
+        );
+        addTearDown(restarted.close);
+        final reply = await restarted.runBuildCheck(const CcpLatestSource());
+        expect((reply as BuildCheckFinished).result, isA<BuildSwitched>());
+        expect((await SdeBuildDiff.db.find(session)).single.id, saved!.id);
+        expect(await SdeImport.db.find(session), hasLength(imports.length));
+      },
+    );
+
+    const operationId = '3b1b87b5-c165-4003-9967-c3c0842ae49c';
+
+    Future<WorkerHarness> startUpdateNow() async {
+      ccpAnnounces(2700);
+      await session.db.unsafeExecute(
+        'INSERT INTO sde_admin_operation '
+        '("operationId", kind, state, "createdAt") '
+        "VALUES ('$operationId', 'updateNow', 'waiting', now())",
+      );
+      final worker = await WorkerHarness.start(
+        postgres: settings,
+        sourceFactory: fakeCcpCheckFactory,
+      );
+      addTearDown(worker.close);
+      worker.sendMessage(
+        const RunBuildCheck(
+          requestId: 7,
+          source: CcpLatestSource(),
+          trigger: CheckTrigger.updateNow,
+          operationId: operationId,
+        ),
+      );
+      return worker;
+    }
+
+    test(
+      'an update-now start follows the durable running transition',
+      () async {
+        final locked = Completer<void>();
+        final release = Completer<void>();
+        final holder = session.db.transaction((transaction) async {
+          await session.db.unsafeExecute(
+            'LOCK TABLE sde_import IN ACCESS EXCLUSIVE MODE',
+            transaction: transaction,
+          );
+          locked.complete();
+          await release.future;
+        });
+        addTearDown(() async {
+          if (!release.isCompleted) release.complete();
+          await holder;
+        });
+        await locked.future;
+        final worker = await startUpdateNow();
+        await worker.waitFor<BuildCheckStarted>((r) => r.requestId == 7);
+        final operation = (await SdeAdminOperation.db.find(session)).single;
+        expect(operation.state, SdeAdminOperationState.running);
+        expect(worker.received.whereType<BuildCheckFinished>(), isEmpty);
+        release.complete();
+        await holder;
+
+        final reply = await worker.waitFor<BuildCheckFinished>(
+          (r) => r.requestId == 7,
+        );
+        expect(reply.result, isA<BuildSwitched>());
+        expect(reply.notEntered, isFalse);
+        final check = (await SdeCheck.db.find(session)).single;
+        expect(check.trigger, SdeCheckTrigger.updateNow);
+        expect(check.lookupStarted, isTrue);
+        expect(check.lookupStartedAt, isNotNull);
+        expect(check.lookupStartedAt, reply.lookupStartedAt);
+        final ended = (await SdeAdminOperation.db.find(session)).single;
+        expect(ended.outcome, SdeAdminOperationOutcome.switched);
+        expect(ended.changedBuilds, isTrue);
+      },
+    );
+
+    test(
+      'an update now refused by the lock adds no update-now check record',
+      () async {
+        final holder = await PostgresStaticDataStore.open(settings);
+        addTearDown(holder.close);
+        expect(await holder.tryLock(), isTrue);
+        final worker = await startUpdateNow();
+        final reply = await worker.waitFor<BuildCheckFinished>(
+          (r) => r.requestId == 7,
+        );
+        expect(
+          reply.result,
+          isA<BuildCheckFailed>().having(
+            (r) => r.reason,
+            'reason',
+            'import already running',
+          ),
+        );
+        expect(worker.received.whereType<BuildCheckStarted>(), isEmpty);
+        expect(reply.lookupStartedAt, isNull);
+        expect(await SdeCheck.db.find(session), isEmpty);
+        final ended = (await SdeAdminOperation.db.find(session)).single;
+        expect(ended.outcome, SdeAdminOperationOutcome.importRunning);
+      },
+    );
 
     test('a build check request with an unknown version is refused', () async {
       final worker = await WorkerHarness.start(postgres: settings);
