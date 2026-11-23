@@ -1132,7 +1132,14 @@ final class _Reader {
         ).containsKey('X-Pages');
       }
       final contentNode = node['content'];
-      if (contentNode == null) continue;
+      if (contentNode == null) {
+        // Only a 204 is read as no content; any other success is decoded
+        // as JSON, so a bodyless one would always look malformed.
+        if (status != '204') {
+          _refuse(responsePath, 'a $status response with no content');
+        }
+        continue;
+      }
       final contentPath = _child(responsePath, 'content');
       final content = _object(contentNode, contentPath);
       _onlyKeys(content, {'application/json'}, contentPath);

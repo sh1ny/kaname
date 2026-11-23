@@ -76,13 +76,20 @@ List<String> runtimeDependencies(String pubspecPath) {
 /// `import`, `export` and `part` URI, including every conditional-import
 /// alternative and `part of` URIs.
 ///
-/// Comments are skipped, and the scan stops at the first token that cannot
+/// A leading script tag and comments are skipped, and the scan stops at the first token that cannot
 /// begin a directive or an annotation, so text in later string literals is
 /// never read.
 List<String> directiveUris(String source) {
   final text = _withoutComments(source);
   final uris = <String>[];
-  var i = 0;
+  // A script tag (`#!...`) may only start the file and runs to its line's
+  // end; the directives follow it.
+  var i = text.startsWith('#!')
+      ? switch (text.indexOf('\n')) {
+          -1 => text.length,
+          final end => end,
+        }
+      : 0;
   final directive = RegExp(r'(library|import|export|part)\b');
   final annotation = RegExp(r'@[A-Za-z_$][\w$.]*');
   final literal = RegExp(r'''r?('[^'\n]*'|"[^"\n]*")''');

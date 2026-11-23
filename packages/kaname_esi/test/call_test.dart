@@ -18,7 +18,16 @@ void main() {
       expect(EsiCall.query('ids', [1, 2], explode: false), [('ids', '1,2')]);
     });
 
+    test('a comma inside a non-exploded item stays data', () {
+      final target = EsiCall.target('/things', [
+        ...EsiCall.query('names', ['a,b', 'c'], explode: false),
+      ]);
+      expect(target.toString(), '/things?names=a%2Cb,c');
+      expect(target.query, 'names=a%2Cb,c');
+    });
+
     test('the target encodes each value exactly once', () {
+      expect(EsiCall.query('after', 'a+b/c='), [('after', 'a%2Bb%2Fc%3D')]);
       final target = EsiCall.target('/jobs', [
         ...EsiCall.query('after', 'a+b/c='),
       ]);

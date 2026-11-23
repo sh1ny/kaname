@@ -73,6 +73,10 @@ void main() {
         EsiJson.dateTime('2030-01-02T05:04:05.5+02:00', r'$'),
         DateTime.utc(2030, 1, 2, 3, 4, 5, 500),
       );
+      expect(
+        EsiJson.dateTime('2030-01-02t03:04:05z', r'$'),
+        DateTime.utc(2030, 1, 2, 3, 4, 5),
+      );
       for (final text in ['2030-02-30', '2030-13-01', '2030-1-2', '20300102']) {
         expect(
           () => EsiJson.date(text, r'$.d'),

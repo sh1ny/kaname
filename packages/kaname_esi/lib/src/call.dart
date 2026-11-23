@@ -53,32 +53,34 @@ typedef EsiDecoder<T> = T Function(Object? json);
 /// The request and response plumbing generated operations share.
 abstract final class EsiCall {
   /// Builds a relative request target from an already encoded [path] and
-  /// the raw [query] pairs, percent-encoding each query name and value
-  /// exactly once.
+  /// the [query] pairs [EsiCall.query] built, which are already encoded.
   static Uri target(String path, [List<(String, String)> query = const []]) {
     if (query.isEmpty) return Uri.parse(path);
-    final encoded = [
-      for (final (name, value) in query)
-        '${Uri.encodeQueryComponent(name)}=${Uri.encodeQueryComponent(value)}',
-    ].join('&');
-    return Uri.parse('$path?$encoded');
+    final joined = [for (final (name, value) in query) '$name=$value'];
+    return Uri.parse('$path?${joined.join('&')}');
   }
 
-  /// The raw query pairs of the parameter [name] holding the JSON [value]:
-  /// none for `null`, one per item of an array when [explode] is true, one
-  /// comma-joined pair when it is false, and one pair for a scalar.
+  /// The query pairs of the parameter [name] holding the JSON [value],
+  /// each name and item percent-encoded exactly once: none for `null`, one
+  /// pair per item of an array when [explode] is true, one pair joining the
+  /// encoded items with literal commas when it is false (so a comma inside
+  /// an item stays data), and one pair for a scalar.
   static List<(String, String)> query(
     String name,
     Object? value, {
     bool explode = true,
-  }) => switch (value) {
-    null => const [],
-    final List<Object?> items when explode => [
-      for (final item in items) (name, '$item'),
-    ],
-    final List<Object?> items => [(name, items.join(','))],
-    _ => [(name, '$value')],
-  };
+  }) {
+    final key = Uri.encodeQueryComponent(name);
+    String encode(Object? item) => Uri.encodeQueryComponent('$item');
+    return switch (value) {
+      null => const [],
+      final List<Object?> items when explode => [
+        for (final item in items) (key, encode(item)),
+      ],
+      final List<Object?> items => [(key, items.map(encode).join(','))],
+      _ => [(key, encode(value))],
+    };
+  }
 
   /// Builds a request with [build] and runs it as [run] does.
   ///

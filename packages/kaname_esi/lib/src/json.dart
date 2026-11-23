@@ -151,7 +151,11 @@ abstract final class EsiJson {
           second < 60 &&
           offsetHour < 24 &&
           offsetMinute < 60) {
-        return DateTime.parse(text).toUtc();
+        // DateTime.parse takes only an uppercase T and Z; RFC 3339 allows
+        // either case, and the rest of the text is digits and punctuation.
+        if (DateTime.tryParse(text.toUpperCase()) case final parsed?) {
+          return parsed.toUtc();
+        }
       }
     }
     throw EsiDecodeException(path, 'expected a date-time, got "$text"');

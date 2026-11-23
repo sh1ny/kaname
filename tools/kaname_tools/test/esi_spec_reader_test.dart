@@ -281,6 +281,14 @@ void main() {
             'unsupported response status "202"',
           ),
           (
+            'a 200 response with no content',
+            (d) => _at(d, ['paths', '/gadgets', 'get', 'responses'])['200'] = {
+              'description': 'OK',
+            },
+            '#/paths/~1gadgets/get/responses/200',
+            'a 200 response with no content',
+          ),
+          (
             'an object query parameter',
             (d) =>
                 _map(

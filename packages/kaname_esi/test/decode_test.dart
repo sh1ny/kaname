@@ -18,15 +18,16 @@ Future<EsiResult<AlliancesDetail>> _alliance200(String body) =>
         .getAlliancesAllianceId(allianceId: 99000001);
 
 Future<EsiResult<List<CharactersCharacterIdNotificationsGetItem>>>
-_notifications200(String type) => EsiClient(
-  FixtureTransport.respond(
-    200,
-    body:
-        '[{"notification_id": 1, "sender_id": 2, '
-        '"sender_type": "character", "timestamp": "2026-11-19T10:00:00Z", '
-        '"type": $type}]',
-  ),
-).getCharactersCharacterIdNotifications(characterId: 90000001);
+_notifications200(String type, {String timestamp = '2026-11-19T10:00:00Z'}) =>
+    EsiClient(
+      FixtureTransport.respond(
+        200,
+        body:
+            '[{"notification_id": 1, "sender_id": 2, '
+            '"sender_type": "character", "timestamp": "$timestamp", '
+            '"type": $type}]',
+      ),
+    ).getCharactersCharacterIdNotifications(characterId: 90000001);
 
 /// A listing price, read with the generated `oneOf` reader through the
 /// same call path every generated method uses.
@@ -108,6 +109,17 @@ void main() {
         _malformed(r'$.executor_corporation_id'),
       );
     });
+  });
+
+  test('a date-time with a lowercase t and z decodes through a generated '
+      'call', () async {
+    final items = _body(
+      await _notifications200(
+        '"NewKindOfNotice"',
+        timestamp: '2026-11-19t10:00:00z',
+      ),
+    );
+    expect(items.single.timestamp, DateTime.utc(2026, 11, 19, 10));
   });
 
   group('Values the pinned spec does not list', () {

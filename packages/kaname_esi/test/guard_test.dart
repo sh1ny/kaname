@@ -74,6 +74,13 @@ const text = "import 'dart:io';";
       });
     }
 
+    test('a script tag does not hide a disallowed import', () {
+      write('lib/src/a.dart', "#!/usr/bin/env dart\nimport 'dart:io';\n");
+      final found = problems();
+      expect(found, hasLength(1));
+      expect(found.single, startsWith('lib/src/a.dart: dart:io '));
+    });
+
     test('nested metadata before the library does not hide a disallowed '
         'import', () {
       write(
