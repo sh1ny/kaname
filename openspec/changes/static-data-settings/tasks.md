@@ -364,7 +364,7 @@ Paths are relative to the repository root. `server/` stands for `server/kaname_s
 | static-data-settings → The change report has its own page | Server unreachable | app/test/static_data/change_report_page_test.dart | a failed, 503, report busy or undecodable answer shows The report is unavailable with Try again | red |
 | static-data-settings → The change report has its own page | Narrow window | app/test/static_data/change_report_page_test.dart | at 390 with 120-character names the page has one column and no overflow | red |
 | static-data-settings → The change report has its own page | Long key lists | app/test/static_data/change_report_page_test.dart | 20,000 keys build only the visible rows and each file's counts stay above its keys | red |
-| static-data-settings → The change report has its own page | Report request stalls | app/test/static_data/report_client_test.dart | a request with no headers or a stalled body is aborted at 30 s and a new request succeeds | red |
+| static-data-settings → The change report has its own page | Report request stalls | app/test/static_data/report_client_test.dart | a request with no headers or a stalled body is aborted at 30 s and a new request succeeds | green |
 | static-data-settings → The change report has its own page | Back from the report | app/test/static_data/change_report_page_test.dart | the back control and browser back return to Settings | red |
 | static-data-settings → The change report has its own page | Opened by its address | app/test/static_data/change_report_page_test.dart | opened at its address, the back control goes to /settings | red |
 | app-settings → Settings has Appearance, Server and About sections | Open Settings | app/test/settings/settings_screen_test.dart | sections appear in order Appearance, Server, Static data, About | red |
@@ -473,9 +473,9 @@ Skills: `serverpod-scheduling`, `serverpod-server-events`, `serverpod-testing`.
 
 Skills: `flutter-apply-architecture-best-practices`, `serverpod-flutter-frontend`, `flutter-use-http-package`, `dart-add-unit-test`; `data/` never imports Riverpod (ADR 0010).
 
-- [ ] 10.1 Write the failing tests "isSecureForAdmin accepts https and loopback http and refuses plain http to another host" in `app/test/server/secure_for_admin_test.dart` and "status client maps each answer to a typed status and a failure to unavailable" in `app/test/static_data/status_client_test.dart`; implement `isSecureForAdmin(Uri)` and the status client over the generated client; verify both pass.
-- [ ] 10.2 Write the failing test for the row "Report request stalls" in `report_client_test.dart` (a local server holding headers or body); implement the report GET with a 30 s deadline that aborts the transfer, and typed report decoding; verify the row turns green.
-- [ ] 10.3 Write the failing test "admin calls end at 45 s with no answer yet" in `app/test/static_data/admin_client_test.dart`, relying on A9; implement the admin client (operation ids, write ids, the 45 s timeout); verify it passes.
+- [x] 10.1 Write the failing tests "isSecureForAdmin accepts https and loopback http and refuses plain http to another host" in `app/test/server/secure_for_admin_test.dart` and "status client maps each answer to a typed status and a failure to unavailable" in `app/test/static_data/status_client_test.dart`; implement `isSecureForAdmin(Uri)` and the status client over the generated client; verify both pass.
+- [x] 10.2 Write the failing test for the row "Report request stalls" in `report_client_test.dart` (a local server holding headers or body); implement the report GET with a 30 s deadline that aborts the transfer, and typed report decoding; verify the row turns green.
+- [x] 10.3 Write the failing test "admin calls end at 45 s with no answer yet" in `app/test/static_data/admin_client_test.dart`, relying on A9; implement the admin client (operation ids, write ids, the 45 s timeout); verify it passes.
 
 ## 11. App logic
 
