@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:io';
 
 import 'package:kaname_server/src/network/client_identity.dart';
@@ -220,7 +221,7 @@ void main() {
       final tail = List.filled(15, 'y' * 200).join(',');
       final line = _ReadLog('${'x' * 10000},$tail');
       final visited = <String>[];
-      final whole = walkForwardedEntries([line], (entry) {
+      final whole = walkForwardedEntries(1, (_) => line, (entry) {
         visited.add(entry);
         return false;
       });
@@ -235,16 +236,38 @@ void main() {
 
     test('an entry longer than the budget is never copied', () {
       final line = _ReadLog('x' * 10000);
-      final whole = walkForwardedEntries([line], (_) => false);
+      final whole = walkForwardedEntries(1, (_) => line, (_) => false);
       expect(whole, isFalse);
       expect(line.copies, isEmpty);
       expect(line.lowestRead, line.length - forwardedBudget);
     });
 
+    test('clientKeyFor asks for no line the walk does not reach', () {
+      // 100,000 lines; the rightmost names an untrusted client.
+      final lines = _LineLog([
+        ...List.filled(99999, '10.0.0.5'),
+        '203.0.113.7',
+      ]);
+      final identity = clientKeyFor(
+        peer: InternetAddress('10.0.0.5'),
+        forwardedFor: lines,
+        trusted: TrustedProxies.parse('10.0.0.5'),
+      );
+      expect(
+        identity,
+        isA<ForwardedClient>().having(
+          (client) => client.address.address,
+          'address',
+          '203.0.113.7',
+        ),
+      );
+      expect(lines.read, [99999]);
+    });
+
     test('nothing of a 21st entry is read', () {
       final entries = [for (var i = 1; i <= 30; i++) '10.0.0.$i'];
       final line = _ReadLog(entries.join(','));
-      walkForwardedEntries([line], (_) => false);
+      walkForwardedEntries(1, (_) => line, (_) => false);
       // The 20th entry from the right and the comma left of it.
       final twentieth = entries.reversed.take(20).join(',').length;
       expect(line.copies, hasLength(maxForwardedEntries));
@@ -340,4 +363,30 @@ final class _ReadLog implements ForwardedLine {
     copies.add((start, end));
     return _text.substring(start, end);
   }
+}
+
+/// A list of header lines that records which of them were read.
+final class _LineLog extends ListBase<String> {
+  _LineLog(this._lines);
+
+  final List<String> _lines;
+
+  /// The indexes read, in order.
+  final List<int> read = [];
+
+  @override
+  int get length => _lines.length;
+
+  @override
+  set length(int _) => throw UnsupportedError('read-only');
+
+  @override
+  String operator [](int index) {
+    read.add(index);
+    return _lines[index];
+  }
+
+  @override
+  void operator []=(int index, String value) =>
+      throw UnsupportedError('read-only');
 }

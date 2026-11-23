@@ -150,6 +150,9 @@ ClientIdentity clientKeyFor({
   final proxy = normaliseIpAddress(peer);
   if (!trusted.trusts(proxy)) return DirectClient(ClientKey.forAddress(proxy));
 
+  // A list is read by index, only as far as the walk goes. Another
+  // iterable must be copied to be walked from its end; the HTTP server's
+  // header-size limit bounds that copy.
   final lines = switch (forwardedFor) {
     null => const <String>[],
     final List<String> list => list,
@@ -161,7 +164,8 @@ ClientIdentity clientKeyFor({
   // other is not an address, unless the whole header is blank.
   var blank = false;
   final wholeHeader = walkForwardedEntries(
-    [for (final line in lines) _StringLine(line)],
+    lines.length,
+    (index) => _StringLine(lines[index]),
     (raw) {
       final entry = raw.trim();
       if (entry.isEmpty) {
@@ -222,8 +226,9 @@ final class _StringLine implements ForwardedLine {
 
 const int _comma = 0x2c;
 
-/// Walks the complete entries of the virtually joined [lines] from right
-/// to left, calling [visit] with each until it returns `true` (C8).
+/// Walks the complete entries of the virtually joined lines, [lineCount]
+/// of them, from right to left, asking [lineAt] for a line only when the
+/// walk reaches it, calling [visit] with each until it returns `true` (C8).
 ///
 /// Reads nothing outside the last [forwardedBudget] code units, separators
 /// included: the search for an entry's left comma stops at the budget, and
@@ -235,13 +240,14 @@ const int _comma = 0x2c;
 /// Returns whether every entry of the header was visited.
 @visibleForTesting
 bool walkForwardedEntries(
-  List<ForwardedLine> lines,
+  int lineCount,
+  ForwardedLine Function(int index) lineAt,
   bool Function(String entry) visit,
 ) {
   var room = forwardedBudget;
   var visited = 0;
-  for (var i = lines.length - 1; i >= 0; i--) {
-    final line = lines[i];
+  for (var i = lineCount - 1; i >= 0; i--) {
+    final line = lineAt(i);
     var end = line.length;
     while (true) {
       if (visited == maxForwardedEntries) return false;

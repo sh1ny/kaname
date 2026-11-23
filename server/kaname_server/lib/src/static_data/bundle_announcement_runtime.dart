@@ -262,8 +262,9 @@ final class BundleAnnouncementRuntime {
           _refusals.values.first,
         );
         if (!oldest.warnedBefore(now - refusalLogInterval, strictly: true)) {
+          // One total for every reason, so the warning names none.
           return _otherClients.note(now)
-              ? _warning(reason, 'other clients', _otherClients)
+              ? _warning(everyReason, 'other clients', _otherClients)
               : null;
         }
         _refusals.remove(oldestPair);
@@ -281,6 +282,10 @@ final class BundleAnnouncementRuntime {
   /// The client and reason pairs the refusal log tracks, oldest warning
   /// first.
   Iterable<(ClientKey, String)> get trackedRefusals => _refusals.keys;
+
+  /// The reason an `other clients` warning gives: its count covers every
+  /// reason.
+  static const String everyReason = 'refusals and fallbacks of every reason';
 
   static String _warning(String reason, String who, _RefusalCount count) =>
       'announcement stream: $reason, $who, '

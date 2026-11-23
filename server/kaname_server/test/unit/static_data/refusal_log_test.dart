@@ -132,6 +132,8 @@ void main() {
     expect(named.length, lessThanOrEqualTo(refusalLogPairs));
     expect(named, hasLength(refusalLogPairs));
     expect(others, hasLength(1));
+    // Its count covers every reason, so it names none.
+    expect(others.single, contains(BundleAnnouncementRuntime.everyReason));
     expect(warnings, hasLength(named.length + others.length));
     expect(runtime.trackedRefusals, hasLength(refusalLogPairs));
   });
