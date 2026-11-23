@@ -93,6 +93,7 @@ final class WorkerSupervisor {
     Delay? delay,
     this._clock = const SystemClock(),
     this.onRunning,
+    this.onRequestStalled,
   }) : _now = now ?? DateTime.now,
        _delay = delay ?? Future<void>.delayed;
 
@@ -120,6 +121,9 @@ final class WorkerSupervisor {
 
   /// Observes each worker becoming available, including after a restart.
   final void Function()? onRunning;
+
+  /// Releases startup's tick-repair hold when a check or repair stalls (D30).
+  final void Function()? onRequestStalled;
 
   final SpawnWorker _spawn;
   final ResolvePostgresSettings _resolveSettings;
@@ -275,6 +279,7 @@ final class WorkerSupervisor {
           WorkerLogLevel.warning,
           '${request.type} request $id has had no reply for 30 minutes',
         );
+        onRequestStalled?.call();
       });
     }
     process.send(_inbox.encode(request));

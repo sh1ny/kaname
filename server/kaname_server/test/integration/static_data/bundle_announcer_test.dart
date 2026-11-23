@@ -12,13 +12,24 @@ library;
 import 'dart:async';
 import 'dart:io';
 
+import 'package:http/http.dart' as http;
 import 'package:kaname_server/src/generated/protocol.dart';
+import 'package:kaname_server/src/static_data/admin_admission.dart';
+import 'package:kaname_server/src/static_data/admin_operation_settler.dart';
+import 'package:kaname_server/src/static_data/admission_connection_attempt.dart';
+import 'package:kaname_server/src/static_data/admission_recovery.dart';
 import 'package:kaname_server/src/static_data/bundle_announcer.dart';
 import 'package:kaname_server/src/static_data/bundle_announcer_start.dart';
+import 'package:kaname_server/src/static_data/postgres_static_data_store.dart';
+import 'package:kaname_server/src/static_data/read_work_tokens.dart';
 import 'package:kaname_server/src/static_data/static_data_lock.dart';
+import 'package:kaname_server/src/static_data/static_data_runtime.dart';
+import 'package:kaname_server/src/static_data/static_data_start_hook.dart';
+import 'package:kaname_server/src/workers/compute_worker.dart';
 import 'package:kaname_server/src/workers/worker_messages.dart';
-import 'package:kaname_static_data/kaname_static_data.dart'
-    show BundleBuilt, BundleRepairLockHeld, BundleRepairRan, ImportOutcome;
+import 'package:kaname_server/src/workers/worker_process.dart';
+import 'package:kaname_server/src/workers/worker_supervisor.dart';
+import 'package:kaname_static_data/kaname_static_data.dart';
 import 'package:kaname_static_data/testing.dart';
 import 'package:serverpod/serverpod.dart' show Session;
 import 'package:test/test.dart';
@@ -99,6 +110,252 @@ void main() {
     }
 
     bool logged(String text) => logs.any((entry) => entry.$2.contains(text));
+
+    Future<AdminOperationSettler> switchedOperation(
+      BundleAnnouncer created,
+    ) async {
+      const id = '5528aed6-6431-4c67-9b55-31c38b718b10';
+      await session.db.unsafeExecute(
+        'INSERT INTO sde_admin_operation ("operationId", kind, state, '
+        '"createdAt") VALUES '
+        "('$id', 'updateNow', 'waiting', now())",
+      );
+      final settings = await migratedDatabaseSettings(session);
+      final store = await PostgresStaticDataStore.open(settings);
+      addTearDown(store.close);
+      expect(await store.tryLock(), isTrue);
+      expect(await store.markAdminOperationRunning(id), isTrue);
+      await store.inTransaction(
+        (writer) => writer.switchTo(101, at: DateTime.now().toUtc()),
+      );
+      await store.close();
+      final settler = AdminOperationSettler(
+        open: () => openAdmissionConnection(
+          settings,
+          applicationName: 'announcer-settler-test',
+        ),
+        clock: clock,
+        log: (_, _) {},
+        onBuildChange: () => unawaited(created.request()),
+      );
+      addTearDown(settler.stop);
+      expect(
+        settler.reserve(operationId: id, kind: SdeAdminOperationKind.updateNow),
+        isTrue,
+      );
+      return settler;
+    }
+
+    Future<SdeAdminOperation?> settleSwitch(AdminOperationSettler settler) =>
+        settler.dispatched(
+          '5528aed6-6431-4c67-9b55-31c38b718b10',
+          Future.value(
+            const WorkerError(requestId: 1, reason: 'worker exited'),
+          ),
+          backend: () => null,
+        );
+
+    Future<void> seedSwitchPair() async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await seedBuild(session, 101, SdeBuildState.staged);
+      await seedBundle(session, 101);
+    }
+
+    test('a switch settled after a worker exit requests a refresh that '
+        'publishes N+1', () async {
+      await seedSwitchPair();
+      final created = announcer();
+      await startAndSettle(created);
+      final end = await settleSwitch(await switchedOperation(created));
+      await created.settled;
+      expect(
+        (end?.outcome, end?.activeBuild),
+        (SdeAdminOperationOutcome.switched, 101),
+      );
+      expect(namedBuilds(bus.published), [100, 101]);
+    });
+
+    test('a settled switch superseded by a rollback publishes only the '
+        'current build and X stays switched', () async {
+      await seedSwitchPair();
+      final created = announcer();
+      await startAndSettle(created);
+      final settler = await switchedOperation(created);
+      final gate = source.holdReadStarts = Completer<void>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+      final reads = source.reads;
+      final end = await settleSwitch(settler);
+      await _eventually(() => source.reads == reads + 1, 'settlement refresh');
+      await rollback(session);
+      source.holdReadStarts = null;
+      gate.complete();
+      await created.settled;
+      expect(
+        (end?.outcome, end?.activeBuild),
+        (SdeAdminOperationOutcome.switched, 101),
+      );
+      expect(namedBuilds(bus.published), [100]);
+    });
+
+    test('a settled change whose bundle is already announced publishes '
+        'nothing', () async {
+      await seedSwitchPair();
+      final created = announcer();
+      await startAndSettle(created);
+      final settler = await switchedOperation(created);
+      await created.request();
+      final reads = source.reads;
+      final end = await settleSwitch(settler);
+      await created.settled;
+      expect(source.reads, reads + 1);
+      expect(
+        (end?.outcome, end?.activeBuild),
+        (SdeAdminOperationOutcome.switched, 101),
+      );
+      expect(namedBuilds(bus.published), [100, 101]);
+    });
+
+    test('a settled admin rollback requests a refresh that publishes N '
+        'without waiting for the tick', () async {
+      const id = '5528aed6-6431-4c67-9b55-31c38b718b11';
+      await seedBuild(session, 100, SdeBuildState.previous);
+      await seedBundle(session, 100);
+      await seedBuild(session, 101, SdeBuildState.active);
+      await seedBundle(session, 101);
+      await SdeBuildRevision.db.insertRow(
+        session,
+        SdeBuildRevision(id: 1, revision: 4),
+      );
+      final created = announcer();
+      await startAndSettle(created);
+      await session.db.unsafeExecute(
+        'INSERT INTO sde_admin_operation ("operationId", kind, state, '
+        '"expectedRevision", "createdAt") VALUES '
+        "('$id', 'rollback', 'waiting', 4, now())",
+      );
+      final settings = await migratedDatabaseSettings(session);
+      final supervisor = WorkerSupervisor(
+        name: 'rollback-announcement',
+        spawn: isolateComputeWorkerSpawn(),
+        resolveSettings: () async => settings,
+        sweep: (_) async => true,
+        terminateBackend: (_) async => false,
+        log: (_, _) {},
+        clock: clock,
+      );
+      addTearDown(supervisor.stop);
+      supervisor.start();
+      await supervisor.ready;
+      final settler = AdminOperationSettler(
+        open: () => openAdmissionConnection(
+          settings,
+          applicationName: 'rollback-announcement-settler',
+        ),
+        clock: clock,
+        log: (_, _) {},
+        onBuildChange: () => unawaited(created.request()),
+      );
+      addTearDown(settler.stop);
+      expect(
+        settler.reserve(
+          operationId: id,
+          kind: SdeAdminOperationKind.rollback,
+          expectedRevision: 4,
+        ),
+        isTrue,
+      );
+      final result = await settler.dispatched(
+        id,
+        supervisor.runRollback(operationId: id, expectedRevision: 4),
+        backend: () => null,
+      );
+      await created.settled;
+      expect(result?.outcome, SdeAdminOperationOutcome.rolledBack);
+      expect(namedBuilds(bus.published), [101, 100]);
+      expect(clock.now(), DateTime.utc(2026, 1, 1));
+    });
+
+    test('an up-to-date update now that repairs the bundle requests a '
+        'refresh that announces it', () async {
+      const id = '5528aed6-6431-4c67-9b55-31c38b718b12';
+      final settings = await migratedDatabaseSettings(session);
+      final scratch = await Directory.systemTemp.createTemp(
+        'announcer-update-',
+      );
+      addTearDown(() => scratch.delete(recursive: true));
+      final importer = await WorkerHarness.start(postgres: settings);
+      addTearDown(importer.close);
+      final zip = SdeFixture.complete(build: 910).writeTo(scratch);
+      final imported = await importer.runImport(LocalZipSource(zip.path));
+      expect((imported as ImportFinished).outcome, ImportOutcome.succeeded);
+      expect(await SdeBundle.db.find(session), isEmpty);
+      final created = announcer();
+      await startAndSettle(created);
+      expect(namedBuilds(bus.published), [null]);
+      final supervisor = WorkerSupervisor(
+        name: 'update-announcement',
+        spawn: isolateComputeWorkerSpawn(sourceFactory: _upToDateSource),
+        resolveSettings: () async => settings,
+        sweep: (_) async => true,
+        terminateBackend: (_) async => false,
+        log: (_, _) {},
+        clock: clock,
+      );
+      addTearDown(supervisor.stop);
+      supervisor.start();
+      await supervisor.ready;
+      final settler = AdminOperationSettler(
+        open: () => openAdmissionConnection(
+          settings,
+          applicationName: 'update-announcement-settler',
+        ),
+        clock: clock,
+        log: (_, _) {},
+        onBuildChange: () => unawaited(created.request()),
+      );
+      addTearDown(settler.stop);
+      final recovery = AdmissionRecovery(
+        open: () => openAdmissionConnection(
+          settings,
+          applicationName: 'update-announcement-recovery',
+        ),
+        clock: clock,
+        log: (_, _) {},
+        workerReady: () => supervisor.isRunning,
+      )..start();
+      addTearDown(recovery.stop);
+      await _eventually(() => recovery.admissionOpen, 'admission opens');
+      final runtime = StaticDataRuntime()
+        ..supervisor = supervisor
+        ..settler = settler
+        ..recovery = recovery
+        ..announcer = created;
+      final admission = AdminAdmission(
+        runtime: runtime,
+        withSession: <T>(action) => action(session),
+        tokens: ReadWorkTokens(clock: clock),
+        clock: clock,
+      );
+      final answer = await admission.request(
+        id,
+        kind: SdeAdminOperationKind.updateNow,
+      );
+      expect(answer.outcome, AdminAnswerOutcome.started);
+      await _eventually(
+        () => namedBuilds(bus.published).contains(910),
+        'update reply announces the repaired bundle',
+      );
+      await _eventually(
+        () => settler.activeOperationId == null,
+        'update job settles',
+      );
+      final row = (await SdeAdminOperation.db.find(session)).single;
+      expect(row.outcome, SdeAdminOperationOutcome.upToDate);
+      expect(namedBuilds(bus.published), [null, 910]);
+    });
 
     // Scenario: Switch announced.
     test('switch publishes one message naming the new build', () async {
@@ -937,6 +1194,41 @@ void main() {
       expect(created.repairChecksWaiting, 0);
     });
 
+    test('a tick repair that never replies shows worker stuck at 30 min and '
+        'no other repair is sent', () async {
+      await seedBuild(session, 845, SdeBuildState.active);
+      await seedBundle(session, 845);
+      final settings = await migratedDatabaseSettings(session);
+      final worker = _SilentWorker();
+      final supervisor = WorkerSupervisor(
+        name: 'silent-repair',
+        spawn: (_) async => worker,
+        resolveSettings: () async => settings,
+        sweep: (_) async => true,
+        terminateBackend: (_) async => false,
+        log: (_, _) {},
+        clock: clock,
+      );
+      addTearDown(supervisor.stop);
+      supervisor.start();
+      await supervisor.ready;
+      final created = announcer(runRepair: supervisor.runBundleRepair);
+      await startAndSettle(created);
+      await SdeBundle.db.deleteWhere(
+        session,
+        where: (t) => t.build.equals(845),
+      );
+      await tick(created);
+      await _eventually(() => worker.repairs == 1, 'tick repair sent');
+      clock.elapse(const Duration(minutes: 29, seconds: 59));
+      expect(supervisor.workerStuck, isFalse);
+      clock.elapse(const Duration(seconds: 1));
+      expect(supervisor.workerStuck, isTrue);
+      await created.settled;
+      expect(worker.repairs, 1);
+      expect(await SdeBundle.db.find(session), isEmpty);
+    });
+
     test(
       'repair owed behind another lock holder is sent by the first tick '
       'after release with none outstanding and announced once stored',
@@ -952,15 +1244,44 @@ void main() {
         final imported = await worker.runImport(LocalZipSource(zip.path));
         expect((imported as ImportFinished).outcome, ImportOutcome.succeeded);
         expect(await SdeBundle.db.find(session), isEmpty);
+        await SdeCheck.db.insertRow(
+          session,
+          SdeCheck(
+            checkedAt: DateTime.utc(2026, 1, 2, 13),
+            latestBuild: 850,
+            outcome: SdeCheckOutcome.upToDate,
+          ),
+        );
+        final supervisor = WorkerSupervisor(
+          name: 'startup-repair',
+          spawn: isolateComputeWorkerSpawn(),
+          resolveSettings: () async => settings,
+          sweep: (_) async => true,
+          terminateBackend: (_) async => false,
+          log: (_, _) {},
+          clock: clock,
+        );
         var sent = 0;
         final created = announcer(
           runRepair: () {
             sent++;
-            return worker.runBundleRepair();
+            return supervisor.runBundleRepair();
           },
         );
         await startAndSettle(created);
         expect(namedBuilds([created.installed!]), [null], reason: 'owed');
+        final hook = StaticDataStartHook(
+          supervisor: supervisor,
+          withSession: <T>(action) => action(session),
+          scheduleDailyCheck: () async {},
+          log: (_, _) {},
+          now: () => DateTime.utc(2026, 1, 2, 15),
+          announcer: created,
+        );
+        addTearDown(() async {
+          await hook.stop();
+          staticDataRuntime.reset();
+        });
 
         // Another job holds the static-data lock.
         final release = Completer<void>();
@@ -980,7 +1301,7 @@ void main() {
         await locked.future;
 
         // The start hook's request finds the lock held.
-        final startReply = await created.sendRepair();
+        final startReply = await hook.run();
         expect(
           (startReply as BundleRepairFinished).result,
           isA<BundleRepairLockHeld>(),
@@ -1009,8 +1330,7 @@ void main() {
           hasLength(1),
           reason: 'announced once',
         );
-        final run = worker.received.whereType<BundleRepairFinished>().last;
-        expect((run.result as BundleRepairRan).step, isA<BundleBuilt>());
+        expect(await bundleRowOf(session, 850), isNotNull);
       },
     );
   }, rollbackDatabase: RollbackDatabase.disabled);
@@ -1027,4 +1347,44 @@ Future<void> _eventually(
     if (DateTime.now().isAfter(deadline)) fail('timed out waiting: $what');
     await Future<void>.delayed(const Duration(milliseconds: 20));
   }
+}
+
+final class _SilentWorker implements WorkerProcess {
+  final _replies = StreamController<Object?>();
+  final _exit = Completer<String>();
+  int repairs = 0;
+
+  @override
+  Stream<Object?> get replies => _replies.stream;
+
+  @override
+  Future<String> get exited => _exit.future;
+
+  @override
+  void send(Map<String, Object?> message) {
+    if (workerInboxCodec().decode(message) is RunBundleRepair) repairs++;
+  }
+
+  @override
+  void kill() {
+    if (!_exit.isCompleted) _exit.complete('stopped');
+  }
+}
+
+SdeSource _upToDateSource(
+  ImportSourceSpec spec,
+  http.Client client,
+  Directory scratchRoot,
+) => _UpToDateSource();
+
+final class _UpToDateSource implements SdeSource {
+  @override
+  SdeSourceKind get kind => SdeSourceKind.ccp;
+
+  @override
+  Future<int?> announcedBuild() async => 910;
+
+  @override
+  Future<SdeArchive> open() =>
+      throw StateError('an up-to-date build needs no download');
 }

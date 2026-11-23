@@ -8,6 +8,7 @@ import 'package:kaname_server/src/generated/future_calls.dart'
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/static_data/bundle_announcer.dart';
 import 'package:kaname_server/src/static_data/postgres_connection_settings.dart';
+import 'package:kaname_server/src/static_data/static_data_access.dart';
 import 'package:kaname_server/src/static_data/static_data_check_call.dart';
 import 'package:kaname_server/src/static_data/static_data_runtime.dart';
 import 'package:kaname_server/src/workers/compute_worker.dart';
@@ -22,6 +23,7 @@ import 'package:test/test.dart';
 import '../support/announcer_support.dart';
 import '../support/migrated_database.dart';
 import '../test_tools/serverpod_test_tools.dart';
+import '../workers/worker_supervisor_test.dart' show FakeWorker;
 
 /// CCP with no network. Top-level because it crosses into the worker isolate.
 SdeSource offlineCcpFactory(
@@ -149,6 +151,9 @@ void main() {
       }
       final check = (await SdeCheck.db.find(session)).single;
       expect(check.outcome, SdeCheckOutcome.failed);
+      expect(check.trigger, SdeCheckTrigger.daily);
+      expect(check.lookupStarted, isTrue);
+      expect(check.lookupStartedAt, isNotNull);
       expect(check.failureReason, contains('CCP unreachable'));
       // The worker's answer, sent after it prunes and unlocks, makes the
       // announcer refresh: wait for that read to start, then to end.
@@ -158,6 +163,39 @@ void main() {
       await announcer.settled;
       expect(source.reads, greaterThan(readsBefore));
     }, timeout: const Timeout(Duration(seconds: 90)));
+
+    test('a daily request still pending at the next 12:00 UTC sends none, '
+        'logs it, and shows worker stuck at 30 min', () async {
+      final clock = FakeClock(DateTime.utc(2026, 1, 2, 12));
+      final worker = FakeWorker();
+      final logs = <String>[];
+      final supervisor = WorkerSupervisor(
+        name: 'compute',
+        spawn: (_) async => worker,
+        resolveSettings: () async => settings,
+        sweep: (_) async => true,
+        terminateBackend: (_) async => false,
+        log: (_, message) => logs.add(message),
+        clock: clock,
+      )..start();
+      addTearDown(supervisor.stop);
+      staticDataRuntime
+        ..supervisor = supervisor
+        ..log = (_, message) => logs.add(message);
+      await supervisor.ready;
+      final futureCall = StaticDataCheckCall();
+      int sentChecks() =>
+          worker.sent.where((m) => m['type'] == RunBuildCheck.typeName).length;
+      await futureCall.run(session);
+      expect(sentChecks(), 1);
+      clock.elapse(const Duration(minutes: 30));
+      final access = StaticDataAccess.forPod(session.serverpod);
+      expect((await access.status.status())?.workerStuck, isTrue);
+      clock.elapse(const Duration(hours: 23, minutes: 30));
+      await futureCall.run(session);
+      expect(sentChecks(), 1);
+      expect(logs, contains(contains('previous check is still pending')));
+    });
 
     test('the call returns at once and logs "worker not running" while the '
         'worker has not started (C9)', () async {

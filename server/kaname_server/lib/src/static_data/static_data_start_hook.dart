@@ -15,7 +15,7 @@ import 'package:kaname_static_data/kaname_static_data.dart'
         SwitchUnconfirmed;
 import 'package:serverpod/serverpod.dart';
 
-import '../generated/protocol.dart';
+import '../realtime/server_clock.dart';
 import '../workers/compute_worker.dart';
 import '../workers/worker_messages.dart';
 import '../workers/worker_supervisor.dart';
@@ -80,6 +80,7 @@ StaticDataStartHook? staticDataStartHookFor({
   required WorkerLogSink log,
   required ScheduleDailyCheck scheduleDailyCheck,
   DateTime Function()? now,
+  ServerClock clock = const SystemClock(),
   SpawnWorker? spawn,
   BundleAnnouncer? announcer,
 }) {
@@ -105,7 +106,9 @@ StaticDataStartHook? staticDataStartHookFor({
     terminateBackend: (backend) =>
         withSession((session) => terminateBackend(session, backend)),
     log: log,
+    clock: clock,
     onRunning: () => recovery.observeWorkerReadiness(),
+    onRequestStalled: announcer?.releaseTickRepairs,
   );
   recovery = AdmissionRecovery(
     open: () => openAdmissionConnection(
@@ -121,6 +124,7 @@ StaticDataStartHook? staticDataStartHookFor({
     scheduleDailyCheck: scheduleDailyCheck,
     log: log,
     now: now,
+    clock: clock,
     announcer: announcer,
     settler: AdminOperationSettler(
       open: () => openAdmissionConnection(
@@ -135,58 +139,36 @@ StaticDataStartHook? staticDataStartHookFor({
   );
 }
 
-/// What the server does about static data when it starts (design D8, D6).
+/// Runs the server's static-data startup passes (D30).
 ///
-/// [run] starts the compute worker's supervisor, then:
+/// C2: Cron scheduling cancels its identifier before scheduling, so every
+/// successful startup leaves one daily call even across a restart.
+/// C36: Passes are single-flight and retry 30 s after they started. Each
+/// sweeps first, schedules the single daily check and waits on any pending
+/// check. Startup ends once a catch-up check reached CCP or, when none is
+/// due, the repair entered its job. A pass outstanding before dispatch for
+/// 60 s sets startup stuck; an unanswered worker request sets worker stuck
+/// after 30 min. Either releases the announcer's tick repairs.
 ///
-/// 1. publishes the supervisor and [log] to [staticDataRuntime], where the
-///    daily future call finds them.
-/// 2. sweeps stale import records: when no import is live (the static-data
-///    lock is free), every `running` record is a leftover of a stopped
-///    server and becomes `failed` ("interrupted"). That happens before any
-///    new check starts. A live import keeps its record.
-/// 3. puts the daily check on Serverpod's schedule: cancels the identifier
-///    `kaname-sde-daily-check` and schedules the cron call once.
-/// 4. waits for the worker, then runs a check at once when
-///    [DailyBuildCheckSchedule.catchUpDue] says so: no build is active, or no
-///    check has started since the latest 12:00 UTC (read from the newest
-///    `sde_check` row). The day's 12:00 UTC run does not wait for the
-///    worker and is dropped when it comes while the worker starts, so the
-///    hook decides the catch-up only once the worker is ready. A server with
-///    no active build thus imports CCP's latest build as the check's
-///    bootstrap; a server with an active build imports only when the check
-///    finds a newer one. The check's own record says how it ended; a failed
-///    one (CCP unreachable, say) leaves no active build on a first start, so
-///    the next start tries again.
-/// 5. when no check is due, sends a [RunBundleRepair] instead, so the active
-///    build's bundle is built when it is missing, failed or of another
-///    format version (D20). A check that runs repairs the bundle itself.
-///
-/// ## Carried constraint
-///
-/// - **C2:** Serverpod 4.1.2 adds a future-call row on every schedule. The
-///   daily check must be cancelled by its identifier before it is scheduled,
-///   or each restart adds another daily run.
-///
-/// [run] never throws and is meant to run detached, so the server serves
-/// requests while it works; it completes when the check has ended. [stop]
-/// ends the worker's supervision, for the server's shutdown.
+/// A failure before a check's CCP lookup is not evidence of a check. Stored
+/// and live evidence are compared to the same 12:00 UTC cutoff.
 final class StaticDataStartHook {
   /// Creates a hook that works through [supervisor] and logs to [log].
   ///
-  /// [scheduleDailyCheck] does step 3; [now] (default: the clock) feeds the
-  /// catch-up rule.
+  /// [now] optionally overrides the time used for the daily cutoff.
+  /// [clock] supplies startup deadlines and retry timers.
   StaticDataStartHook({
     required this.supervisor,
     required this.withSession,
     required this.scheduleDailyCheck,
     required this.log,
     DateTime Function()? now,
+    this._clock = const SystemClock(),
     this.announcer,
     this.settler,
     this.recovery,
     this.dedicatedSettingsReady,
-  }) : _now = now ?? DateTime.now;
+  }) : _now = now ?? _clock.now;
 
   /// The compute worker's supervisor.
   final WorkerSupervisor supervisor;
@@ -213,21 +195,21 @@ final class StaticDataStartHook {
   final Future<void>? dedicatedSettingsReady;
 
   final DateTime Function() _now;
+  final ServerClock _clock;
+  final _stopped = Completer<void>();
+  Timer? _dispatchDeadline;
+  bool _dailyScheduled = false;
 
-  /// Starts the worker, schedules the daily check and runs a check when one
-  /// is due.
-  ///
-  /// Completes with the worker's answer to the check, or, when no check was
-  /// due, to the bundle repair ([BundleRepairFinished]); with `null` when
-  /// the start-time work failed.
+  /// Starts the worker and completes when its startup work ends or stops.
   Future<WorkerReply?> run() async {
-    // The announcer's ticks send no repair until the start-up decision and
-    // the check or repair it makes have ended (D10); a check releases them
-    // as soon as it is answered.
     announcer?.holdTickRepairs();
     try {
-      return await _run();
+      return await Future.any([
+        _run(),
+        _stopped.future.then<WorkerReply?>((_) => null),
+      ]);
     } finally {
+      _dispatchReached();
       announcer?.releaseTickRepairs();
     }
   }
@@ -241,92 +223,167 @@ final class StaticDataStartHook {
       ..announcer = announcer
       ..log = log;
     if (dedicatedSettingsReady case final ready?) {
-      unawaited(ready.then((_) => recovery?.start()));
+      unawaited(
+        ready.then((_) {
+          if (!_stopped.isCompleted) recovery?.start();
+        }),
+      );
     } else {
       recovery?.start();
     }
-    try {
-      final swept = await withSession(
-        (session) => sweepRunningImports(session, reason: 'interrupted'),
-      );
-      if (!swept) {
+    while (!_stopped.isCompleted) {
+      final started = _clock.now();
+      _dispatchDeadline = _clock.once(const Duration(seconds: 60), () {
+        if (!identical(staticDataRuntime.supervisor, supervisor)) return;
+        staticDataRuntime.startupStuck = true;
         log(
-          WorkerLogLevel.info,
-          'static data: an import is running; its record is left alone',
+          WorkerLogLevel.warning,
+          'static data: start-up has not reached dispatch in 60 seconds',
         );
+        announcer?.releaseTickRepairs();
+      });
+      try {
+        final answer = await _pass();
+        if (answer != null) return answer;
+      } on Object catch (error) {
+        log(
+          WorkerLogLevel.error,
+          'static data: start-time work failed: $error',
+        );
+      } finally {
+        _dispatchReached();
       }
-      await scheduleDailyCheck();
-      // The catch-up is decided only once the worker is ready: a 12:00 UTC
-      // run that comes while the worker starts finds none and is dropped
-      // (C9 in `StaticDataCheckCall`), so this decision must see that day.
-      await supervisor.ready;
-      final (:lastCheckStartedAt, :hasActiveBuild) = await withSession(
-        (session) async => (
-          lastCheckStartedAt: (await SdeCheck.db.findFirstRow(
-            session,
-            orderByList: (t) => [t.checkedAt.desc()],
-          ))?.checkedAt,
-          hasActiveBuild:
-              await SdeBuild.db.findFirstRow(
-                session,
-                where: (t) => t.state.equals(SdeBuildState.active),
-              ) !=
-              null,
-        ),
-      );
-      if (!DailyBuildCheckSchedule.catchUpDue(
-        lastCheckStartedAt: lastCheckStartedAt,
-        hasActiveBuild: hasActiveBuild,
-        now: _now(),
-      )) {
-        // One repair at a time per server: the announcer's own repair tick
-        // shares this request while it is outstanding.
-        final repair =
-            await (announcer?.sendRepair() ?? supervisor.runBundleRepair());
-        log(switch (repair) {
-          BundleRepairFinished(
-            result: BundleRepairRan(step: BundleFailed()) ||
-                BundleRepairFailed(),
-          ) =>
-            WorkerLogLevel.warning,
-          BundleRepairFinished() => WorkerLogLevel.info,
-          _ => WorkerLogLevel.warning,
-        }, 'static data: start-up bundle repair answered: $repair');
-        return repair;
+      if (_stopped.isCompleted) break;
+      final remaining =
+          const Duration(seconds: 30) - _clock.now().difference(started);
+      if (remaining > Duration.zero) {
+        final retry = Completer<void>();
+        final timer = _clock.once(remaining, retry.complete);
+        await Future.any([retry.future, _stopped.future]);
+        timer.cancel();
       }
+    }
+    return null;
+  }
+
+  void _dispatchReached() {
+    _dispatchDeadline?.cancel();
+    _dispatchDeadline = null;
+    if (identical(staticDataRuntime.supervisor, supervisor)) {
+      staticDataRuntime.startupStuck = false;
+    }
+  }
+
+  Future<WorkerReply?> _pass() async {
+    final swept = await withSession(
+      (session) => sweepRunningImports(session, reason: 'interrupted'),
+    );
+    if (_stopped.isCompleted) return null;
+    if (!swept) {
       log(
         WorkerLogLevel.info,
-        hasActiveBuild
-            ? 'static data: no check since the last 12:00 UTC; checking CCP '
-                  'for a new build'
-            : 'static data: no active build; checking CCP for the latest '
-                  'build',
+        'static data: an import is running; its record is left alone',
       );
-      final reply = await supervisor.runBuildCheck(
-        const CcpLatestSource(),
-        trigger: CheckTrigger.start,
-      );
-      // The check has ended and freed the lock, so the ticks may send
-      // repairs again, even while the refresh its reply asks for hangs.
-      announcer?.releaseTickRepairs();
-      await announcer?.workerReplied(reply);
-      log(switch (reply) {
-        BuildCheckFinished(
-          result: BuildCheckFailed() || BuildStaged() || SwitchUnconfirmed(),
-        ) =>
-          WorkerLogLevel.warning,
-        BuildCheckFinished() => WorkerLogLevel.info,
-        _ => WorkerLogLevel.warning,
-      }, 'static data: start-up check answered: $reply');
-      return reply;
-    } on Object catch (error) {
-      log(WorkerLogLevel.error, 'static data: start-time work failed: $error');
-      return null;
     }
+    if (!_dailyScheduled) {
+      await scheduleDailyCheck();
+      _dailyScheduled = true;
+    }
+    if (_stopped.isCompleted) return null;
+    await supervisor.ready;
+    while (!_stopped.isCompleted && supervisor.isRunning) {
+      if (staticDataRuntime.pendingCheck case final pending?) {
+        // It has already been sent. Its own stall timer now watches it.
+        _dispatchReached();
+        if (!_lookedUp(await pending)) return null;
+        continue;
+      }
+      final live = staticDataRuntime.latestLookupAt;
+      final (:stored, :hasActiveBuild) = await withSession(_catchUpSnapshot);
+      if (_stopped.isCompleted || !supervisor.isRunning) return null;
+      // A cron call might start or finish while PostgreSQL was answering.
+      if (staticDataRuntime.pendingCheck != null ||
+          live != staticDataRuntime.latestLookupAt) {
+        continue;
+      }
+      final latest = live != null && (stored == null || live.isAfter(stored))
+          ? live
+          : stored;
+      final due = DailyBuildCheckSchedule.catchUpDue(
+        lastCheckStartedAt: latest,
+        hasActiveBuild: hasActiveBuild,
+        now: _now(),
+      );
+      _dispatchReached();
+      return due ? _check(hasActiveBuild: hasActiveBuild) : _repair();
+    }
+    return null;
+  }
+
+  Future<WorkerReply?> _check({required bool hasActiveBuild}) async {
+    log(
+      WorkerLogLevel.info,
+      hasActiveBuild
+          ? 'static data: no check since the last 12:00 UTC; checking CCP '
+                'for a new build'
+          : 'static data: no active build; checking CCP for the latest build',
+    );
+    final pending = staticDataRuntime.tryCheck(CheckTrigger.start);
+    if (pending == null) return null;
+    final reply = await pending;
+    if (_stopped.isCompleted) return null;
+    if (_lookedUp(reply)) announcer?.releaseTickRepairs();
+    await announcer?.workerReplied(reply);
+    log(switch (reply) {
+      BuildCheckFinished(
+        result: BuildCheckFailed() || BuildStaged() || SwitchUnconfirmed(),
+      ) =>
+        WorkerLogLevel.warning,
+      BuildCheckFinished() => WorkerLogLevel.info,
+      _ => WorkerLogLevel.warning,
+    }, 'static data: start-up check answered: $reply');
+    return _lookedUp(reply) ? reply : null;
+  }
+
+  Future<WorkerReply?> _repair() async {
+    final repair =
+        await (announcer?.sendRepair() ?? supervisor.runBundleRepair());
+    if (_stopped.isCompleted) return null;
+    log(switch (repair) {
+      BundleRepairFinished(
+        result: BundleRepairRan(step: BundleFailed()) || BundleRepairFailed(),
+      ) =>
+        WorkerLogLevel.warning,
+      BundleRepairFinished() => WorkerLogLevel.info,
+      _ => WorkerLogLevel.warning,
+    }, 'static data: start-up bundle repair answered: $repair');
+    return repair is BundleRepairFinished && !repair.notEntered ? repair : null;
+  }
+
+  static bool _lookedUp(WorkerReply reply) => switch (reply) {
+    BuildCheckFinished(notEntered: false, lookupStartedAt: DateTime()) => true,
+    _ => false,
+  };
+
+  static Future<({DateTime? stored, bool hasActiveBuild})> _catchUpSnapshot(
+    Session session,
+  ) async {
+    final rows = await session.db.unsafeQuery('''
+SELECT max(CASE
+  WHEN "lookupStarted" IS TRUE THEN "lookupStartedAt"
+  WHEN "lookupStarted" IS NULL
+    AND (outcome <> 'failed' OR "latestBuild" IS NOT NULL) THEN "checkedAt"
+END), EXISTS (SELECT 1 FROM sde_build WHERE "activeMarker" IS TRUE)
+FROM sde_check
+''');
+    final row = rows.single;
+    return (stored: row[0] as DateTime?, hasActiveBuild: row[1]! as bool);
   }
 
   /// Stops the worker for good and withdraws it from [staticDataRuntime].
   Future<void> stop() {
+    if (!_stopped.isCompleted) _stopped.complete();
+    _dispatchReached();
     settler?.stop();
     recovery?.stop();
     if (identical(staticDataRuntime.supervisor, supervisor)) {

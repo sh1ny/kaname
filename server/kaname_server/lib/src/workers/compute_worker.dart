@@ -213,9 +213,12 @@ final class ComputeWorker {
         if (start == null) {
           _log(WorkerLogLevel.warning, 'rejected $request before the start');
           _reply(
-            WorkerError(
+            BundleRepairFinished(
               requestId: request.requestId,
-              reason: 'the worker has not received its start message',
+              notEntered: true,
+              result: const BundleRepairFailed(
+                'the worker has not received its start message',
+              ),
             ),
           );
         } else {
@@ -415,13 +418,17 @@ final class ComputeWorker {
     WorkerStart start,
   ) async {
     BundleRepairResult result;
+    var entered = false;
     try {
       result = await _withJobStore(
         requestId: request.requestId,
         start: start,
         unreachable: () => const BundleRepairFailed('Postgres unreachable'),
-        job: (store, client) =>
-            BundleRepairJob(store: store, buildBundle: _buildBundle).run(),
+        job: (store, client) {
+          final job = BundleRepairJob(store: store, buildBundle: _buildBundle);
+          entered = true;
+          return job.run();
+        },
       );
     } on Object catch (error) {
       _log(WorkerLogLevel.error, 'bundle repair failed unexpectedly: $error');
@@ -435,7 +442,13 @@ final class ComputeWorker {
           BundleRepairNoActiveBuild():
         _log(WorkerLogLevel.info, describeBundleRepair(result));
     }
-    _reply(BundleRepairFinished(requestId: request.requestId, result: result));
+    _reply(
+      BundleRepairFinished(
+        requestId: request.requestId,
+        result: result,
+        notEntered: !entered,
+      ),
+    );
   }
 
   void _logBundleStep(BundleStepResult result) => _log(

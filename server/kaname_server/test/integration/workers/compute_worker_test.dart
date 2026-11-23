@@ -30,6 +30,10 @@ Future<BuiltBundle> _blockNewBundle(StaticDataStore store, int build) =>
     ? Completer<BuiltBundle>().future
     : buildStoredBundle(store, build);
 
+Future<BuiltBundle> _failBundleBuild(StaticDataStore store, int build) async {
+  throw StateError('bundle build failed');
+}
+
 /// A source that waits for the file `<zip>.go` before it opens the zip, so a
 /// test can look at the worker while an import is in progress. It is a
 /// top-level factory because it crosses into the worker isolate.
@@ -280,6 +284,63 @@ void main() {
     }
   });
 
+  test('repair codec preserves entry evidence and legacy results', () {
+    final codec = workerOutboxCodec();
+    for (final entered in [false, true]) {
+      final original = BundleRepairFinished(
+        requestId: 42,
+        result: const BundleRepairFailed('repair failed'),
+        notEntered: !entered,
+      );
+      final encoded = codec.encode(original);
+      final decoded = codec.decode(encoded) as BundleRepairFinished;
+      expect(decoded.requestId, 42);
+      expect(decoded.notEntered, !entered);
+      expect((decoded.result as BundleRepairFailed).reason, 'repair failed');
+      encoded.remove('notEntered');
+      expect(
+        (codec.decode(encoded) as BundleRepairFinished).notEntered,
+        isFalse,
+      );
+      encoded['notEntered'] = null;
+      expect(
+        (codec.decode(encoded) as BundleRepairFinished).notEntered,
+        isFalse,
+      );
+    }
+    final lockHeld = codec.decode(
+      codec.encode(
+        const BundleRepairFinished(
+          requestId: 43,
+          result: BundleRepairLockHeld(),
+        ),
+      ),
+    ) as BundleRepairFinished;
+    expect(lockHeld.notEntered, isFalse);
+    expect(lockHeld.result, isA<BundleRepairLockHeld>());
+  });
+
+  test(
+    'check codec preserves lookup evidence and accepts legacy entry field',
+    () {
+      final codec = workerOutboxCodec();
+      final lookup = DateTime.utc(2026, 11, 23, 12, 0, 1);
+      final encoded = codec.encode(
+        BuildCheckFinished(
+          requestId: 44,
+          result: const BuildUpToDate(42),
+          lookupStartedAt: lookup,
+          notEntered: false,
+        ),
+      );
+      final decoded = codec.decode(encoded) as BuildCheckFinished;
+      expect(decoded.lookupStartedAt, lookup);
+      expect(decoded.notEntered, isFalse);
+      encoded.remove('notEntered');
+      expect((codec.decode(encoded) as BuildCheckFinished).notEntered, isFalse);
+    },
+  );
+
   test('start message toString hides the password', () {
     const start = WorkerStart(
       workerName: 'compute',
@@ -336,6 +397,19 @@ void main() {
       expect(
         reply.result,
         isA<BuildCheckFailed>().having(
+          (r) => r.reason,
+          'reason',
+          'Postgres unreachable',
+        ),
+      );
+    });
+
+    test('a repair that cannot open Postgres reports not entered', () async {
+      final reply = await worker.runBundleRepair() as BundleRepairFinished;
+      expect(reply.notEntered, isTrue);
+      expect(
+        reply.result,
+        isA<BundleRepairFailed>().having(
           (r) => r.reason,
           'reason',
           'Postgres unreachable',
@@ -410,6 +484,20 @@ void main() {
     expect((reply as WorkerError).reason, contains('start message'));
   });
 
+  test('a repair before the start message reports not entered', () async {
+    final worker = await WorkerHarness.start(
+      postgres: await _unreachableSettings(),
+      sendStart: false,
+    );
+    addTearDown(worker.close);
+    final reply = await worker.runBundleRepair() as BundleRepairFinished;
+    expect(reply.notEntered, isTrue);
+    expect(
+      (reply.result as BundleRepairFailed).reason,
+      contains('start message'),
+    );
+  });
+
   withServerpod('Given a migrated database', (sessionBuilder, endpoints) {
     late Session session;
     late PostgresConnectionSettings settings;
@@ -462,6 +550,42 @@ void main() {
       );
       // The reported backend was a live session of this database.
       expect(opened.backend.startMicros, isPositive);
+    });
+
+    test('a repair refused by the lock has entered the job', () async {
+      final holder = await PostgresStaticDataStore.open(settings);
+      addTearDown(holder.close);
+      expect(await holder.tryLock(), isTrue);
+      final worker = await WorkerHarness.start(postgres: settings);
+      addTearDown(worker.close);
+      final reply = await worker.runBundleRepair() as BundleRepairFinished;
+      expect(reply.notEntered, isFalse);
+      expect(reply.result, isA<BundleRepairLockHeld>());
+    });
+
+    test('a repair with a failed bundle step has entered the job', () async {
+      final worker = await WorkerHarness.start(
+        postgres: settings,
+        buildBundle: _failBundleBuild,
+      );
+      addTearDown(worker.close);
+      final zip = SdeFixture.complete(build: 2102).writeTo(scratch);
+      expect(
+        (await worker.runImport(
+          LocalZipSource(zip.path),
+        ) as ImportFinished).outcome,
+        ImportOutcome.succeeded,
+      );
+      final reply = await worker.runBundleRepair() as BundleRepairFinished;
+      expect(reply.notEntered, isFalse);
+      expect(
+        reply.result,
+        isA<BundleRepairRan>().having(
+          (r) => r.step,
+          'step',
+          isA<BundleFailed>(),
+        ),
+      );
     });
 
     test('typed import request gets typed result', () async {

@@ -86,7 +86,7 @@ final class StaticDataAccess {
             (runtime.settler?.workerStuck ?? false),
         settlementStuck: runtime.settler?.settlementStuck ?? false,
         recoveryStuck: runtime.recovery?.recoveryStuck ?? false,
-        startupStuck: false,
+        startupStuck: runtime.startupStuck,
       ),
     ),
   );

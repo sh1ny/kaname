@@ -476,7 +476,7 @@ final class BuildCheckFinished extends WorkerReply {
           null => null,
           _ => throw const FormatException('invalid lookup start time'),
         },
-        notEntered: json['notEntered']! as bool,
+        notEntered: json['notEntered'] as bool? ?? false,
         result: switch ((json['result']! as Map).cast<String, Object?>()) {
           {
             'kind': 'switched',
@@ -591,8 +591,11 @@ String _describeResult(BuildCheckResult result) => switch (result) {
 /// a `kind` and the fields of that kind.
 final class BundleRepairFinished extends WorkerReply {
   /// Creates the answer for [requestId].
-  const BundleRepairFinished({required int requestId, required this.result})
-    : super(requestId);
+  const BundleRepairFinished({
+    required int requestId,
+    required this.result,
+    this.notEntered = false,
+  }) : super(requestId);
 
   /// The message's type name.
   static const String typeName = 'bundle.repair.finished';
@@ -603,6 +606,7 @@ final class BundleRepairFinished extends WorkerReply {
   factory BundleRepairFinished.fromJson(Map<String, Object?> json) =>
       BundleRepairFinished(
         requestId: json['requestId']! as int,
+        notEntered: json['notEntered'] as bool? ?? false,
         result: switch ((json['result']! as Map).cast<String, Object?>()) {
           {'kind': 'ran', 'step': final Map<Object?, Object?> step} =>
             BundleRepairRan(_stepFromJson(step.cast<String, Object?>())),
@@ -617,6 +621,9 @@ final class BundleRepairFinished extends WorkerReply {
   /// How the repair ended.
   final BundleRepairResult result;
 
+  /// Whether the worker failed before invoking the repair job.
+  final bool notEntered;
+
   @override
   String get type => typeName;
 
@@ -626,6 +633,7 @@ final class BundleRepairFinished extends WorkerReply {
   @override
   Map<String, Object?> payloadToJson() => {
     'requestId': requestId,
+    'notEntered': notEntered,
     'result': switch (result) {
       BundleRepairRan(:final step) => {
         'kind': 'ran',
