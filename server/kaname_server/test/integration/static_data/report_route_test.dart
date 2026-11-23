@@ -298,10 +298,15 @@ $$ BEGIN RAISE EXCEPTION 'injected diff write failure'; END $$
       final result = reader.read();
       var blocked = false;
       for (var i = 0; i < 100 && !blocked; i++) {
+        // pg_stat_activity can retain the writer transaction's first
+        // snapshot. Observe the live wait on this exact table lock instead.
         final rows = await writer.execute("""
-SELECT EXISTS (SELECT 1 FROM pg_stat_activity
- WHERE datname = current_database() AND wait_event_type = 'Lock'
- AND query LIKE '%WITH builds AS%')
+SELECT EXISTS (
+  SELECT 1 FROM pg_locks
+  WHERE locktype = 'relation' AND relation = 'sde_build_diff'::regclass
+    AND mode = 'AccessShareLock' AND NOT granted
+    AND pg_backend_pid() = ANY(pg_blocking_pids(pid))
+)
 """);
         blocked = rows.single[0] as bool;
         if (!blocked) {
