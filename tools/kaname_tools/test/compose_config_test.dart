@@ -136,6 +136,50 @@ Set<String> _namedVolumes() {
   return {for (final key in raw.keys) key as String};
 }
 
+/// An IPv4 address as a 32-bit number, or fails the test.
+int _ipv4(String text, String what) {
+  final parts = text.split('.');
+  if (parts.length != 4) fail('$what is not an IPv4 address: $text');
+  var value = 0;
+  for (final part in parts) {
+    final octet = int.tryParse(part);
+    if (octet == null || octet < 0 || octet > 255) {
+      fail('$what is not an IPv4 address: $text');
+    }
+    value = value << 8 | octet;
+  }
+  return value;
+}
+
+/// An IPv4 CIDR range as its first and last address, or fails the test.
+({int first, int last}) _range(String text, String what) {
+  final slash = text.indexOf('/');
+  if (slash < 0) fail('$what is not a CIDR range: $text');
+  final prefix = int.tryParse(text.substring(slash + 1));
+  if (prefix == null || prefix < 0 || prefix > 32) {
+    fail('$what has no valid prefix: $text');
+  }
+  final size = 1 << (32 - prefix);
+  final first =
+      _ipv4(text.substring(0, slash), what) & ~(size - 1) & 0xffffffff;
+  return (first: first, last: first + size - 1);
+}
+
+/// Reads the field at [path] under [root] as text, or fails the test.
+String _text(Object? root, List<Object> path) {
+  Object? node = root;
+  for (final key in path) {
+    node = switch ((node, key)) {
+      (final YamlMap map, final String name) => map[name],
+      (final YamlList list, final int index) when index < list.length =>
+        list[index],
+      _ => null,
+    };
+  }
+  if (node is! String) fail('$_composeFile: ${path.join('.')} is not text');
+  return node;
+}
+
 void main() {
   group('deploy/compose.yaml', () {
     test('holds four services and a migrate step with named volumes', () {
@@ -270,6 +314,65 @@ void main() {
           RegExp('$key:\\s*\\\$\\{$variable:\\?').hasMatch(text),
           isTrue,
           reason: '$key is read from $variable',
+        );
+      }
+    });
+    // Scenario: Configuration check (self-host-stack → The stack's server
+    // trusts only Caddy as proxy). C4.
+    test("pinned subnet, dynamic range, Caddy's fixed address outside it, and "
+        "trusted proxies equal to Caddy's address", () {
+      final compose = _compose();
+      final ipam = ['networks', 'default', 'ipam', 'config', 0];
+      final subnet = _range(_text(compose, [...ipam, 'subnet']), 'subnet');
+      final pool = _range(_text(compose, [...ipam, 'ip_range']), 'ip_range');
+      final gateway = _ipv4(_text(compose, [...ipam, 'gateway']), 'gateway');
+      final caddyText = _text(compose, [
+        'services',
+        'caddy',
+        'networks',
+        'default',
+        'ipv4_address',
+      ]);
+      final caddy = _ipv4(caddyText, "Caddy's address");
+
+      bool inside(int address, ({int first, int last}) range) =>
+          address >= range.first && address <= range.last;
+
+      expect(pool.first, greaterThanOrEqualTo(subnet.first));
+      expect(
+        pool.last,
+        lessThanOrEqualTo(subnet.last),
+        reason: 'the dynamic range lies inside the subnet',
+      );
+      expect(inside(caddy, subnet), isTrue, reason: 'Caddy is in the subnet');
+      expect(
+        inside(caddy, pool),
+        isFalse,
+        reason: "no container can be given Caddy's address",
+      );
+      expect(caddy, isNot(subnet.first), reason: 'not the network address');
+      expect(caddy, isNot(subnet.last), reason: 'not the broadcast address');
+      expect(caddy, isNot(gateway), reason: "not the gateway's address");
+      expect(inside(gateway, subnet), isTrue);
+
+      expect(
+        _text(compose, [
+          'services',
+          'server',
+          'environment',
+          'KANAME_TRUSTED_PROXIES',
+        ]),
+        caddyText,
+        reason: 'the server trusts exactly Caddy, never the subnet',
+      );
+      // Every other service joins the network without a fixed address.
+      final services = compose['services'] as YamlMap;
+      for (final MapEntry(key: name, value: raw) in services.entries) {
+        if (name == 'caddy') continue;
+        expect(
+          (raw as YamlMap)['networks'],
+          isNull,
+          reason: '$name takes a dynamic address on the default network',
         );
       }
     });

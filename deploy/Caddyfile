@@ -1,6 +1,26 @@
 # Caddy for the local self-host stack (design D2, D12, S3): plain HTTP on :80,
 # published on 127.0.0.1 only by compose.yaml. No TLS until a deployment guide.
 {
+	# Client addresses (C6). Caddy trusts no forwarded header: it sets
+	# X-Forwarded-For to the address each connection came from, and the
+	# server trusts only Caddy's fixed address (compose.yaml). Caddy is meant
+	# to be a public deployment's edge. Every trusted proxy must append the
+	# address it received the connection from; one that passes a caller's
+	# header through must not be trusted. A proxy or tunnel in front of Caddy
+	# makes the server receive the chain "client, front proxy", so both hops
+	# must be trusted: the front proxy's address goes into trusted_proxies
+	# here and into the server's KANAME_TRUSTED_PROXIES beside Caddy's. The
+	# shipped stack stays Caddy-only. The front proxy needs a fixed address
+	# on the stack network, outside the dynamic range and distinct from
+	# Caddy's and the gateway's; a separate Caddy port is not enough, because
+	# this trust list applies to every listener, and trusting the Docker
+	# gateway would trust every local caller. Otherwise every user shares one
+	# bucket. The project ships no such topology: before trusting the proxy,
+	# check that Caddy sees the proxy's own address as its peer, then, before
+	# the route goes public, check end to end that a second client is still
+	# served after a first fills its 16 places and that a forwarded header
+	# from either changes neither bucket. Repeat both checks after any
+	# network or address change (deploy/README.md).
 	auto_https off
 	admin off
 

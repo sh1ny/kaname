@@ -1,12 +1,14 @@
 @Tags(['stack'])
 library;
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
 import 'package:kaname_client/kaname_client.dart';
 import 'package:test/test.dart';
 
+import 'support/announcement_support.dart';
 import 'support/stack_support.dart';
 
 /// Starting, stopping and migrating the stack takes minutes.
@@ -335,6 +337,128 @@ void main() {
       client.close();
     }
   }, timeout: _slow);
+
+  // The self-host-stack requirement "The stack's server trusts only Caddy as
+  // proxy". The tests run in this order: the first needs every place of the
+  // host's client free, and the later ones wait for the places it held.
+  group('Given announcement streams through Caddy', () {
+    test('17 WebSocket upgrades with spoofed headers: 16 live, the 17th '
+        'completes cleanly, another client still served', () async {
+      await waitUntilReady();
+      final injector = await ForwardedHeaderInjector.start();
+
+      final feeds = <AnnouncementFeed>[];
+      for (var i = 0; i < streamsPerClient + 1; i++) {
+        // One client per stream: each opens its own WebSocket, whose
+        // upgrade request carries its own X-Forwarded-For.
+        final client = stackClient(injector.origin);
+        final feed = AnnouncementFeed(client.staticData.bundleAnnouncements());
+        addTearDown(feed.close);
+        feeds.add(feed);
+        await feed.outcome;
+      }
+      expect(injector.sent.toSet(), hasLength(streamsPerClient + 1));
+
+      for (final feed in feeds.take(streamsPerClient)) {
+        expect(await feed.outcome, Admission.admitted);
+      }
+      final refused = feeds.last;
+      expect(await refused.outcome, Admission.refused);
+      expect(refused.events, isEmpty);
+      expect(refused.errors, isEmpty);
+      for (final feed in feeds.take(streamsPerClient)) {
+        expect(feed.isEnded, isFalse, reason: 'still open after the refusal');
+        expect(feed.errors, isEmpty);
+      }
+
+      final other = stackClient(await startRelay());
+      final served = AnnouncementFeed(other.staticData.bundleAnnouncements());
+      addTearDown(served.close);
+      expect(await served.outcome, Admission.admitted);
+    }, timeout: _slow);
+
+    test('a host client holding 16 does not stop a container client on the '
+        'stack network', () async {
+      await waitUntilReady();
+      final host = stackClient(stackOrigin);
+      final held = await holdEveryPlace(host);
+      final refused = AnnouncementFeed(host.staticData.bundleAnnouncements());
+      addTearDown(refused.close);
+      expect(await refused.outcome, Admission.refused);
+
+      final container = stackClient(await startRelay());
+      final served = AnnouncementFeed(
+        container.staticData.bundleAnnouncements(),
+      );
+      addTearDown(served.close);
+      expect(await served.outcome, Admission.admitted);
+      expect(served.events, isNotEmpty);
+      for (final feed in held) {
+        expect(feed.isEnded, isFalse);
+      }
+    }, timeout: _slow);
+
+    // C6: the header the server receives is Caddy's own, never the
+    // caller's, on every route Caddy passes to the server. Two callers with
+    // known, distinct addresses: the host, which reaches Caddy through the
+    // network's gateway, and a container at a fixed address.
+    test("Caddy replaces a caller's X-Forwarded-For with the address the "
+        'connection came from', () async {
+      final stack = await startCaddyBeforeEcho();
+      const spoofed = '198.51.100.77';
+      for (final path in ['/v1/websocket', '/api/ping', '/livez', '/readyz']) {
+        final client = HttpClient();
+        addTearDown(() => client.close(force: true));
+        final request = await client.getUrl(Uri.parse('${stack.origin}$path'));
+        request.headers.set('X-Forwarded-For', spoofed);
+        final response = await request.close();
+        final fromHost = (await utf8.decoder.bind(response).join()).trim();
+        expect(response.statusCode, 200, reason: path);
+        expect(fromHost, echoGateway, reason: 'host caller, $path');
+
+        final fromContainer = await echoFromContainer(
+          stack,
+          path,
+          forwarded: spoofed,
+        );
+        expect(
+          fromContainer,
+          echoContainerCaller,
+          reason: 'container caller, $path',
+        );
+      }
+    }, timeout: _slow);
+
+    test("a host browser's streams count for the gateway with no "
+        'forwarded-header warning', () async {
+      // A fresh server container: its log and its warning cooldowns hold
+      // nothing from the earlier tests' refusals, so the warning below is
+      // this scenario's own.
+      final recreated = await compose([
+        'up',
+        '--detach',
+        '--no-build',
+        '--no-deps',
+        '--force-recreate',
+        'server',
+      ]);
+      expect(recreated.exitCode, 0, reason: recreated.output);
+      await waitUntilReady();
+      expect(await serverLogs(), isNot(contains('client limit,')));
+      final gateway = await stackGateway();
+      final host = stackClient(stackOrigin);
+      await holdEveryPlace(host);
+      final refused = AnnouncementFeed(host.staticData.bundleAnnouncements());
+      addTearDown(refused.close);
+      expect(await refused.outcome, Admission.refused);
+
+      // The first refusal of the gateway's client always logs a warning
+      // naming it; later ones within a minute are counted, not logged.
+      final logs = await serverLogs();
+      expect(logs, contains('client limit, client $gateway,'));
+      expect(logs, isNot(contains('no usable forwarded header')));
+    }, timeout: _slow);
+  });
 
   group('Given a required secret that is empty', () {
     const secrets = [

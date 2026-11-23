@@ -17,11 +17,21 @@ final class FakeClock implements ServerClock {
   FakeClock([DateTime? start]) : _now = start ?? DateTime.utc(2026, 1, 1);
 
   DateTime _now;
+  Duration _elapsed = Duration.zero;
   int _nextId = 0;
   final List<_FakeTimer> _timers = [];
 
   @override
   DateTime now() => _now;
+
+  /// The time moved by [elapse] so far; [setWallClock] does not move it.
+  @override
+  Duration elapsed() => _elapsed;
+
+  /// Sets the wall clock to [time], as an operator or NTP would, without
+  /// moving [elapsed] or firing a timer. Timers keep their due times on the
+  /// wall clock, so use it only where no timer is waiting.
+  void setWallClock(DateTime time) => _now = time;
 
   /// How many timers are waiting to fire.
   int get activeTimers => _timers.where((t) => t.isActive).length;
@@ -52,6 +62,8 @@ final class FakeClock implements ServerClock {
   /// Moves time forward by [duration], firing every timer that falls due, in
   /// due order and, for equal times, in creation order.
   void elapse(Duration duration) {
+    final from = _now;
+    final elapsedFrom = _elapsed;
     final end = _now.add(duration);
     while (true) {
       final due =
@@ -63,6 +75,7 @@ final class FakeClock implements ServerClock {
       if (due.isEmpty) break;
       final next = due.first;
       _now = next.due;
+      _elapsed = elapsedFrom + next.due.difference(from);
       if (next.period case final period?) {
         next.due = next.due.add(period);
       } else {
@@ -70,6 +83,7 @@ final class FakeClock implements ServerClock {
       }
       next.callback();
     }
+    _elapsed = elapsedFrom + duration;
     _now = end;
     _timers.removeWhere((t) => !t.isActive);
   }

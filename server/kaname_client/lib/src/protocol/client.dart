@@ -149,17 +149,29 @@ class EndpointStaticData extends _isc.EndpointRef {
   /// event follows each change of the installed announcement. Needs no
   /// sign-in.
   ///
-  /// ## Carried constraint
+  /// The subscription is admitted, or refused, when this method is called:
+  /// at most `BundleAnnouncementRuntime.maxStreamsPerClient` (16) streams
+  /// per client and `maxStreams` (2,000) in all. A refused subscription ends
+  /// at once, without an event or an error. An admitted stream holds its
+  /// places and its 30-minute life runs from then; until Serverpod listens
+  /// to it, it has no bus listener and receives nothing, and once listened
+  /// to it first sends the announcement installed at that moment.
   ///
+  /// ## Carried constraints
+  ///
+  /// - **C2:** Both bounds are taken in the same synchronous step as their
+  ///   check (`BundleAnnouncementRuntime.admit`), and freed only by the
+  ///   stream's single `end()`. A stream that has ended never subscribes to
+  ///   the bus or sends, even if it is listened to later. Moving either
+  ///   count to `onListen` reopens the concurrent overshoot.
   /// - **C20:** The stream is bounded by count, rate and lifetime. The server
-  ///   holds at most 2,000 of them (`BundleAnnouncementRuntime.maxStreams`)
-  ///   and refuses more by ending the stream at once without an event. Each
-  ///   ends after 30 minutes on the server's clock, also while its client
-  ///   reads nothing, because Serverpod's endpoint streams have no
+  ///   refuses streams over its bounds by ending them at once without an
+  ///   event. Each ends after 30 minutes on the server's clock, also while
+  ///   its client reads nothing, because Serverpod's endpoint streams have no
   ///   backpressure (A14): what the stream sends is bounded by rate, at most
   ///   one event per change of the installed announcement, never by the
   ///   client's reading. Whatever ends the stream (expiry, the client's
-  ///   disconnect, an error) removes its bus listener and frees its place.
+  ///   disconnect, an error) removes its bus listener and frees its places.
   ///   Every send carries the announcement installed at that moment, and
   ///   only when its revision is higher than the last one this stream sent
   ///   (C16): bus messages are wake-ups, never the payload, so a late or

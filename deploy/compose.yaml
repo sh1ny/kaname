@@ -89,6 +89,10 @@ services:
     environment:
       <<: *server-environment
       SERVERPOD_PASSWORD_adminKey: ${KANAME_ADMIN_KEY:-}
+      # The server reads a client's address from X-Forwarded-For only on a
+      # connection from Caddy's fixed address below, and from nobody else,
+      # never from the whole subnet (C4). Change it with that address.
+      KANAME_TRUSTED_PROXIES: 172.30.0.10
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -114,9 +118,26 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # The web build from `mise run build:web`.
       - ../app/build/web:/srv:ro
+    networks:
+      default:
+        # Fixed, and outside the network's dynamic range, so no other
+        # container can be given the address the server trusts (C4).
+        ipv4_address: 172.30.0.10
     depends_on:
       server:
         condition: service_healthy
+
+# The stack's internal network, pinned so that Caddy's address is known and
+# kept out of the range Docker hands out to the other containers (C4). To
+# move it, change the subnet, the gateway, the range, Caddy's address and
+# KANAME_TRUSTED_PROXIES together (deploy/README.md).
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+          gateway: 172.30.0.1
+          ip_range: 172.30.0.128/25
 
 volumes:
   pgdata:
