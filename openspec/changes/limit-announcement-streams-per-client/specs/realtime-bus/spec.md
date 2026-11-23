@@ -122,11 +122,11 @@ The server SHALL admit at most 16 announcement subscriptions per client, besides
 - **THEN** that subscription ends at once without an event
 
 #### Scenario: Stream listened to late but before its expiry
-- **WHEN** a subscription is admitted, nothing listens to its stream for 10 minutes, and a listener then attaches while build N is announced
-- **THEN** the stream sends build N as soon as it is listened to
+- **WHEN** a subscription is admitted by the server's endpoint, nothing listens to the stream it returned for 10 minutes, and a listener then attaches while build N is announced
+- **THEN** the stream sends build N as soon as it is listened to. This is a server-internal case: an app's subscription is listened to as it is made, so its 20-second first-event promise is unchanged
 
 #### Scenario: Stream listened to only after its expiry
-- **WHEN** a subscription is admitted, nothing listens to its stream for 30 minutes, and a listener then attaches
+- **WHEN** a subscription is admitted by the server's endpoint, nothing listens to the stream it returned for 30 minutes, and a listener then attaches
 - **THEN** the stream ends at once without an event, no bus listener is added for it, and its places under both bounds were freed at the 30-minute mark
 
 ### Requirement: A client is identified by its network address
