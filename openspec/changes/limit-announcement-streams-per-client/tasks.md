@@ -13,7 +13,7 @@ Server tests live under `server/kaname_server/test/`: `unit/network/client_ident
 | client-static-data → The app follows the announced bundle while connected | Stale announcement | app/test/static_data/static_data_notifier_test.dart | lower revision of the same epoch is ignored | green |
 | client-static-data → The app follows the announced bundle while connected | Server has no bundle yet | app/test/static_data/static_data_notifier_test.dart | the existing test for this scenario, named in task 7.1 | green |
 | client-static-data → The app follows the announced bundle while connected | No server configured | app/test/static_data/static_data_notifier_test.dart | the existing test for this scenario, named in task 7.1 | green |
-| client-static-data → The app follows the announced bundle while connected | Server refuses the subscription | app/test/static_data/static_data_notifier_test.dart | a refused subscription keeps build N, resubscribes after 5 s then 10 s and sends no other request | red |
+| client-static-data → The app follows the announced bundle while connected | Server refuses the subscription | app/test/static_data/static_data_notifier_test.dart | a refused subscription keeps build N, resubscribes after 5 s then 10 s and sends no other request | green |
 | realtime-bus → Apps learn the current bundle from one stream | Subscribe | server/kaname_server/test/integration/static_data/bundle_stream_test.dart | first event names the announced active build | green |
 | realtime-bus → Apps learn the current bundle from one stream | Subscribe (A6 timing: fake clock, no real-time wait) | server/kaname_server/test/integration/static_data/bundle_stream_test.dart | the first event is sent within 20 s of subscribing on the fake clock, also when the first state read is held | green |
 | realtime-bus → Apps learn the current bundle from one stream | Subscribe (A6 order: generated client, order and occurrence only, suite timeout as hang guard) | server/kaname_server/test/integration/static_data/bundle_stream_test.dart | each subscription is admitted, then listened to, then receives its first event, for 1 and for 16 concurrent subscriptions | green |
@@ -119,7 +119,7 @@ Server tests live under `server/kaname_server/test/`: `unit/network/client_ident
 
 ## 6. App behaviour on refusal
 
-- [ ] 6.1 Add the test "a refused subscription keeps build N, resubscribes after 5 s then 10 s and sends no other request" to `app/test/static_data/static_data_notifier_test.dart`. It uses a fake source whose stream ends at once with no event, and checks that no status or other call is made (C7, already at its spec destination). It is expected to pass at once, because the app is unchanged (S2). Run it, and flip its row green.
+- [x] 6.1 Add the test "a refused subscription keeps build N, resubscribes after 5 s then 10 s and sends no other request" to `app/test/static_data/static_data_notifier_test.dart`. It uses a fake source whose stream ends at once with no event, and checks that no status or other call is made (C7, already at its spec destination). It is expected to pass at once, because the app is unchanged (S2). Run it, and flip its row green.
 
 ## 7. Integration checks
 

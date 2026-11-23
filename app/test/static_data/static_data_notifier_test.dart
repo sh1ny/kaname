@@ -254,6 +254,42 @@ void main() {
     expect(h.source.subscribes, 4);
   });
 
+  // Scenario: Server refuses the subscription (client-static-data → The app
+  // follows the announced bundle while connected). C7: the app treats a
+  // refusal as a stream that ended, with the same backoff, and the server
+  // sends it nothing else to act on.
+  test('a refused subscription keeps build N, resubscribes after 5 s then '
+      '10 s and sends no other request', () async {
+    final h = harnessHolding(copyN);
+    await h.start();
+    final healthCalls = h.health.calls;
+    final settled = h.history.length;
+    expect(h.state, readyOn(copyN));
+    expect(h.source.subscribes, 1);
+
+    // Each refused stream ends at once, with no event and no error.
+    h.source.current.end();
+    await h.clock.elapse(const Duration(milliseconds: 4900));
+    expect(h.source.subscribes, 1);
+    await h.clock.elapse(const Duration(milliseconds: 100));
+    expect(h.source.subscribes, 2);
+
+    h.source.current.end();
+    await h.clock.elapse(const Duration(milliseconds: 9900));
+    expect(h.source.subscribes, 2);
+    await h.clock.elapse(const Duration(milliseconds: 100));
+    expect(h.source.subscribes, 3);
+    expect(h.clock.delays, [
+      const Duration(seconds: 5),
+      const Duration(seconds: 10),
+    ]);
+
+    expect(h.state, readyOn(copyN));
+    expect(h.history.skip(settled), everyElement(readyOn(copyN)));
+    expect(h.downloader.started, isEmpty);
+    expect(h.health.calls, healthCalls, reason: 'no status or other call');
+  });
+
   test('none announcement keeps the held bundle', () async {
     final h = harnessHolding(copyN);
     await h.start();
