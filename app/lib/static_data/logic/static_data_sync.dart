@@ -55,9 +55,11 @@ final class StaticDataSync {
     required this._opener,
     required this._indexer,
     required this._timers,
+    DateTime Function()? now,
     required this._onState,
     required this._log,
   }) {
+    _now = now ?? DateTime.now;
     _state = _compute();
   }
 
@@ -80,6 +82,7 @@ final class StaticDataSync {
   final BundleOpener _opener;
   final BundleIndexer _indexer;
   final TimerFactory _timers;
+  late final DateTime Function() _now;
   final void Function(StaticDataState) _onState;
   final void Function(String) _log;
 
@@ -88,7 +91,7 @@ final class StaticDataSync {
 
   // The bundle in use, and the copy of it no save has taken yet.
   _Held? _held;
-  BundleCopy? _unsaved;
+  _PendingSave? _unsaved;
   bool _saving = false;
 
   // Announcements.
@@ -98,6 +101,9 @@ final class StaticDataSync {
   int _revision = -1;
   _Target _target = const _NoTarget();
   _Attempt? _attempt;
+  int _nextSequence = 0;
+  LastDownload _lastDownload = const NoDownloadYet();
+  ConnectionState _connection = const AwaitingAnnouncement();
   bool _pipelineRunning = false;
 
   // The subscription.
@@ -124,6 +130,17 @@ final class StaticDataSync {
   void resubscribe() {
     if (_disposed || _server == null) return;
     _subscribe();
+  }
+
+  /// Starts the current retry immediately without resetting its backoff.
+  void downloadNow() {
+    final attempt = _attempt;
+    if (_disposed || attempt == null || attempt.phase != _Phase.backoff) return;
+    attempt.retryTimer?.cancel();
+    attempt.retryTimer = null;
+    attempt.phase = _Phase.pending;
+    _pump();
+    _refresh();
   }
 
   /// Ends the run: cancels the stream, the timers and the running transfer.
@@ -181,6 +198,10 @@ final class StaticDataSync {
     // before this replacement and is the latest known until a newer one
     // replaces it; only later events of the replaced subscription are
     // ignored (design D15, pre-ship round 31).
+    if (_streamDown) {
+      _connection = const Reconnecting();
+      _refresh();
+    }
     unawaited(_subscription?.cancel());
     _subscription = null;
     _reconnectTimer?.cancel();
@@ -219,6 +240,7 @@ final class StaticDataSync {
     _subscription = null;
     _streamDown = true;
     final delay = _reconnectDelay;
+    _connection = StreamDown(_now().add(delay));
     _reconnectDelay = _doubled(delay, maxReconnectDelay);
     _reconnectTimer = _timers(delay, () {
       if (!_disposed && next == _generation) _subscribe();
@@ -227,6 +249,7 @@ final class StaticDataSync {
   }
 
   void _onAnnouncement(BundleAnnouncement announcement) {
+    _connection = const Connected();
     _reconnectDelay = firstReconnectDelay;
     _streamDown = false;
     if (!_keptLoaded) {
@@ -235,9 +258,11 @@ final class StaticDataSync {
       if (waiting != null &&
           waiting.epoch == announcement.epoch &&
           announcement.revision <= waiting.revision) {
+        _refresh();
         return;
       }
       _waiting = announcement;
+      _refresh();
       return;
     }
     _take(announcement);
@@ -268,7 +293,7 @@ final class StaticDataSync {
     if (target is _BundleTarget &&
         target.identity != _held?.identity &&
         _attempt == null) {
-      _attempt = _Attempt(target.identity, target.size);
+      _attempt = _Attempt(target.identity, target.size, ++_nextSequence);
     }
     _pump();
     _refresh();
@@ -328,14 +353,19 @@ final class StaticDataSync {
         case BundleDownloaded(bytes: final body):
           bytes = body;
         case BundleDownloadFailed(failure: final BundleTooLarge failure):
-          // More bytes than announced: wrong bytes, maybe a cached copy.
-          _failed(attempt, _Failure.refused, failure.detail);
+          _failed(attempt, DownloadFailure.refused, failure.detail);
           return;
         case BundleDownloadFailed(:final failure):
-          _failed(attempt, _Failure.unreachable, failure.detail);
+          _failed(
+            attempt,
+            failure is BundleHttpStatus
+                ? DownloadFailure.server
+                : DownloadFailure.network,
+            failure.detail,
+          );
           return;
         case BundleDownloadCancelled():
-          _failed(attempt, _Failure.unreachable, 'download cancelled');
+          _failed(attempt, DownloadFailure.network, 'download cancelled');
           return;
       }
       final opened = await _opener.open(bytes, attempt.identity);
@@ -347,7 +377,7 @@ final class StaticDataSync {
           bundle = value;
           built = prebuilt;
         case BundleRefused(:final refusal):
-          _failed(attempt, _Failure.refused, '$refusal');
+          _failed(attempt, DownloadFailure.refused, '$refusal');
           return;
       }
       final index = built ?? await _indexer.index(bundle);
@@ -355,7 +385,7 @@ final class StaticDataSync {
       _swapIn(attempt, bundle, index, bytes);
     } on Object catch (error) {
       if (_current(attempt)) {
-        _failed(attempt, _Failure.refused, '$error');
+        _failed(attempt, DownloadFailure.refused, '$error');
       }
     } finally {
       _pipelineRunning = false;
@@ -363,19 +393,24 @@ final class StaticDataSync {
     }
   }
 
-  void _failed(_Attempt attempt, _Failure failure, String detail) {
-    _log(
-      'Bundle ${attempt.identity.build} failed '
-      '(${failure.name}): $detail',
-    );
+  void _failed(_Attempt attempt, DownloadFailure failure, String detail) {
+    _log('Bundle ${attempt.identity.build} failed (${failure.name}): $detail');
     attempt.failures++;
-    if (failure == _Failure.refused) attempt.refusals++;
+    if (failure == DownloadFailure.refused) attempt.refusals++;
     attempt.failure = failure;
     attempt.phase = _Phase.backoff;
     var delay = firstRetryDelay;
     for (var i = 1; i < attempt.failures; i++) {
       delay = _doubled(delay, maxRetryDelay);
     }
+    final now = _now();
+    attempt.nextTry = now.add(delay);
+    _lastDownload = DownloadFailed(
+      attempt.identity.build,
+      now,
+      attempt.sequence,
+      failure,
+    );
     attempt.retryTimer = _timers(delay, () {
       if (!_current(attempt)) return;
       attempt.phase = _Phase.pending;
@@ -395,7 +430,15 @@ final class StaticDataSync {
   ) {
     _attempt = null;
     _held = _Held(attempt.identity, bundle, index);
-    _unsaved = BundleCopy(identity: attempt.identity, bytes: bytes);
+    _unsaved = _PendingSave(
+      BundleCopy(identity: attempt.identity, bytes: bytes),
+      attempt.sequence,
+    );
+    _lastDownload = DownloadSaving(
+      attempt.identity.build,
+      _now(),
+      attempt.sequence,
+    );
     _refresh();
     if (_saving) return;
     _saving = true;
@@ -407,19 +450,30 @@ final class StaticDataSync {
   Future<void> _saveLoop() async {
     try {
       while (true) {
-        final copy = _unsaved;
-        if (copy == null) return;
+        final pending = _unsaved;
+        if (pending == null) return;
         _unsaved = null;
+        final copy = pending.copy;
+        var saved = false;
         try {
           final outcome = await _store.save(copy);
+          saved = outcome is BundleSaved;
           if (outcome is BundleNotSaved) {
             _log(
-              'Bundle ${copy.identity.build} was not kept: '
-              '${outcome.detail}',
+              'Bundle ${copy.identity.build} was not kept: ${outcome.detail}',
             );
           }
         } on Object catch (error) {
           _log('Saving bundle ${copy.identity.build} failed: $error');
+        }
+        final last = _lastDownload;
+        if (!_disposed &&
+            last is DownloadSaving &&
+            last.sequence == pending.sequence) {
+          _lastDownload = saved
+              ? DownloadSucceeded(copy.identity.build, _now(), pending.sequence)
+              : DownloadNotSaved(copy.identity.build, _now(), pending.sequence);
+          _refresh();
         }
       }
     } finally {
@@ -439,16 +493,47 @@ final class StaticDataSync {
 
   StaticDataState _compute() {
     final held = _held;
+    final announced = switch (_target) {
+      _BundleTarget(:final identity) ||
+      _UnsupportedTarget(:final identity) => identity,
+      _ => null,
+    };
+    final download = _downloadState();
     if (held != null) {
       return BundleReady(
         identity: held.identity,
         bundle: held.bundle,
         index: held.index,
         updating: _attempt != null && _attempt!.phase != _Phase.backoff,
+        announced: announced,
+        connection: _connection,
+        download: download,
+        lastDownload: _lastDownload,
         notice: _target is _UnsupportedTarget ? const AppUpdateNeeded() : null,
       );
     }
-    return NoBundle(_reason());
+    return NoBundle(
+      _reason(),
+      announced: announced,
+      connection: _connection,
+      download: download,
+      lastDownload: _lastDownload,
+    );
+  }
+
+  DownloadState _downloadState() {
+    if (_server == null) return const Stopped(DownloadStopReason.noServer);
+    return switch (_target) {
+      _NoTarget() => const WaitingForFirstBundle(),
+      _NoneTarget() => const Stopped(DownloadStopReason.noBundle),
+      _UnsupportedTarget() => const Stopped(DownloadStopReason.appUpdateNeeded),
+      _BundleTarget() => switch (_attempt) {
+        _Attempt(phase: _Phase.backoff, :final nextTry, :final failure) =>
+          WaitingToRetry(nextTry!, failure!),
+        _Attempt() => const DownloadInProgress(),
+        null => const UpToDate(),
+      },
+    };
   }
 
   NoBundleReason _reason() {
@@ -457,7 +542,7 @@ final class StaticDataSync {
       _NoneTarget() => const ServerHasNoBundle(),
       _UnsupportedTarget() => const AppUpdateNeededReason(),
       _BundleTarget() => switch (_attempt) {
-        _Attempt(phase: _Phase.backoff, failure: _Failure.refused) =>
+        _Attempt(phase: _Phase.backoff, failure: DownloadFailure.refused) =>
           const BundleRefusedReason(),
         _Attempt(phase: _Phase.backoff) => const ServerUnreachable(),
         _Attempt() => const Downloading(),
@@ -527,18 +612,16 @@ enum _Phase {
   backoff,
 }
 
-/// Why an attempt failed, for the reason shown when there is no bundle.
-enum _Failure { unreachable, refused }
-
 /// The work for one target bundle: from when the target becomes that bundle
 /// to when the target changes (design D6).
 ///
 /// Every download, check, index and retry of the attempt acts only while it
 /// is the current attempt.
 final class _Attempt {
-  _Attempt(this.identity, this.size);
+  _Attempt(this.identity, this.size, this.sequence);
 
   final BundleIdentity identity;
+  final int sequence;
 
   /// The announced compressed size, which bounds the download.
   final int size;
@@ -548,7 +631,14 @@ final class _Attempt {
   /// How many of the [failures] refused the downloaded bytes; the next
   /// download's reload number (`BundleDownloader.start`).
   int refusals = 0;
-  _Failure? failure;
+  DownloadFailure? failure;
+  DateTime? nextTry;
   BundleTransfer? transfer;
   Timer? retryTimer;
+}
+
+final class _PendingSave {
+  const _PendingSave(this.copy, this.sequence);
+  final BundleCopy copy;
+  final int sequence;
 }

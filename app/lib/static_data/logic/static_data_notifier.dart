@@ -68,6 +68,17 @@ final staticDataTimersProvider = Provider<TimerFactory>(
       (delay, run) => Timer(delay, run),
 );
 
+/// The wall clock used for retry and download timestamps.
+final staticDataNowProvider = Provider<DateTime Function()>(
+  (ref) => DateTime.now,
+);
+
+/// The sink for private synchronization diagnostics.
+final staticDataLogProvider = Provider<void Function(String)>(
+  (ref) =>
+      (message) => developer.log(message, name: 'kaname.static_data'),
+);
+
 /// The app-scoped static data.
 final staticDataProvider =
     NotifierProvider<StaticDataNotifier, StaticDataState>(
@@ -112,6 +123,11 @@ final staticDataProvider =
 ///
 /// A search runs on [BundleReady.index], which it captures when it starts.
 class StaticDataNotifier extends Notifier<StaticDataState> {
+  StaticDataSync? _run;
+
+  /// Starts a waiting download retry immediately.
+  void downloadNow() => _run?.downloadNow();
+
   @override
   StaticDataState build() {
     final server = switch (ref.watch(serverTargetProvider)) {
@@ -127,9 +143,11 @@ class StaticDataNotifier extends Notifier<StaticDataState> {
       opener: ref.watch(bundleOpenerProvider),
       indexer: ref.watch(bundleIndexerProvider),
       timers: ref.watch(staticDataTimersProvider),
+      now: ref.watch(staticDataNowProvider),
       onState: (next) => state = next,
-      log: (message) => developer.log(message, name: 'kaname.static_data'),
+      log: ref.watch(staticDataLogProvider),
     );
+    _run = run;
     ref.onDispose(run.dispose);
     if (server != null) {
       ref.listen(serverStatusProvider, (_, next) {

@@ -15,6 +15,9 @@ final class FakeClock {
   Duration _now = Duration.zero;
   final List<_FakeTimer> _timers = [];
 
+  /// The wall time corresponding to the fake timer clock.
+  DateTime now() => DateTime.utc(2026).add(_now);
+
   /// The delay of every timer started so far, in order.
   final List<Duration> delays = [];
 
@@ -275,6 +278,9 @@ final class FakeBundleStore implements BundleStore {
   /// refuses them; nothing is kept then.
   bool refuseSaves = false;
 
+  /// Whether saving throws instead of returning an outcome.
+  bool throwOnSave = false;
+
   /// How many loads were asked for.
   int loads = 0;
 
@@ -338,6 +344,7 @@ final class FakeBundleStore implements BundleStore {
       _saveGates.add(gate);
       await gate.future;
     }
+    if (throwOnSave) throw StateError('storage failed');
     if (refuseSaves) return const BundleNotSaved('storage refused');
     kept = copy;
     savesDone.add(copy.identity);
