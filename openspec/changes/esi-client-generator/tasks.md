@@ -8,73 +8,73 @@ Test paths: `tools/kaname_tools/test/` (abbreviated `tools/…`) and `packages/k
 
 | Requirement | Scenario | Test file | Test name | State |
 |---|---|---|---|---|
-| esi-client-generation → One pinned spec snapshot | Pin matches snapshot | tools/esi_repo_test.dart | committed snapshot hash and date match the pin | red |
-| esi-client-generation → One pinned spec snapshot | Pin missing a field | tools/esi_pin_test.dart | pin without date, source or sha256 is refused by generate and check | red |
-| esi-client-generation → Generation reads only pinned bytes | Pinned bytes accepted | tools/esi_generate_test.dart | generate parses a snapshot whose hash and date match the pin | red |
-| esi-client-generation → Generation reads only pinned bytes | Pin date edited by hand | tools/esi_pin_test.dart | pin date differing from info.version or the header enum fails generate and check | red |
-| esi-client-generation → Generation reads only pinned bytes | Snapshot edited by hand | tools/esi_pin_test.dart | snapshot hash mismatch fails generate and check and leaves output untouched | red |
-| esi-client-generation → Deliberate fetch for a date bump | Fetch a listed date | tools/esi_fetch_test.dart | fetch writes snapshot and pin for the served date | red |
-| esi-client-generation → Deliberate fetch for a date bump | Spec reports another date | tools/esi_fetch_test.dart | fetch refuses a spec reporting another date and changes nothing | red |
-| esi-client-generation → Deliberate fetch for a date bump | Download fails | tools/esi_fetch_test.dart | fetch reports error, timeout or non-200 and changes nothing | red |
-| esi-client-generation → Deliberate fetch for a date bump | Bad date argument | tools/esi_fetch_test.dart | fetch without a valid YYYY-MM-DD date prints usage and downloads nothing | red |
-| esi-client-generation → Fetch writes and verifies | Re-read passes | tools/esi_fetch_test.dart | single fetch re-reads a matching pair and leaves no temp file | red |
-| esi-client-generation → Fetch writes and verifies | Two fetches interleave in one checkout | tools/esi_fetch_test.dart | interleaved fetches with different hashes fail the late pin writer and check | red |
-| esi-client-generation → Reproducible generation | Generate twice | tools/esi_generate_test.dart | second generate changes no byte | red |
-| esi-client-generation → Reproducible generation | Unsupported construct in the snapshot | tools/esi_spec_reader_test.dart | unsupported construct names its JSON path and nothing is written | red |
-| esi-client-generation → Drift check | Committed output current | tools/esi_repo_test.dart | esi check passes on the committed output and writes nothing | red |
-| esi-client-generation → Drift check | Generated file edited by hand | tools/esi_check_test.dart | check names a hand-edited generated file | red |
-| esi-client-generation → Drift check | Snapshot bumped without regenerating | tools/esi_check_test.dart | check names generated files that differ after a bump | red |
-| esi-route-catalogue → One catalogue entry per operation | Complete catalogue | esi/catalogue_test.dart | catalogue has 208 entries, one per operation id | red |
-| esi-route-catalogue → One catalogue entry per operation | Unknown operation id | esi/catalogue_test.dart | unknown operation id has no entry | red |
-| esi-route-catalogue → Lookup by method and path template | Found by method and path | esi/catalogue_test.dart | lookup by method and path template finds the entry | red |
-| esi-route-catalogue → Lookup by method and path template | Method not defined for the path | esi/catalogue_test.dart | DELETE on the assets path has no entry | red |
-| esi-route-catalogue → Rate group per route | Route with a rate group | esi/catalogue_test.dart | alliance contacts carry alliance-social 300 per 15m | red |
-| esi-route-catalogue → Rate group per route | Route without a rate group | esi/catalogue_test.dart | GET /alliances carries EsiRateGroup.none | red |
-| esi-route-catalogue → Scopes and required roles per route | Scoped route with roles | esi/catalogue_test.dart | extractions carry the mining scope and Station_Manager | red |
-| esi-route-catalogue → Scopes and required roles per route | Public route | esi/catalogue_test.dart | public route has no scopes and no roles | red |
-| esi-route-catalogue → Cache behaviour per route | Route with stated cache facts | esi/catalogue_test.dart | /alliances cache facts as stated, cache mode absent | red |
-| esi-route-catalogue → Cache behaviour per route | Route with no cache facts | esi/catalogue_test.dart | alliance icons have every cache fact absent | red |
-| esi-route-catalogue → Pagination kind per route | Page-numbered route | esi/catalogue_test.dart | assets route is page-numbered | red |
-| esi-route-catalogue → Pagination kind per route | Cursor route | esi/catalogue_test.dart | freelance jobs route is cursor-paginated | red |
-| esi-route-catalogue → Pagination kind per route | Unpaginated route | esi/catalogue_test.dart | /alliances is unpaginated | red |
-| esi-client → One typed method per operation | Every operation covered | esi/operations_test.dart (generated) | every operation sends its method and filled path | red |
-| esi-client → One typed method per operation | Cursor value reaches the wire unchanged | esi/request_test.dart | cursor a+b/c= is encoded once as after=a%2Bb%2Fc%3D | red |
-| esi-client → One typed method per operation | Required parameter left out | tools/esi_render_test.dart | required parameters render as required named arguments | red |
-| esi-client → Requests carry the pinned compatibility date | Request built | esi/request_test.dart | assets request target, compatibility date and absent headers | red |
-| esi-client → Requests carry the pinned compatibility date | Body request | esi/request_test.dart | POST /universe/names sends JSON [1,2] | red |
-| esi-client → Requests carry the pinned compatibility date | Body outside the spec's bounds | esi/request_test.dart | empty id list is an invalid request and nothing is sent | red |
-| esi-client → Optional and forbidden headers | Conditional request | esi/request_test.dart | If-None-Match carries the caller's ETag exactly | red |
-| esi-client → Optional and forbidden headers | Language requested | esi/request_test.dart | Accept-Language only when the caller passes it | red |
-| esi-client → The transport is the only way out | Fixture transport | esi/contract_test.dart | fixture transport answers and no connection is opened | red |
+| esi-client-generation → One pinned spec snapshot | Pin matches snapshot | tools/esi_repo_test.dart | committed snapshot hash and date match the pin | green |
+| esi-client-generation → One pinned spec snapshot | Pin missing a field | tools/esi_pin_test.dart | pin without date, source or sha256 is refused by generate and check | green |
+| esi-client-generation → Generation reads only pinned bytes | Pinned bytes accepted | tools/esi_generate_test.dart | generate parses a snapshot whose hash and date match the pin | green |
+| esi-client-generation → Generation reads only pinned bytes | Pin date edited by hand | tools/esi_pin_test.dart | pin date differing from info.version or the header enum fails generate and check | green |
+| esi-client-generation → Generation reads only pinned bytes | Snapshot edited by hand | tools/esi_pin_test.dart | snapshot hash mismatch fails generate and check and leaves output untouched | green |
+| esi-client-generation → Deliberate fetch for a date bump | Fetch a listed date | tools/esi_fetch_test.dart | fetch writes snapshot and pin for the served date | green |
+| esi-client-generation → Deliberate fetch for a date bump | Spec reports another date | tools/esi_fetch_test.dart | fetch refuses a spec reporting another date and changes nothing | green |
+| esi-client-generation → Deliberate fetch for a date bump | Download fails | tools/esi_fetch_test.dart | fetch reports error, timeout or non-200 and changes nothing | green |
+| esi-client-generation → Deliberate fetch for a date bump | Bad date argument | tools/esi_fetch_test.dart | fetch without a valid YYYY-MM-DD date prints usage and downloads nothing | green |
+| esi-client-generation → Fetch writes and verifies | Re-read passes | tools/esi_fetch_test.dart | single fetch re-reads a matching pair and leaves no temp file | green |
+| esi-client-generation → Fetch writes and verifies | Two fetches interleave in one checkout | tools/esi_fetch_test.dart | interleaved fetches with different hashes fail the late pin writer and check | green |
+| esi-client-generation → Reproducible generation | Generate twice | tools/esi_generate_test.dart | second generate changes no byte | green |
+| esi-client-generation → Reproducible generation | Unsupported construct in the snapshot | tools/esi_spec_reader_test.dart | unsupported construct names its JSON path and nothing is written | green |
+| esi-client-generation → Drift check | Committed output current | tools/esi_repo_test.dart | esi check passes on the committed output and writes nothing | green |
+| esi-client-generation → Drift check | Generated file edited by hand | tools/esi_check_test.dart | check names a hand-edited generated file | green |
+| esi-client-generation → Drift check | Snapshot bumped without regenerating | tools/esi_check_test.dart | check names generated files that differ after a bump | green |
+| esi-route-catalogue → One catalogue entry per operation | Complete catalogue | esi/catalogue_test.dart | catalogue has 208 entries, one per operation id | green |
+| esi-route-catalogue → One catalogue entry per operation | Unknown operation id | esi/catalogue_test.dart | unknown operation id has no entry | green |
+| esi-route-catalogue → Lookup by method and path template | Found by method and path | esi/catalogue_test.dart | lookup by method and path template finds the entry | green |
+| esi-route-catalogue → Lookup by method and path template | Method not defined for the path | esi/catalogue_test.dart | DELETE on the assets path has no entry | green |
+| esi-route-catalogue → Rate group per route | Route with a rate group | esi/catalogue_test.dart | alliance contacts carry alliance-social 300 per 15m | green |
+| esi-route-catalogue → Rate group per route | Route without a rate group | esi/catalogue_test.dart | GET /alliances carries EsiRateGroup.none | green |
+| esi-route-catalogue → Scopes and required roles per route | Scoped route with roles | esi/catalogue_test.dart | extractions carry the mining scope and Station_Manager | green |
+| esi-route-catalogue → Scopes and required roles per route | Public route | esi/catalogue_test.dart | public route has no scopes and no roles | green |
+| esi-route-catalogue → Cache behaviour per route | Route with stated cache facts | esi/catalogue_test.dart | /alliances cache facts as stated, cache mode absent | green |
+| esi-route-catalogue → Cache behaviour per route | Route with no cache facts | esi/catalogue_test.dart | alliance icons have every cache fact absent | green |
+| esi-route-catalogue → Pagination kind per route | Page-numbered route | esi/catalogue_test.dart | assets route is page-numbered | green |
+| esi-route-catalogue → Pagination kind per route | Cursor route | esi/catalogue_test.dart | freelance jobs route is cursor-paginated | green |
+| esi-route-catalogue → Pagination kind per route | Unpaginated route | esi/catalogue_test.dart | /alliances is unpaginated | green |
+| esi-client → One typed method per operation | Every operation covered | esi/generated/operations_test.dart (generated) | every operation sends its method and filled path | green |
+| esi-client → One typed method per operation | Cursor value reaches the wire unchanged | esi/request_test.dart | cursor a+b/c= is encoded once as after=a%2Bb%2Fc%3D | green |
+| esi-client → One typed method per operation | Required parameter left out | tools/esi_render_test.dart | required parameters render as required named arguments | green |
+| esi-client → Requests carry the pinned compatibility date | Request built | esi/request_test.dart | assets request target, compatibility date and absent headers | green |
+| esi-client → Requests carry the pinned compatibility date | Body request | esi/request_test.dart | POST /universe/names sends JSON [1,2] | green |
+| esi-client → Requests carry the pinned compatibility date | Body outside the spec's bounds | esi/request_test.dart | empty id list is an invalid request and nothing is sent | green |
+| esi-client → Optional and forbidden headers | Conditional request | esi/request_test.dart | If-None-Match carries the caller's ETag exactly | green |
+| esi-client → Optional and forbidden headers | Language requested | esi/request_test.dart | Accept-Language only when the caller passes it | green |
+| esi-client → The transport is the only way out | Fixture transport | esi/contract_test.dart | fixture transport answers and no connection is opened | green |
 | esi-client → The transport is the only way out | Disallowed library imported | esi/guard_test.dart | disallowed dart: library in lib/ fails naming file and library | green |
 | esi-client → The transport is the only way out | Import leaves the package | esi/guard_test.dart | import, export or conditional URI leaving lib/ fails naming file and URI | green |
 | esi-client → The transport is the only way out | Runtime dependency added | esi/guard_test.dart | runtime dependency in pubspec fails naming it | green |
 | esi-client → The transport is the only way out | Transport fails | esi/result_test.dart | transport failure becomes a result, never an exception | green |
-| esi-client → Call identity stays with the transport | Two clients, two transports | esi/request_test.dart | two clients on two transports each send only their own request | red |
-| esi-client → Call identity stays with the transport | No identity in requests | esi/request_test.dart | built requests hold no Authorization, token or priority | red |
+| esi-client → Call identity stays with the transport | Two clients, two transports | esi/request_test.dart | two clients on two transports each send only their own request | green |
+| esi-client → Call identity stays with the transport | No identity in requests | esi/request_test.dart | built requests hold no Authorization, token or priority | green |
 | esi-client → Typed results, never thrown | Success | esi/result_test.dart | 200 with ETag, Expires, Last-Modified and X-Pages 3 | green |
 | esi-client → Typed results, never thrown | No content | esi/result_test.dart | 204 is a success without a body | green |
 | esi-client → Typed results, never thrown | Not modified | esi/result_test.dart | 304 is not modified with ETag and Expires | green |
 | esi-client → Typed results, never thrown | ESI error with body | esi/result_test.dart | 404 with an error message | green |
 | esi-client → Typed results, never thrown | ESI error without a readable body | esi/result_test.dart | 502 with a non-JSON body | green |
-| esi-client → Malformed responses are reported | Conforming body | esi/decode_test.dart | conforming alliance body decodes | red |
-| esi-client → Malformed responses are reported | Body that is not JSON | esi/decode_test.dart | non-JSON 200 is malformed at the root path | red |
-| esi-client → Malformed responses are reported | Missing required field | esi/decode_test.dart | missing required field is malformed with its path | red |
-| esi-client → Malformed responses are reported | Wrong JSON type | esi/decode_test.dart | string for an integer is malformed with its path | red |
-| esi-client → Values the pinned spec does not list | New enum value | esi/decode_test.dart | unlisted enum string decodes to unknown | red |
-| esi-client → Values the pinned spec does not list | New oneOf variant | esi/decode_test.dart | single-key object with unlisted key decodes to unknown | red |
-| esi-client → Values the pinned spec does not list | Extra field | esi/decode_test.dart | undeclared field is ignored | red |
-| esi-client → Values the pinned spec does not list | Known variant with a wrong-typed payload | esi/decode_test.dart | listed key with wrong payload type is malformed | red |
-| esi-client → Values the pinned spec does not list | oneOf object without exactly one key | esi/decode_test.dart | zero- or two-key oneOf object is malformed | red |
-| esi-client → Values the pinned spec does not list | Enum position holding a non-string | esi/decode_test.dart | number in an enum position is malformed | red |
-| esi-client → Values the pinned spec does not list | Known variant | esi/decode_test.dart | isk variant decodes with amount 1500.5 | red |
-| esi-client → Contract tests over recorded exchanges | Exact assertion | esi/contract_test.dart | forward-compatibility notification type asserts the exact unknown string | red |
-| esi-client → Contract coverage | Every construct covered | esi/contract_coverage_test.dart | every listed inbound and outbound construct has an asserting exchange | red |
-| esi-client → Contract coverage | Snapshot bump breaks an asserted behaviour | esi/contract_test.dart | a conforming exchange whose decoded case differs fails naming the operation | red |
+| esi-client → Malformed responses are reported | Conforming body | esi/decode_test.dart | conforming alliance body decodes | green |
+| esi-client → Malformed responses are reported | Body that is not JSON | esi/decode_test.dart | non-JSON 200 is malformed at the root path | green |
+| esi-client → Malformed responses are reported | Missing required field | esi/decode_test.dart | missing required field is malformed with its path | green |
+| esi-client → Malformed responses are reported | Wrong JSON type | esi/decode_test.dart | string for an integer is malformed with its path | green |
+| esi-client → Values the pinned spec does not list | New enum value | esi/decode_test.dart | unlisted enum string decodes to unknown | green |
+| esi-client → Values the pinned spec does not list | New oneOf variant | esi/decode_test.dart | single-key object with unlisted key decodes to unknown | green |
+| esi-client → Values the pinned spec does not list | Extra field | esi/decode_test.dart | undeclared field is ignored | green |
+| esi-client → Values the pinned spec does not list | Known variant with a wrong-typed payload | esi/decode_test.dart | listed key with wrong payload type is malformed | green |
+| esi-client → Values the pinned spec does not list | oneOf object without exactly one key | esi/decode_test.dart | zero- or two-key oneOf object is malformed | green |
+| esi-client → Values the pinned spec does not list | Enum position holding a non-string | esi/decode_test.dart | number in an enum position is malformed | green |
+| esi-client → Values the pinned spec does not list | Known variant | esi/decode_test.dart | isk variant decodes with amount 1500.5 | green |
+| esi-client → Contract tests over recorded exchanges | Exact assertion | esi/contract_test.dart | forward-compatibility notification type asserts the exact unknown string | green |
+| esi-client → Contract coverage | Every construct covered | esi/contract_coverage_test.dart | every listed inbound and outbound construct has an asserting exchange | green |
+| esi-client → Contract coverage | Snapshot bump breaks an asserted behaviour | esi/contract_test.dart | a conforming exchange whose decoded case differs fails naming the operation | green |
 | third-party-notices → Vendored assets are listed by hand | Current vendored assets listed | tools/notices_repo_test.dart | existing vendored asset entries (unchanged) | green |
 | third-party-notices → Vendored assets are listed by hand | A vendored source without an entry | tools/notices_test.dart | existing missing-source cases (unchanged) | green |
-| third-party-notices → Vendored assets are listed by hand | ESI spec snapshot listed | tools/notices_repo_test.dart | ESI entry names snapshot, generated folder, source, licence, notice and AGPL | red |
-| third-party-notices → Vendored assets are listed by hand | ESI spec snapshot without an entry | tools/notices_test.dart | ESI entry missing path, source, licence name, URL or notice fails naming each | red |
+| third-party-notices → Vendored assets are listed by hand | ESI spec snapshot listed | tools/notices_repo_test.dart | ESI entry names snapshot, generated folder, source, licence, notice and AGPL | green |
+| third-party-notices → Vendored assets are listed by hand | ESI spec snapshot without an entry | tools/notices_test.dart | ESI entry missing path, source, licence name, URL or notice fails naming each | green |
 
 ## 1. Package scaffold and guards
 
