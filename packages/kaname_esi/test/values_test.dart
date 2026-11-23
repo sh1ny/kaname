@@ -24,4 +24,48 @@ void main() {
     expect(value, const EsiUnknown<_Colour>('teal'));
     expect(value.hashCode, const EsiUnknown<_Colour>('teal').hashCode);
   });
+
+  test('a listed variant keeps its key and value', () {
+    const EsiOneOf<Object> value = EsiVariant<Object>('isk', 1500.5);
+    expect(value.key, 'isk');
+    expect(value, const EsiVariant<Object>('isk', 1500.5));
+    expect(value, isNot(const EsiVariant<Object>('tokens', 1500.5)));
+  });
+
+  test('an unlisted variant keeps the received object, compared by '
+      'content', () {
+    final value = EsiUnknownVariant<Object>({
+      'barter': [
+        1,
+        {'a': null},
+      ],
+    });
+    expect(value.key, 'barter');
+    expect(
+      value,
+      EsiUnknownVariant<Object>({
+        'barter': [
+          1,
+          {'a': null},
+        ],
+      }),
+    );
+    expect(
+      value,
+      isNot(
+        EsiUnknownVariant<Object>({
+          'barter': [1, <String, Object?>{}],
+        }),
+      ),
+    );
+    expect(
+      value.hashCode,
+      EsiUnknownVariant<Object>({
+        'barter': [
+          1,
+          {'a': null},
+        ],
+      }).hashCode,
+    );
+  });
 }

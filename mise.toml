@@ -134,6 +134,10 @@ run = "dart run kaname_tools tokens --check"
 description = "Download ESI's spec for a compatibility date (-- --date YYYY-MM-DD) and replace the pinned snapshot; the only task that downloads it, never run in CI"
 run = "dart run kaname_tools esi fetch"
 
+[tasks."esi:generate"]
+description = "Generate the typed ESI client and route catalogue from the pinned snapshot, offline"
+run = "dart run kaname_tools esi generate"
+
 [tasks."l10n:check"]
 description = "Fail if the app's committed gen-l10n output differs from a fresh generation in a temporary directory"
 run = "dart run kaname_tools l10n --check"

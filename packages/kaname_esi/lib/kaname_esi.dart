@@ -12,6 +12,8 @@ library;
 
 export 'src/call.dart';
 export 'src/catalogue_types.dart';
+export 'src/client.dart';
+export 'src/json.dart';
 export 'src/result.dart';
 export 'src/transport.dart';
 export 'src/values.dart';

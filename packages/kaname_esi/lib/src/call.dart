@@ -5,6 +5,7 @@ library;
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'json.dart';
 import 'result.dart';
 import 'transport.dart';
 
@@ -26,6 +27,25 @@ final class EsiDecodeException implements Exception {
   String toString() => 'EsiDecodeException($path: $reason)';
 }
 
+/// A call argument outside the bounds the pinned spec states.
+///
+/// Argument checks raise it; [EsiCall.invoke] turns it into
+/// [EsiInvalidRequest], so it never escapes a call and nothing is sent.
+final class EsiInvalidArgument implements Exception {
+  /// Creates a broken bound of the parameter at [path], explained by
+  /// [reason].
+  const EsiInvalidArgument(this.path, this.reason);
+
+  /// The parameter, such as `page` or `body[0]`.
+  final String path;
+
+  /// Which bound the value breaks.
+  final String reason;
+
+  @override
+  String toString() => 'EsiInvalidArgument($path: $reason)';
+}
+
 /// Decodes an operation's JSON body, raising [EsiDecodeException] on a
 /// mismatch.
 typedef EsiDecoder<T> = T Function(Object? json);
@@ -44,8 +64,49 @@ abstract final class EsiCall {
     return Uri.parse('$path?$encoded');
   }
 
+  /// The raw query pairs of the parameter [name] holding the JSON [value]:
+  /// none for `null`, one per item of an array when [explode] is true, one
+  /// comma-joined pair when it is false, and one pair for a scalar.
+  static List<(String, String)> query(
+    String name,
+    Object? value, {
+    bool explode = true,
+  }) => switch (value) {
+    null => const [],
+    final List<Object?> items when explode => [
+      for (final item in items) (name, '$item'),
+    ],
+    final List<Object?> items => [(name, items.join(','))],
+    _ => [(name, '$value')],
+  };
+
+  /// Builds a request with [build] and runs it as [run] does.
+  ///
+  /// [build] checks the arguments; an [EsiInvalidArgument] it raises becomes
+  /// [EsiInvalidRequest] and nothing is sent. The body is read with [read]
+  /// from the root path `$`.
+  static Future<EsiResult<T>> invoke<T>(
+    EsiTransport transport,
+    EsiRequest Function() build, {
+    required EsiRead<T> read,
+    T Function()? noContent,
+  }) async {
+    final EsiRequest request;
+    try {
+      request = build();
+    } on EsiInvalidArgument catch (error) {
+      return EsiInvalidRequest(parameter: error.path, reason: error.reason);
+    }
+    return run(
+      transport,
+      request,
+      decode: (json) => read(json, r'$'),
+      noContent: noContent,
+    );
+  }
+
   /// Percent-encodes one path parameter value.
-  static String segment(Object value) => Uri.encodeComponent('$value');
+  static String segment(Object? value) => Uri.encodeComponent('$value');
 
   /// The headers a request carries: always `X-Compatibility-Date`, and the
   /// optional ones only when given.

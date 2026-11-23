@@ -2,7 +2,9 @@ import 'package:args/command_runner.dart';
 
 import 'cli.dart';
 import 'esi_fetch.dart';
+import 'esi_generate.dart';
 import 'esi_pin.dart';
+import 'esi_render.dart';
 import 'file_system.dart';
 
 /// The `esi` command: the pinned ESI spec and the client generated from it.
@@ -15,6 +17,7 @@ final class EsiCommand extends Command<int> {
     CliOutput output,
   ) {
     addSubcommand(EsiFetchCommand(fileSystem, downloader, output));
+    addSubcommand(EsiGenerateCommand(fileSystem, output));
   }
 
   @override
@@ -64,6 +67,40 @@ final class EsiFetchCommand extends Command<int> {
       case EsiFetchFailed(:final problems):
         problems.forEach(_output.err.writeln);
         return exitCheckFailed;
+    }
+  }
+}
+
+/// `esi generate`: write the typed client and the route catalogue from the
+/// pinned snapshot alone. Every file is rendered in memory first; nothing
+/// is written unless all of them render.
+final class EsiGenerateCommand extends Command<int> {
+  /// Creates the command.
+  EsiGenerateCommand(this._fileSystem, this._output);
+
+  final FileSystem _fileSystem;
+  final CliOutput _output;
+
+  @override
+  String get name => 'generate';
+
+  @override
+  String get description =>
+      'Generate the ESI client and route catalogue from the pinned snapshot.';
+
+  @override
+  int run() {
+    switch (renderPinnedEsiClient(_fileSystem)) {
+      case EsiGenerationRefused(:final problems):
+        problems.forEach(_output.err.writeln);
+        return exitCheckFailed;
+      case EsiGenerationReady(:final pin, :final files):
+        final (:written, :removed) = writeEsiGeneratedFiles(_fileSystem, files);
+        _output.out.writeln(
+          '$esiGeneratedDirectory: ${files.length} files for ${pin.date}, '
+          '${written.length} written, ${removed.length} removed',
+        );
+        return exitSuccess;
     }
   }
 }
