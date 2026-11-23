@@ -1,0 +1,9 @@
+### Public change-report answer; failure reasons never contain stored text (D15).
+class: StaticDataChangeReport
+fields:
+  outcome: StaticDataReportOutcome
+  activeBuild: int?
+  fromBuild: int?
+  toBuild: int?
+  reason: PublicReason?
+  files: List<StaticDataReportFile>?

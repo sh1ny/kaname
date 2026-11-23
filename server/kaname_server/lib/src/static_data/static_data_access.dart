@@ -6,6 +6,7 @@ import '../realtime/server_clock.dart';
 import 'admin_admission.dart';
 import 'admin_gate.dart';
 import 'read_work_tokens.dart';
+import 'static_data_report_reader.dart';
 import 'static_data_runtime.dart';
 import 'static_data_start.dart';
 import 'static_data_start_hook.dart' show WithSession;
@@ -59,6 +60,13 @@ final class StaticDataAccess {
   /// Admits one job while preserving idempotent replays across RPC sessions.
   late final admission = AdminAdmission(
     runtime: runtime,
+    withSession: withSession,
+    tokens: tokens,
+    clock: clock,
+  );
+
+  /// Shares one admitted report reader across the web route (D23).
+  late final report = StaticDataReportReader(
     withSession: withSession,
     tokens: tokens,
     clock: clock,

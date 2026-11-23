@@ -1,6 +1,7 @@
 import 'src/generated/serverpod.dart';
 import 'src/static_data/bundle_announcer_start.dart';
 import 'src/static_data/bundle_route.dart';
+import 'src/static_data/report_route.dart';
 import 'src/static_data/static_data_access.dart';
 import 'src/static_data/static_data_start.dart';
 
@@ -14,9 +15,8 @@ import 'src/static_data/static_data_start.dart';
 /// mode, before the static-data work, so the first announcement is installed
 /// as soon as the database answers (D4, C29); its 19-second limit is armed
 /// before the server starts, because the API listener accepts subscriptions
-/// before `pod.start()` returns. The bundle route is
-/// registered before the server starts, because the API server takes middleware
-/// only before it starts.
+/// before `pod.start()` returns. The bundle and report routes are registered
+/// before the server starts, when the API listener still takes middleware.
 Future<void> run(List<String> args) => serve(Serverpod(args));
 
 /// Wires the bundle route and announcer into [pod], starts it, then starts
@@ -37,6 +37,10 @@ Future<void> serve(Serverpod pod) async {
 
   final announcer = buildBundleAnnouncer(pod);
   pod.server.addMiddleware(BundleRoute(announcer: announcer).middleware);
+  pod.server.addMiddleware(
+    ReportRoute(read: () => StaticDataAccess.forPod(pod).report.read())
+        .middleware,
+  );
   // The API listener accepts subscriptions before pod.start() returns, while
   // later startup work can still wait on the database; the first
   // announcement's limit runs from before that (C29).

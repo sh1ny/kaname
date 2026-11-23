@@ -1,0 +1,7 @@
+### Whether a report file occurs in both builds or only one.
+enum: StaticDataReportFileStatus
+serialized: byName
+values:
+  - both
+  - newFile
+  - removedFile

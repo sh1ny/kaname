@@ -50,9 +50,14 @@ import 'static_data/sde_switch_kind.dart' as _iqktcwf1;
 import 'static_data/sde_switch_outcome.dart' as _icb88h1v;
 import 'static_data/setting_revision.dart' as _iotz1o7l;
 import 'static_data/static_data_ccp_latest.dart' as _imfnodj2;
+import 'static_data/static_data_change_report.dart' as _icn4k5zk;
 import 'static_data/static_data_check_status.dart' as _i58p74ek;
 import 'static_data/static_data_diff_status.dart' as _ivtfyb9n;
 import 'static_data/static_data_import_status.dart' as _igmz1uai;
+import 'static_data/static_data_report_changes.dart' as _i6y7rcpz;
+import 'static_data/static_data_report_file.dart' as _iacxd2dw;
+import 'static_data/static_data_report_file_status.dart' as _ijjljno5;
+import 'static_data/static_data_report_outcome.dart' as _iixf2rnc;
 import 'static_data/static_data_status.dart' as _i4ollqgk;
 import 'static_data/static_data_status_unavailable.dart' as _ixbsr0c1;
 import 'static_data/static_data_switch_status.dart' as _iidkva5e;
@@ -104,9 +109,14 @@ export 'static_data/sde_switch_kind.dart';
 export 'static_data/sde_switch_outcome.dart';
 export 'static_data/setting_revision.dart';
 export 'static_data/static_data_ccp_latest.dart';
+export 'static_data/static_data_change_report.dart';
 export 'static_data/static_data_check_status.dart';
 export 'static_data/static_data_diff_status.dart';
 export 'static_data/static_data_import_status.dart';
+export 'static_data/static_data_report_changes.dart';
+export 'static_data/static_data_report_file.dart';
+export 'static_data/static_data_report_file_status.dart';
+export 'static_data/static_data_report_outcome.dart';
 export 'static_data/static_data_status.dart';
 export 'static_data/static_data_status_unavailable.dart';
 export 'static_data/static_data_switch_status.dart';
@@ -174,9 +184,14 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_icb88h1v.SdeSwitchOutcome>,
           _is.getType<_iotz1o7l.WriteRevision>,
           _is.getType<_imfnodj2.StaticDataCcpLatest>,
+          _is.getType<_icn4k5zk.StaticDataChangeReport>,
           _is.getType<_i58p74ek.StaticDataCheckStatus>,
           _is.getType<_ivtfyb9n.StaticDataDiffStatus>,
           _is.getType<_igmz1uai.StaticDataImportStatus>,
+          _is.getType<_i6y7rcpz.StaticDataReportChanges>,
+          _is.getType<_iacxd2dw.StaticDataReportFile>,
+          _is.getType<_ijjljno5.StaticDataReportFileStatus>,
+          _is.getType<_iixf2rnc.StaticDataReportOutcome>,
           _is.getType<_i4ollqgk.StaticDataStatus>,
           _is.getType<_ixbsr0c1.StaticDataStatusUnavailable>,
           _is.getType<_iidkva5e.StaticDataSwitchStatus>,
@@ -230,9 +245,14 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_icb88h1v.SdeSwitchOutcome?>,
           _is.getType<_iotz1o7l.WriteRevision?>,
           _is.getType<_imfnodj2.StaticDataCcpLatest?>,
+          _is.getType<_icn4k5zk.StaticDataChangeReport?>,
           _is.getType<_i58p74ek.StaticDataCheckStatus?>,
           _is.getType<_ivtfyb9n.StaticDataDiffStatus?>,
           _is.getType<_igmz1uai.StaticDataImportStatus?>,
+          _is.getType<_i6y7rcpz.StaticDataReportChanges?>,
+          _is.getType<_iacxd2dw.StaticDataReportFile?>,
+          _is.getType<_ijjljno5.StaticDataReportFileStatus?>,
+          _is.getType<_iixf2rnc.StaticDataReportOutcome?>,
           _is.getType<_i4ollqgk.StaticDataStatus?>,
           _is.getType<_ixbsr0c1.StaticDataStatusUnavailable?>,
           _is.getType<_iidkva5e.StaticDataSwitchStatus?>,
@@ -251,8 +271,11 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_ib14m8bx.SdeTypeDogma?>,
           _is.getType<_idp9h2tz.SdeJson?>,
           _is.getType<_idp9h2tz.SdeJson>,
+          _is.getType<List<_iacxd2dw.StaticDataReportFile>>,
+          _is.getType<List<_iacxd2dw.StaticDataReportFile>?>,
           _is.getType<Map<String, int>>,
           _is.getType<Map<String, int>?>,
+          _is.getType<List<String>>,
           _is.getType<_idp9h2tz.SdeJson?>,
         ],
         modules: const [_isp.Protocol.new],
@@ -295,9 +318,14 @@ class Protocol extends _is.DatabaseSerializationManager
           'SdeSwitchOutcome',
           'WriteRevision',
           'StaticDataCcpLatest',
+          'StaticDataChangeReport',
           'StaticDataCheckStatus',
           'StaticDataDiffStatus',
           'StaticDataImportStatus',
+          'StaticDataReportChanges',
+          'StaticDataReportFile',
+          'StaticDataReportFileStatus',
+          'StaticDataReportOutcome',
           'StaticDataStatus',
           'StaticDataStatusUnavailable',
           'StaticDataSwitchStatus',
@@ -2240,6 +2268,9 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _imfnodj2.StaticDataCcpLatest) {
       return _imfnodj2.StaticDataCcpLatest.fromJson(data) as T;
     }
+    if (t == _icn4k5zk.StaticDataChangeReport) {
+      return _icn4k5zk.StaticDataChangeReport.fromJson(data) as T;
+    }
     if (t == _i58p74ek.StaticDataCheckStatus) {
       return _i58p74ek.StaticDataCheckStatus.fromJson(data) as T;
     }
@@ -2248,6 +2279,18 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (t == _igmz1uai.StaticDataImportStatus) {
       return _igmz1uai.StaticDataImportStatus.fromJson(data) as T;
+    }
+    if (t == _i6y7rcpz.StaticDataReportChanges) {
+      return _i6y7rcpz.StaticDataReportChanges.fromJson(data) as T;
+    }
+    if (t == _iacxd2dw.StaticDataReportFile) {
+      return _iacxd2dw.StaticDataReportFile.fromJson(data) as T;
+    }
+    if (t == _ijjljno5.StaticDataReportFileStatus) {
+      return _ijjljno5.StaticDataReportFileStatus.fromJson(data) as T;
+    }
+    if (t == _iixf2rnc.StaticDataReportOutcome) {
+      return _iixf2rnc.StaticDataReportOutcome.fromJson(data) as T;
     }
     if (t == _i4ollqgk.StaticDataStatus) {
       return _i4ollqgk.StaticDataStatus.fromJson(data) as T;
@@ -2452,6 +2495,12 @@ class Protocol extends _is.DatabaseSerializationManager
               : null)
           as T;
     }
+    if (t == _is.getType<_icn4k5zk.StaticDataChangeReport?>()) {
+      return (data != null
+              ? _icn4k5zk.StaticDataChangeReport.fromJson(data)
+              : null)
+          as T;
+    }
     if (t == _is.getType<_i58p74ek.StaticDataCheckStatus?>()) {
       return (data != null
               ? _i58p74ek.StaticDataCheckStatus.fromJson(data)
@@ -2467,6 +2516,30 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _is.getType<_igmz1uai.StaticDataImportStatus?>()) {
       return (data != null
               ? _igmz1uai.StaticDataImportStatus.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_i6y7rcpz.StaticDataReportChanges?>()) {
+      return (data != null
+              ? _i6y7rcpz.StaticDataReportChanges.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_iacxd2dw.StaticDataReportFile?>()) {
+      return (data != null
+              ? _iacxd2dw.StaticDataReportFile.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_ijjljno5.StaticDataReportFileStatus?>()) {
+      return (data != null
+              ? _ijjljno5.StaticDataReportFileStatus.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_iixf2rnc.StaticDataReportOutcome?>()) {
+      return (data != null
+              ? _iixf2rnc.StaticDataReportOutcome.fromJson(data)
               : null)
           as T;
     }
@@ -2539,6 +2612,20 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _idp9h2tz.SdeJson) {
       return _idp9h2tz.SdeJson.fromJson(data) as T;
     }
+    if (t == List<_iacxd2dw.StaticDataReportFile>) {
+      return (data as List)
+              .map((e) => deserialize<_iacxd2dw.StaticDataReportFile>(e))
+              .toList()
+          as T;
+    }
+    if (t == _is.getType<List<_iacxd2dw.StaticDataReportFile>?>()) {
+      return (data != null
+              ? (data as List)
+                    .map((e) => deserialize<_iacxd2dw.StaticDataReportFile>(e))
+                    .toList()
+              : null)
+          as T;
+    }
     if (t == Map<String, int>) {
       return (data as Map).map(
         (k, v) => MapEntry(deserialize<String>(k), deserialize<int>(v)),
@@ -2552,6 +2639,9 @@ class Protocol extends _is.DatabaseSerializationManager
                 )
               : null)
           as T;
+    }
+    if (t == List<String>) {
+      return (data as List).map((e) => deserialize<String>(e)).toList() as T;
     }
     if (t == _is.getType<_idp9h2tz.SdeJson?>()) {
       return (data != null ? _idp9h2tz.SdeJson.fromJson(data) : null) as T;
@@ -2609,9 +2699,14 @@ class Protocol extends _is.DatabaseSerializationManager
       _icb88h1v.SdeSwitchOutcome => 'SdeSwitchOutcome',
       _iotz1o7l.WriteRevision => 'WriteRevision',
       _imfnodj2.StaticDataCcpLatest => 'StaticDataCcpLatest',
+      _icn4k5zk.StaticDataChangeReport => 'StaticDataChangeReport',
       _i58p74ek.StaticDataCheckStatus => 'StaticDataCheckStatus',
       _ivtfyb9n.StaticDataDiffStatus => 'StaticDataDiffStatus',
       _igmz1uai.StaticDataImportStatus => 'StaticDataImportStatus',
+      _i6y7rcpz.StaticDataReportChanges => 'StaticDataReportChanges',
+      _iacxd2dw.StaticDataReportFile => 'StaticDataReportFile',
+      _ijjljno5.StaticDataReportFileStatus => 'StaticDataReportFileStatus',
+      _iixf2rnc.StaticDataReportOutcome => 'StaticDataReportOutcome',
       _i4ollqgk.StaticDataStatus => 'StaticDataStatus',
       _ixbsr0c1.StaticDataStatusUnavailable => 'StaticDataStatusUnavailable',
       _iidkva5e.StaticDataSwitchStatus => 'StaticDataSwitchStatus',
@@ -2718,12 +2813,22 @@ class Protocol extends _is.DatabaseSerializationManager
         return 'WriteRevision';
       case _imfnodj2.StaticDataCcpLatest():
         return 'StaticDataCcpLatest';
+      case _icn4k5zk.StaticDataChangeReport():
+        return 'StaticDataChangeReport';
       case _i58p74ek.StaticDataCheckStatus():
         return 'StaticDataCheckStatus';
       case _ivtfyb9n.StaticDataDiffStatus():
         return 'StaticDataDiffStatus';
       case _igmz1uai.StaticDataImportStatus():
         return 'StaticDataImportStatus';
+      case _i6y7rcpz.StaticDataReportChanges():
+        return 'StaticDataReportChanges';
+      case _iacxd2dw.StaticDataReportFile():
+        return 'StaticDataReportFile';
+      case _ijjljno5.StaticDataReportFileStatus():
+        return 'StaticDataReportFileStatus';
+      case _iixf2rnc.StaticDataReportOutcome():
+        return 'StaticDataReportOutcome';
       case _i4ollqgk.StaticDataStatus():
         return 'StaticDataStatus';
       case _ixbsr0c1.StaticDataStatusUnavailable():
@@ -2884,6 +2989,9 @@ class Protocol extends _is.DatabaseSerializationManager
     if (dataClassName == 'StaticDataCcpLatest') {
       return deserialize<_imfnodj2.StaticDataCcpLatest>(data['data']);
     }
+    if (dataClassName == 'StaticDataChangeReport') {
+      return deserialize<_icn4k5zk.StaticDataChangeReport>(data['data']);
+    }
     if (dataClassName == 'StaticDataCheckStatus') {
       return deserialize<_i58p74ek.StaticDataCheckStatus>(data['data']);
     }
@@ -2892,6 +3000,18 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (dataClassName == 'StaticDataImportStatus') {
       return deserialize<_igmz1uai.StaticDataImportStatus>(data['data']);
+    }
+    if (dataClassName == 'StaticDataReportChanges') {
+      return deserialize<_i6y7rcpz.StaticDataReportChanges>(data['data']);
+    }
+    if (dataClassName == 'StaticDataReportFile') {
+      return deserialize<_iacxd2dw.StaticDataReportFile>(data['data']);
+    }
+    if (dataClassName == 'StaticDataReportFileStatus') {
+      return deserialize<_ijjljno5.StaticDataReportFileStatus>(data['data']);
+    }
+    if (dataClassName == 'StaticDataReportOutcome') {
+      return deserialize<_iixf2rnc.StaticDataReportOutcome>(data['data']);
     }
     if (dataClassName == 'StaticDataStatus') {
       return deserialize<_i4ollqgk.StaticDataStatus>(data['data']);
