@@ -1,0 +1,12 @@
+# Shared packages document their public API (design D1). The generated client
+# is excluded from analysis like the server's generated code, and stays
+# formatter-clean (design D8 of esi-client-generator).
+include: ../../analysis_options.yaml
+
+analyzer:
+  exclude:
+    - lib/src/generated/**
+
+linter:
+  rules:
+    - public_member_api_docs

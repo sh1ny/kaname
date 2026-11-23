@@ -28,7 +28,8 @@ import 'workspace.dart';
 /// The web-safe packages, [webSafePackages], also import no `dart:io`,
 /// `dart:ffi` or `dart:isolate` (C28, design D23 of `client-data-bundle`):
 /// `kaname_static_data_bundle` and `kaname_core` run in the app's web build,
-/// and this check, run by `mise run check`, catches such an import long before
+/// `kaname_esi` must stay free of any network library of its own (design
+/// D11 of `esi-client-generator`), and this check, run by `mise run check`, catches such an import long before
 /// a web build would. The rule covers the files under the package's `lib/`,
 /// which is what a web build compiles; its tests and tools run on the Dart VM
 /// and may use `dart:io`.
@@ -49,6 +50,7 @@ final class PurityCheck {
   /// Packages, by name, whose libraries must also be web-safe.
   static const Set<String> webSafePackages = {
     'kaname_core',
+    'kaname_esi',
     'kaname_static_data_bundle',
   };
 

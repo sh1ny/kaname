@@ -46,9 +46,9 @@ Test paths: `tools/kaname_tools/test/` (abbreviated `tools/…`) and `packages/k
 | esi-client → Optional and forbidden headers | Conditional request | esi/request_test.dart | If-None-Match carries the caller's ETag exactly | red |
 | esi-client → Optional and forbidden headers | Language requested | esi/request_test.dart | Accept-Language only when the caller passes it | red |
 | esi-client → The transport is the only way out | Fixture transport | esi/contract_test.dart | fixture transport answers and no connection is opened | red |
-| esi-client → The transport is the only way out | Disallowed library imported | esi/guard_test.dart | disallowed dart: library in lib/ fails naming file and library | red |
-| esi-client → The transport is the only way out | Import leaves the package | esi/guard_test.dart | import, export or conditional URI leaving lib/ fails naming file and URI | red |
-| esi-client → The transport is the only way out | Runtime dependency added | esi/guard_test.dart | runtime dependency in pubspec fails naming it | red |
+| esi-client → The transport is the only way out | Disallowed library imported | esi/guard_test.dart | disallowed dart: library in lib/ fails naming file and library | green |
+| esi-client → The transport is the only way out | Import leaves the package | esi/guard_test.dart | import, export or conditional URI leaving lib/ fails naming file and URI | green |
+| esi-client → The transport is the only way out | Runtime dependency added | esi/guard_test.dart | runtime dependency in pubspec fails naming it | green |
 | esi-client → The transport is the only way out | Transport fails | esi/result_test.dart | transport failure becomes a result, never an exception | red |
 | esi-client → Call identity stays with the transport | Two clients, two transports | esi/request_test.dart | two clients on two transports each send only their own request | red |
 | esi-client → Call identity stays with the transport | No identity in requests | esi/request_test.dart | built requests hold no Authorization, token or priority | red |
@@ -78,11 +78,11 @@ Test paths: `tools/kaname_tools/test/` (abbreviated `tools/…`) and `packages/k
 
 ## 1. Package scaffold and guards
 
-- [ ] 1.1 Verify A1: compare the `dart_style` version locked in `pubspec.lock` with the formatter version reported by `mise exec -- dart format --version`, and format one sample file with both (`DartFormatter` in a scratch script and `dart format`) to confirm identical output; record the result in the group report. A mismatch is design drift: stop and report.
-- [ ] 1.2 Create `packages/kaname_esi` (pubspec with no runtime dependencies, `test` as a dev dependency, SDK constraint matching the workspace) and add it to the root `pubspec.yaml` workspace; `analysis_options.yaml` like `packages/kaname_core` plus `exclude: lib/src/generated/**`. Add `test:esi` to `mise.toml` and to the `test` task. Add `kaname_esi` to `PurityCheck.webSafePackages`. Verify: `mise run resolve`, `mise run workspace`, `mise run purity` pass; the purity test covering the web-safe list passes.
-- [ ] 1.3 Write failing tests in `esi/guard_test.dart` for "Disallowed library imported", "Import leaves the package" and "Runtime dependency added": the scanner function takes a package root, so each negative case runs against a temp package; one case runs against the real `packages/kaname_esi`. Verify each fails for the missing scanner.
-- [ ] 1.4 Implement the guard scanner in the test support code (every import, export, part and conditional-import URI under `lib/`; allow the six `dart:` libraries and URIs resolving inside `lib/`; pubspec runtime dependencies must be empty). Verify the three guard rows go green.
-- [ ] 1.5 C1: confirm the text of C1 is in `specs/esi-client/spec.md` → "The transport is the only way out" (already written at planning); tick when present.
+- [x] 1.1 Verify A1: compare the `dart_style` version locked in `pubspec.lock` with the formatter version reported by `mise exec -- dart format --version`, and format one sample file with both (`DartFormatter` in a scratch script and `dart format`) to confirm identical output; record the result in the group report. A mismatch is design drift: stop and report.
+- [x] 1.2 Create `packages/kaname_esi` (pubspec with no runtime dependencies, `test` as a dev dependency, SDK constraint matching the workspace) and add it to the root `pubspec.yaml` workspace; `analysis_options.yaml` like `packages/kaname_core` plus `exclude: lib/src/generated/**`. Add `test:esi` to `mise.toml` and to the `test` task. Add `kaname_esi` to `PurityCheck.webSafePackages`. Verify: `mise run resolve`, `mise run workspace`, `mise run purity` pass; the purity test covering the web-safe list passes.
+- [x] 1.3 Write failing tests in `esi/guard_test.dart` for "Disallowed library imported", "Import leaves the package" and "Runtime dependency added": the scanner function takes a package root, so each negative case runs against a temp package; one case runs against the real `packages/kaname_esi`. Verify each fails for the missing scanner.
+- [x] 1.4 Implement the guard scanner in the test support code (every import, export, part and conditional-import URI under `lib/`; allow the six `dart:` libraries and URIs resolving inside `lib/`; pubspec runtime dependencies must be empty). Verify the three guard rows go green.
+- [x] 1.5 C1: confirm the text of C1 is in `specs/esi-client/spec.md` → "The transport is the only way out" (already written at planning); tick when present.
 
 ## 2. Hand-written runtime
 

@@ -53,6 +53,11 @@ description = "Run the kaname_core tests"
 dir = "packages/kaname_core"
 run = "dart test"
 
+[tasks."test:esi"]
+description = "Run the kaname_esi tests"
+dir = "packages/kaname_esi"
+run = "dart test"
+
 [tasks."test:tools"]
 description = "Run the kaname_tools tests"
 dir = "tools/kaname_tools"
@@ -92,6 +97,7 @@ run = "flutter test --platform chrome --tags web test/data"
 description = "Run every workspace member's tests"
 run = [
   { task = "test:core" },
+  { task = "test:esi" },
   { task = "test:static_data" },
   { task = "test:static_data_bundle" },
   { task = "test:tools" },

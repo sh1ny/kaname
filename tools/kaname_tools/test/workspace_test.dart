@@ -88,6 +88,7 @@ void main() {
           'kaname_app at app/',
           'kaname_ember_ui at app_packages/kaname_ember_ui/',
           'kaname_core at packages/kaname_core/',
+          'kaname_esi at packages/kaname_esi/',
           'kaname_static_data at packages/kaname_static_data/',
           'kaname_static_data_bundle at packages/kaname_static_data_bundle/',
           'kaname_tools at tools/kaname_tools/',
