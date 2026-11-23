@@ -4,8 +4,8 @@
   "sources": [
     {
       "repository": "https://github.com/sh1ny/specwright",
-      "commit": "a4ce3958d5e95e04501879619577d564c7994234",
-      "version": "0.34.0",
+      "commit": "0dd03e8c74a132cad66d9306cdf3d35707998076",
+      "version": "0.39.1",
       "license": "LICENSE.specwright",
       "license_id": "MIT",
       "path": "skills",
