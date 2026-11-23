@@ -6,15 +6,19 @@ Defines the app's Settings screen: the user's theme choice and how it is kept ac
 ## Requirements
 
 ### Requirement: Settings has Appearance, Server and About sections
-The Settings screen SHALL show three sections in this order: Appearance (the theme choice), Server (the server status, as the app-server-connection capability defines) and About (the app's version and a way to open the licence page).
+The Settings screen SHALL show four sections in this order: Appearance (the theme choice), Server (the server status, as the app-server-connection capability defines), Static data (as the static-data-settings capability defines) and About (the app's version and a way to open the licence page).
 
 #### Scenario: Open Settings
 - **WHEN** the user opens Settings on any platform
-- **THEN** the Appearance, Server and About sections appear in that order
+- **THEN** the Appearance, Server, Static data and About sections appear in that order
 
 #### Scenario: Narrow window
 - **WHEN** Settings is shown at 390 pixels wide
-- **THEN** the three sections stack in one column with no horizontal scrolling and no overflow
+- **THEN** the four sections stack in one column with no horizontal scrolling and no overflow
+
+#### Scenario: No server configured
+- **WHEN** a desktop build without a server address opens Settings
+- **THEN** the Static data section still appears between Server and About
 
 ### Requirement: The user chooses System, Dark or Light
 The Appearance section SHALL offer exactly three theme choices: System, Dark and Light. System SHALL follow the operating system's light or dark setting. Dark and Light SHALL show the Ember dark or light theme whatever the operating system's setting. A change SHALL take effect on the next frame, with no animated blend of surfaces.
