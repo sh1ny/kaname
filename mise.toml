@@ -130,6 +130,10 @@ run = "dart run kaname_tools tokens --write"
 description = "Fail if the generated Ember UI tokens are stale or were edited by hand"
 run = "dart run kaname_tools tokens --check"
 
+[tasks."esi:fetch"]
+description = "Download ESI's spec for a compatibility date (-- --date YYYY-MM-DD) and replace the pinned snapshot; the only task that downloads it, never run in CI"
+run = "dart run kaname_tools esi fetch"
+
 [tasks."l10n:check"]
 description = "Fail if the app's committed gen-l10n output differs from a fresh generation in a temporary directory"
 run = "dart run kaname_tools l10n --check"

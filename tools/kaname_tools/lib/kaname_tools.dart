@@ -4,6 +4,8 @@
 library;
 
 export 'src/cli.dart';
+export 'src/esi_command.dart';
+export 'src/esi_fetch.dart';
 export 'src/esi_pin.dart';
 export 'src/esi_spec.dart';
 export 'src/file_system.dart';

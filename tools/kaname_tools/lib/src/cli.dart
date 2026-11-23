@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:args/command_runner.dart';
 
+import 'esi_command.dart';
+import 'esi_fetch.dart';
 import 'file_system.dart';
 import 'git_log.dart';
 import 'l10n.dart';
@@ -48,6 +50,7 @@ CommandRunner<int> buildRunner(
   CliOutput output, {
   GitLog gitLog = const NoGitLog(),
   L10nGenerator l10nGenerator = const NoL10nGenerator(),
+  EsiDownloader esiDownloader = const NoEsiDownloader(),
 }) => _Runner(output)
   ..addCommand(WorkspaceCommand(fileSystem, output))
   ..addCommand(PurityCommand(fileSystem, output))
@@ -58,21 +61,23 @@ CommandRunner<int> buildRunner(
   ..addCommand(TokensCommand(fileSystem, output))
   ..addCommand(WebBuildCommand(fileSystem, output))
   ..addCommand(ServeCommand(output))
-  ..addCommand(L10nCommand(fileSystem, l10nGenerator, output));
+  ..addCommand(L10nCommand(fileSystem, l10nGenerator, output))
+  ..addCommand(EsiCommand(fileSystem, esiDownloader, output));
 
 /// Runs `kaname_tools` with [args] and returns the process exit status.
 ///
 /// Production callers pass only [args]; the file system is then the real
 /// repository found by walking up from the current directory, and the git
 /// history is read by running `git` there, and localisations are generated
-/// by running `flutter gen-l10n` in a temporary directory. Tests pass an
-/// in-memory [fileSystem], a fake [gitLog] and [l10nGenerator], and capture
-/// [output].
+/// by running `flutter gen-l10n` in a temporary directory, and `esi fetch`
+/// downloads over HTTPS. Tests pass an in-memory [fileSystem], a fake
+/// [gitLog], [l10nGenerator] and [esiDownloader], and capture [output].
 Future<int> runCli(
   List<String> args, {
   FileSystem? fileSystem,
   GitLog? gitLog,
   L10nGenerator? l10nGenerator,
+  EsiDownloader? esiDownloader,
   CliOutput? output,
 }) async {
   final io = output ?? CliOutput(out: stdout, err: stderr);
@@ -97,11 +102,18 @@ Future<int> runCli(
           RealFileSystem() => const ProcessL10nGenerator(),
           _ => const NoL10nGenerator(),
         };
+    final downloader =
+        esiDownloader ??
+        switch (resolved) {
+          RealFileSystem() => const HttpEsiDownloader(),
+          _ => const NoEsiDownloader(),
+        };
     return await buildRunner(
           resolved,
           io,
           gitLog: git,
           l10nGenerator: generator,
+          esiDownloader: downloader,
         ).run(args) ??
         exitSuccess;
   } on UsageException catch (e) {

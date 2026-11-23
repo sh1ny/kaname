@@ -12,6 +12,7 @@ Future<CliResult> runTool(
   InMemoryFileSystem fileSystem,
   List<String> args, {
   GitLog? gitLog,
+  EsiDownloader? esiDownloader,
 }) async {
   final out = StringBuffer();
   final err = StringBuffer();
@@ -19,6 +20,7 @@ Future<CliResult> runTool(
     args,
     fileSystem: fileSystem,
     gitLog: gitLog,
+    esiDownloader: esiDownloader,
     output: CliOutput(out: out, err: err),
   );
   return (code: code, out: out.toString(), err: err.toString());
