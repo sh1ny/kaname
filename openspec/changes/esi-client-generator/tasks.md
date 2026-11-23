@@ -101,9 +101,9 @@ Test paths: `tools/kaname_tools/test/` (abbreviated `tools/…`) and `packages/k
 
 ## 4. Fetch
 
-- [ ] 4.1 Write failing tests in `tools/esi_fetch_test.dart` for "Fetch a listed date", "Spec reports another date", "Download fails", "Bad date argument", "Re-read passes" and "Two fetches interleave in one checkout", with the downloader and the file steps injected so the interleave runs deterministically. Verify they fail for the missing command.
-- [ ] 4.2 Implement `kaname_tools esi fetch --date` (D8: `dart:io` `HttpClient`, 60 s timeout, 16 MB cap, date check, unique temp files renamed into place, snapshot first and pin last, re-read and hash compare) and the `esi:fetch` mise task. Verify the 4.1 rows go green.
-- [ ] 4.3 Run `mise run esi:fetch -- --date 2026-11-19` once to create `packages/kaname_esi/spec/openapi.json` and `spec/pin.yaml`; this is the only network step, run by the implementer, never by CI. Verify the pin's date is `2026-11-19` and its sha256 matches `sha256sum` of the snapshot.
+- [x] 4.1 Write failing tests in `tools/esi_fetch_test.dart` for "Fetch a listed date", "Spec reports another date", "Download fails", "Bad date argument", "Re-read passes" and "Two fetches interleave in one checkout", with the downloader and the file steps injected so the interleave runs deterministically. Verify they fail for the missing command.
+- [x] 4.2 Implement `kaname_tools esi fetch --date` (D8: `dart:io` `HttpClient`, 60 s timeout, 16 MB cap, date check, unique temp files renamed into place, snapshot first and pin last, re-read and hash compare) and the `esi:fetch` mise task. Verify the 4.1 rows go green.
+- [x] 4.3 Run `mise run esi:fetch -- --date 2026-11-19` once to create `packages/kaname_esi/spec/openapi.json` and `spec/pin.yaml`; this is the only network step, run by the implementer, never by CI. Verify the pin's date is `2026-11-19` and its sha256 matches `sha256sum` of the snapshot.
 
 ## 5. Generator and committed output
 

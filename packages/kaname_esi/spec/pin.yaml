@@ -1,0 +1,4 @@
+# Written by `mise run esi:fetch`; do not edit by hand.
+date: "2026-11-19"
+source: "https://esi.evetech.net/meta/openapi.json?compatibility_date=2026-11-19"
+sha256: "2fb6fe45c1e8f1830f97d86f266472bb1f237b58aa70d749b4ba8112ff5a1e04"
