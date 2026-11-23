@@ -11,6 +11,7 @@ executables:
 
 dependencies:
   args: ^2.7.0
+  crypto: ^3.0.8
   dart_style: ^3.1.14
   path: ^1.9.1
   yaml: ^3.1.3

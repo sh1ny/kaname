@@ -95,9 +95,9 @@ Test paths: `tools/kaname_tools/test/` (abbreviated `tools/…`) and `packages/k
 
 ## 3. Spec reader and pin
 
-- [ ] 3.1 Write failing tests in `tools/esi_pin_test.dart` ("Pin missing a field", "Pin date edited by hand", "Snapshot edited by hand") and `tools/esi_spec_reader_test.dart` ("Unsupported construct in the snapshot") using small Kaname-written OpenAPI fixtures in `tools/kaname_tools/test/fixtures/esi/`. Verify they fail for the missing reader.
-- [ ] 3.2 Implement `tools/kaname_tools/lib/src/esi_pin.dart` (read and validate `pin.yaml`; hash the exact bytes, then compare date with `info.version` and the `X-Compatibility-Date` enum) and `tools/kaname_tools/lib/src/esi_spec.dart` (`EsiSpecReader`: the D4 subset into typed values, failing closed with the JSON path). C4: write the `EsiSpecReader` doc comment stating that only the D4 subset is supported and widening it is a deliberate generator change in the bump PR. Verify the 3.1 rows go green and `mise run test:tools` passes.
-- [ ] 3.3 C2: confirm the text of C2 is in `specs/esi-client-generation/spec.md` → "One pinned spec snapshot"; tick when present.
+- [x] 3.1 Write failing tests in `tools/esi_pin_test.dart` ("Pin missing a field", "Pin date edited by hand", "Snapshot edited by hand") and `tools/esi_spec_reader_test.dart` ("Unsupported construct in the snapshot") using small Kaname-written OpenAPI fixtures in `tools/kaname_tools/test/fixtures/esi/`. Verify they fail for the missing reader.
+- [x] 3.2 Implement `tools/kaname_tools/lib/src/esi_pin.dart` (read and validate `pin.yaml`; hash the exact bytes, then compare date with `info.version` and the `X-Compatibility-Date` enum) and `tools/kaname_tools/lib/src/esi_spec.dart` (`EsiSpecReader`: the D4 subset into typed values, failing closed with the JSON path). C4: write the `EsiSpecReader` doc comment stating that only the D4 subset is supported and widening it is a deliberate generator change in the bump PR. Verify the 3.1 rows go green and `mise run test:tools` passes.
+- [x] 3.3 C2: confirm the text of C2 is in `specs/esi-client-generation/spec.md` → "One pinned spec snapshot"; tick when present.
 
 ## 4. Fetch
 
