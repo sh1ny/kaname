@@ -179,7 +179,79 @@ Future<String> startRelay() async {
   return origin;
 }
 
-/// Polls [origin]'s `/readyz` until it answers 200 through the relay.
+/// Starts the shipped `deploy/Caddyfile` in front of an echo upstream and
+/// returns its origin on a loopback port.
+///
+/// Both run on their own network, where the upstream answers to `server`,
+/// so every route of the Caddyfile reaches it. The upstream answers each
+/// request with the `X-Forwarded-For` header it received, as Caddy sent it.
+/// All of it is removed at the end of the test.
+Future<String> startCaddyBeforeEcho() async {
+  final scratch = await Directory.systemTemp.createTemp('kaname-echo-');
+  addTearDown(() => scratch.delete(recursive: true));
+  File('${scratch.path}/Caddyfile').writeAsStringSync('''
+{
+\tauto_https off
+\tadmin off
+}
+
+:8080 {
+\trespond "{header.X-Forwarded-For}"
+}
+''');
+  final network = 'kaname-echo-$pid';
+  final created = await run('docker', ['network', 'create', network]);
+  expect(created.exitCode, 0, reason: created.output);
+  // Teardowns run last first: the containers go before their network.
+  addTearDown(() => run('docker', ['network', 'rm', network]));
+
+  final upstream = 'kaname-echo-upstream-$pid';
+  final echo = await run('docker', [
+    'run',
+    '--rm',
+    '--detach',
+    '--name',
+    upstream,
+    '--network',
+    network,
+    '--network-alias',
+    'server',
+    '--volume',
+    '${scratch.path}/Caddyfile:/etc/caddy/Caddyfile:ro',
+    caddyImage(),
+  ]);
+  expect(echo.exitCode, 0, reason: echo.output);
+  addTearDown(() => run('docker', ['rm', '--force', upstream]));
+
+  final front = 'kaname-echo-front-$pid';
+  final started = await run('docker', [
+    'run',
+    '--rm',
+    '--detach',
+    '--name',
+    front,
+    '--network',
+    network,
+    '--publish',
+    '127.0.0.1::80',
+    '--volume',
+    '${repositoryRoot()}/deploy/Caddyfile:/etc/caddy/Caddyfile:ro',
+    caddyImage(),
+  ]);
+  expect(started.exitCode, 0, reason: started.output);
+  addTearDown(() => run('docker', ['rm', '--force', front]));
+
+  final mapped = await run('docker', ['port', front, '80/tcp']);
+  expect(mapped.exitCode, 0, reason: mapped.output);
+  final port = int.parse(
+    mapped.output.trim().split('\n').first.split(':').last,
+  );
+  final origin = 'http://127.0.0.1:$port';
+  await _untilServing(origin);
+  return origin;
+}
+
+/// Polls [origin]'s `/readyz` until it answers 200.
 Future<void> _untilServing(String origin) async {
   final deadline = DateTime.now().add(streamDeadline);
   Object? last;
@@ -198,7 +270,7 @@ Future<void> _untilServing(String origin) async {
     }
     await Future<void>.delayed(const Duration(milliseconds: 500));
   }
-  fail('the relay at $origin never served /readyz (last: $last)');
+  fail('$origin never served /readyz (last: $last)');
 }
 
 /// A loopback forwarder to the stack's Caddy that adds an

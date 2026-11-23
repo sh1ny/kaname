@@ -1,6 +1,7 @@
 @Tags(['stack'])
 library;
 
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -394,6 +395,27 @@ void main() {
       expect(served.events, isNotEmpty);
       for (final feed in held) {
         expect(feed.isEnded, isFalse);
+      }
+    }, timeout: _slow);
+
+    // C6: the header the server receives is Caddy's own, never the
+    // caller's, on every route Caddy passes to the server.
+    test("Caddy replaces a caller's X-Forwarded-For with the address the "
+        'connection came from', () async {
+      final origin = await startCaddyBeforeEcho();
+      const spoofed = '198.51.100.77';
+      for (final path in ['/v1/websocket', '/api/ping', '/livez', '/readyz']) {
+        final client = HttpClient();
+        addTearDown(() => client.close(force: true));
+        final request = await client.getUrl(Uri.parse('$origin$path'));
+        request.headers.set('X-Forwarded-For', spoofed);
+        final response = await request.close();
+        final forwarded = (await utf8.decoder.bind(response).join()).trim();
+        expect(response.statusCode, 200, reason: path);
+        expect(forwarded, isNot(contains(spoofed)), reason: path);
+        // One address, the one Caddy received the connection from.
+        expect(forwarded, isNot(contains(',')), reason: path);
+        expect(InternetAddress.tryParse(forwarded), isNotNull, reason: path);
       }
     }, timeout: _slow);
 

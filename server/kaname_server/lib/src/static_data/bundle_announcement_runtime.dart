@@ -363,7 +363,14 @@ ClientIdentity identifyConnection(Session session, TrustedProxies trusted) {
         : InternetAddress.fromRawAddress(
             Uint8List.fromList(request.connectionInfo.remote.address.bytes),
           ),
-    forwardedFor: request?.headers['x-forwarded-for'],
+    forwardedFor: switch (request?.headers['x-forwarded-for']) {
+      null => null,
+      // Relic's IO header store gives a list, walked in place (C8).
+      final List<String> lines => lines,
+      // Any other store's lines are copied here, at the HTTP edge, where
+      // the server's header-size limit bounds them.
+      final Iterable<String> lines => lines.toList(),
+    },
     trusted: trusted,
   );
 }

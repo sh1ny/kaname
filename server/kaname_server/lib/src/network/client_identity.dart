@@ -141,23 +141,17 @@ final class ProxyFallback extends ClientIdentity {
 /// the client, as a [ProxyFallback] with its reason.
 ClientIdentity clientKeyFor({
   required InternetAddress? peer,
-  required Iterable<String>? forwardedFor,
+  required List<String>? forwardedFor,
   required TrustedProxies trusted,
 }) {
-  if (peer == null || isUnspecified(peer)) {
-    return const DirectClient(ClientKey.unknown);
-  }
+  if (peer == null) return const DirectClient(ClientKey.unknown);
+  // Normalised first, so an IPv4-mapped unspecified peer is unknown too.
   final proxy = normaliseIpAddress(peer);
+  if (isUnspecified(proxy)) return const DirectClient(ClientKey.unknown);
   if (!trusted.trusts(proxy)) return DirectClient(ClientKey.forAddress(proxy));
 
-  // A list is read by index, only as far as the walk goes. Another
-  // iterable must be copied to be walked from its end; the HTTP server's
-  // header-size limit bounds that copy.
-  final lines = switch (forwardedFor) {
-    null => const <String>[],
-    final List<String> list => list,
-    final Iterable<String> other => other.toList(),
-  };
+  // Read by index, only as far as the walk goes.
+  final lines = forwardedFor ?? const <String>[];
   if (lines.isEmpty) return ProxyFallback(proxy, ForwardedFallback.missing);
   ClientIdentity? found;
   // Whether every entry walked so far was blank: a blank entry before any

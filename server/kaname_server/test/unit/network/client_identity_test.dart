@@ -128,14 +128,18 @@ void main() {
       null,
       InternetAddress.anyIPv6,
       InternetAddress.anyIPv4,
+      InternetAddress('::ffff:0.0.0.0'),
     ]) {
-      final identity = clientKeyFor(
-        peer: peer,
-        forwardedFor: ['203.0.113.7'],
-        trusted: everyone,
-      );
-      expect(identity, isA<DirectClient>(), reason: 'peer: $peer');
-      expect(identity.key, ClientKey.unknown, reason: 'peer: $peer');
+      // An IPv4 range alone must not trust the mapped unspecified address.
+      for (final trusted in [everyone, TrustedProxies.parse('0.0.0.0/0')]) {
+        final identity = clientKeyFor(
+          peer: peer,
+          forwardedFor: ['203.0.113.7'],
+          trusted: trusted,
+        );
+        expect(identity, isA<DirectClient>(), reason: 'peer: $peer');
+        expect(identity.key, ClientKey.unknown, reason: 'peer: $peer');
+      }
     }
     expect(ClientKey.unknown.value, 'unknown');
   });
