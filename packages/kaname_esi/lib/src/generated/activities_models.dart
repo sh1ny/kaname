@@ -50,7 +50,7 @@ final class CharactersMercenaryTacticalOperationsDetail {
         EsiJson.required(object, 'expires', path),
         '$path.expires',
       ),
-      id: EsiJson.string(EsiJson.required(object, 'id', path), '$path.id'),
+      id: EsiJson.uuid(EsiJson.required(object, 'id', path), '$path.id'),
       mercenaryDenId: EsiJson.integer(
         EsiJson.required(object, 'mercenary_den_id', path),
         '$path.mercenary_den_id',
@@ -141,7 +141,7 @@ final class CharactersMercenaryTacticalOperationsListingOperation {
   ) {
     final object = EsiJson.object(json, path);
     return CharactersMercenaryTacticalOperationsListingOperation(
-      id: EsiJson.string(EsiJson.required(object, 'id', path), '$path.id'),
+      id: EsiJson.uuid(EsiJson.required(object, 'id', path), '$path.id'),
       mercenaryDenId: EsiJson.integer(
         EsiJson.required(object, 'mercenary_den_id', path),
         '$path.mercenary_den_id',

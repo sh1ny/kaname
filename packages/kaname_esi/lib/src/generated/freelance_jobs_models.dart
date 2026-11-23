@@ -297,7 +297,7 @@ final class FreelanceJobsDetail {
         EsiJson.required(object, 'details', path),
         '$path.details',
       ),
-      id: EsiJson.string(EsiJson.required(object, 'id', path), '$path.id'),
+      id: EsiJson.uuid(EsiJson.required(object, 'id', path), '$path.id'),
       lastModified: EsiJson.dateTime(
         EsiJson.required(object, 'last_modified', path),
         '$path.last_modified',
@@ -882,7 +882,7 @@ final class FreelanceJobsDetailFreelancejob {
   static FreelanceJobsDetailFreelancejob fromJson(Object? json, String path) {
     final object = EsiJson.object(json, path);
     return FreelanceJobsDetailFreelancejob(
-      id: EsiJson.string(EsiJson.required(object, 'id', path), '$path.id'),
+      id: EsiJson.uuid(EsiJson.required(object, 'id', path), '$path.id'),
       lastModified: EsiJson.dateTime(
         EsiJson.required(object, 'last_modified', path),
         '$path.last_modified',

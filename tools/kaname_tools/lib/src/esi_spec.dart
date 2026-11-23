@@ -910,6 +910,34 @@ final class _Reader {
     return EsiOneOfShape(variants);
   }
 
+  /// Checks a referenced standard header at [path] against what the client
+  /// emits: a string schema, and `required` only for
+  /// `X-Compatibility-Date`, the one header the client always sends; every
+  /// other header is an optional argument or the transport's.
+  void _referencedHeader(Map<String, Object?> node, String name, String path) {
+    _onlyKeys(node, {
+      'in',
+      'name',
+      'required',
+      'schema',
+      'description',
+      'example',
+    }, path);
+    final required = _optionalBool(node, 'required', path, orElse: false);
+    if (required && name != 'X-Compatibility-Date') {
+      _refuse(
+        _child(path, 'required'),
+        'the header "$name" is required, but the client sends it only when '
+        'given',
+      );
+    }
+    final schemaPath = _child(path, 'schema');
+    if (_resolved(_schema(node['schema'], schemaPath).shape)
+        is! EsiStringShape) {
+      _refuse(schemaPath, 'the header "$name" is not a string');
+    }
+  }
+
   /// Refuses a parameter [schema] the client cannot write into a request:
   /// a path parameter must be a scalar (integer, number, string or
   /// boolean), a query parameter a scalar or an array of scalars. A
@@ -1028,6 +1056,7 @@ final class _Reader {
             !esiStandardHeaders.contains(name)) {
           _refuse(refPath, 'unsupported referenced parameter "$name"');
         }
+        _referencedHeader(targetNode, name, text);
         headers.add(name);
         continue;
       }

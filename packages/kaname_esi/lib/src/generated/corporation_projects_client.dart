@@ -105,7 +105,7 @@ extension CorporationProjectsCalls on EsiClient {
       method: EsiMethod.get,
       operationId: 'GetCorporationsProjectsDetail',
       target: EsiCall.target(
-        '/corporations/${EsiCall.segment(corporationId, 'corporation_id')}/projects/${EsiCall.segment(projectId, 'project_id')}',
+        '/corporations/${EsiCall.segment(corporationId, 'corporation_id')}/projects/${EsiCall.segment(EsiCheck.uuid(projectId, 'project_id'), 'project_id')}',
         [],
       ),
       headers: EsiCall.headers(
@@ -141,7 +141,7 @@ extension CorporationProjectsCalls on EsiClient {
       method: EsiMethod.get,
       operationId: 'GetCorporationsProjectsContribution',
       target: EsiCall.target(
-        '/corporations/${EsiCall.segment(corporationId, 'corporation_id')}/projects/${EsiCall.segment(projectId, 'project_id')}/contribution/${EsiCall.segment(characterId, 'character_id')}',
+        '/corporations/${EsiCall.segment(corporationId, 'corporation_id')}/projects/${EsiCall.segment(EsiCheck.uuid(projectId, 'project_id'), 'project_id')}/contribution/${EsiCall.segment(characterId, 'character_id')}',
         [],
       ),
       headers: EsiCall.headers(
@@ -183,7 +183,7 @@ extension CorporationProjectsCalls on EsiClient {
       method: EsiMethod.get,
       operationId: 'GetCorporationsProjectsContributors',
       target: EsiCall.target(
-        '/corporations/${EsiCall.segment(corporationId, 'corporation_id')}/projects/${EsiCall.segment(projectId, 'project_id')}/contributors',
+        '/corporations/${EsiCall.segment(corporationId, 'corporation_id')}/projects/${EsiCall.segment(EsiCheck.uuid(projectId, 'project_id'), 'project_id')}/contributors',
         [
           ...EsiCall.query(
             'after',

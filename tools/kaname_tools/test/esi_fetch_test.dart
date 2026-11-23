@@ -76,8 +76,8 @@ void main() {
 
   test('the source URL asks for the date', () {
     expect(
-      esiSpecUrl('2026-11-19').toString(),
-      'https://esi.evetech.net/meta/openapi.json?compatibility_date=2026-11-19',
+      esiSpecUrl('2030-01-02').toString(),
+      'https://esi.evetech.net/meta/openapi.json?compatibility_date=2030-01-02',
     );
   });
 

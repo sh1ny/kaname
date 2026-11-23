@@ -53,6 +53,20 @@ void main() {
       );
     });
 
+    test('UUIDs are checked in both directions', () {
+      const id = '3868eaed-8278-4cb7-9709-7d7de9c20dc7';
+      expect(EsiJson.uuid(id, r'$.id'), id);
+      expect(EsiCheck.uuid(id, 'job_id'), id);
+      expect(
+        () => EsiJson.uuid('not-a-uuid', r'$.id'),
+        throwsA(_decodeError(r'$.id', 'expected a UUID, got "not-a-uuid"')),
+      );
+      expect(
+        () => EsiCheck.uuid('not-a-uuid', 'job_id'),
+        throwsA(_invalid('job_id', 'must be a UUID, got "not-a-uuid"')),
+      );
+    });
+
     test('dates and date-times are read strictly, never normalised', () {
       expect(EsiJson.date('2030-02-28', r'$'), DateTime.utc(2030, 2, 28));
       expect(

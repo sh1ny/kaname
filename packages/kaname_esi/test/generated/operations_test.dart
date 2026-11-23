@@ -360,9 +360,9 @@ void main() {
         'GetCharactersFreelanceJobsParticipation',
         (client) => client.getCharactersFreelanceJobsParticipation(
           characterId: 1,
-          jobId: 'p2',
+          jobId: '00000000-0000-4000-8000-000000000002',
         ),
-        {'character_id': 1, 'job_id': 'p2'},
+        {'character_id': 1, 'job_id': '00000000-0000-4000-8000-000000000002'},
       );
     });
     test('GetCharactersCharacterIdFwStats', () async {
@@ -523,10 +523,13 @@ void main() {
       await coverage.expectRequest(
         'GetCharactersMercenaryTacticalOperationsDetail',
         (client) => client.getCharactersMercenaryTacticalOperationsDetail(
-          operationId: 'p1',
+          operationId: '00000000-0000-4000-8000-000000000001',
           characterId: 2,
         ),
-        {'operation_id': 'p1', 'character_id': 2},
+        {
+          'operation_id': '00000000-0000-4000-8000-000000000001',
+          'character_id': 2,
+        },
       );
     });
     test('GetCharactersMilitaryCampaignsObjectivesListing', () async {
@@ -544,9 +547,12 @@ void main() {
         (client) =>
             client.getCharactersMilitaryCampaignsObjectivesParticipation(
               characterId: 1,
-              objectiveId: 'p2',
+              objectiveId: '00000000-0000-4000-8000-000000000002',
             ),
-        {'character_id': 1, 'objective_id': 'p2'},
+        {
+          'character_id': 1,
+          'objective_id': '00000000-0000-4000-8000-000000000002',
+        },
       );
     });
     test('GetCharactersCharacterIdMining', () async {
@@ -915,9 +921,9 @@ void main() {
         'GetCorporationsFreelanceJobsParticipants',
         (client) => client.getCorporationsFreelanceJobsParticipants(
           corporationId: 4,
-          jobId: 'p5',
+          jobId: '00000000-0000-4000-8000-000000000005',
         ),
-        {'corporation_id': 4, 'job_id': 'p5'},
+        {'corporation_id': 4, 'job_id': '00000000-0000-4000-8000-000000000005'},
       );
     });
     test('GetCorporationsCorporationIdFwStats', () async {
@@ -1026,9 +1032,12 @@ void main() {
         'GetCorporationsProjectsDetail',
         (client) => client.getCorporationsProjectsDetail(
           corporationId: 1,
-          projectId: 'p2',
+          projectId: '00000000-0000-4000-8000-000000000002',
         ),
-        {'corporation_id': 1, 'project_id': 'p2'},
+        {
+          'corporation_id': 1,
+          'project_id': '00000000-0000-4000-8000-000000000002',
+        },
       );
     });
     test('GetCorporationsProjectsContribution', () async {
@@ -1036,10 +1045,14 @@ void main() {
         'GetCorporationsProjectsContribution',
         (client) => client.getCorporationsProjectsContribution(
           corporationId: 1,
-          projectId: 'p2',
+          projectId: '00000000-0000-4000-8000-000000000002',
           characterId: 3,
         ),
-        {'corporation_id': 1, 'project_id': 'p2', 'character_id': 3},
+        {
+          'corporation_id': 1,
+          'project_id': '00000000-0000-4000-8000-000000000002',
+          'character_id': 3,
+        },
       );
     });
     test('GetCorporationsProjectsContributors', () async {
@@ -1047,9 +1060,12 @@ void main() {
         'GetCorporationsProjectsContributors',
         (client) => client.getCorporationsProjectsContributors(
           corporationId: 4,
-          projectId: 'p5',
+          projectId: '00000000-0000-4000-8000-000000000005',
         ),
-        {'corporation_id': 4, 'project_id': 'p5'},
+        {
+          'corporation_id': 4,
+          'project_id': '00000000-0000-4000-8000-000000000005',
+        },
       );
     });
     test('GetCorporationsCorporationIdRoles', () async {
@@ -1354,8 +1370,10 @@ void main() {
     test('GetFreelanceJobsDetail', () async {
       await coverage.expectRequest(
         'GetFreelanceJobsDetail',
-        (client) => client.getFreelanceJobsDetail(jobId: 'p1'),
-        {'job_id': 'p1'},
+        (client) => client.getFreelanceJobsDetail(
+          jobId: '00000000-0000-4000-8000-000000000001',
+        ),
+        {'job_id': '00000000-0000-4000-8000-000000000001'},
       );
     });
     test('GetFwLeaderboards', () async {
@@ -1536,26 +1554,32 @@ void main() {
     test('GetMilitaryCampaignsDetail', () async {
       await coverage.expectRequest(
         'GetMilitaryCampaignsDetail',
-        (client) => client.getMilitaryCampaignsDetail(campaignId: 'p1'),
-        {'campaign_id': 'p1'},
+        (client) => client.getMilitaryCampaignsDetail(
+          campaignId: '00000000-0000-4000-8000-000000000001',
+        ),
+        {'campaign_id': '00000000-0000-4000-8000-000000000001'},
       );
     });
     test('GetMilitaryCampaignsObjectivesListing', () async {
       await coverage.expectRequest(
         'GetMilitaryCampaignsObjectivesListing',
-        (client) =>
-            client.getMilitaryCampaignsObjectivesListing(campaignId: 'p4'),
-        {'campaign_id': 'p4'},
+        (client) => client.getMilitaryCampaignsObjectivesListing(
+          campaignId: '00000000-0000-4000-8000-000000000004',
+        ),
+        {'campaign_id': '00000000-0000-4000-8000-000000000004'},
       );
     });
     test('GetMilitaryCampaignsObjectivesDetail', () async {
       await coverage.expectRequest(
         'GetMilitaryCampaignsObjectivesDetail',
         (client) => client.getMilitaryCampaignsObjectivesDetail(
-          campaignId: 'p1',
-          objectiveId: 'p2',
+          campaignId: '00000000-0000-4000-8000-000000000001',
+          objectiveId: '00000000-0000-4000-8000-000000000002',
         ),
-        {'campaign_id': 'p1', 'objective_id': 'p2'},
+        {
+          'campaign_id': '00000000-0000-4000-8000-000000000001',
+          'objective_id': '00000000-0000-4000-8000-000000000002',
+        },
       );
     });
     test('GetParagonHubSkinr', () async {

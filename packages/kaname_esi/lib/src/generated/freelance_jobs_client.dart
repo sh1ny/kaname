@@ -65,7 +65,7 @@ extension FreelanceJobsCalls on EsiClient {
       method: EsiMethod.get,
       operationId: 'GetCharactersFreelanceJobsParticipation',
       target: EsiCall.target(
-        '/characters/${EsiCall.segment(characterId, 'character_id')}/freelance-jobs/${EsiCall.segment(jobId, 'job_id')}/participation',
+        '/characters/${EsiCall.segment(characterId, 'character_id')}/freelance-jobs/${EsiCall.segment(EsiCheck.uuid(jobId, 'job_id'), 'job_id')}/participation',
         [],
       ),
       headers: EsiCall.headers(
@@ -166,7 +166,7 @@ extension FreelanceJobsCalls on EsiClient {
       method: EsiMethod.get,
       operationId: 'GetCorporationsFreelanceJobsParticipants',
       target: EsiCall.target(
-        '/corporations/${EsiCall.segment(corporationId, 'corporation_id')}/freelance-jobs/${EsiCall.segment(jobId, 'job_id')}/participants',
+        '/corporations/${EsiCall.segment(corporationId, 'corporation_id')}/freelance-jobs/${EsiCall.segment(EsiCheck.uuid(jobId, 'job_id'), 'job_id')}/participants',
         [
           ...EsiCall.query(
             'after',
@@ -285,7 +285,7 @@ extension FreelanceJobsCalls on EsiClient {
       method: EsiMethod.get,
       operationId: 'GetFreelanceJobsDetail',
       target: EsiCall.target(
-        '/freelance-jobs/${EsiCall.segment(jobId, 'job_id')}',
+        '/freelance-jobs/${EsiCall.segment(EsiCheck.uuid(jobId, 'job_id'), 'job_id')}',
         [],
       ),
       headers: EsiCall.headers(

@@ -74,6 +74,20 @@ const text = "import 'dart:io';";
       });
     }
 
+    test('nested metadata before the library does not hide a disallowed '
+        'import', () {
+      write(
+        'lib/src/a.dart',
+        "@Deprecated(_Note(('x', ')')))\n"
+            '@pragma("vm:entry-point")\n'
+            'library;\n\n'
+            "import 'dart:io';\n",
+      );
+      final found = problems();
+      expect(found, hasLength(1));
+      expect(found.single, startsWith('lib/src/a.dart: dart:io '));
+    });
+
     // Scenario: Import leaves the package.
     for (final (kind, directive, uri) in [
       (

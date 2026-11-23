@@ -28,7 +28,7 @@ void main() {
 
   test('the pin round-trips through render and parse', () {
     const pin = EsiPin(
-      date: '2026-11-19',
+      date: '2030-01-02',
       source: 'https://esi.evetech.net/meta/openapi.json',
       sha256:
           '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',

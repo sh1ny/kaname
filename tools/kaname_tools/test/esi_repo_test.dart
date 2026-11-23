@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -9,13 +10,28 @@ RealFileSystem _repository() =>
     fail('no workspace root above the cwd');
 
 void main() {
-  test('pin matches snapshot: hash equals the pin, date 2026-11-19', () {
+  // Scenario: Pin matches snapshot. The date is read from the pin, the one
+  // place it is stated, and compared with the snapshot and the generated
+  // constant, so a date bump needs no edit here.
+  test('pin matches snapshot: hash equals the pin, and the snapshot and '
+      'the generated client carry the pin date', () {
     final fileSystem = _repository();
     final (:pin, :problems) = parseEsiPin(fileSystem.readAsString(esiPinPath));
     expect(problems, isEmpty);
     final bytes = File('${fileSystem.root}/$esiSnapshotPath').readAsBytesSync();
     expect(pin!.sha256, sha256.convert(bytes).toString());
-    expect(pin.date, '2026-11-19');
+    expect(
+      esiDateProblems(
+        jsonDecode(utf8.decode(bytes)),
+        pin.date,
+        what: 'The pin\'s',
+      ),
+      isEmpty,
+    );
+    expect(
+      fileSystem.readAsString('$esiGeneratedDirectory/pin.dart'),
+      contains("const String esiCompatibilityDate = '${pin.date}';"),
+    );
   });
 
   test('committed output current: the check passes and writes nothing', () {
@@ -33,7 +49,7 @@ void main() {
     );
 
     expect(problems, isEmpty);
-    expect(pin?.date, '2026-11-19');
+    expect(pin, isNotNull);
     expect(files, before.length);
     expect({
       for (final path in existingEsiGeneratedFiles(fileSystem))

@@ -102,6 +102,21 @@ abstract final class EsiJson {
     _ => _mismatch(path, 'a boolean', json),
   };
 
+  /// A `uuid` string: 32 hex digits in the 8-4-4-4-12 form.
+  static String uuid(Object? json, String path) {
+    final text = string(json, path);
+    if (isUuid(text)) return text;
+    throw EsiDecodeException(path, 'expected a UUID, got "$text"');
+  }
+
+  /// Whether [text] has the 8-4-4-4-12 hex form of a UUID.
+  static bool isUuid(String text) => _uuid.hasMatch(text);
+
+  static final RegExp _uuid = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+    r'[0-9a-fA-F]{12}$',
+  );
+
   /// A `date` string, `YYYY-MM-DD`, as a UTC midnight.
   ///
   /// Anything else, or a day the calendar does not have, is a mismatch:
@@ -323,6 +338,11 @@ abstract final class EsiCheck {
 
   /// A `date` argument as written on the wire, `YYYY-MM-DD`.
   static String date(DateTime value, String path) => EsiJson.encodeDate(value);
+
+  /// A `uuid` argument, which must have the 8-4-4-4-12 hex form.
+  static String uuid(String value, String path) => EsiJson.isUuid(value)
+      ? value
+      : throw EsiInvalidArgument(path, 'must be a UUID, got "$value"');
 
   /// A `date-time` argument as written on the wire, in UTC.
   static String dateTime(DateTime value, String path) =>

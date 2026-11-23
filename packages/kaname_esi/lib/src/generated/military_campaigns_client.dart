@@ -94,7 +94,7 @@ extension MilitaryCampaignsCalls on EsiClient {
       method: EsiMethod.get,
       operationId: 'GetCharactersMilitaryCampaignsObjectivesParticipation',
       target: EsiCall.target(
-        '/characters/${EsiCall.segment(characterId, 'character_id')}/military-campaigns/objectives/${EsiCall.segment(objectiveId, 'objective_id')}',
+        '/characters/${EsiCall.segment(characterId, 'character_id')}/military-campaigns/objectives/${EsiCall.segment(EsiCheck.uuid(objectiveId, 'objective_id'), 'objective_id')}',
         [],
       ),
       headers: EsiCall.headers(
@@ -146,7 +146,7 @@ extension MilitaryCampaignsCalls on EsiClient {
       method: EsiMethod.get,
       operationId: 'GetMilitaryCampaignsDetail',
       target: EsiCall.target(
-        '/military-campaigns/${EsiCall.segment(campaignId, 'campaign_id')}',
+        '/military-campaigns/${EsiCall.segment(EsiCheck.uuid(campaignId, 'campaign_id'), 'campaign_id')}',
         [],
       ),
       headers: EsiCall.headers(
@@ -185,7 +185,7 @@ extension MilitaryCampaignsCalls on EsiClient {
       method: EsiMethod.get,
       operationId: 'GetMilitaryCampaignsObjectivesListing',
       target: EsiCall.target(
-        '/military-campaigns/${EsiCall.segment(campaignId, 'campaign_id')}/objectives',
+        '/military-campaigns/${EsiCall.segment(EsiCheck.uuid(campaignId, 'campaign_id'), 'campaign_id')}/objectives',
         [
           ...EsiCall.query(
             'after',
@@ -238,7 +238,7 @@ extension MilitaryCampaignsCalls on EsiClient {
       method: EsiMethod.get,
       operationId: 'GetMilitaryCampaignsObjectivesDetail',
       target: EsiCall.target(
-        '/military-campaigns/${EsiCall.segment(campaignId, 'campaign_id')}/objectives/${EsiCall.segment(objectiveId, 'objective_id')}',
+        '/military-campaigns/${EsiCall.segment(EsiCheck.uuid(campaignId, 'campaign_id'), 'campaign_id')}/objectives/${EsiCall.segment(EsiCheck.uuid(objectiveId, 'objective_id'), 'objective_id')}',
         [],
       ),
       headers: EsiCall.headers(

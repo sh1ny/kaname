@@ -86,6 +86,23 @@ void main() {
       );
     }
 
+    test('a project id that is not a UUID is an invalid request and nothing '
+        'is sent', () async {
+      final result = await client.getCorporationsProjectsDetail(
+        corporationId: 98000001,
+        projectId: 'not-a-uuid',
+      );
+      expect(
+        result,
+        isA<EsiInvalidRequest<Object?>>().having(
+          (r) => r.parameter,
+          'parameter',
+          'project_id',
+        ),
+      );
+      expect(transport.requests, isEmpty);
+    });
+
     test('a path argument holding dots among other text is encoded', () async {
       await client.getCosmeticsSkinr(skinrId: 'a.b');
       expect('${transport.requests.single.target}', '/cosmetics/skinr/a.b');

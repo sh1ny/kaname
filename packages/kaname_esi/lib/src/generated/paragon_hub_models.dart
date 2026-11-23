@@ -94,7 +94,7 @@ final class CharactersParagonHubSkinrItem {
         EsiJson.required(object, 'expires', path),
         '$path.expires',
       ),
-      id: EsiJson.string(EsiJson.required(object, 'id', path), '$path.id'),
+      id: EsiJson.uuid(EsiJson.required(object, 'id', path), '$path.id'),
       lastModified: EsiJson.dateTime(
         EsiJson.required(object, 'last_modified', path),
         '$path.last_modified',
@@ -506,7 +506,7 @@ final class ParagonHubSkinrInternalItem {
         EsiJson.required(object, 'expires', path),
         '$path.expires',
       ),
-      id: EsiJson.string(EsiJson.required(object, 'id', path), '$path.id'),
+      id: EsiJson.uuid(EsiJson.required(object, 'id', path), '$path.id'),
       lastModified: EsiJson.dateTime(
         EsiJson.required(object, 'last_modified', path),
         '$path.last_modified',

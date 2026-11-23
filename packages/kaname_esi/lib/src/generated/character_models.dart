@@ -2658,7 +2658,7 @@ final class CharactersDetail {
         object,
         'character_title_id',
         path,
-        EsiJson.string,
+        EsiJson.uuid,
       ),
       corporationId: EsiJson.integer(
         EsiJson.required(object, 'corporation_id', path),

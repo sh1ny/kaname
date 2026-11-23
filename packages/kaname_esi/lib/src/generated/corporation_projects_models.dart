@@ -179,7 +179,7 @@ final class CorporationsProjectsDetail {
         EsiJson.required(object, 'details', path),
         '$path.details',
       ),
-      id: EsiJson.string(EsiJson.required(object, 'id', path), '$path.id'),
+      id: EsiJson.uuid(EsiJson.required(object, 'id', path), '$path.id'),
       lastModified: EsiJson.dateTime(
         EsiJson.required(object, 'last_modified', path),
         '$path.last_modified',
@@ -5916,7 +5916,7 @@ final class CorporationsProjectsDetailProject {
   static CorporationsProjectsDetailProject fromJson(Object? json, String path) {
     final object = EsiJson.object(json, path);
     return CorporationsProjectsDetailProject(
-      id: EsiJson.string(EsiJson.required(object, 'id', path), '$path.id'),
+      id: EsiJson.uuid(EsiJson.required(object, 'id', path), '$path.id'),
       lastModified: EsiJson.dateTime(
         EsiJson.required(object, 'last_modified', path),
         '$path.last_modified',

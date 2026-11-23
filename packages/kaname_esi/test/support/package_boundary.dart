@@ -84,7 +84,7 @@ List<String> directiveUris(String source) {
   final uris = <String>[];
   var i = 0;
   final directive = RegExp(r'(library|import|export|part)\b');
-  final annotation = RegExp(r'@[A-Za-z_$][\w$.]*(\s*\([^)]*\))?');
+  final annotation = RegExp(r'@[A-Za-z_$][\w$.]*');
   final literal = RegExp(r'''r?('[^'\n]*'|"[^"\n]*")''');
   while (true) {
     while (i < text.length && text[i].trim().isEmpty) {
@@ -92,7 +92,9 @@ List<String> directiveUris(String source) {
     }
     if (i >= text.length) break;
     if (annotation.matchAsPrefix(text, i) case final Match m) {
-      i = m.end;
+      final end = _annotationEnd(text, m.end);
+      if (end < 0) break;
+      i = end;
       continue;
     }
     final match = directive.matchAsPrefix(text, i);
@@ -109,6 +111,37 @@ List<String> directiveUris(String source) {
     i = end + 1;
   }
   return uris;
+}
+
+/// The index just past an annotation whose name ends at [start]: past its
+/// argument list when one follows, with nested parentheses balanced and
+/// parentheses inside string literals ignored; -1 when the list never
+/// closes.
+int _annotationEnd(String text, int start) {
+  var i = start;
+  while (i < text.length && text[i].trim().isEmpty) {
+    i++;
+  }
+  if (i >= text.length || text[i] != '(') return start;
+  var depth = 0;
+  String? quote;
+  for (; i < text.length; i++) {
+    final c = text[i];
+    if (quote != null) {
+      if (c == '\\') {
+        i++;
+      } else if (c == quote) {
+        quote = null;
+      }
+    } else if (c == "'" || c == '"') {
+      quote = c;
+    } else if (c == '(') {
+      depth++;
+    } else if (c == ')' && --depth == 0) {
+      return i + 1;
+    }
+  }
+  return -1;
 }
 
 /// The index of the `;` ending the directive whose body starts at [start],

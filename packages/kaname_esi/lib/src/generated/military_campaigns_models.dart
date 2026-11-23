@@ -81,7 +81,7 @@ final class CharactersMilitaryCampaignsObjectivesParticipation {
   ) {
     final object = EsiJson.object(json, path);
     return CharactersMilitaryCampaignsObjectivesParticipation(
-      campaignId: EsiJson.string(
+      campaignId: EsiJson.uuid(
         EsiJson.required(object, 'campaign_id', path),
         '$path.campaign_id',
       ),
@@ -89,7 +89,7 @@ final class CharactersMilitaryCampaignsObjectivesParticipation {
         EsiJson.required(object, 'contributed', path),
         '$path.contributed',
       ),
-      id: EsiJson.string(EsiJson.required(object, 'id', path), '$path.id'),
+      id: EsiJson.uuid(EsiJson.required(object, 'id', path), '$path.id'),
       isCommitted: EsiJson.boolean(
         EsiJson.required(object, 'is_committed', path),
         '$path.is_committed',
@@ -134,7 +134,7 @@ final class CharactersMilitaryCampaignsObjectivesParticipationCharacterobjective
   fromJson(Object? json, String path) {
     final object = EsiJson.object(json, path);
     return CharactersMilitaryCampaignsObjectivesParticipationCharacterobjective(
-      campaignId: EsiJson.string(
+      campaignId: EsiJson.uuid(
         EsiJson.required(object, 'campaign_id', path),
         '$path.campaign_id',
       ),
@@ -142,7 +142,7 @@ final class CharactersMilitaryCampaignsObjectivesParticipationCharacterobjective
         EsiJson.required(object, 'contributed', path),
         '$path.contributed',
       ),
-      id: EsiJson.string(EsiJson.required(object, 'id', path), '$path.id'),
+      id: EsiJson.uuid(EsiJson.required(object, 'id', path), '$path.id'),
       isCommitted: EsiJson.boolean(
         EsiJson.required(object, 'is_committed', path),
         '$path.is_committed',
@@ -214,7 +214,7 @@ final class MilitaryCampaignsDetail {
         path,
         EsiJson.dateTime,
       ),
-      id: EsiJson.string(EsiJson.required(object, 'id', path), '$path.id'),
+      id: EsiJson.uuid(EsiJson.required(object, 'id', path), '$path.id'),
       progress: EsiJson.integer(
         EsiJson.required(object, 'progress', path),
         '$path.progress',
@@ -271,7 +271,7 @@ final class MilitaryCampaignsDetailCampaign {
         path,
         EsiJson.dateTime,
       ),
-      id: EsiJson.string(EsiJson.required(object, 'id', path), '$path.id'),
+      id: EsiJson.uuid(EsiJson.required(object, 'id', path), '$path.id'),
       progress: EsiJson.integer(
         EsiJson.required(object, 'progress', path),
         '$path.progress',
@@ -398,7 +398,7 @@ final class MilitaryCampaignsObjectivesDetail {
         path,
         EsiJson.dateTime,
       ),
-      id: EsiJson.string(EsiJson.required(object, 'id', path), '$path.id'),
+      id: EsiJson.uuid(EsiJson.required(object, 'id', path), '$path.id'),
       lastModified: EsiJson.dateTime(
         EsiJson.required(object, 'last_modified', path),
         '$path.last_modified',
@@ -474,7 +474,7 @@ final class MilitaryCampaignsObjectivesDetailObjective {
         path,
         EsiJson.dateTime,
       ),
-      id: EsiJson.string(EsiJson.required(object, 'id', path), '$path.id'),
+      id: EsiJson.uuid(EsiJson.required(object, 'id', path), '$path.id'),
       lastModified: EsiJson.dateTime(
         EsiJson.required(object, 'last_modified', path),
         '$path.last_modified',

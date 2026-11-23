@@ -318,6 +318,33 @@ void main() {
             'a path parameter must be a scalar',
           ),
           (
+            'a referenced optional header made required',
+            (d) => _at(d, [
+              'components',
+              'parameters',
+              'IfNoneMatch',
+            ])['required'] = true,
+            '#/components/parameters/IfNoneMatch/required',
+            'the header "If-None-Match" is required, but the client sends it '
+                'only when given',
+          ),
+          (
+            'a referenced header with an unsupported keyword',
+            (d) =>
+                _at(d, ['components', 'parameters', 'IfNoneMatch'])['style'] =
+                    'simple',
+            '#/components/parameters/IfNoneMatch/style',
+            'unsupported key "style"',
+          ),
+          (
+            'a referenced header that is not a string',
+            (d) => _at(d, ['components', 'parameters', 'Tenant'])['schema'] = {
+              'type': 'integer',
+            },
+            '#/components/parameters/Tenant/schema',
+            'the header "X-Tenant" is not a string',
+          ),
+          (
             'a default response that is not JSON',
             (d) =>
                 _at(d, ['paths', '/gadgets', 'get', 'responses'])['default'] = {

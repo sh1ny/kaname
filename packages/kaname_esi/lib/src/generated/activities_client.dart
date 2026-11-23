@@ -6,6 +6,7 @@ library;
 
 import '../call.dart';
 import '../client.dart';
+import '../json.dart';
 import '../result.dart';
 import '../transport.dart';
 import 'activities_models.dart';
@@ -64,7 +65,7 @@ extension ActivitiesCalls on EsiClient {
       method: EsiMethod.get,
       operationId: 'GetCharactersMercenaryTacticalOperationsDetail',
       target: EsiCall.target(
-        '/characters/${EsiCall.segment(characterId, 'character_id')}/mercenary-tactical-operations/${EsiCall.segment(operationId, 'operation_id')}',
+        '/characters/${EsiCall.segment(characterId, 'character_id')}/mercenary-tactical-operations/${EsiCall.segment(EsiCheck.uuid(operationId, 'operation_id'), 'operation_id')}',
         [],
       ),
       headers: EsiCall.headers(

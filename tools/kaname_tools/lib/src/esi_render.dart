@@ -778,6 +778,11 @@ final class _Renderer {
       'EsiJson.dateTime',
       writeFunction: 'EsiCheck.dateTime',
     ),
+    EsiStringShape(format: EsiStringFormat.uuid) => const _Scalar(
+      'String',
+      'EsiJson.uuid',
+      writeFunction: 'EsiCheck.uuid',
+    ),
     EsiStringShape(:final minLength, :final maxLength) => _bounded(
       const _Scalar('String', 'EsiJson.string'),
       'length',
@@ -1657,6 +1662,9 @@ final class _Renderer {
     String inner(_Ty ty, int seed) =>
         _placeholder(ty, seed, argument: argument, depth: depth + 1);
     return switch (ty) {
+      _Scalar(readFunction: 'EsiJson.uuid') => _literal(
+        '00000000-0000-4000-8000-${seed.toRadixString(16).padLeft(12, '0')}',
+      ),
       _Scalar(:final dart) => switch (dart) {
         'int' => '$seed',
         'double' => '$seed.5',
