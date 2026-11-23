@@ -75,9 +75,9 @@ Server tests live under `server/kaname_server/test/`: `unit/network/client_ident
 
 ## 1. Settle the assumptions the server work relies on
 
-- [ ] 1.1 Verify A1: read Serverpod 4.1.2's `MethodStreamSession` construction and Relic's `Request.connectionInfo` in the pub cache (`relic` 2.0.0-rc.4, `relic_core` 2.0.0, `pubspec.lock`). Record in one line in the PR description whether `session.request` carries the upgrade request's peer and its raw `X-Forwarded-For` lines. If it does not, stop: design drift.
-- [ ] 1.2 Verify A2 and A6: read Serverpod's stream manager in the pub cache. Note whether the endpoint's returned stream is listened to within the same handling of the open message (A6) or after asynchronous work (A2). D5 holds either way. A late listen would put A6, and with it the 20-second promise, in doubt, so treat that as design drift.
-- [ ] 1.3 Check A5 is not relied on: confirm that the client-identity unit tests in group 2 bound the work at 2 KiB and 20 entries for an oversized header. No task depends on Dart's HTTP header-size limit.
+- [x] 1.1 Verify A1: read Serverpod 4.1.2's `MethodStreamSession` construction and Relic's `Request.connectionInfo` in the pub cache (`relic` 2.0.0-rc.4, `relic_core` 2.0.0, `pubspec.lock`). Record in one line in the PR description whether `session.request` carries the upgrade request's peer and its raw `X-Forwarded-For` lines. If it does not, stop: design drift.
+- [x] 1.2 Verify A2 and A6: read Serverpod's stream manager in the pub cache. Note whether the endpoint's returned stream is listened to within the same handling of the open message (A6) or after asynchronous work (A2). D5 holds either way. A late listen would put A6, and with it the 20-second promise, in doubt, so treat that as design drift.
+- [x] 1.3 Check A5 is not relied on: confirm that the client-identity unit tests in group 2 bound the work at 2 KiB and 20 entries for an oversized header. No task depends on Dart's HTTP header-size limit.
 
 ## 2. Client identity and the trusted-proxy setting
 
