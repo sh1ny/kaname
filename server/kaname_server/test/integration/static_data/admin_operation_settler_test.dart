@@ -1,20 +1,28 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/realtime/server_clock.dart';
+import 'package:kaname_server/src/static_data/admin_gate.dart';
+import 'package:kaname_server/src/static_data/admin_operation_reader.dart';
 import 'package:kaname_server/src/static_data/admin_operation_settler.dart';
 import 'package:kaname_server/src/static_data/admission_connection_attempt.dart';
 import 'package:kaname_server/src/static_data/admission_recovery.dart';
 import 'package:kaname_server/src/static_data/postgres_connection_settings.dart';
 import 'package:kaname_server/src/static_data/postgres_static_data_store.dart';
+import 'package:kaname_server/src/static_data/static_data_access.dart';
 import 'package:kaname_server/src/static_data/static_data_lock.dart';
+import 'package:kaname_server/src/static_data/static_data_runtime.dart';
 import 'package:kaname_server/src/workers/worker_messages.dart';
+import 'package:kaname_static_data/kaname_static_data.dart';
+import 'package:kaname_static_data/testing.dart';
 import 'package:postgres/postgres.dart' as pg;
 import 'package:serverpod/serverpod.dart' show Session;
 import 'package:test/test.dart';
 
 import '../support/announcer_support.dart';
 import '../support/migrated_database.dart';
+import '../support/sde_bundle_support.dart';
 import '../support/tcp_proxy.dart';
 import '../test_tools/serverpod_test_tools.dart';
 
@@ -80,6 +88,14 @@ void main() {
       );
       return settler;
     }
+
+    StaticDataAccess accessFor(AdminOperationSettler settler) =>
+        StaticDataAccess(
+          clock: clock,
+          runtime: StaticDataRuntime()..settler = settler,
+          gate: AdminGate(key: null, log: (_, _) {}),
+          withSession: session.serverpod.withSession,
+        );
 
     Future<void> insertWaiting() => session.db.unsafeExecute(
       'INSERT INTO sde_admin_operation ("operationId", kind, state, '
@@ -285,6 +301,61 @@ void main() {
       expect(settler.activeOperationId, isNull);
     });
 
+    test('a first activation building its bundle for 6 min is busy, '
+        'not worker stuck, and X reads ended switched', () async {
+      await insertWaiting();
+      final scratch = await Directory.systemTemp.createTemp('kaname-first-');
+      addTearDown(() => scratch.delete(recursive: true));
+      const build = 89981;
+      final zip = SdeFixture.complete(build: build).writeTo(scratch);
+      final store = await PostgresStaticDataStore.open(settings);
+      addTearDown(store.close);
+      final (:pid, :startMicros) = await store.backend();
+      final backend = BackendIdentity(pid: pid, startMicros: startMicros);
+      final building = Completer<void>();
+      final releaseBundle = Completer<void>();
+      final job = TakeLatestBuildJob(
+        store: store,
+        source: AnnouncingSource(LocalZipSdeSource(zip), build),
+        differ: store.differ(),
+        trigger: CheckTrigger.updateNow,
+        operationId: _id,
+        onLockAcquired: () => store.markAdminOperationRunning(_id),
+        buildBundle: (storage, number) async {
+          building.complete();
+          await releaseBundle.future;
+          return buildStoredBundle(storage, number);
+        },
+        scratchRoot: scratch,
+      ).run();
+      addTearDown(() async {
+        if (!releaseBundle.isCompleted) releaseBundle.complete();
+        await job;
+      });
+      final reply = job.then<WorkerReply>(
+        (result) => BuildCheckFinished(requestId: 1, result: result),
+      );
+      final settler = makeSettler();
+      final pending = settler.dispatched(_id, reply, backend: () => backend);
+      await building.future.timeout(const Duration(seconds: 10));
+      for (var i = 0; i < 12; i++) {
+        await watchTick();
+      }
+
+      final access = accessFor(settler);
+      final status = (await access.status.status())!;
+      expect(status.activeBuild, build);
+      expect(status.previousBuild, isNull);
+      expect(status.busy, isTrue);
+      expect(status.workerStuck, isFalse);
+      final operation = await readPublicAdminOperation(access, _id);
+      expect(operation.state, AdminOperationReadState.ended);
+      expect(operation.operation?.outcome, SdeAdminOperationOutcome.switched);
+      expect((await pending)?.outcome, SdeAdminOperationOutcome.switched);
+      releaseBundle.complete();
+      expect(await job, isA<BuildSwitched>());
+    });
+
     test('row watch settles a committed X without the reply, but keeps the '
         'worker gated and shows a stall only after its lock is gone', () async {
       final store = await runningSwitch();
@@ -320,6 +391,9 @@ void main() {
         await watchTick();
       }
       expect(settler.workerStuck, isTrue);
+      final status = (await accessFor(settler).status.status())!;
+      expect(status.busy, isFalse);
+      expect(status.workerStuck, isTrue);
       reply.complete(_exit);
       await _waitFor(() => !settler.hasUnansweredRequest);
       expect(settler.workerStuck, isFalse);
@@ -349,6 +423,9 @@ void main() {
         await watchTick();
       }
       expect(settler.workerStuck, isTrue);
+      final status = (await accessFor(settler).status.status())!;
+      expect(status.busy, isTrue);
+      expect(status.workerStuck, isTrue);
       expect(settler.activeOperationId, _id);
       expect((await row()).state, SdeAdminOperationState.running);
       expect((await row()).outcome, isNull);

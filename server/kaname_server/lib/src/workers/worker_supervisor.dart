@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:kaname_core/kaname_core.dart';
 import 'package:kaname_static_data/kaname_static_data.dart' show CheckTrigger;
 
+import '../realtime/server_clock.dart';
 import '../static_data/postgres_connection_settings.dart';
 import 'worker_messages.dart';
 import 'worker_process.dart';
@@ -80,6 +81,7 @@ final class WorkerSupervisor {
   /// imports; [terminateBackend] ends the Postgres sessions a dead worker
   /// left open; [log] receives the supervisor's own lines and the worker's.
   /// [now] and [delay] are the clock and are replaced in tests.
+  /// [clock] supplies the per-request stall deadline (D2, D30).
   WorkerSupervisor({
     required this.name,
     required this._spawn,
@@ -89,6 +91,7 @@ final class WorkerSupervisor {
     required this._log,
     DateTime Function()? now,
     Delay? delay,
+    this._clock = const SystemClock(),
     this.onRunning,
   }) : _now = now ?? DateTime.now,
        _delay = delay ?? Future<void>.delayed;
@@ -125,11 +128,14 @@ final class WorkerSupervisor {
   final WorkerLogSink _log;
   final DateTime Function() _now;
   final Delay _delay;
+  final ServerClock _clock;
 
   final WorkerMessageCodec _inbox = workerInboxCodec();
   final WorkerMessageCodec _outbox = workerOutboxCodec();
   final Map<int, Completer<WorkerReply>> _pending = {};
   final Map<int, Completer<WorkerReply>> _pendingStarts = {};
+  final Map<int, Timer> _requestDeadlines = {};
+  final Set<int> _stalledRequests = {};
   final Map<int, BackendIdentity> _backends = {};
   final Completer<void> _ready = Completer<void>();
   final Completer<void> _stopSignal = Completer<void>();
@@ -146,6 +152,9 @@ final class WorkerSupervisor {
 
   /// Whether a worker is running now and can take requests.
   bool get isRunning => _process != null;
+
+  /// Whether any check or repair has gone 30 minutes without its own reply.
+  bool get workerStuck => _stalledRequests.isNotEmpty;
 
   /// The current database backend for this exact worker request (D26).
   BackendIdentity? backendForRequest(int requestId) => _backends[requestId];
@@ -257,6 +266,17 @@ final class WorkerSupervisor {
     }
     final completer = Completer<WorkerReply>();
     _pending[request.requestId] = completer;
+    if (request is RunBuildCheck || request is RunBundleRepair) {
+      final id = request.requestId;
+      _requestDeadlines[id] = _clock.once(const Duration(minutes: 30), () {
+        _requestDeadlines.remove(id);
+        _stalledRequests.add(id);
+        _logLine(
+          WorkerLogLevel.warning,
+          '${request.type} request $id has had no reply for 30 minutes',
+        );
+      });
+    }
     process.send(_inbox.encode(request));
     return completer.future;
   }
@@ -367,7 +387,7 @@ final class WorkerSupervisor {
         }
       case final WorkerReply reply:
         final pending = switch (reply.requestId) {
-          final int id => _pending.remove(id),
+          final int id => _takeReply(id),
           null => null,
         };
         if (pending != null) {
@@ -384,9 +404,20 @@ final class WorkerSupervisor {
     }
   }
 
+  Completer<WorkerReply>? _takeReply(int id) {
+    _requestDeadlines.remove(id)?.cancel();
+    _stalledRequests.remove(id);
+    return _pending.remove(id);
+  }
+
   void _failPending(String reason) {
     final pending = _pending.entries.toList();
     _pending.clear();
+    for (final timer in _requestDeadlines.values) {
+      timer.cancel();
+    }
+    _requestDeadlines.clear();
+    _stalledRequests.clear();
     for (final MapEntry(:key, :value) in pending) {
       final reply = WorkerError(requestId: key, reason: reason);
       _pendingStarts.remove(key)?.complete(reply);

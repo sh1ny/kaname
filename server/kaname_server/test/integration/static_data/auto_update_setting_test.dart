@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:kaname_client/kaname_client.dart' as api;
@@ -13,6 +14,7 @@ import 'package:postgres/postgres.dart' as pg;
 import 'package:serverpod/serverpod.dart' show PostgresDatabaseConfig, Session;
 import 'package:test/test.dart';
 
+import '../support/announcer_support.dart' show FakeClock;
 import '../support/in_process_pod.dart';
 import '../support/migrated_database.dart';
 import '../support/sde_bundle_support.dart';
@@ -190,60 +192,7 @@ void main() {
     test('a lost write acknowledgement is not confirmed although the '
         'stored setting is off', () async {
       final direct = await migratedDatabaseSettings(session);
-      final proxy = direct.isUnixSocket
-          ? await TcpProxy.startToUnixSocket(direct.host)
-          : await TcpProxy.start(direct.host, direct.port);
-      addTearDown(proxy.close);
-      late String databaseName;
-      final server = await InProcessPod.start(
-        configOverride: (config) {
-          databaseName = config.database!.name;
-          return config.copyWith(
-            healthCheckInterval: Duration.zero,
-            futureCallExecutionEnabled: false,
-            sessionLogs: config.sessionLogs.copyWith(consoleEnabled: false),
-            database: PostgresDatabaseConfig(
-              host: '127.0.0.1',
-              port: proxy.port,
-              user: direct.user,
-              password: direct.password ?? '',
-              name: databaseName,
-              maxConnectionCount: 16,
-            ),
-          );
-        },
-      );
-      addTearDown(server.stop);
-      addTearDown(() {
-        proxy.releaseTargetReads();
-        proxy.disconnectClients();
-      });
-      final observer = await pg.Connection.open(
-        pg.Endpoint(
-          host: direct.host,
-          port: direct.port,
-          database: databaseName,
-          username: direct.user,
-          password: direct.password,
-          isUnixSocket: direct.isUnixSocket,
-        ),
-        settings: const pg.ConnectionSettings(sslMode: pg.SslMode.disable),
-      );
-      addTearDown(observer.close);
-      const gate = '805120, 8';
-      await observer.execute('SELECT pg_advisory_lock($gate)');
-      await observer.execute('''
-        CREATE FUNCTION kaname_setting_commit_gate() RETURNS trigger
-        LANGUAGE plpgsql AS \$\$ BEGIN
-          PERFORM pg_advisory_xact_lock($gate);
-          RETURN NEW;
-        END \$\$
-      ''');
-      await observer.execute('''
-        CREATE CONSTRAINT TRIGGER kaname_setting_commit_gate
-        AFTER INSERT ON sde_setting_write DEFERRABLE INITIALLY DEFERRED
-        FOR EACH ROW EXECUTE FUNCTION kaname_setting_commit_gate();
-      ''');
+      final (server, proxy, observer, settings) = await _gateCommit(direct);
       final pending = server.pod.withSession(
         (owned) => writer.write(
           owned,
@@ -252,38 +201,14 @@ void main() {
           writeId: _id(1),
         ),
       );
-      final deadline = Stopwatch()..start();
-      while (true) {
-        final blocked = await observer.execute('''
-          SELECT pid FROM pg_stat_activity WHERE datname = current_database()
-          AND upper(trim(query, ';')) = 'COMMIT'
-          AND pg_backend_pid() = ANY(pg_blocking_pids(pid))
-        ''');
-        if (blocked.isNotEmpty) break;
-        if (deadline.elapsed > const Duration(seconds: 10)) {
-          throw StateError('setting COMMIT did not reach its gate');
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
+      await _waitForCommitGate(observer);
       proxy.holdTargetReads();
-      await observer.execute('SELECT pg_advisory_unlock($gate)');
-      while (true) {
-        final rows = await observer.execute(
-          'SELECT "autoUpdate" FROM sde_setting_write',
-        );
-        if (rows.isNotEmpty) {
-          expect(rows.single.single, isFalse);
-          break;
-        }
-        if (deadline.elapsed > const Duration(seconds: 10)) {
-          throw StateError('setting write did not commit');
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
+      await observer.execute('SELECT pg_advisory_unlock($_commitGate)');
+      await _waitForOff(observer);
       proxy.disconnectClients();
       proxy.releaseTargetReads();
       expect(await pending, isA<SettingNotConfirmed>());
-      final result = await _check(_inDatabase(direct, databaseName));
+      final result = await _check(settings);
       expect(
         result,
         isA<BuildStaged>().having(
@@ -307,7 +232,217 @@ void main() {
       );
       expect(unchanged.single.single, isFalse);
     });
+
+    test('after setting not confirmed a status call never joins or reuses '
+        'the invalidated read', () async {
+      const key = 'late-commit-setting-test-key-0123456789';
+      final direct = await migratedDatabaseSettings(session);
+      final (server, proxy, observer, _) = await _gateCommit(direct);
+      final clock = FakeClock();
+      final oldReadFinished = Completer<void>();
+      final deliverOld = Completer<void>();
+      addTearDown(() {
+        if (!deliverOld.isCompleted) deliverOld.complete();
+      });
+      var owned = 0;
+      StaticDataAccess.installForTest(
+        server.pod,
+        StaticDataAccess(
+          clock: clock,
+          gate: AdminGate(key: key, log: (_, _) {}),
+          withSession: <T>(action) async {
+            final first = ++owned == 1;
+            final result = await server.pod.withSession(action);
+            if (first) {
+              oldReadFinished.complete();
+              await deliverOld.future;
+            }
+            return result;
+          },
+        ),
+      );
+      final client = api.Client(server.baseUrl);
+      addTearDown(client.close);
+      final old = client.staticData.status();
+      await oldReadFinished.future;
+      final write = client.staticDataAdmin.setAutoUpdate(
+        key,
+        false,
+        api.NoWrites(),
+        _id(1),
+      );
+      await _waitForCommitGate(observer);
+      proxy.disconnectClients();
+
+      final reply = await write;
+      expect(reply.outcome, api.AdminAnswerOutcome.settingNotConfirmed);
+      final afterReply = await client.staticData.status();
+      expect(afterReply.settingRevision, isA<api.NoWrites>());
+      expect(owned, 3);
+      expect(
+        (await observer.execute('SELECT id FROM sde_setting_write')),
+        isEmpty,
+      );
+      clock.elapse(const Duration(seconds: 2));
+      await observer.execute('SELECT pg_advisory_unlock($_commitGate)');
+      await _waitForOff(observer);
+      final afterCommit = await client.staticData.status();
+      expect(afterCommit.settingRevision, isA<api.WriteRevision>());
+      expect(afterCommit.autoUpdate, isFalse);
+      deliverOld.complete();
+      expect((await old).settingRevision, isA<api.NoWrites>());
+      expect((await client.staticData.status()).autoUpdate, isFalse);
+    });
   }, rollbackDatabase: RollbackDatabase.disabled);
+
+  test('a status during the uncommitted first write shows NoWrites and a '
+      'write sent from it answers setting changed', () async {
+    const key = 'first-setting-test-key-0123456789012345';
+    final server = await InProcessPod.start();
+    addTearDown(server.stop);
+    final connection = await _open(
+      await server.pod.withSession(migratedDatabaseSettings),
+    );
+    addTearDown(connection.close);
+    StaticDataAccess.installForTest(
+      server.pod,
+      StaticDataAccess(
+        gate: AdminGate(key: key, log: (_, _) {}),
+        withSession: server.pod.withSession,
+      ),
+    );
+    final client = api.Client(server.baseUrl);
+    addTearDown(client.close);
+    final during = await connection.runTx((tx) async {
+      await tx.execute(
+        'SELECT pg_advisory_xact_lock($staticDataSettingLockKey)',
+      );
+      await tx.execute(
+        'INSERT INTO sde_setting_write ("writeId", "autoUpdate", "createdAt") '
+        "VALUES ('${_id(1)}', false, now())",
+      );
+      final snapshot = await client.staticData.status();
+      expect(snapshot.settingRevision, isA<api.NoWrites>());
+      expect(snapshot.autoUpdate, isTrue);
+      return snapshot;
+    });
+    final stale = await client.staticDataAdmin.setAutoUpdate(
+      key,
+      true,
+      during.settingRevision,
+      _id(2),
+    );
+    expect(stale.outcome, api.AdminAnswerOutcome.settingChanged);
+    expect(stale.autoUpdate, isFalse);
+    expect(stale.settingRevision, isA<api.WriteRevision>());
+  });
+
+  test('a status call during a delayed write acknowledgement may carry the old '
+      'revision, one after the answer the new one', () async {
+    const key = 'delayed-setting-test-key-01234567890123';
+    final server = await InProcessPod.start();
+    addTearDown(server.stop);
+    final client = api.Client(server.baseUrl);
+    addTearDown(client.close);
+    final clock = FakeClock();
+    final committed = Completer<void>();
+    final acknowledgement = Completer<void>();
+    addTearDown(() {
+      if (!acknowledgement.isCompleted) acknowledgement.complete();
+    });
+    var began = 0;
+    StaticDataAccess.installForTest(
+      server.pod,
+      StaticDataAccess(
+        clock: clock,
+        gate: AdminGate(key: key, log: (_, _) {}),
+        withSession: <T>(action) async {
+          final settingWrite = ++began == 2;
+          final answer = await server.pod.withSession(action);
+          if (settingWrite) {
+            committed.complete();
+            await acknowledgement.future;
+          }
+          return answer;
+        },
+      ),
+    );
+
+    final before = await client.staticData.status();
+    final pending = client.staticDataAdmin.setAutoUpdate(
+      key,
+      false,
+      before.settingRevision,
+      _id(1),
+    );
+    await committed.future;
+    expect(
+      (await client.staticData.status()).settingRevision,
+      isA<api.NoWrites>(),
+    );
+    expect(began, 2);
+    clock.elapse(const Duration(seconds: 3));
+    acknowledgement.complete();
+    final written = await pending;
+    expect(written.outcome, api.AdminAnswerOutcome.settingConfirmed);
+    final current = await client.staticData.status();
+    expect(current.autoUpdate, isFalse);
+    expect(
+      (current.settingRevision as api.WriteRevision).id,
+      (written.settingRevision! as api.WriteRevision).id,
+    );
+  });
+
+  test('a status read in flight across a toggle can finish late but cannot '
+      'refill the status cache', () async {
+    const key = 'in-flight-setting-test-key-01234567890123';
+    final server = await InProcessPod.start();
+    addTearDown(server.stop);
+    final client = api.Client(server.baseUrl);
+    addTearDown(client.close);
+    final readFinished = Completer<void>();
+    final deliverRead = Completer<void>();
+    addTearDown(() {
+      if (!deliverRead.isCompleted) deliverRead.complete();
+    });
+    var began = 0;
+    StaticDataAccess.installForTest(
+      server.pod,
+      StaticDataAccess(
+        clock: FakeClock(),
+        gate: AdminGate(key: key, log: (_, _) {}),
+        withSession: <T>(action) async {
+          final oldRead = ++began == 1;
+          final answer = await server.pod.withSession(action);
+          if (oldRead) {
+            readFinished.complete();
+            await deliverRead.future;
+          }
+          return answer;
+        },
+      ),
+    );
+
+    final earlier = client.staticData.status();
+    await readFinished.future;
+    final written = await client.staticDataAdmin.setAutoUpdate(
+      key,
+      false,
+      api.NoWrites(),
+      _id(1),
+    );
+    expect(written.outcome, api.AdminAnswerOutcome.settingConfirmed);
+    final revision = (written.settingRevision! as api.WriteRevision).id;
+    final now = await client.staticData.status();
+    expect(now.autoUpdate, isFalse);
+    expect((now.settingRevision as api.WriteRevision).id, revision);
+    deliverRead.complete();
+    expect((await earlier).settingRevision, isA<api.NoWrites>());
+    final cached = await client.staticData.status();
+    expect(cached.autoUpdate, isFalse);
+    expect((cached.settingRevision as api.WriteRevision).id, revision);
+    expect(began, 3);
+  });
 
   test(
     'a setting written from public status is retained across restart',
@@ -349,6 +484,90 @@ void main() {
       expect((durable.settingRevision as api.WriteRevision).id, revision);
     },
   );
+}
+
+const _commitGate = '805120, 8';
+
+Future<(InProcessPod, TcpProxy, pg.Connection, PostgresConnectionSettings)>
+_gateCommit(PostgresConnectionSettings direct) async {
+  final proxy = direct.isUnixSocket
+      ? await TcpProxy.startToUnixSocket(direct.host)
+      : await TcpProxy.start(direct.host, direct.port);
+  addTearDown(proxy.close);
+  late String databaseName;
+  final server = await InProcessPod.start(
+    configOverride: (config) {
+      databaseName = config.database!.name;
+      return config.copyWith(
+        healthCheckInterval: Duration.zero,
+        futureCallExecutionEnabled: false,
+        sessionLogs: config.sessionLogs.copyWith(consoleEnabled: false),
+        database: PostgresDatabaseConfig(
+          host: '127.0.0.1',
+          port: proxy.port,
+          user: direct.user,
+          password: direct.password ?? '',
+          name: databaseName,
+          maxConnectionCount: 16,
+        ),
+      );
+    },
+  );
+  addTearDown(server.stop);
+  addTearDown(() {
+    proxy.releaseTargetReads();
+    proxy.disconnectClients();
+  });
+  final settings = _inDatabase(direct, databaseName);
+  final observer = await _open(settings);
+  addTearDown(observer.close);
+  await observer.execute('SELECT pg_advisory_lock($_commitGate)');
+  await observer.execute('''
+    CREATE FUNCTION kaname_setting_commit_gate() RETURNS trigger
+    LANGUAGE plpgsql AS \$\$ BEGIN
+      PERFORM pg_advisory_xact_lock($_commitGate);
+      RETURN NEW;
+    END \$\$
+  ''');
+  await observer.execute('''
+    CREATE CONSTRAINT TRIGGER kaname_setting_commit_gate
+    AFTER INSERT ON sde_setting_write DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION kaname_setting_commit_gate();
+  ''');
+  return (server, proxy, observer, settings);
+}
+
+Future<void> _waitForCommitGate(pg.Connection observer) async {
+  final deadline = Stopwatch()..start();
+  while (true) {
+    final blocked = await observer.execute('''
+      SELECT pid FROM pg_stat_activity WHERE datname = current_database()
+      AND upper(trim(query, ';')) = 'COMMIT'
+      AND pg_backend_pid() = ANY(pg_blocking_pids(pid))
+    ''');
+    if (blocked.isNotEmpty) return;
+    if (deadline.elapsed > const Duration(seconds: 10)) {
+      throw StateError('setting COMMIT did not reach its gate');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  }
+}
+
+Future<void> _waitForOff(pg.Connection observer) async {
+  final deadline = Stopwatch()..start();
+  while (true) {
+    final rows = await observer.execute(
+      'SELECT "autoUpdate" FROM sde_setting_write',
+    );
+    if (rows.isNotEmpty) {
+      expect(rows.single.single, isFalse);
+      return;
+    }
+    if (deadline.elapsed > const Duration(seconds: 10)) {
+      throw StateError('setting write did not commit');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  }
 }
 
 PostgresConnectionSettings _inDatabase(

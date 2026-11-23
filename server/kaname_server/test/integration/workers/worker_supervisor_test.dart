@@ -8,6 +8,8 @@ import 'package:kaname_server/src/workers/worker_supervisor.dart';
 import 'package:kaname_static_data/kaname_static_data.dart';
 import 'package:test/test.dart';
 
+import '../support/announcer_support.dart' as timers;
+
 /// A worker the test controls: it runs until the test makes it exit.
 final class FakeWorker implements WorkerProcess {
   final StreamController<Object?> _replies = StreamController<Object?>();
@@ -71,6 +73,7 @@ Future<void> settle() => pumpEventQueue(times: 200);
 
 void main() {
   late FakeClock clock;
+  late timers.FakeClock requestClock;
   late List<FakeWorker> workers;
   late List<(WorkerLogLevel, String)> logs;
   late List<String> sweepReasons;
@@ -81,6 +84,7 @@ void main() {
 
   setUp(() {
     clock = FakeClock();
+    requestClock = timers.FakeClock();
     workers = [];
     logs = [];
     sweepReasons = [];
@@ -108,6 +112,7 @@ void main() {
       log: (level, message) => logs.add((level, message)),
       now: clock.now,
       delay: clock.delay,
+      clock: requestClock,
     );
   });
   tearDown(() => supervisor.stop());
@@ -384,6 +389,60 @@ void main() {
         isTrue,
       );
     });
+  });
+
+  test("a repair reply leaves a stuck check's worker stuck set", () async {
+    supervisor.start();
+    await supervisor.ready;
+    final check = supervisor.runBuildCheck(
+      const CcpLatestSource(),
+      trigger: CheckTrigger.daily,
+    );
+    requestClock.elapse(const Duration(minutes: 29, seconds: 59));
+    expect(supervisor.workerStuck, isFalse);
+    requestClock.elapse(const Duration(seconds: 1));
+    expect(supervisor.workerStuck, isTrue);
+    final repair = supervisor.runBundleRepair();
+    final worker = workers.single;
+    worker.reply(
+      const BundleRepairFinished(requestId: 2, result: BundleRepairLockHeld()),
+    );
+    expect(await repair, isA<BundleRepairFinished>());
+    expect(supervisor.workerStuck, isTrue);
+    expect(logs.where((line) => line.$2.contains('no reply')), hasLength(1));
+    worker.reply(
+      const BuildCheckFinished(
+        requestId: 1,
+        result: BuildCheckFailed('CCP unreachable'),
+      ),
+    );
+    expect(await check, isA<BuildCheckFinished>());
+    expect(supervisor.workerStuck, isFalse);
+  });
+
+  test("an admin reply leaves a stuck repair's worker stuck set", () async {
+    supervisor.start();
+    await supervisor.ready;
+    final repair = supervisor.runBundleRepair();
+    requestClock.elapse(const Duration(minutes: 30));
+    expect(supervisor.workerStuck, isTrue);
+    final admin = supervisor.runUpdateNow(
+      const CcpLatestSource(),
+      operationId: '4cb9f715-3142-454e-aaf4-da50675c5f03',
+    );
+    workers.single.reply(
+      const BuildCheckFinished(
+        requestId: 2,
+        result: BuildCheckFailed('import already running'),
+      ),
+    );
+    expect(await admin.finished, isA<BuildCheckFinished>());
+    expect(supervisor.workerStuck, isTrue);
+    await crash('lost worker');
+    expect(await repair, isA<WorkerError>());
+    expect(supervisor.workerStuck, isFalse);
+    requestClock.elapse(const Duration(hours: 1));
+    expect(logs.where((line) => line.$2.contains('no reply')), hasLength(1));
   });
 
   test('an unsent update-now request completes both futures', () async {

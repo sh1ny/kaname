@@ -73,7 +73,9 @@ final class StaticDataAccess {
         session,
         beforeStatement: beforeStatement,
         adminConfigured: gate.configured,
-        workerStuck: runtime.settler?.workerStuck ?? false,
+        workerStuck:
+            (runtime.supervisor?.workerStuck ?? false) ||
+            (runtime.settler?.workerStuck ?? false),
         settlementStuck: runtime.settler?.settlementStuck ?? false,
         recoveryStuck: runtime.recovery?.recoveryStuck ?? false,
         startupStuck: false,
