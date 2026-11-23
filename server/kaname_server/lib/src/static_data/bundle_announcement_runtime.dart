@@ -230,7 +230,10 @@ final class BundleAnnouncementRuntime {
   /// or `null` when the pair warned less than [refusalLogInterval] ago.
   ///
   /// A warning names the client and reason and gives the refusals since the
-  /// pair's previous warning, this one included. Every interval is elapsed
+  /// pair's previous warning, this one included. [shown], when given,
+  /// replaces the key in the warning's text, so a proxy fallback names the
+  /// proxy's own address rather than its /64; the pair is still counted
+  /// under [client]. Every interval is elapsed
   /// time from [clock]'s monotonic `elapsed()`, so wall-clock changes do not
   /// move it. At most [refusalLogPairs] pairs are tracked, in the order of
   /// their last warning. When the map is full, a new pair looks only at the
@@ -246,7 +249,7 @@ final class BundleAnnouncementRuntime {
   ///   being refused is never reported, and a pair evicted to make room
   ///   loses any count it had not yet reported, even if its last refusal was
   ///   recent. The counts are a guide, not a complete tally.
-  String? noteRefusal(ClientKey client, String reason) {
+  String? noteRefusal(ClientKey client, String reason, {String? shown}) {
     final now = clock.elapsed();
     final pair = (client, reason);
     var count = _refusals[pair];
@@ -270,7 +273,7 @@ final class BundleAnnouncementRuntime {
     _refusals
       ..remove(pair)
       ..[pair] = count;
-    return _warning(reason, 'client $client', count);
+    return _warning(reason, 'client ${shown ?? client}', count);
   }
 
   /// The client and reason pairs the refusal log tracks, oldest warning

@@ -153,56 +153,81 @@ ClientIdentity clientKeyFor({
     final List<String> list => list,
     final Iterable<String> other => other.toList(),
   };
-  final (:entries, :wholeHeader) = _rightmostEntries(lines);
-  final trimmed = [for (final entry in entries) entry.trim()];
-  if (wholeHeader && trimmed.every((entry) => entry.isEmpty)) {
-    return ProxyFallback(proxy, ForwardedFallback.missing);
-  }
-  for (final entry in trimmed) {
-    final address = _parseEntry(entry);
-    if (address == null) {
-      return ProxyFallback(proxy, ForwardedFallback.notAnAddress);
+  if (lines.isEmpty) return ProxyFallback(proxy, ForwardedFallback.missing);
+  ClientIdentity? found;
+  // Whether every entry walked so far was blank: a blank entry before any
+  // other is not an address, unless the whole header is blank.
+  var blank = false;
+  final wholeHeader = _walkEntries(lines, (raw) {
+    final entry = raw.trim();
+    if (entry.isEmpty) {
+      blank = true;
+      return false;
     }
-    if (!trusted.trusts(address)) return ForwardedClient(address);
+    final address = blank ? null : _parseEntry(entry);
+    if (address == null) {
+      found = ProxyFallback(proxy, ForwardedFallback.notAnAddress);
+      return true;
+    }
+    if (!trusted.trusts(address)) {
+      found = ForwardedClient(address);
+      return true;
+    }
+    return false;
+  });
+  if (found case final identity?) return identity;
+  if (blank) {
+    return ProxyFallback(
+      proxy,
+      wholeHeader ? ForwardedFallback.missing : ForwardedFallback.notAnAddress,
+    );
   }
   return ProxyFallback(proxy, ForwardedFallback.noUntrustedEntry);
 }
 
-/// The complete entries within the budget, rightmost first, at most
-/// [maxForwardedEntries] of them, and whether they are the whole header.
-({List<String> entries, bool wholeHeader}) _rightmostEntries(
-  List<String> lines,
-) {
-  if (lines.isEmpty) return (entries: const [], wholeHeader: true);
-  // Collect the tail of the virtually joined lines, last part first.
-  final parts = <String>[];
-  var used = 0;
-  var reachedStart = false;
-  for (var i = lines.length - 1; i >= 0; i--) {
-    if (i < lines.length - 1) {
-      if (used == forwardedBudget) break;
-      parts.add(',');
-      used++;
-    }
-    final line = lines[i];
-    final room = forwardedBudget - used;
-    if (line.length > room) {
-      parts.add(line.substring(line.length - room));
-      used = forwardedBudget;
-      break;
-    }
-    parts.add(line);
-    used += line.length;
-    if (i == 0) reachedStart = true;
+/// Walks the complete entries of the virtually joined [lines] from right
+/// to left, calling [visit] with each until it returns `true`.
+///
+/// Reads nothing outside the last [forwardedBudget] characters, separators
+/// included, and visits at most [maxForwardedEntries] entries. An entry is
+/// complete when its left end, a comma or the start of the first line,
+/// lies within the budget, so a fragment cut by it is never visited. Each
+/// entry is one substring of one line: nothing else is copied.
+///
+/// Returns whether every entry of the header was visited.
+bool _walkEntries(List<String> lines, bool Function(String entry) visit) {
+  var room = forwardedBudget;
+  var visited = 0;
+
+  // Visits [entry], whose left end is within the budget; returns whether
+  // the walk stops there.
+  bool stopsAt(String entry) {
+    if (visited == maxForwardedEntries) return true;
+    visited++;
+    return visit(entry);
   }
-  final segments = parts.reversed.join().split(',');
-  // Unless the budget reached the start of the first line, the leftmost
-  // segment's left end lies outside it, so it may be a cut fragment.
-  if (!reachedStart) segments.removeAt(0);
-  return (
-    entries: segments.reversed.take(maxForwardedEntries).toList(),
-    wholeHeader: reachedStart && segments.length <= maxForwardedEntries,
-  );
+
+  for (var i = lines.length - 1; i >= 0; i--) {
+    final line = lines[i];
+    var end = line.length;
+    while (true) {
+      final comma = end == 0 ? -1 : line.lastIndexOf(',', end - 1);
+      final entry = line.substring(comma + 1, end);
+      if (entry.length > room) return false;
+      room -= entry.length;
+      // The entry's left end: a comma in the line, the virtual comma before
+      // this line, or the start of the first line, which takes no room.
+      final atStart = comma < 0 && i == 0;
+      if (!atStart) {
+        if (room == 0) return false;
+        room--;
+      }
+      if (stopsAt(entry)) return false;
+      if (comma < 0) break;
+      end = comma;
+    }
+  }
+  return true;
 }
 
 final RegExp _port = RegExp(r'^[0-9]{1,5}$');

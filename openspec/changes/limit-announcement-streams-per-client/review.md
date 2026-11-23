@@ -33,7 +33,7 @@ The OMP reviewer returned REVISE in round 8, as in every round since round 1, an
 - Round 8 Moderates 1-3 (distinct test buckets, cutoff test, front-proxy address): fixed by the author, not reviewed.
 - The accepted gaps in design.md, section "Accepted gaps after the design review".
 
-Escalate the unresolved first-event contract to the owner; consecutive design rounds have returned `REVISE`.
+The reviewer's round 8 recommendation, made before the owner's answer above: "Escalate the unresolved first-event contract to the owner; consecutive design rounds have returned `REVISE`."
 
 ## Required Changes
 

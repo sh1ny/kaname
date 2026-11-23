@@ -138,7 +138,7 @@ Without sign-in, a client SHALL be its connection's address or, behind a trusted
 
 #### Scenario: Behind a trusted proxy
 - **WHEN** the connection comes from a trusted proxy and carries `X-Forwarded-For: 198.51.100.1, 203.0.113.7`, where 203.0.113.7 is not trusted
-- **THEN** the server counts the stream for 203.0.113.7, never for 198.51.100.1 or the proxy
+- **THEN** the server counts the stream for 203.0.113.7, never for 198.51.100.1 or the proxy: entries left of the ones trusted proxies appended are written by the client, so reading the leftmost entry, or trusting an address because it is private rather than listed, would let a client choose its own bucket
 
 #### Scenario: Chain of trusted proxies
 - **WHEN** the connection comes from a trusted proxy and carries `X-Forwarded-For: 203.0.113.7, 10.0.0.5`, where 10.0.0.5 is also a trusted proxy

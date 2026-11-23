@@ -73,9 +73,17 @@ class StaticDataEndpoint extends Endpoint {
     final runtime = bundleAnnouncementRuntime;
     final identity = runtime.clientOf(session);
     final client = identity.key;
-    if (identity case ProxyFallback()) {
-      // The trusted proxy counts as the client; logged at the refusal rate.
-      _warn(session, runtime.noteRefusal(client, noUsableForwardedHeader));
+    if (identity case ProxyFallback(:final proxy)) {
+      // The trusted proxy counts as the client; logged at the refusal rate,
+      // naming the proxy's own address, not its /64 key.
+      _warn(
+        session,
+        runtime.noteRefusal(
+          client,
+          noUsableForwardedHeader,
+          shown: proxy.address,
+        ),
+      );
     }
     final announcer = runtime.announcer;
     final bus = runtime.bus;

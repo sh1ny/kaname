@@ -1014,15 +1014,18 @@ void main() {
       await rig.start();
       bundleAnnouncementRuntime.maxStreams = 32;
 
-      final feeds = <_Direct>[];
+      // Nobody listens to the 32 until the refusal is seen, so the global
+      // bound must count admissions, not listens.
+      final unlistened = <Stream<BundleAnnouncement>>[];
       for (final address in ['198.51.100.1', '198.51.100.2']) {
         final client = rig.identifyAs(address);
         for (var i = 0; i < 16; i++) {
-          feeds.add(_Direct(rig.open(session)));
+          unlistened.add(rig.open(session));
         }
         expect(bundleAnnouncementRuntime.streamsOf(client), 16);
       }
       expect(bundleAnnouncementRuntime.openStreams, 32);
+      await rig.listenersAre(0);
 
       final third = rig.identifyAs('198.51.100.3');
       final refused = _Direct(rig.open(session));
@@ -1030,6 +1033,8 @@ void main() {
       expect(refused.events, isEmpty);
       expect(refused.errors, isEmpty);
       expect(bundleAnnouncementRuntime.streamsOf(third), 0);
+
+      final feeds = [for (final stream in unlistened) _Direct(stream)];
       for (final feed in feeds) {
         await feed.waitFor(1);
       }
@@ -1084,6 +1089,36 @@ void main() {
       expect(feed.errors, isEmpty);
       await rig.listenersAre(0);
       expect(bundleAnnouncementRuntime.openStreams, 0);
+    });
+
+    // The proxy fallback is warned at the refusal rate (D6), naming the
+    // proxy's own address while its /64 key counts its streams.
+    test('a trusted IPv6 proxy with no usable forwarded header is warned '
+        'by its own address and counted under its /64', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      final warnings = <String>[];
+      final proxy = InternetAddress('2001:db8:1:2::10');
+      bundleAnnouncementRuntime
+        ..logWarning = ((_, warning) {
+          warnings.add(warning);
+        })
+        ..identifyClient = (_) =>
+            ProxyFallback(proxy, ForwardedFallback.missing);
+
+      final feed = _Direct(rig.open(session));
+      await feed.waitFor(1);
+
+      expect(warnings, hasLength(1));
+      expect(warnings.single, contains(noUsableForwardedHeader));
+      expect(warnings.single, contains('client 2001:db8:1:2::10,'));
+      expect(warnings.single, isNot(contains('/64')));
+      expect(
+        bundleAnnouncementRuntime.streamsOf(ClientKey.forAddress(proxy)),
+        1,
+      );
+      await feed.close();
     });
 
     // Scenario: Direct connection (realtime-bus → A client is identified by
@@ -1176,8 +1211,10 @@ void main() {
       _expectFirstSendWithin20s(steps, readyAt);
       await readyFeed.close();
 
-      // The first state read held: the announcer installs "none" 19 s after
-      // its start.
+      // The first state read held: a client subscribing as the announcer
+      // starts must still get its first event within the 20 s promise,
+      // checked against that promise, not against the announcer's own
+      // limit.
       final held = _Rig(server, sharedClock: true);
       addTearDown(held.dispose);
       final gate = held.source.holdReads = Completer<void>();
@@ -1189,15 +1226,15 @@ void main() {
       held.announcer
         ..armFirstInstall()
         ..start();
-      held.streamClock.elapse(const Duration(seconds: 3));
       final heldAt = held.streamClock.now();
       final heldFeed = _Direct(held.open(session));
       addTearDown(heldFeed.close);
       await held.listenersAre(1);
       expect(heldFeed.events, isEmpty);
 
+      // Just short of the promise: the first event must be out by now.
       held.streamClock.elapse(
-        BundleAnnouncer.firstInstallLimit - const Duration(seconds: 3),
+        _firstEventPromise - const Duration(milliseconds: 1),
       );
       await heldFeed.waitFor(1);
       expect(heldFeed.events.single, isA<BundleAnnouncementNone>());
@@ -1248,6 +1285,9 @@ void main() {
   });
 }
 
+/// The longest a subscriber waits for its first event (A6).
+const Duration _firstEventPromise = Duration(seconds: 20);
+
 /// The streams of the loopback client every in-process test connects as.
 final ClientKey _loopback = ClientKey.forAddress(InternetAddress.loopbackIPv4);
 
@@ -1265,10 +1305,7 @@ void _expectFirstSendWithin20s(
   final (_, _, admittedAt) = steps[0];
   final (_, _, sentAt) = steps[2];
   expect(admittedAt, subscribedAt);
-  expect(
-    sentAt.difference(subscribedAt),
-    lessThan(const Duration(seconds: 20)),
-  );
+  expect(sentAt.difference(subscribedAt), lessThan(_firstEventPromise));
 }
 
 /// The builds of the announcements, in order.

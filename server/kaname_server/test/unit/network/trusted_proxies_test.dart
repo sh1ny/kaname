@@ -44,7 +44,7 @@ void main() {
     expect(v6.trusts(ip('2001:db8:a::1')), isFalse);
   });
 
-  test('the first invalid entry is named and start-up stops', () {
+  test('the parser names the first invalid entry', () {
     Matcher namesEntry(String entry) => throwsA(
       isA<TrustedProxiesError>()
           .having((error) => error.entry, 'entry', entry)

@@ -212,6 +212,14 @@ void main() {
     );
   });
 
+  test('the walk stops at the first untrusted entry and never reads the '
+      'entries to its left', () {
+    // Left of the client: more than 2 KiB of entries, none an address.
+    final junk = List.filled(500, 'caddy').join(',');
+    expectForwarded(viaProxy(['$junk, 203.0.113.7']), '203.0.113.7');
+    expectForwarded(viaProxy([junk, '203.0.113.7, 10.0.0.5']), '203.0.113.7');
+  });
+
   test('IPv6 clients in one /64 share a key', () {
     final a = clientKeyFor(
       peer: ip('2001:db8:1:2::a'),

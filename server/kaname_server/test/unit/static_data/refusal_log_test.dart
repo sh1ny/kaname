@@ -98,6 +98,27 @@ void main() {
     }
   });
 
+  test('a warning can name an address other than its key, which still '
+      'counts the pair', () {
+    final key = ClientKey.forAddress(InternetAddress('2001:db8:1:2::10'));
+    final first = runtime.noteRefusal(
+      key,
+      noUsableForwardedHeader,
+      shown: '2001:db8:1:2::10',
+    );
+    expect(first, contains('client 2001:db8:1:2::10,'));
+    expect(first, isNot(contains('/64')));
+    // A neighbour in the same /64 shares the pair's cooldown.
+    expect(
+      runtime.noteRefusal(
+        ClientKey.forAddress(InternetAddress('2001:db8:1:2::11')),
+        noUsableForwardedHeader,
+        shown: '2001:db8:1:2::11',
+      ),
+      isNull,
+    );
+  });
+
   test('5,000 clients log at most 4,096 named warnings and one '
       'other-clients warning', () {
     final warnings = <String>[];

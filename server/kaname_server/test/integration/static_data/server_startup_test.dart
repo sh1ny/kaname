@@ -33,6 +33,30 @@ void main() {
     expect(await server.get('/livez'), isNull);
   }, timeout: const Timeout(Duration(minutes: 2)));
 
+  // Scenario: Invalid entry stops start-up (realtime-bus → Trusted proxies
+  // are configured at start), through the production start path.
+  test('an invalid KANAME_TRUSTED_PROXIES entry refuses start and names the '
+      'first invalid entry', () async {
+    final database = await ScratchDatabase.create();
+    addTearDown(database.drop);
+    final server = await ServerProcess.start(
+      arguments: ['--apply-migrations'],
+      environment: {
+        'SERVERPOD_DATABASE_NAME': database.name,
+        'KANAME_TRUSTED_PROXIES': '172.30.0.0/33,caddy',
+      },
+    );
+    addTearDown(server.stop);
+    expect(
+      await server.exitCode.timeout(const Duration(seconds: 35)),
+      isNonZero,
+    );
+    expect(server.output, contains('KANAME_TRUSTED_PROXIES'));
+    expect(server.output, contains('"172.30.0.0/33"'));
+    expect(server.output, isNot(contains('"caddy"')));
+    expect(await server.get('/livez'), isNull);
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
   test('a client subscribed while startup is held after the API listener '
       'binds gets none within 20 s, before startup ends', () async {
     final database = await ScratchDatabase.create();

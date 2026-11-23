@@ -399,7 +399,20 @@ void main() {
 
     test("a host browser's streams count for the gateway with no "
         'forwarded-header warning', () async {
+      // A fresh server container: its log and its warning cooldowns hold
+      // nothing from the earlier tests' refusals, so the warning below is
+      // this scenario's own.
+      final recreated = await compose([
+        'up',
+        '--detach',
+        '--no-build',
+        '--no-deps',
+        '--force-recreate',
+        'server',
+      ]);
+      expect(recreated.exitCode, 0, reason: recreated.output);
       await waitUntilReady();
+      expect(await serverLogs(), isNot(contains('client limit,')));
       final gateway = await stackGateway();
       final host = stackClient(stackOrigin);
       await holdEveryPlace(host);
