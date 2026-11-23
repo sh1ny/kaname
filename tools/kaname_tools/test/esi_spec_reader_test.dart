@@ -152,7 +152,11 @@ void main() {
       expect(price.variants.first.payload.shape, isA<EsiNumberShape>());
       expect(
         spec.schemas['Empty']!.shape,
-        isA<EsiObjectShape>().having((s) => s.properties, 'properties', {}),
+        isA<EsiObjectShape>().having(
+          (s) => s.properties,
+          'properties',
+          isEmpty,
+        ),
       );
     });
   });

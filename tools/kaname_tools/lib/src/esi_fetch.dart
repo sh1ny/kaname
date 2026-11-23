@@ -161,9 +161,8 @@ final class EsiFetcher {
     this._fileSystem,
     this._downloader, {
     String Function()? uniqueToken,
-    Future<void> Function(EsiFetchStep step)? onStep,
-  }) : _uniqueToken = uniqueToken ?? _randomToken,
-       _onStep = onStep;
+    this._onStep,
+  }) : _uniqueToken = uniqueToken ?? _randomToken;
 
   final FileSystem _fileSystem;
   final EsiDownloader _downloader;
