@@ -36,6 +36,10 @@ With a server address, the app SHALL subscribe to the build-change stream when i
 - **WHEN** a desktop or mobile build has no server address
 - **THEN** the app subscribes to nothing, downloads nothing and keeps any bundle it holds
 
+#### Scenario: Server refuses the subscription
+- **WHEN** the app holds build N's bundle and the server refuses its subscription by ending the stream without an event, twice in a row
+- **THEN** the app keeps build N's bundle in use, subscribes again 5 seconds after the first refusal and 10 seconds after the second, and sends no other request to learn the announced build
+
 ### Requirement: Failed downloads keep the old bundle and retry
 A download that fails (a 503 included), or a bundle a reader refuses, SHALL leave the bundle in use unchanged. The app SHALL retry after 1 minute, doubling to at most 30 minutes, and at once only when the stream announces another bundle or the user asks to download now; a reconnect announcing the same bundle SHALL NOT bypass the wait.
 
