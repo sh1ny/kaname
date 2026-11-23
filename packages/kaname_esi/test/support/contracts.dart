@@ -6,8 +6,8 @@ import 'package:test/test.dart';
 import 'exchanges.dart';
 
 /// One asserted fact of a contract: what is checked, the value seen and
-/// the exact expectation.
-typedef ContractFact = (String what, Object? actual, Matcher expected);
+/// the exact expectation: a value or a [Matcher].
+typedef ContractFact = (String what, Object? actual, Object? expected);
 
 /// Calls the generated method of an exchange's operation over the
 /// exchange's transport and returns the facts its test asserts.

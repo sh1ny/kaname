@@ -823,8 +823,7 @@ final class _Renderer {
 
   _Ty _bounded(_Scalar base, String function, Map<String, num?> bounds) {
     final stated = {
-      for (final MapEntry(:key, :value) in bounds.entries)
-        if (value != null) key: value,
+      for (final MapEntry(:key, :value) in bounds.entries) key: ?value,
     };
     return stated.isEmpty ? base : _Bounded(base, function, stated);
   }

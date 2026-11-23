@@ -4,7 +4,6 @@ import 'cli.dart';
 import 'esi_fetch.dart';
 import 'esi_generate.dart';
 import 'esi_pin.dart';
-import 'esi_render.dart';
 import 'file_system.dart';
 
 /// The `esi` command: the pinned ESI spec and the client generated from it.
