@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'src/generated/serverpod.dart';
+import 'src/network/trusted_proxies.dart';
+import 'src/static_data/bundle_announcement_runtime.dart';
 import 'src/static_data/bundle_announcer_start.dart';
 import 'src/static_data/bundle_route.dart';
 import 'src/static_data/report_route.dart';
@@ -24,7 +28,9 @@ Future<void> run(List<String> args) => serve(Serverpod(args));
 ///
 /// [run] builds its pod from the command line; tests pass one built for
 /// them, so they exercise this same order (C29).
-/// Refuses to start with a database pool smaller than 16 connections (D28).
+/// Refuses to start with a database pool smaller than 16 connections (D28),
+/// or with an entry of `KANAME_TRUSTED_PROXIES` that is not an IP address
+/// or CIDR range: the [TrustedProxiesError] names it.
 Future<void> serve(Serverpod pod) async {
   final maxConnections =
       pod.config.database?.maxConnectionCount ??
@@ -34,6 +40,9 @@ Future<void> serve(Serverpod pod) async {
       'maxConnectionCount must be at least 16 (configured: $maxConnections)',
     );
   }
+  bundleAnnouncementRuntime.trustedProxies = readTrustedProxies(
+    Platform.environment,
+  );
 
   final announcer = buildBundleAnnouncer(pod);
   pod.server.addMiddleware(BundleRoute(announcer: announcer).middleware);

@@ -1,6 +1,7 @@
 import 'package:kaname_core/kaname_core.dart';
 
 import '../generated/protocol.dart';
+import '../network/trusted_proxies.dart';
 import '../realtime/server_clock.dart';
 import 'bundle_announcer.dart';
 
@@ -28,6 +29,10 @@ final class BundleAnnouncementRuntime {
   /// The clock the streams' 30-minute lives run on.
   ServerClock clock = const SystemClock();
 
+  /// The proxies trusted to name their client in `X-Forwarded-For`, read
+  /// from `KANAME_TRUSTED_PROXIES` at start-up (D2); tests replace them.
+  TrustedProxies trustedProxies = TrustedProxies.none;
+
   /// How many announcement streams the server holds at most (C20); tests
   /// lower it to fill the place of one stream.
   int maxStreams = defaultMaxStreams;
@@ -46,6 +51,7 @@ final class BundleAnnouncementRuntime {
     bus = null;
     scope = null;
     clock = const SystemClock();
+    trustedProxies = TrustedProxies.none;
     maxStreams = defaultMaxStreams;
     openStreams = 0;
     endedByServer = 0;
