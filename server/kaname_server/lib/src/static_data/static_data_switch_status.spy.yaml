@@ -1,0 +1,9 @@
+### A switch or rollback without private failure text (D15).
+class: StaticDataSwitchStatus
+fields:
+  kind: SdeSwitchKind
+  fromBuild: int?
+  toBuild: int
+  at: DateTime
+  outcome: SdeSwitchOutcome
+  reason: PublicReason?

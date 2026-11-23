@@ -1,0 +1,4 @@
+### The newest committed auto-update write, or none before the first write (D3).
+class: SettingRevision
+sealed: true
+fields: {}

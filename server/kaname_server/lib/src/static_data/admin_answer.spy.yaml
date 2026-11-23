@@ -1,0 +1,10 @@
+### Closed result of a static-data admin command (D4, D5, D9).
+class: AdminAnswer
+fields:
+  outcome: AdminAnswerOutcome
+  reason: PublicReason?
+  activeBuild: int?
+  operation: AdminOperationView?
+  pausedUntil: DateTime?
+  autoUpdate: bool?
+  settingRevision: SettingRevision?

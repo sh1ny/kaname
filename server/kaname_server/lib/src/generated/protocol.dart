@@ -17,7 +17,14 @@ import 'package:serverpod/serverpod.dart' as _is;
 
 import 'health/dependency_status.dart' as _iztepymd;
 import 'health/health_report.dart' as _if75m2mz;
+import 'static_data/admin_answer.dart' as _iyccfpu2;
+import 'static_data/admin_answer_outcome.dart' as _i6gkafob;
+import 'static_data/admin_key_result.dart' as _iu1ol9jl;
+import 'static_data/admin_operation_answer.dart' as _i7odid2e;
+import 'static_data/admin_operation_read_state.dart' as _ibihcb51;
+import 'static_data/admin_operation_view.dart' as _iduf9i0n;
 import 'static_data/bundle_announcement.dart' as _iothyv29;
+import 'static_data/public_reason.dart' as _i0rvs1mg;
 import 'static_data/sde_admin_operation.dart' as _i3kpj3vw;
 import 'static_data/sde_admin_operation_kind.dart' as _ix7ishv7;
 import 'static_data/sde_admin_operation_outcome.dart' as _iowegcqg;
@@ -41,6 +48,14 @@ import 'static_data/sde_setting_write.dart' as _i8e26cin;
 import 'static_data/sde_switch.dart' as _itdhfbzo;
 import 'static_data/sde_switch_kind.dart' as _iqktcwf1;
 import 'static_data/sde_switch_outcome.dart' as _icb88h1v;
+import 'static_data/setting_revision.dart' as _iotz1o7l;
+import 'static_data/static_data_ccp_latest.dart' as _imfnodj2;
+import 'static_data/static_data_check_status.dart' as _i58p74ek;
+import 'static_data/static_data_diff_status.dart' as _ivtfyb9n;
+import 'static_data/static_data_import_status.dart' as _igmz1uai;
+import 'static_data/static_data_status.dart' as _i4ollqgk;
+import 'static_data/static_data_status_unavailable.dart' as _ixbsr0c1;
+import 'static_data/static_data_switch_status.dart' as _iidkva5e;
 import 'static_data/tables/sde_category.dart' as _ia9vf0pu;
 import 'static_data/tables/sde_constellation.dart' as _i99obepy;
 import 'static_data/tables/sde_dogma_attribute.dart' as _ighsxk4r;
@@ -56,7 +71,14 @@ import 'static_data/tables/sde_type.dart' as _i19vm38w;
 import 'static_data/tables/sde_type_dogma.dart' as _ib14m8bx;
 export 'health/dependency_status.dart';
 export 'health/health_report.dart';
+export 'static_data/admin_answer.dart';
+export 'static_data/admin_answer_outcome.dart';
+export 'static_data/admin_key_result.dart';
+export 'static_data/admin_operation_answer.dart';
+export 'static_data/admin_operation_read_state.dart';
+export 'static_data/admin_operation_view.dart';
 export 'static_data/bundle_announcement.dart';
+export 'static_data/public_reason.dart';
 export 'static_data/sde_admin_operation.dart';
 export 'static_data/sde_admin_operation_kind.dart';
 export 'static_data/sde_admin_operation_outcome.dart';
@@ -80,6 +102,14 @@ export 'static_data/sde_setting_write.dart';
 export 'static_data/sde_switch.dart';
 export 'static_data/sde_switch_kind.dart';
 export 'static_data/sde_switch_outcome.dart';
+export 'static_data/setting_revision.dart';
+export 'static_data/static_data_ccp_latest.dart';
+export 'static_data/static_data_check_status.dart';
+export 'static_data/static_data_diff_status.dart';
+export 'static_data/static_data_import_status.dart';
+export 'static_data/static_data_status.dart';
+export 'static_data/static_data_status_unavailable.dart';
+export 'static_data/static_data_switch_status.dart';
 export 'static_data/tables/sde_category.dart';
 export 'static_data/tables/sde_constellation.dart';
 export 'static_data/tables/sde_dogma_attribute.dart';
@@ -109,8 +139,16 @@ class Protocol extends _is.DatabaseSerializationManager
         types: const [
           _is.getType<_iztepymd.DependencyStatus>,
           _is.getType<_if75m2mz.HealthReport>,
+          _is.getType<_iyccfpu2.AdminAnswer>,
+          _is.getType<_i6gkafob.AdminAnswerOutcome>,
+          _is.getType<_iu1ol9jl.AdminKeyResult>,
+          _is.getType<_i7odid2e.AdminOperationAnswer>,
+          _is.getType<_ibihcb51.AdminOperationReadState>,
+          _is.getType<_iduf9i0n.AdminOperationView>,
           _is.getType<_iothyv29.BundleAnnouncementNamed>,
           _is.getType<_iothyv29.BundleAnnouncementNone>,
+          _is.getType<_iotz1o7l.NoWrites>,
+          _is.getType<_i0rvs1mg.PublicReason>,
           _is.getType<_i3kpj3vw.SdeAdminOperation>,
           _is.getType<_ix7ishv7.SdeAdminOperationKind>,
           _is.getType<_iowegcqg.SdeAdminOperationOutcome>,
@@ -134,6 +172,14 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_itdhfbzo.SdeSwitch>,
           _is.getType<_iqktcwf1.SdeSwitchKind>,
           _is.getType<_icb88h1v.SdeSwitchOutcome>,
+          _is.getType<_iotz1o7l.WriteRevision>,
+          _is.getType<_imfnodj2.StaticDataCcpLatest>,
+          _is.getType<_i58p74ek.StaticDataCheckStatus>,
+          _is.getType<_ivtfyb9n.StaticDataDiffStatus>,
+          _is.getType<_igmz1uai.StaticDataImportStatus>,
+          _is.getType<_i4ollqgk.StaticDataStatus>,
+          _is.getType<_ixbsr0c1.StaticDataStatusUnavailable>,
+          _is.getType<_iidkva5e.StaticDataSwitchStatus>,
           _is.getType<_ia9vf0pu.SdeCategory>,
           _is.getType<_i99obepy.SdeConstellation>,
           _is.getType<_ighsxk4r.SdeDogmaAttribute>,
@@ -149,8 +195,16 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_ib14m8bx.SdeTypeDogma>,
           _is.getType<_iztepymd.DependencyStatus?>,
           _is.getType<_if75m2mz.HealthReport?>,
+          _is.getType<_iyccfpu2.AdminAnswer?>,
+          _is.getType<_i6gkafob.AdminAnswerOutcome?>,
+          _is.getType<_iu1ol9jl.AdminKeyResult?>,
+          _is.getType<_i7odid2e.AdminOperationAnswer?>,
+          _is.getType<_ibihcb51.AdminOperationReadState?>,
+          _is.getType<_iduf9i0n.AdminOperationView?>,
           _is.getType<_iothyv29.BundleAnnouncementNamed?>,
           _is.getType<_iothyv29.BundleAnnouncementNone?>,
+          _is.getType<_iotz1o7l.NoWrites?>,
+          _is.getType<_i0rvs1mg.PublicReason?>,
           _is.getType<_i3kpj3vw.SdeAdminOperation?>,
           _is.getType<_ix7ishv7.SdeAdminOperationKind?>,
           _is.getType<_iowegcqg.SdeAdminOperationOutcome?>,
@@ -174,6 +228,14 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_itdhfbzo.SdeSwitch?>,
           _is.getType<_iqktcwf1.SdeSwitchKind?>,
           _is.getType<_icb88h1v.SdeSwitchOutcome?>,
+          _is.getType<_iotz1o7l.WriteRevision?>,
+          _is.getType<_imfnodj2.StaticDataCcpLatest?>,
+          _is.getType<_i58p74ek.StaticDataCheckStatus?>,
+          _is.getType<_ivtfyb9n.StaticDataDiffStatus?>,
+          _is.getType<_igmz1uai.StaticDataImportStatus?>,
+          _is.getType<_i4ollqgk.StaticDataStatus?>,
+          _is.getType<_ixbsr0c1.StaticDataStatusUnavailable?>,
+          _is.getType<_iidkva5e.StaticDataSwitchStatus?>,
           _is.getType<_ia9vf0pu.SdeCategory?>,
           _is.getType<_i99obepy.SdeConstellation?>,
           _is.getType<_ighsxk4r.SdeDogmaAttribute?>,
@@ -189,6 +251,8 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_ib14m8bx.SdeTypeDogma?>,
           _is.getType<_idp9h2tz.SdeJson?>,
           _is.getType<_idp9h2tz.SdeJson>,
+          _is.getType<Map<String, int>>,
+          _is.getType<Map<String, int>?>,
           _is.getType<_idp9h2tz.SdeJson?>,
         ],
         modules: const [_isp.Protocol.new],
@@ -196,8 +260,16 @@ class Protocol extends _is.DatabaseSerializationManager
           'SdeJson',
           'DependencyStatus',
           'HealthReport',
+          'AdminAnswer',
+          'AdminAnswerOutcome',
+          'AdminKeyResult',
+          'AdminOperationAnswer',
+          'AdminOperationReadState',
+          'AdminOperationView',
           'BundleAnnouncementNamed',
           'BundleAnnouncementNone',
+          'NoWrites',
+          'PublicReason',
           'SdeAdminOperation',
           'SdeAdminOperationKind',
           'SdeAdminOperationOutcome',
@@ -221,6 +293,14 @@ class Protocol extends _is.DatabaseSerializationManager
           'SdeSwitch',
           'SdeSwitchKind',
           'SdeSwitchOutcome',
+          'WriteRevision',
+          'StaticDataCcpLatest',
+          'StaticDataCheckStatus',
+          'StaticDataDiffStatus',
+          'StaticDataImportStatus',
+          'StaticDataStatus',
+          'StaticDataStatusUnavailable',
+          'StaticDataSwitchStatus',
           'SdeCategory',
           'SdeConstellation',
           'SdeDogmaAttribute',
@@ -2055,11 +2135,35 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _if75m2mz.HealthReport) {
       return _if75m2mz.HealthReport.fromJson(data) as T;
     }
+    if (t == _iyccfpu2.AdminAnswer) {
+      return _iyccfpu2.AdminAnswer.fromJson(data) as T;
+    }
+    if (t == _i6gkafob.AdminAnswerOutcome) {
+      return _i6gkafob.AdminAnswerOutcome.fromJson(data) as T;
+    }
+    if (t == _iu1ol9jl.AdminKeyResult) {
+      return _iu1ol9jl.AdminKeyResult.fromJson(data) as T;
+    }
+    if (t == _i7odid2e.AdminOperationAnswer) {
+      return _i7odid2e.AdminOperationAnswer.fromJson(data) as T;
+    }
+    if (t == _ibihcb51.AdminOperationReadState) {
+      return _ibihcb51.AdminOperationReadState.fromJson(data) as T;
+    }
+    if (t == _iduf9i0n.AdminOperationView) {
+      return _iduf9i0n.AdminOperationView.fromJson(data) as T;
+    }
     if (t == _iothyv29.BundleAnnouncementNamed) {
       return _iothyv29.BundleAnnouncementNamed.fromJson(data) as T;
     }
     if (t == _iothyv29.BundleAnnouncementNone) {
       return _iothyv29.BundleAnnouncementNone.fromJson(data) as T;
+    }
+    if (t == _iotz1o7l.NoWrites) {
+      return _iotz1o7l.NoWrites.fromJson(data) as T;
+    }
+    if (t == _i0rvs1mg.PublicReason) {
+      return _i0rvs1mg.PublicReason.fromJson(data) as T;
     }
     if (t == _i3kpj3vw.SdeAdminOperation) {
       return _i3kpj3vw.SdeAdminOperation.fromJson(data) as T;
@@ -2130,6 +2234,30 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _icb88h1v.SdeSwitchOutcome) {
       return _icb88h1v.SdeSwitchOutcome.fromJson(data) as T;
     }
+    if (t == _iotz1o7l.WriteRevision) {
+      return _iotz1o7l.WriteRevision.fromJson(data) as T;
+    }
+    if (t == _imfnodj2.StaticDataCcpLatest) {
+      return _imfnodj2.StaticDataCcpLatest.fromJson(data) as T;
+    }
+    if (t == _i58p74ek.StaticDataCheckStatus) {
+      return _i58p74ek.StaticDataCheckStatus.fromJson(data) as T;
+    }
+    if (t == _ivtfyb9n.StaticDataDiffStatus) {
+      return _ivtfyb9n.StaticDataDiffStatus.fromJson(data) as T;
+    }
+    if (t == _igmz1uai.StaticDataImportStatus) {
+      return _igmz1uai.StaticDataImportStatus.fromJson(data) as T;
+    }
+    if (t == _i4ollqgk.StaticDataStatus) {
+      return _i4ollqgk.StaticDataStatus.fromJson(data) as T;
+    }
+    if (t == _ixbsr0c1.StaticDataStatusUnavailable) {
+      return _ixbsr0c1.StaticDataStatusUnavailable.fromJson(data) as T;
+    }
+    if (t == _iidkva5e.StaticDataSwitchStatus) {
+      return _iidkva5e.StaticDataSwitchStatus.fromJson(data) as T;
+    }
     if (t == _ia9vf0pu.SdeCategory) {
       return _ia9vf0pu.SdeCategory.fromJson(data) as T;
     }
@@ -2176,6 +2304,33 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _is.getType<_if75m2mz.HealthReport?>()) {
       return (data != null ? _if75m2mz.HealthReport.fromJson(data) : null) as T;
     }
+    if (t == _is.getType<_iyccfpu2.AdminAnswer?>()) {
+      return (data != null ? _iyccfpu2.AdminAnswer.fromJson(data) : null) as T;
+    }
+    if (t == _is.getType<_i6gkafob.AdminAnswerOutcome?>()) {
+      return (data != null ? _i6gkafob.AdminAnswerOutcome.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_iu1ol9jl.AdminKeyResult?>()) {
+      return (data != null ? _iu1ol9jl.AdminKeyResult.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_i7odid2e.AdminOperationAnswer?>()) {
+      return (data != null
+              ? _i7odid2e.AdminOperationAnswer.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_ibihcb51.AdminOperationReadState?>()) {
+      return (data != null
+              ? _ibihcb51.AdminOperationReadState.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_iduf9i0n.AdminOperationView?>()) {
+      return (data != null ? _iduf9i0n.AdminOperationView.fromJson(data) : null)
+          as T;
+    }
     if (t == _is.getType<_iothyv29.BundleAnnouncementNamed?>()) {
       return (data != null
               ? _iothyv29.BundleAnnouncementNamed.fromJson(data)
@@ -2187,6 +2342,12 @@ class Protocol extends _is.DatabaseSerializationManager
               ? _iothyv29.BundleAnnouncementNone.fromJson(data)
               : null)
           as T;
+    }
+    if (t == _is.getType<_iotz1o7l.NoWrites?>()) {
+      return (data != null ? _iotz1o7l.NoWrites.fromJson(data) : null) as T;
+    }
+    if (t == _is.getType<_i0rvs1mg.PublicReason?>()) {
+      return (data != null ? _i0rvs1mg.PublicReason.fromJson(data) : null) as T;
     }
     if (t == _is.getType<_i3kpj3vw.SdeAdminOperation?>()) {
       return (data != null ? _i3kpj3vw.SdeAdminOperation.fromJson(data) : null)
@@ -2281,6 +2442,50 @@ class Protocol extends _is.DatabaseSerializationManager
       return (data != null ? _icb88h1v.SdeSwitchOutcome.fromJson(data) : null)
           as T;
     }
+    if (t == _is.getType<_iotz1o7l.WriteRevision?>()) {
+      return (data != null ? _iotz1o7l.WriteRevision.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_imfnodj2.StaticDataCcpLatest?>()) {
+      return (data != null
+              ? _imfnodj2.StaticDataCcpLatest.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_i58p74ek.StaticDataCheckStatus?>()) {
+      return (data != null
+              ? _i58p74ek.StaticDataCheckStatus.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_ivtfyb9n.StaticDataDiffStatus?>()) {
+      return (data != null
+              ? _ivtfyb9n.StaticDataDiffStatus.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_igmz1uai.StaticDataImportStatus?>()) {
+      return (data != null
+              ? _igmz1uai.StaticDataImportStatus.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_i4ollqgk.StaticDataStatus?>()) {
+      return (data != null ? _i4ollqgk.StaticDataStatus.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_ixbsr0c1.StaticDataStatusUnavailable?>()) {
+      return (data != null
+              ? _ixbsr0c1.StaticDataStatusUnavailable.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_iidkva5e.StaticDataSwitchStatus?>()) {
+      return (data != null
+              ? _iidkva5e.StaticDataSwitchStatus.fromJson(data)
+              : null)
+          as T;
+    }
     if (t == _is.getType<_ia9vf0pu.SdeCategory?>()) {
       return (data != null ? _ia9vf0pu.SdeCategory.fromJson(data) : null) as T;
     }
@@ -2334,6 +2539,20 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _idp9h2tz.SdeJson) {
       return _idp9h2tz.SdeJson.fromJson(data) as T;
     }
+    if (t == Map<String, int>) {
+      return (data as Map).map(
+        (k, v) => MapEntry(deserialize<String>(k), deserialize<int>(v)),
+      ) as T;
+    }
+    if (t == _is.getType<Map<String, int>?>()) {
+      return (data != null
+              ? (data as Map).map(
+                  (k, v) =>
+                      MapEntry(deserialize<String>(k), deserialize<int>(v)),
+                )
+              : null)
+          as T;
+    }
     if (t == _is.getType<_idp9h2tz.SdeJson?>()) {
       return (data != null ? _idp9h2tz.SdeJson.fromJson(data) : null) as T;
     }
@@ -2355,8 +2574,16 @@ class Protocol extends _is.DatabaseSerializationManager
       _idp9h2tz.SdeJson => 'SdeJson',
       _iztepymd.DependencyStatus => 'DependencyStatus',
       _if75m2mz.HealthReport => 'HealthReport',
+      _iyccfpu2.AdminAnswer => 'AdminAnswer',
+      _i6gkafob.AdminAnswerOutcome => 'AdminAnswerOutcome',
+      _iu1ol9jl.AdminKeyResult => 'AdminKeyResult',
+      _i7odid2e.AdminOperationAnswer => 'AdminOperationAnswer',
+      _ibihcb51.AdminOperationReadState => 'AdminOperationReadState',
+      _iduf9i0n.AdminOperationView => 'AdminOperationView',
       _iothyv29.BundleAnnouncementNamed => 'BundleAnnouncementNamed',
       _iothyv29.BundleAnnouncementNone => 'BundleAnnouncementNone',
+      _iotz1o7l.NoWrites => 'NoWrites',
+      _i0rvs1mg.PublicReason => 'PublicReason',
       _i3kpj3vw.SdeAdminOperation => 'SdeAdminOperation',
       _ix7ishv7.SdeAdminOperationKind => 'SdeAdminOperationKind',
       _iowegcqg.SdeAdminOperationOutcome => 'SdeAdminOperationOutcome',
@@ -2380,6 +2607,14 @@ class Protocol extends _is.DatabaseSerializationManager
       _itdhfbzo.SdeSwitch => 'SdeSwitch',
       _iqktcwf1.SdeSwitchKind => 'SdeSwitchKind',
       _icb88h1v.SdeSwitchOutcome => 'SdeSwitchOutcome',
+      _iotz1o7l.WriteRevision => 'WriteRevision',
+      _imfnodj2.StaticDataCcpLatest => 'StaticDataCcpLatest',
+      _i58p74ek.StaticDataCheckStatus => 'StaticDataCheckStatus',
+      _ivtfyb9n.StaticDataDiffStatus => 'StaticDataDiffStatus',
+      _igmz1uai.StaticDataImportStatus => 'StaticDataImportStatus',
+      _i4ollqgk.StaticDataStatus => 'StaticDataStatus',
+      _ixbsr0c1.StaticDataStatusUnavailable => 'StaticDataStatusUnavailable',
+      _iidkva5e.StaticDataSwitchStatus => 'StaticDataSwitchStatus',
       _ia9vf0pu.SdeCategory => 'SdeCategory',
       _i99obepy.SdeConstellation => 'SdeConstellation',
       _ighsxk4r.SdeDogmaAttribute => 'SdeDogmaAttribute',
@@ -2413,10 +2648,26 @@ class Protocol extends _is.DatabaseSerializationManager
         return 'DependencyStatus';
       case _if75m2mz.HealthReport():
         return 'HealthReport';
+      case _iyccfpu2.AdminAnswer():
+        return 'AdminAnswer';
+      case _i6gkafob.AdminAnswerOutcome():
+        return 'AdminAnswerOutcome';
+      case _iu1ol9jl.AdminKeyResult():
+        return 'AdminKeyResult';
+      case _i7odid2e.AdminOperationAnswer():
+        return 'AdminOperationAnswer';
+      case _ibihcb51.AdminOperationReadState():
+        return 'AdminOperationReadState';
+      case _iduf9i0n.AdminOperationView():
+        return 'AdminOperationView';
       case _iothyv29.BundleAnnouncementNamed():
         return 'BundleAnnouncementNamed';
       case _iothyv29.BundleAnnouncementNone():
         return 'BundleAnnouncementNone';
+      case _iotz1o7l.NoWrites():
+        return 'NoWrites';
+      case _i0rvs1mg.PublicReason():
+        return 'PublicReason';
       case _i3kpj3vw.SdeAdminOperation():
         return 'SdeAdminOperation';
       case _ix7ishv7.SdeAdminOperationKind():
@@ -2463,6 +2714,22 @@ class Protocol extends _is.DatabaseSerializationManager
         return 'SdeSwitchKind';
       case _icb88h1v.SdeSwitchOutcome():
         return 'SdeSwitchOutcome';
+      case _iotz1o7l.WriteRevision():
+        return 'WriteRevision';
+      case _imfnodj2.StaticDataCcpLatest():
+        return 'StaticDataCcpLatest';
+      case _i58p74ek.StaticDataCheckStatus():
+        return 'StaticDataCheckStatus';
+      case _ivtfyb9n.StaticDataDiffStatus():
+        return 'StaticDataDiffStatus';
+      case _igmz1uai.StaticDataImportStatus():
+        return 'StaticDataImportStatus';
+      case _i4ollqgk.StaticDataStatus():
+        return 'StaticDataStatus';
+      case _ixbsr0c1.StaticDataStatusUnavailable():
+        return 'StaticDataStatusUnavailable';
+      case _iidkva5e.StaticDataSwitchStatus():
+        return 'StaticDataSwitchStatus';
       case _ia9vf0pu.SdeCategory():
         return 'SdeCategory';
       case _i99obepy.SdeConstellation():
@@ -2512,11 +2779,35 @@ class Protocol extends _is.DatabaseSerializationManager
     if (dataClassName == 'HealthReport') {
       return deserialize<_if75m2mz.HealthReport>(data['data']);
     }
+    if (dataClassName == 'AdminAnswer') {
+      return deserialize<_iyccfpu2.AdminAnswer>(data['data']);
+    }
+    if (dataClassName == 'AdminAnswerOutcome') {
+      return deserialize<_i6gkafob.AdminAnswerOutcome>(data['data']);
+    }
+    if (dataClassName == 'AdminKeyResult') {
+      return deserialize<_iu1ol9jl.AdminKeyResult>(data['data']);
+    }
+    if (dataClassName == 'AdminOperationAnswer') {
+      return deserialize<_i7odid2e.AdminOperationAnswer>(data['data']);
+    }
+    if (dataClassName == 'AdminOperationReadState') {
+      return deserialize<_ibihcb51.AdminOperationReadState>(data['data']);
+    }
+    if (dataClassName == 'AdminOperationView') {
+      return deserialize<_iduf9i0n.AdminOperationView>(data['data']);
+    }
     if (dataClassName == 'BundleAnnouncementNamed') {
       return deserialize<_iothyv29.BundleAnnouncementNamed>(data['data']);
     }
     if (dataClassName == 'BundleAnnouncementNone') {
       return deserialize<_iothyv29.BundleAnnouncementNone>(data['data']);
+    }
+    if (dataClassName == 'NoWrites') {
+      return deserialize<_iotz1o7l.NoWrites>(data['data']);
+    }
+    if (dataClassName == 'PublicReason') {
+      return deserialize<_i0rvs1mg.PublicReason>(data['data']);
     }
     if (dataClassName == 'SdeAdminOperation') {
       return deserialize<_i3kpj3vw.SdeAdminOperation>(data['data']);
@@ -2586,6 +2877,30 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (dataClassName == 'SdeSwitchOutcome') {
       return deserialize<_icb88h1v.SdeSwitchOutcome>(data['data']);
+    }
+    if (dataClassName == 'WriteRevision') {
+      return deserialize<_iotz1o7l.WriteRevision>(data['data']);
+    }
+    if (dataClassName == 'StaticDataCcpLatest') {
+      return deserialize<_imfnodj2.StaticDataCcpLatest>(data['data']);
+    }
+    if (dataClassName == 'StaticDataCheckStatus') {
+      return deserialize<_i58p74ek.StaticDataCheckStatus>(data['data']);
+    }
+    if (dataClassName == 'StaticDataDiffStatus') {
+      return deserialize<_ivtfyb9n.StaticDataDiffStatus>(data['data']);
+    }
+    if (dataClassName == 'StaticDataImportStatus') {
+      return deserialize<_igmz1uai.StaticDataImportStatus>(data['data']);
+    }
+    if (dataClassName == 'StaticDataStatus') {
+      return deserialize<_i4ollqgk.StaticDataStatus>(data['data']);
+    }
+    if (dataClassName == 'StaticDataStatusUnavailable') {
+      return deserialize<_ixbsr0c1.StaticDataStatusUnavailable>(data['data']);
+    }
+    if (dataClassName == 'StaticDataSwitchStatus') {
+      return deserialize<_iidkva5e.StaticDataSwitchStatus>(data['data']);
     }
     if (dataClassName == 'SdeCategory') {
       return deserialize<_ia9vf0pu.SdeCategory>(data['data']);

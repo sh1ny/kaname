@@ -1,0 +1,3 @@
+### Static-data status could not be read. No database detail is returned (D2, C2).
+exception: StaticDataStatusUnavailable
+fields: {}

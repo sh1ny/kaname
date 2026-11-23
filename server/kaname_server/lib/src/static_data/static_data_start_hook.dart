@@ -88,6 +88,7 @@ StaticDataStartHook? staticDataStartHookFor({
   final dedicatedSettingsReady = Completer<void>();
   PostgresConnectionSettings settingsForDedicatedSession() =>
       settings ?? (throw StateError('Postgres settings not ready'));
+  late final AdmissionRecovery recovery;
   final supervisor = WorkerSupervisor(
     name: 'compute',
     spawn: spawn ?? isolateComputeWorkerSpawn(),
@@ -104,6 +105,15 @@ StaticDataStartHook? staticDataStartHookFor({
     terminateBackend: (backend) =>
         withSession((session) => terminateBackend(session, backend)),
     log: log,
+    onRunning: () => recovery.observeWorkerReadiness(),
+  );
+  recovery = AdmissionRecovery(
+    open: () => openAdmissionConnection(
+      settingsForDedicatedSession(),
+      applicationName: 'kaname-admin-recovery',
+    ),
+    log: log,
+    workerReady: () => supervisor.isRunning,
   );
   return StaticDataStartHook(
     supervisor: supervisor,
@@ -120,14 +130,7 @@ StaticDataStartHook? staticDataStartHookFor({
       log: log,
       onBuildChange: () => announcer?.request(),
     ),
-    recovery: AdmissionRecovery(
-      open: () => openAdmissionConnection(
-        settingsForDedicatedSession(),
-        applicationName: 'kaname-admin-recovery',
-      ),
-      log: log,
-      workerReady: () => supervisor.isRunning,
-    ),
+    recovery: recovery,
     dedicatedSettingsReady: dedicatedSettingsReady.future,
   );
 }

@@ -41,9 +41,19 @@ final class AdmissionRecovery {
   bool _started = false;
   bool _stopped = false;
   bool _recovered = false;
+  bool _opened = false;
 
-  /// Admission requires both an acknowledged recovery and a ready worker.
-  bool get admissionOpen => !_stopped && _recovered && workerReady();
+  /// Whether the startup gate has opened. A subsequent worker exit does not
+  /// close it; stored ids must still be replayable while the worker is down.
+  bool get admissionOpen {
+    observeWorkerReadiness();
+    return !_stopped && _opened;
+  }
+
+  /// Observes a running worker; only opens after recovery itself committed.
+  void observeWorkerReadiness() {
+    if (!_stopped && !_opened && _recovered && workerReady()) _opened = true;
+  }
 
   /// Whether abandoned close has left an orphan for over 60 s.
   bool get recoveryStuck => _connection.stuck;
@@ -84,6 +94,7 @@ final class AdmissionRecovery {
     );
     if (_stopped || committed != true) return;
     _recovered = true;
+    observeWorkerReadiness();
     _retry?.cancel();
   }
 }

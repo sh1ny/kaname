@@ -89,6 +89,7 @@ final class WorkerSupervisor {
     required this._log,
     DateTime Function()? now,
     Delay? delay,
+    this.onRunning,
   }) : _now = now ?? DateTime.now,
        _delay = delay ?? Future<void>.delayed;
 
@@ -113,6 +114,9 @@ final class WorkerSupervisor {
 
   /// The worker's name, used in logs.
   final String name;
+
+  /// Observes each worker becoming available, including after a restart.
+  final void Function()? onRunning;
 
   final SpawnWorker _spawn;
   final ResolvePostgresSettings _resolveSettings;
@@ -322,6 +326,7 @@ final class WorkerSupervisor {
     final replies = process.replies.listen(_onReply);
     _process = process;
     if (!_ready.isCompleted) _ready.complete();
+    onRunning?.call();
     final reason = await process.exited;
     _process = null;
     await replies.cancel();

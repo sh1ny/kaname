@@ -1,0 +1,4 @@
+### No auto-update write has committed yet (D3).
+class: NoWrites
+extends: SettingRevision
+fields: {}

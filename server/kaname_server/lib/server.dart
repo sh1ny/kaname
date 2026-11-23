@@ -1,6 +1,7 @@
 import 'src/generated/serverpod.dart';
 import 'src/static_data/bundle_announcer_start.dart';
 import 'src/static_data/bundle_route.dart';
+import 'src/static_data/static_data_access.dart';
 import 'src/static_data/static_data_start.dart';
 
 /// Starts the Serverpod server with the generated protocol and endpoints.
@@ -41,6 +42,7 @@ Future<void> serve(Serverpod pod) async {
   // announcement's limit runs from before that (C29).
   announcer.armFirstInstall();
   await pod.start();
+  StaticDataAccess.forPod(pod);
   startBundleAnnouncer(pod, announcer);
   startStaticData(pod);
 }

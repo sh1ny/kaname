@@ -4,7 +4,9 @@ import 'package:kaname_core/kaname_core.dart';
 import 'package:serverpod/serverpod.dart';
 
 import '../generated/protocol.dart';
+import 'admin_operation_reader.dart';
 import 'bundle_announcement_runtime.dart';
+import 'static_data_access.dart';
 import 'static_data_bundle_topic.dart';
 
 /// How long one announcement stream lives before the server ends it (C20).
@@ -15,6 +17,18 @@ const Duration announcementStreamLifetime = Duration(minutes: 30);
 class StaticDataEndpoint extends Endpoint {
   @override
   bool get requireLogin => false;
+
+  /// Reads a bounded public status snapshot without requiring sign-in (D2).
+  Future<StaticDataStatus> status(Session session) async =>
+      await StaticDataAccess.forPod(session.serverpod).status.status() ??
+      (throw StaticDataStatusUnavailable());
+
+  /// Reads only the requested operation's durable progress (D9, D21).
+  Future<AdminOperationAnswer> operation(Session session, String operationId) =>
+      readPublicAdminOperation(
+        StaticDataAccess.forPod(session.serverpod),
+        operationId,
+      );
 
   /// Streams the announcement of the bundle the app may download.
   ///

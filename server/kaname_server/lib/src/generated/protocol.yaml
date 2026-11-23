@@ -1,4 +1,11 @@
 health:
   - check:
+staticDataAdmin:
+  - checkKey:
+  - updateNow:
+  - rollBack:
+  - setAutoUpdate:
 staticData:
+  - status:
+  - operation:
   - bundleAnnouncements:

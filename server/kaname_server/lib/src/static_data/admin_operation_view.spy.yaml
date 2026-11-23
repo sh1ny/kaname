@@ -1,0 +1,7 @@
+### The durable terminal evidence of an admin operation (D21, C2).
+class: AdminOperationView
+fields:
+  outcome: SdeAdminOperationOutcome
+  reason: PublicReason?
+  activeBuild: int?
+  changedBuilds: bool

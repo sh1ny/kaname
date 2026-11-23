@@ -11,9 +11,12 @@
 
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'package:kaname_server/src/generated/future_calls.dart' as _ibdqg5o2;
+import 'package:kaname_server/src/generated/static_data/setting_revision.dart'
+    as _isqu85ty;
 import 'package:serverpod/serverpod.dart' as _is;
 
 import '../health/health_endpoint.dart' as _id9paj9q;
+import '../static_data/static_data_admin_endpoint.dart' as _i18bqoi9;
 import '../static_data/static_data_endpoint.dart' as _ije194qr;
 export 'future_calls.dart' show ServerpodFutureCallsGetter;
 
@@ -27,6 +30,8 @@ class Endpoints extends _is.EndpointDispatch {
   void initializeOwnEndpoints(_is.Server server) {
     var endpoints = <String, _is.Endpoint>{
       'health': _id9paj9q.HealthEndpoint()..initialize(server, 'health', null),
+      'staticDataAdmin': _i18bqoi9.StaticDataAdminEndpoint()
+        ..initialize(server, 'staticDataAdmin', null),
       'staticData': _ije194qr.StaticDataEndpoint()
         ..initialize(server, 'staticData', null),
     };
@@ -42,10 +47,138 @@ class Endpoints extends _is.EndpointDispatch {
         ),
       },
     );
+    connectors['staticDataAdmin'] = _is.EndpointConnector(
+      name: 'staticDataAdmin',
+      endpoint: endpoints['staticDataAdmin']!,
+      methodConnectors: {
+        'checkKey': _is.MethodConnector(
+          name: 'checkKey',
+          params: {
+            'adminKey': _is.ParameterDescription(
+              name: 'adminKey',
+              type: _is.getType<String>(),
+              nullable: false,
+            ),
+          },
+          call: (_is.Session session, Map<String, dynamic> params) async =>
+              (endpoints['staticDataAdmin']
+                      as _i18bqoi9.StaticDataAdminEndpoint)
+                  .checkKey(session, params['adminKey']),
+        ),
+        'updateNow': _is.MethodConnector(
+          name: 'updateNow',
+          params: {
+            'adminKey': _is.ParameterDescription(
+              name: 'adminKey',
+              type: _is.getType<String>(),
+              nullable: false,
+            ),
+            'operationId': _is.ParameterDescription(
+              name: 'operationId',
+              type: _is.getType<String>(),
+              nullable: false,
+            ),
+          },
+          call: (_is.Session session, Map<String, dynamic> params) async =>
+              (endpoints['staticDataAdmin']
+                      as _i18bqoi9.StaticDataAdminEndpoint)
+                  .updateNow(
+                    session,
+                    params['adminKey'],
+                    params['operationId'],
+                  ),
+        ),
+        'rollBack': _is.MethodConnector(
+          name: 'rollBack',
+          params: {
+            'adminKey': _is.ParameterDescription(
+              name: 'adminKey',
+              type: _is.getType<String>(),
+              nullable: false,
+            ),
+            'operationId': _is.ParameterDescription(
+              name: 'operationId',
+              type: _is.getType<String>(),
+              nullable: false,
+            ),
+            'expectedRevision': _is.ParameterDescription(
+              name: 'expectedRevision',
+              type: _is.getType<int>(),
+              nullable: false,
+            ),
+          },
+          call: (_is.Session session, Map<String, dynamic> params) async =>
+              (endpoints['staticDataAdmin']
+                      as _i18bqoi9.StaticDataAdminEndpoint)
+                  .rollBack(
+                    session,
+                    params['adminKey'],
+                    params['operationId'],
+                    params['expectedRevision'],
+                  ),
+        ),
+        'setAutoUpdate': _is.MethodConnector(
+          name: 'setAutoUpdate',
+          params: {
+            'adminKey': _is.ParameterDescription(
+              name: 'adminKey',
+              type: _is.getType<String>(),
+              nullable: false,
+            ),
+            'value': _is.ParameterDescription(
+              name: 'value',
+              type: _is.getType<bool>(),
+              nullable: false,
+            ),
+            'expectedRevision': _is.ParameterDescription(
+              name: 'expectedRevision',
+              type: _is.getType<_isqu85ty.SettingRevision>(),
+              nullable: false,
+            ),
+            'writeId': _is.ParameterDescription(
+              name: 'writeId',
+              type: _is.getType<String>(),
+              nullable: false,
+            ),
+          },
+          call: (_is.Session session, Map<String, dynamic> params) async =>
+              (endpoints['staticDataAdmin']
+                      as _i18bqoi9.StaticDataAdminEndpoint)
+                  .setAutoUpdate(
+                    session,
+                    params['adminKey'],
+                    params['value'],
+                    params['expectedRevision'],
+                    params['writeId'],
+                  ),
+        ),
+      },
+    );
     connectors['staticData'] = _is.EndpointConnector(
       name: 'staticData',
       endpoint: endpoints['staticData']!,
       methodConnectors: {
+        'status': _is.MethodConnector(
+          name: 'status',
+          params: {},
+          call: (_is.Session session, Map<String, dynamic> params) async =>
+              (endpoints['staticData'] as _ije194qr.StaticDataEndpoint).status(
+                session,
+              ),
+        ),
+        'operation': _is.MethodConnector(
+          name: 'operation',
+          params: {
+            'operationId': _is.ParameterDescription(
+              name: 'operationId',
+              type: _is.getType<String>(),
+              nullable: false,
+            ),
+          },
+          call: (_is.Session session, Map<String, dynamic> params) async =>
+              (endpoints['staticData'] as _ije194qr.StaticDataEndpoint)
+                  .operation(session, params['operationId']),
+        ),
         'bundleAnnouncements': _is.MethodStreamConnector(
           name: 'bundleAnnouncements',
           params: {},

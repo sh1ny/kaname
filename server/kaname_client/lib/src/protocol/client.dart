@@ -15,8 +15,16 @@ import 'dart:async' as _ida;
 import 'package:http/http.dart' as _i85jenna;
 import 'package:kaname_client/src/protocol/health/health_report.dart'
     as _ipujyub9;
+import 'package:kaname_client/src/protocol/static_data/admin_answer.dart'
+    as _ix017a22;
+import 'package:kaname_client/src/protocol/static_data/admin_operation_answer.dart'
+    as _imdz7n5d;
 import 'package:kaname_client/src/protocol/static_data/bundle_announcement.dart'
     as _ibnxtke0;
+import 'package:kaname_client/src/protocol/static_data/setting_revision.dart'
+    as _i4m0ll8r;
+import 'package:kaname_client/src/protocol/static_data/static_data_status.dart'
+    as _iewgw5zo;
 import 'package:serverpod_client/serverpod_client.dart' as _isc;
 
 import 'protocol.dart' as _il2as5qe;
@@ -42,6 +50,72 @@ class EndpointHealth extends _isc.EndpointRef {
       caller.callServerEndpoint<_ipujyub9.HealthReport>('health', 'check', {});
 }
 
+/// Key-gated static-data commands; the key is never persisted or logged.
+///
+/// C11: check the operation id before taking the slot and before dispatch.
+/// C21: settlement owns an admin job from before its admission insert until
+/// its durable row ends; an RPC timeout does not release the slot.
+/// C27: each admin database call takes one of two work tokens through its
+/// session cleanup; admission checks its deadline before the slot and insert.
+/// {@category Endpoint}
+class EndpointStaticDataAdmin extends _isc.EndpointRef {
+  EndpointStaticDataAdmin(_isc.EndpointCaller caller) : super(caller);
+
+  @override
+  String get name => 'staticDataAdmin';
+
+  /// Checks the install key without writing anything (D1, D6).
+  _ida.Future<_ix017a22.AdminAnswer> checkKey(String adminKey) =>
+      caller.callServerEndpoint<_ix017a22.AdminAnswer>(
+        'staticDataAdmin',
+        'checkKey',
+        {'adminKey': adminKey},
+      );
+
+  /// Starts an admitted CCP check (D4). The row owns its terminal outcome.
+  _ida.Future<_ix017a22.AdminAnswer> updateNow(
+    String adminKey,
+    String operationId,
+  ) => caller.callServerEndpoint<_ix017a22.AdminAnswer>(
+    'staticDataAdmin',
+    'updateNow',
+    {'adminKey': adminKey, 'operationId': operationId},
+  );
+
+  /// Restores only the build revision confirmed by the caller (D5, C14).
+  _ida.Future<_ix017a22.AdminAnswer> rollBack(
+    String adminKey,
+    String operationId,
+    int expectedRevision,
+  ) => caller.callServerEndpoint<_ix017a22.AdminAnswer>(
+    'staticDataAdmin',
+    'rollBack',
+    {
+      'adminKey': adminKey,
+      'operationId': operationId,
+      'expectedRevision': expectedRevision,
+    },
+  );
+
+  /// C31: applies a setting only at the confirmed revision. A replay of the
+  /// exact write id confirms the current value and revision, never overwrites.
+  _ida.Future<_ix017a22.AdminAnswer> setAutoUpdate(
+    String adminKey,
+    bool value,
+    _i4m0ll8r.SettingRevision expectedRevision,
+    String writeId,
+  ) => caller.callServerEndpoint<_ix017a22.AdminAnswer>(
+    'staticDataAdmin',
+    'setAutoUpdate',
+    {
+      'adminKey': adminKey,
+      'value': value,
+      'expectedRevision': expectedRevision,
+      'writeId': writeId,
+    },
+  );
+}
+
 /// The static-data endpoint: the announcement stream of the client data
 /// bundle.
 /// {@category Endpoint}
@@ -50,6 +124,22 @@ class EndpointStaticData extends _isc.EndpointRef {
 
   @override
   String get name => 'staticData';
+
+  /// Reads a bounded public status snapshot without requiring sign-in (D2).
+  _ida.Future<_iewgw5zo.StaticDataStatus> status() =>
+      caller.callServerEndpoint<_iewgw5zo.StaticDataStatus>(
+        'staticData',
+        'status',
+        {},
+      );
+
+  /// Reads only the requested operation's durable progress (D9, D21).
+  _ida.Future<_imdz7n5d.AdminOperationAnswer> operation(String operationId) =>
+      caller.callServerEndpoint<_imdz7n5d.AdminOperationAnswer>(
+        'staticData',
+        'operation',
+        {'operationId': operationId},
+      );
 
   /// Streams the announcement of the bundle the app may download.
   ///
@@ -107,16 +197,20 @@ class Client extends _isc.ServerpodClientShared {
          httpClientOverride: httpClientOverride,
        ) {
     health = EndpointHealth(this);
+    staticDataAdmin = EndpointStaticDataAdmin(this);
     staticData = EndpointStaticData(this);
   }
 
   late final EndpointHealth health;
+
+  late final EndpointStaticDataAdmin staticDataAdmin;
 
   late final EndpointStaticData staticData;
 
   @override
   Map<String, _isc.EndpointRef> get endpointRefLookup => {
     'health': health,
+    'staticDataAdmin': staticDataAdmin,
     'staticData': staticData,
   };
 

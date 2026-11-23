@@ -418,7 +418,7 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
         return SwitchUnconfirmed(build);
       }
       if (current == build) return BuildSwitched(build, replacedBuild: active);
-      final reason = 'unexpected error: ${describeFailure(error)}';
+      final reason = 'switch failed: ${describeFailure(error)}';
       await _bestEffort(
         'store failed switch',
         () => store.insertFailedSwitch(

@@ -8,6 +8,7 @@ environment:
   sdk: ^3.13.0
 
 dependencies:
+  crypto: ^3.0.8
   http: ^1.6.0
   kaname_core:
     path: ../../packages/kaname_core

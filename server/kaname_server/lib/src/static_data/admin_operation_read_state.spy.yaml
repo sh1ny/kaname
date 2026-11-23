@@ -1,0 +1,9 @@
+### Closed public operation-read outcomes (D9, D21).
+enum: AdminOperationReadState
+serialized: byName
+values:
+  - waiting
+  - running
+  - ended
+  - unknownOperation
+  - operationReadBusy

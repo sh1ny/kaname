@@ -151,7 +151,7 @@ final class RollbackJob implements Job<RollbackResult> {
       try {
         await store.inTransaction((writer) => writer.rollBack(at: at));
       } on Object catch (error) {
-        final reason = 'unexpected error: ${describeFailure(error)}';
+        final reason = 'switch failed: ${describeFailure(error)}';
         final failure = _failure(active, previous, at, reason);
         if (control case final admin?) {
           try {
