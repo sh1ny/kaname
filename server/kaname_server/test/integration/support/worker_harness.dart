@@ -5,7 +5,8 @@ import 'package:kaname_server/src/static_data/postgres_connection_settings.dart'
 import 'package:kaname_server/src/workers/compute_worker.dart';
 import 'package:kaname_server/src/workers/worker_messages.dart';
 import 'package:kaname_server/src/workers/worker_process.dart';
-import 'package:kaname_static_data/kaname_static_data.dart' show BuildBundle;
+import 'package:kaname_static_data/kaname_static_data.dart'
+    show BuildBundle, CheckTrigger;
 
 /// A compute worker isolate driven directly by a test, without a supervisor.
 ///
@@ -84,7 +85,9 @@ final class WorkerHarness {
   Future<WorkerReply> runBuildCheck(ImportSourceSpec source) {
     final id = _nextId++;
     final answer = waitFor<WorkerReply>((reply) => reply.requestId == id);
-    sendMessage(RunBuildCheck(requestId: id, source: source));
+    sendMessage(
+      RunBuildCheck(requestId: id, source: source, trigger: CheckTrigger.daily),
+    );
     return answer;
   }
 

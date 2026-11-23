@@ -1,0 +1,9 @@
+### An accepted auto-update write (D3).
+### The newest committed id is the setting revision and names the value in use.
+class: SdeSettingWrite
+table: sde_setting_write
+serverOnly: true
+fields:
+  writeId: UuidValue, unique
+  autoUpdate: bool
+  createdAt: DateTime

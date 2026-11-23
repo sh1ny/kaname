@@ -1,0 +1,10 @@
+### Outcomes of a public change-report read.
+enum: StaticDataReportOutcome
+serialized: byName
+values:
+  - reportReady
+  - noPreviousBuild
+  - reportMissing
+  - comparisonFailed
+  - reportTooLarge
+  - reportBusy

@@ -8,6 +8,7 @@ import 'server/ui/server_indicator.dart';
 import 'settings/logic/theme_choice_notifier.dart';
 import 'shell/logic/router.dart';
 import 'shell/logic/slot_registry.dart';
+import 'static_data/logic/server_static_data_status_notifier.dart';
 
 /// The Kaname app: the shell over the registry's destinations.
 ///
@@ -49,15 +50,18 @@ class _KanameAppState extends ConsumerState<KanameApp> {
   @override
   Widget build(BuildContext context) {
     final choice = ref.watch(themeChoiceProvider);
-    return MaterialApp.router(
-      onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
-      routerConfig: _router,
-      theme: EmberTheme.light(),
-      darkTheme: EmberTheme.dark(),
-      themeMode: choice.themeMode,
-      themeAnimationDuration: Duration.zero,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
+    return StaticDataSettingsVisibilityBinding(
+      router: _router,
+      child: MaterialApp.router(
+        onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
+        routerConfig: _router,
+        theme: EmberTheme.light(),
+        darkTheme: EmberTheme.dark(),
+        themeMode: choice.themeMode,
+        themeAnimationDuration: Duration.zero,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
     );
   }
 }

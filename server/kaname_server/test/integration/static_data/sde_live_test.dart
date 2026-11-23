@@ -100,6 +100,7 @@ String _describe(ImportResult result) => switch (result) {
   ImportSucceeded() => 'succeeded',
   ImportFailed(:final reason) => 'failed: $reason',
   ImportSkipped(:final reason) => 'skipped: $reason',
+  ImportUnconfirmed(:final reason) => reason,
 };
 
 /// What was counted while the job read the build.

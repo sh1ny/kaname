@@ -12,3 +12,6 @@ library;
 ///
 /// The value is the ASCII bytes of `KANAME` read as one integer.
 const int staticDataAdvisoryLockKey = 0x4B414E414D45;
+
+/// The separate D21 lock: shared for inserts and exclusive for recovery.
+const int staticDataAdmissionLockKey = 0x4B414E414D46;

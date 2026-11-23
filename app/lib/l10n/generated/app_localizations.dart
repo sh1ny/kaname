@@ -477,6 +477,900 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Update the app to load the latest static data. Search keeps using the data you have.'**
   String get searchNoticeAppUpdate;
+
+  /// Static data Settings label or message: Static data.
+  ///
+  /// In en, this message translates to:
+  /// **'Static data'**
+  String get sdTitle;
+
+  /// Static data Settings label or message: This app’s bundle.
+  ///
+  /// In en, this message translates to:
+  /// **'This app’s bundle'**
+  String get sdAppBundle;
+
+  /// Static data Settings label or message: In use.
+  ///
+  /// In en, this message translates to:
+  /// **'In use'**
+  String get sdInUse;
+
+  /// Static data Settings label or message: Announced build.
+  ///
+  /// In en, this message translates to:
+  /// **'Announced build'**
+  String get sdAnnounced;
+
+  /// Static data Settings label or message: Connection.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection'**
+  String get sdConnection;
+
+  /// Static data Settings label or message: Download.
+  ///
+  /// In en, this message translates to:
+  /// **'Download'**
+  String get sdDownload;
+
+  /// Static data Settings label or message: Last download.
+  ///
+  /// In en, this message translates to:
+  /// **'Last download'**
+  String get sdLastDownload;
+
+  /// Static data Settings label or message: Download now.
+  ///
+  /// In en, this message translates to:
+  /// **'Download now'**
+  String get sdDownloadNow;
+
+  /// Static data Settings label or message: Server status.
+  ///
+  /// In en, this message translates to:
+  /// **'Server status'**
+  String get sdServer;
+
+  /// Static data Settings label or message: No server configured.
+  ///
+  /// In en, this message translates to:
+  /// **'No server configured'**
+  String get sdNoServer;
+
+  /// Static data Settings label or message: Reading server status….
+  ///
+  /// In en, this message translates to:
+  /// **'Reading server status…'**
+  String get sdStatusLoading;
+
+  /// Static data Settings label or message: Server status unavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Server status unavailable'**
+  String get sdStatusUnavailable;
+
+  /// Static data Settings label or message: Refresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh'**
+  String get sdRefresh;
+
+  /// Static data Settings label or message: View change report.
+  ///
+  /// In en, this message translates to:
+  /// **'View change report'**
+  String get sdOpenReport;
+
+  /// Static data Settings label or message: None.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get sdNone;
+
+  /// Static data Settings label or message: Build build.
+  ///
+  /// In en, this message translates to:
+  /// **'Build {build}'**
+  String sdBuild(int build);
+
+  /// Static data Settings label or message: Waiting for the server.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the server'**
+  String get sdAwaitingServer;
+
+  /// Static data Settings label or message: Connected.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected'**
+  String get sdConnected;
+
+  /// Static data Settings label or message: Server unreachable, retrying at time.
+  ///
+  /// In en, this message translates to:
+  /// **'Server unreachable, retrying at {time}'**
+  String sdStreamDown(String time);
+
+  /// Static data Settings label or message: Server unreachable, reconnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Server unreachable, reconnecting'**
+  String get sdReconnecting;
+
+  /// Static data Settings label or message: Waiting for the first bundle.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the first bundle'**
+  String get sdAwaitingBundle;
+
+  /// Static data Settings label or message: Up to date.
+  ///
+  /// In en, this message translates to:
+  /// **'Up to date'**
+  String get sdUpToDate;
+
+  /// Static data Settings label or message: Downloading.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading'**
+  String get sdDownloading;
+
+  /// Static data Settings label or message: Waiting to retry at time: reason.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting to retry at {time}: {reason}'**
+  String sdDownloadWait(String time, String reason);
+
+  /// Static data Settings label or message: Server has no bundle yet.
+  ///
+  /// In en, this message translates to:
+  /// **'Server has no bundle yet'**
+  String get sdServerNoBundle;
+
+  /// Static data Settings label or message: App update needed.
+  ///
+  /// In en, this message translates to:
+  /// **'App update needed'**
+  String get sdAppUpdate;
+
+  /// Static data Settings label or message: network error.
+  ///
+  /// In en, this message translates to:
+  /// **'network error'**
+  String get sdNetworkError;
+
+  /// Static data Settings label or message: server error.
+  ///
+  /// In en, this message translates to:
+  /// **'server error'**
+  String get sdServerError;
+
+  /// Static data Settings label or message: bundle refused.
+  ///
+  /// In en, this message translates to:
+  /// **'bundle refused'**
+  String get sdRefusedBundle;
+
+  /// Static data Settings label or message: None yet.
+  ///
+  /// In en, this message translates to:
+  /// **'None yet'**
+  String get sdNoneYet;
+
+  /// Static data Settings label or message: Build build in use, saving.
+  ///
+  /// In en, this message translates to:
+  /// **'Build {build} in use, saving'**
+  String sdSaving(int build);
+
+  /// Static data Settings label or message: Build build stored at time.
+  ///
+  /// In en, this message translates to:
+  /// **'Build {build} stored at {time}'**
+  String sdStored(int build, String time);
+
+  /// Static data Settings label or message: Build build in use, not saved on this device.
+  ///
+  /// In en, this message translates to:
+  /// **'Build {build} in use, not saved on this device'**
+  String sdNotSaved(int build);
+
+  /// Static data Settings label or message: Build build failed at time: reason.
+  ///
+  /// In en, this message translates to:
+  /// **'Build {build} failed at {time}: {reason}'**
+  String sdDownloadFailed(int build, String time, String reason);
+
+  /// Static data Settings label or message: outcome: reason.
+  ///
+  /// In en, this message translates to:
+  /// **'{outcome}: {reason}'**
+  String sdWithReason(String outcome, String reason);
+
+  /// Static data Settings label or message: Switched.
+  ///
+  /// In en, this message translates to:
+  /// **'Switched'**
+  String get sdSwitched;
+
+  /// Static data Settings label or message: Held build.
+  ///
+  /// In en, this message translates to:
+  /// **'Held build'**
+  String get sdHeld;
+
+  /// Static data Settings label or message: Older than the active build.
+  ///
+  /// In en, this message translates to:
+  /// **'Older than the active build'**
+  String get sdOlder;
+
+  /// Static data Settings label or message: Staged build.
+  ///
+  /// In en, this message translates to:
+  /// **'Staged build'**
+  String get sdStaged;
+
+  /// Static data Settings label or message: Failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed'**
+  String get sdFailed;
+
+  /// Static data Settings label or message: result at time.
+  ///
+  /// In en, this message translates to:
+  /// **'{result} at {time}'**
+  String sdAt(String result, String time);
+
+  /// Static data Settings label or message: Work running.
+  ///
+  /// In en, this message translates to:
+  /// **'Work running'**
+  String get sdRunning;
+
+  /// Static data Settings label or message: Succeeded.
+  ///
+  /// In en, this message translates to:
+  /// **'Succeeded'**
+  String get sdSucceeded;
+
+  /// Static data Settings label or message: Skipped.
+  ///
+  /// In en, this message translates to:
+  /// **'Skipped'**
+  String get sdSkipped;
+
+  /// Static data Settings label or message: Switch failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Switch failed'**
+  String get sdSwitchFailed;
+
+  /// Static data Settings label or message: Rolled back.
+  ///
+  /// In en, this message translates to:
+  /// **'Rolled back'**
+  String get sdRolledBack;
+
+  /// Static data Settings label or message: Rollback failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Rollback failed'**
+  String get sdRollbackFailed;
+
+  /// Static data Settings label or message: outcome from from to to.
+  ///
+  /// In en, this message translates to:
+  /// **'{outcome} from {from} to {to}'**
+  String sdTransition(String outcome, String from, String to);
+
+  /// Static data Settings label or message: Worker stuck, restart the server.
+  ///
+  /// In en, this message translates to:
+  /// **'Worker stuck, restart the server'**
+  String get sdWorkerStuck;
+
+  /// Static data Settings label or message: Recovery stuck, restart the server.
+  ///
+  /// In en, this message translates to:
+  /// **'Recovery stuck, restart the server'**
+  String get sdRecoveryStuck;
+
+  /// Static data Settings label or message: Start-up stuck, restart the server.
+  ///
+  /// In en, this message translates to:
+  /// **'Start-up stuck, restart the server'**
+  String get sdStartupStuck;
+
+  /// Static data Settings label or message: Settlement stuck, restart the server.
+  ///
+  /// In en, this message translates to:
+  /// **'Settlement stuck, restart the server'**
+  String get sdSettlementStuck;
+
+  /// Static data Settings label or message: Static-data work.
+  ///
+  /// In en, this message translates to:
+  /// **'Static-data work'**
+  String get sdWork;
+
+  /// Static data Settings label or message: Idle.
+  ///
+  /// In en, this message translates to:
+  /// **'Idle'**
+  String get sdIdle;
+
+  /// Static data Settings label or message: Active build.
+  ///
+  /// In en, this message translates to:
+  /// **'Active build'**
+  String get sdActive;
+
+  /// Static data Settings label or message: Previous build.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous build'**
+  String get sdPrevious;
+
+  /// Static data Settings label or message: Build build, waiting to be switched to.
+  ///
+  /// In en, this message translates to:
+  /// **'Build {build}, waiting to be switched to'**
+  String sdWaitingToSwitch(int build);
+
+  /// Static data Settings label or message: Auto-update.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-update'**
+  String get sdAutoUpdate;
+
+  /// Static data Settings label or message: On.
+  ///
+  /// In en, this message translates to:
+  /// **'On'**
+  String get sdOn;
+
+  /// Static data Settings label or message: Off.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get sdOff;
+
+  /// Static data Settings label or message: CCP latest.
+  ///
+  /// In en, this message translates to:
+  /// **'CCP latest'**
+  String get sdCcpLatest;
+
+  /// Static data Settings label or message: Last check.
+  ///
+  /// In en, this message translates to:
+  /// **'Last check'**
+  String get sdLastCheck;
+
+  /// Static data Settings label or message: Last import.
+  ///
+  /// In en, this message translates to:
+  /// **'Last import'**
+  String get sdLastImport;
+
+  /// Heading above record counts for the files in the latest import.
+  ///
+  /// In en, this message translates to:
+  /// **'Import file counts'**
+  String get sdImportFileCounts;
+
+  /// Static data Settings label or message: Only some file counts are shown (count files total)..
+  ///
+  /// In en, this message translates to:
+  /// **'Only some file counts are shown ({count} files total).'**
+  String sdImportCountsCutOff(int count);
+
+  /// Static data Settings label or message: Last switch or rollback.
+  ///
+  /// In en, this message translates to:
+  /// **'Last switch or rollback'**
+  String get sdLastSwitch;
+
+  /// Static data Settings label or message: Could not reach CCP.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach CCP'**
+  String get sdReasonCcp;
+
+  /// Static data Settings label or message: Could not reach the database.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the database'**
+  String get sdReasonPostgres;
+
+  /// Static data Settings label or message: Timed out.
+  ///
+  /// In en, this message translates to:
+  /// **'Timed out'**
+  String get sdReasonTimeout;
+
+  /// Static data Settings label or message: Import already running.
+  ///
+  /// In en, this message translates to:
+  /// **'Import already running'**
+  String get sdReasonImportRunning;
+
+  /// Static data Settings label or message: A required file was missing.
+  ///
+  /// In en, this message translates to:
+  /// **'A required file was missing'**
+  String get sdReasonFile;
+
+  /// Static data Settings label or message: Comparison failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Comparison failed'**
+  String get sdReasonComparison;
+
+  /// Static data Settings label or message: Worker stopped.
+  ///
+  /// In en, this message translates to:
+  /// **'Worker stopped'**
+  String get sdReasonWorkerStopped;
+
+  /// Static data Settings label or message: Worker not running.
+  ///
+  /// In en, this message translates to:
+  /// **'Worker not running'**
+  String get sdReasonWorkerNotRunning;
+
+  /// Static data Settings label or message: Server restarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Server restarted'**
+  String get sdReasonRestart;
+
+  /// Static data Settings label or message: Outcome unknown.
+  ///
+  /// In en, this message translates to:
+  /// **'Outcome unknown'**
+  String get sdReasonUnknown;
+
+  /// Static data Settings label or message: Connection lost.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection lost'**
+  String get sdReasonConnection;
+
+  /// Public fallback for a failure whose details stay in the server log.
+  ///
+  /// In en, this message translates to:
+  /// **'Failed, see the server log'**
+  String get sdReasonOther;
+
+  /// Label for the session-only administrator key field.
+  ///
+  /// In en, this message translates to:
+  /// **'Admin key'**
+  String get sdAdminKey;
+
+  /// Submit the administrator key.
+  ///
+  /// In en, this message translates to:
+  /// **'Check key'**
+  String get sdAdminCheckKey;
+
+  /// Forget the current administrator key.
+  ///
+  /// In en, this message translates to:
+  /// **'Forget key'**
+  String get sdAdminForget;
+
+  /// Key verification is in progress.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking key…'**
+  String get sdAdminChecking;
+
+  /// The key check did not answer.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not check the key'**
+  String get sdAdminUnconfirmed;
+
+  /// Retry checking the held key.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get sdAdminRetryKey;
+
+  /// The server temporarily paused administrator calls.
+  ///
+  /// In en, this message translates to:
+  /// **'Too many attempts, try again in a minute'**
+  String get sdAdminPaused;
+
+  /// Check the held admin key after the pause.
+  ///
+  /// In en, this message translates to:
+  /// **'Check again'**
+  String get sdAdminCheckAgain;
+
+  /// The server rejected the key.
+  ///
+  /// In en, this message translates to:
+  /// **'Admin key rejected'**
+  String get sdAdminRejected;
+
+  /// The server accepted the key.
+  ///
+  /// In en, this message translates to:
+  /// **'Key accepted.'**
+  String get sdAdminAccepted;
+
+  /// The server has no administrator key configured.
+  ///
+  /// In en, this message translates to:
+  /// **'Admin actions are not configured on this server.'**
+  String get sdAdminNotConfigured;
+
+  /// The connection cannot safely carry an administrator key.
+  ///
+  /// In en, this message translates to:
+  /// **'Admin actions need a secure connection.'**
+  String get sdAdminSecureRequired;
+
+  /// Start a static-data update.
+  ///
+  /// In en, this message translates to:
+  /// **'Update now'**
+  String get sdAdminUpdate;
+
+  /// Roll back to the previous build.
+  ///
+  /// In en, this message translates to:
+  /// **'Roll back'**
+  String get sdAdminRollback;
+
+  /// Title of the rollback confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Roll back static data?'**
+  String get sdAdminRollbackTitle;
+
+  /// Confirmation naming the build to restore and the build to hold.
+  ///
+  /// In en, this message translates to:
+  /// **'Make build {build} active and hold build {active}?'**
+  String sdAdminRollbackQuestion(int build, int active);
+
+  /// Cancel the rollback confirmation.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get sdAdminCancel;
+
+  /// Label for the server auto-update switch.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-update'**
+  String get sdAdminAutoUpdate;
+
+  /// The auto-update setting is being saved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saving auto-update…'**
+  String get sdAdminSaving;
+
+  /// The auto-update write has an unknown outcome.
+  ///
+  /// In en, this message translates to:
+  /// **'Not confirmed'**
+  String get sdAdminSettingUnconfirmed;
+
+  /// Retry the same auto-update write.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get sdAdminRetrySetting;
+
+  /// The setting was saved.
+  ///
+  /// In en, this message translates to:
+  /// **'Auto-update saved.'**
+  String get sdAdminSettingConfirmed;
+
+  /// The setting changed since it was displayed.
+  ///
+  /// In en, this message translates to:
+  /// **'The setting was changed elsewhere'**
+  String get sdAdminSettingChanged;
+
+  /// The setting write failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Setting not saved'**
+  String get sdAdminSettingNotSaved;
+
+  /// A previous admin action is still pending or followed.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the last action.'**
+  String get sdAdminWaiting;
+
+  /// Public job lookup has not found the operation.
+  ///
+  /// In en, this message translates to:
+  /// **'The server has no record of this action yet.'**
+  String get sdAdminNoRecord;
+
+  /// Resend the same action with its original ID.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get sdAdminRetryJob;
+
+  /// An admin action is being sent.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending action…'**
+  String get sdAdminSending;
+
+  /// The server started the action.
+  ///
+  /// In en, this message translates to:
+  /// **'Work running.'**
+  String get sdAdminStarted;
+
+  /// Following an action whose answer is uncertain.
+  ///
+  /// In en, this message translates to:
+  /// **'No answer yet, watching the server'**
+  String get sdAdminWatching;
+
+  /// The rollback outcome is unknown, but the app is still watching the operation.
+  ///
+  /// In en, this message translates to:
+  /// **'Outcome unknown, watching the server'**
+  String get sdAdminOutcomeUnknownWatching;
+
+  /// Following expired without a terminal outcome.
+  ///
+  /// In en, this message translates to:
+  /// **'Outcome unknown, check the builds'**
+  String get sdAdminUnknown;
+
+  /// An action ended.
+  ///
+  /// In en, this message translates to:
+  /// **'Action ended.'**
+  String get sdAdminEnded;
+
+  /// An action was refused because an import is running.
+  ///
+  /// In en, this message translates to:
+  /// **'An import is running.'**
+  String get sdAdminImportRunning;
+
+  /// The server worker is unavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The worker is not running.'**
+  String get sdAdminWorkerDown;
+
+  /// The update failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Update failed.'**
+  String get sdAdminUpdateFailed;
+
+  /// The rollback failed.
+  ///
+  /// In en, this message translates to:
+  /// **'Rollback failed.'**
+  String get sdAdminRollbackFailed;
+
+  /// The rollback confirmation was stale.
+  ///
+  /// In en, this message translates to:
+  /// **'The builds changed, check them and try again'**
+  String get sdAdminBuildsChanged;
+
+  /// There is no build to roll back to.
+  ///
+  /// In en, this message translates to:
+  /// **'There is no previous build.'**
+  String get sdAdminNoPrevious;
+
+  /// The rollback completed.
+  ///
+  /// In en, this message translates to:
+  /// **'Rolled back.'**
+  String get sdAdminRolledBack;
+
+  /// The server refused a busy admin action.
+  ///
+  /// In en, this message translates to:
+  /// **'The server is busy, try again'**
+  String get sdAdminBusy;
+
+  /// The server rejected a malformed action.
+  ///
+  /// In en, this message translates to:
+  /// **'The server could not accept this action.'**
+  String get sdAdminMalformed;
+
+  /// The update switched builds.
+  ///
+  /// In en, this message translates to:
+  /// **'The new build is active.'**
+  String get sdAdminSwitched;
+
+  /// The update found no newer build.
+  ///
+  /// In en, this message translates to:
+  /// **'Static data is up to date.'**
+  String get sdAdminUpToDate;
+
+  /// The update held the build.
+  ///
+  /// In en, this message translates to:
+  /// **'The build is held.'**
+  String get sdAdminHeld;
+
+  /// The update found an older build.
+  ///
+  /// In en, this message translates to:
+  /// **'The available build is older.'**
+  String get sdAdminOlder;
+
+  /// The update staged a build.
+  ///
+  /// In en, this message translates to:
+  /// **'The new build is staged.'**
+  String get sdAdminStaged;
+
+  /// Title of the static data change report page.
+  ///
+  /// In en, this message translates to:
+  /// **'Change report'**
+  String get sdReportTitle;
+
+  /// Back control on the change report page.
+  ///
+  /// In en, this message translates to:
+  /// **'Back to Settings'**
+  String get sdReportBack;
+
+  /// Shown while the change report is loading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading the report…'**
+  String get sdReportLoading;
+
+  /// Shown when a report request fails or is busy.
+  ///
+  /// In en, this message translates to:
+  /// **'The report is unavailable'**
+  String get sdReportUnavailable;
+
+  /// Retries a change report request.
+  ///
+  /// In en, this message translates to:
+  /// **'Try again'**
+  String get sdReportRetry;
+
+  /// No previous static data build exists.
+  ///
+  /// In en, this message translates to:
+  /// **'No previous build to compare'**
+  String get sdReportNoPrevious;
+
+  /// The change report was not stored.
+  ///
+  /// In en, this message translates to:
+  /// **'No report was stored'**
+  String get sdReportMissing;
+
+  /// The static data comparison failed.
+  ///
+  /// In en, this message translates to:
+  /// **'The comparison failed'**
+  String get sdReportComparisonFailed;
+
+  /// The report exceeds the server size limit.
+  ///
+  /// In en, this message translates to:
+  /// **'The report is too large to show'**
+  String get sdReportTooLarge;
+
+  /// Heading for the two compared builds.
+  ///
+  /// In en, this message translates to:
+  /// **'Builds'**
+  String get sdReportBuilds;
+
+  /// The older build in the comparison.
+  ///
+  /// In en, this message translates to:
+  /// **'Previous build'**
+  String get sdReportFromBuild;
+
+  /// The newer build in the comparison.
+  ///
+  /// In en, this message translates to:
+  /// **'Active build'**
+  String get sdReportToBuild;
+
+  /// The report contains no files.
+  ///
+  /// In en, this message translates to:
+  /// **'No files to show'**
+  String get sdReportNoFiles;
+
+  /// Label for the file comparison type.
+  ///
+  /// In en, this message translates to:
+  /// **'File'**
+  String get sdReportFileType;
+
+  /// A file is present in both builds.
+  ///
+  /// In en, this message translates to:
+  /// **'In both builds'**
+  String get sdReportFileBoth;
+
+  /// A file was added in the new build.
+  ///
+  /// In en, this message translates to:
+  /// **'New file'**
+  String get sdReportFileNew;
+
+  /// A file was removed in the new build.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed file'**
+  String get sdReportFileRemoved;
+
+  /// Added records count and key list label.
+  ///
+  /// In en, this message translates to:
+  /// **'Added'**
+  String get sdReportAdded;
+
+  /// Removed records count and key list label.
+  ///
+  /// In en, this message translates to:
+  /// **'Removed'**
+  String get sdReportRemoved;
+
+  /// Changed records count and key list label.
+  ///
+  /// In en, this message translates to:
+  /// **'Changed'**
+  String get sdReportChanged;
+
+  /// Changed field count and list heading.
+  ///
+  /// In en, this message translates to:
+  /// **'Changed fields'**
+  String get sdReportFields;
+
+  /// Indicates a bounded list does not include all entries.
+  ///
+  /// In en, this message translates to:
+  /// **'List cut off'**
+  String get sdReportCutOff;
+
+  /// There are no keys in this list.
+  ///
+  /// In en, this message translates to:
+  /// **'No keys to show'**
+  String get sdReportNoKeys;
+
+  /// Heading for a list of changed record keys, with its complete count.
+  ///
+  /// In en, this message translates to:
+  /// **'{kind} keys ({count})'**
+  String sdReportKeys(String kind, int count);
 }
 
 class _AppLocalizationsDelegate

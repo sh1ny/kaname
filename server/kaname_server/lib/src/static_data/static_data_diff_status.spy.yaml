@@ -1,0 +1,8 @@
+### The newest stored comparison of the active and previous builds (D2).
+class: StaticDataDiffStatus
+fields:
+  fromBuild: int
+  toBuild: int
+  outcome: SdeBuildDiffOutcome
+  reason: PublicReason?
+  reportBytes: int?

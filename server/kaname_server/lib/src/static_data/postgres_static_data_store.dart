@@ -9,6 +9,7 @@ import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
     show bundleFormatMajor, bundleFormatMinor, bundleSha256;
 import 'package:postgres/postgres.dart' as pg;
 
+import '../generated/static_data/sde_admin_operation_outcome.dart';
 import 'import_record_view.dart';
 import 'postgres_connection_settings.dart';
 import 'postgres_static_data_differ.dart';
@@ -87,6 +88,9 @@ const _buildColumns = [
 /// The columns of `sde_check`, without `id`.
 const _checkColumns = [
   StoredColumn('checkedAt', _timestamp),
+  StoredColumn('trigger', _text),
+  StoredColumn('lookupStarted', StoredColumnType.boolean),
+  StoredColumn('lookupStartedAt', _timestamp, nullable: true),
   StoredColumn('latestBuild', _bigint, nullable: true),
   StoredColumn('outcome', _text),
   StoredColumn('failureReason', _text, nullable: true),
@@ -110,6 +114,7 @@ const _diffColumns = [
   StoredColumn('outcome', _text),
   StoredColumn('failureReason', _text, nullable: true),
   StoredColumn('report', _jsonb, nullable: true),
+  StoredColumn('reportBytes', _bigint, nullable: true),
 ];
 
 /// The columns of `sde_import`, without `id`.
@@ -197,7 +202,7 @@ List<StoredColumn> _typedColumns(TypedFile file) => [
 ///   deleting their rows. Revisit only if a whole-build delete proves too
 ///   slow (measured by the opt-in live test).
 final class PostgresStaticDataStore implements StaticDataStore {
-  PostgresStaticDataStore._(this._connection);
+  PostgresStaticDataStore._(this._connection, this._settings);
 
   /// The most rows one INSERT statement carries.
   static const int batchRows = 500;
@@ -223,7 +228,10 @@ final class PostgresStaticDataStore implements StaticDataStore {
   };
 
   final pg.Connection _connection;
+  final PostgresConnectionSettings _settings;
   bool _closed = false;
+  String? _adminOperationId;
+  pg.ServerException? _statementFailure;
 
   /// Opens a connection for one job from [settings] and sets its timeouts.
   ///
@@ -262,8 +270,11 @@ final class PostgresStaticDataStore implements StaticDataStore {
       await connection.close();
       rethrow;
     }
-    return PostgresStaticDataStore._(connection);
+    return PostgresStaticDataStore._(connection, settings);
   }
+
+  @override
+  bool get jobConnectionOpen => _connection.isOpen;
 
   /// Reads the connection's current value of the Postgres setting [name].
   ///
@@ -336,6 +347,57 @@ final class PostgresStaticDataStore implements StaticDataStore {
     );
   }
 
+  /// Claims the waiting operation for this job after it has taken the lock.
+  ///
+  /// A lost claim must not start work. A claimed operation is bound to this
+  /// one-job store, including its writer's first-activation transaction.
+  Future<bool> markAdminOperationRunning(String operationId) async {
+    if (_adminOperationId != null) {
+      throw StateError('a job store already claimed an admin operation');
+    }
+    final result = await _connection.execute(
+      'UPDATE "sde_admin_operation" SET "state" = \'running\' '
+      r'WHERE "operationId" = $1::text::uuid AND "state" = '
+      "'waiting'",
+      parameters: [operationId],
+    );
+    if (result.affectedRows == 0) return false;
+    _adminOperationId = operationId;
+    return true;
+  }
+
+  /// Ends an admitted check that did not already end in its build transaction.
+  Future<void> finishAdminOperation(
+    String operationId, {
+    required SdeAdminOperationOutcome outcome,
+    String? reason,
+    int? activeBuild,
+  }) async {
+    await _connection.execute(
+      'UPDATE "sde_admin_operation" SET "state" = \'ended\', '
+      '"endedAt" = clock_timestamp() AT TIME ZONE \'UTC\', '
+      r'"outcome" = $2::text, "failureReason" = $3::text, '
+      r'"activeBuild" = $4::bigint '
+      r'WHERE "operationId" = $1::text::uuid AND "state" <> '
+      "'ended'",
+      parameters: [operationId, outcome.name, reason, activeBuild],
+    );
+  }
+
+  /// Binds a worker rollback to its admitted operation and confirmation.
+  RollbackControl rollbackControl({
+    required String operationId,
+    required int expectedRevision,
+  }) => _PostgresRollbackControl(this, operationId, expectedRevision);
+
+  @override
+  Future<bool> autoUpdate() async {
+    final rows = await _connection.execute(
+      'SELECT "autoUpdate" FROM "sde_setting_write" ORDER BY "id" DESC LIMIT 1',
+    );
+    return (rows.singleOrNull?.single as bool?) ?? true;
+  }
+
   @override
   Future<int> failRunningRecords({
     required String reason,
@@ -362,6 +424,56 @@ final class PostgresStaticDataStore implements StaticDataStore {
   @override
   Future<void> updateRecord(int id, ImportRecord record) =>
       _updateRecord(_connection, id, record);
+
+  @override
+  Future<ImportRecordEnd?> finishFailedImport(
+    int id, {
+    required DateTime at,
+    required String reason,
+    int? build,
+  }) async {
+    if (jobConnectionOpen) {
+      try {
+        return await _finishFailedImport(id, at, reason, build);
+      } on Object {
+        if (jobConnectionOpen) rethrow;
+      }
+    }
+    return _withRecoveryConnection(
+      (store) => store._finishFailedImport(id, at, reason, build),
+    );
+  }
+
+  Future<ImportRecordEnd?> _finishFailedImport(
+    int id,
+    DateTime at,
+    String reason,
+    int? build,
+  ) async {
+    final updated = await _connection.execute(
+      'UPDATE "sde_import" SET "outcome" = \'failed\', '
+      r'"failureReason" = $2::text, "finishedAt" = $3::timestamp, '
+      r'"build" = COALESCE($4::bigint, "build") '
+      r'WHERE "id" = $1::bigint AND "outcome" = '
+      "'running'",
+      parameters: [id, reason, at.toUtc(), build],
+    );
+    if (updated.affectedRows == 1) {
+      return (outcome: ImportOutcome.failed, finishedAt: at, reason: reason);
+    }
+    final result = await _connection.execute(
+      'SELECT "outcome", "finishedAt", "failureReason" FROM "sde_import" '
+      r'WHERE "id" = $1::bigint',
+      parameters: [id],
+    );
+    if (result.isEmpty) return null;
+    final row = result.single;
+    return (
+      outcome: ImportOutcome.values.byName(row[0]! as String),
+      finishedAt: (row[1] as DateTime?)?.toUtc(),
+      reason: row[2] as String?,
+    );
+  }
 
   @override
   Future<void> pruneRecords({required int keep}) async {
@@ -423,11 +535,29 @@ final class PostgresStaticDataStore implements StaticDataStore {
       _insertRows(_connection, 'sde_check', _checkColumns, [
         [
           record.checkedAt,
+          record.trigger.name,
+          record.lookupStartedAt != null,
+          record.lookupStartedAt,
           record.latestBuild,
           record.outcome.name,
           record.failureReason,
         ],
       ]);
+
+  @override
+  Future<void> insertCheckAfterConnectionLoss(CheckRecord record) =>
+      _withRecoveryConnection((store) => store.insertCheck(record));
+
+  Future<T> _withRecoveryConnection<T>(
+    Future<T> Function(PostgresStaticDataStore store) body,
+  ) async {
+    final store = await open(_settings);
+    try {
+      return await body(store);
+    } finally {
+      await store.close();
+    }
+  }
 
   @override
   Future<DateTime?> newestCheckedAt() async {
@@ -457,16 +587,33 @@ final class PostgresStaticDataStore implements StaticDataStore {
 
   @override
   Future<void> insertDiff(BuildDiffRecord record) =>
-      _insertRows(_connection, 'sde_build_diff', _diffColumns, [
-        [
-          record.fromBuild,
-          record.toBuild,
-          record.createdAt,
-          record.outcome.name,
-          record.failureReason,
-          record.report,
-        ],
-      ]);
+      _connection.runTx((tx) async {
+        final from = record.fromBuild;
+        final to = record.toBuild;
+        await tx.execute(
+          'INSERT INTO "sde_build_diff" ("fromBuild", "toBuild", "createdAt", '
+          '"outcome", "failureReason", "report", "reportBytes") '
+          r'VALUES ($1::bigint, $2::bigint, $3::timestamp, $4::text, '
+          r'$5::text, $6::jsonb, CASE WHEN $4 = '
+          "'succeeded' "
+          r'THEN octet_length($6::jsonb::text) END)',
+          parameters: [
+            from,
+            to,
+            record.createdAt.toUtc(),
+            record.outcome.name,
+            record.failureReason,
+            _parameter(_diffColumns[5], record.report),
+          ],
+        );
+        await tx.execute(
+          'DELETE FROM "sde_build_diff" WHERE "fromBuild" = \$1::bigint '
+          'AND "toBuild" = \$2::bigint AND "id" <> ('
+          'SELECT "id" FROM "sde_build_diff" WHERE "fromBuild" = \$1::bigint '
+          'AND "toBuild" = \$2::bigint ORDER BY "createdAt" DESC, "id" DESC LIMIT 1)',
+          parameters: [from, to],
+        );
+      });
 
   @override
   Future<BuildDiffRecord?> diff(int fromBuild, int toBuild) async {
@@ -633,9 +780,31 @@ final class PostgresStaticDataStore implements StaticDataStore {
   );
 
   @override
+  bool confirmedStatementFailure(Object error) =>
+      jobConnectionOpen && identical(_statementFailure, error);
+
+  /// C22 (static-data-settings): writes use the job's own lock connection.
+  /// Losing that connection removes the lock; a fresh read of the builds
+  /// cannot prove the outcome of the old job.
+  @override
   Future<T> inTransaction<T>(
-    Future<T> Function(StaticDataWriter writer) body,
-  ) => _connection.runTx((tx) => body(_PostgresWriter(tx)));
+    Future<T> Function(StaticDataWriter writer) body, {
+    int? activatingBuild,
+  }) {
+    _statementFailure = null;
+    return _connection.runTx((tx) async {
+      try {
+        final operationId = _adminOperationId;
+        if (activatingBuild != null && operationId != null) {
+          await _endBuildOperation(tx, operationId, activatingBuild);
+        }
+        return await body(_PostgresWriter(tx, operationId));
+      } on pg.ServerException catch (error) {
+        _statementFailure = error;
+        rethrow;
+      }
+    });
+  }
 
   @override
   Future<void> close() async {
@@ -645,10 +814,122 @@ final class PostgresStaticDataStore implements StaticDataStore {
   }
 }
 
+final class _PostgresRollbackControl implements RollbackControl {
+  const _PostgresRollbackControl(
+    this._store,
+    this._operationId,
+    this._expectedRevision,
+  );
+
+  final PostgresStaticDataStore _store;
+  final String _operationId;
+  final int _expectedRevision;
+
+  @override
+  Future<RollbackResult?> claim() async {
+    final connection = _store._connection;
+    final row = await _readOperation(connection);
+    if (row == null || row[0] != 'waiting') return _endedResult(row);
+    final revision = await connection.execute(
+      'SELECT "revision" FROM "sde_build_revision" WHERE "id" = 1',
+    );
+    if ((revision.singleOrNull?.single ?? 0) != _expectedRevision) {
+      const failed = RollbackFailed(
+        'builds changed',
+        outcome: RollbackOutcome.buildsChanged,
+      );
+      if (await _finish(connection, 'buildsChanged', null)) return failed;
+      return _endedResult(await _readOperation(connection));
+    }
+    if (await _store.markAdminOperationRunning(_operationId)) return null;
+    return _endedResult(await _readOperation(connection));
+  }
+
+  @override
+  Future<void> finish(RollbackFailed failure) async {
+    final outcome = switch (failure.outcome) {
+      RollbackOutcome.buildsChanged => 'buildsChanged',
+      RollbackOutcome.noPrevious => 'noPrevious',
+      RollbackOutcome.importRunning => 'importRunning',
+      _ => 'rollbackFailed',
+    };
+    await _finish(_store._connection, outcome, failure.reason);
+  }
+
+  @override
+  Future<RollbackResult> reconcile(SwitchRecord failure) {
+    Future<RollbackResult> reconcileOn(PostgresStaticDataStore store) =>
+        store._connection.runTx((tx) async {
+          // D5/C37: this fence is first. Only its winner writes the record.
+          if (await _finish(tx, 'rollbackFailed', failure.failureReason)) {
+            await _insertRows(tx, 'sde_switch', _switchColumns, [
+              _switchValues(failure),
+            ]);
+            return RollbackFailed(failure.failureReason!);
+          }
+          return _endedResult(await _readOperation(tx));
+        });
+    return _store.jobConnectionOpen
+        ? reconcileOn(_store)
+        : _store._withRecoveryConnection(reconcileOn);
+  }
+
+  Future<bool> _finish(
+    pg.Session session,
+    String outcome,
+    String? reason,
+  ) async {
+    final result = await session.execute(
+      'UPDATE "sde_admin_operation" SET "state" = \'ended\', '
+      '"endedAt" = clock_timestamp() AT TIME ZONE \'UTC\', '
+      r'"outcome" = $3::text, "failureReason" = $4::text '
+      r'WHERE "operationId" = $1::text::uuid AND "expectedRevision" = $2::bigint '
+      'AND "kind" = \'rollback\' AND "state" <> \'ended\'',
+      parameters: [_operationId, _expectedRevision, outcome, reason],
+    );
+    return result.affectedRows == 1;
+  }
+
+  Future<pg.ResultRow?> _readOperation(pg.Session session) async {
+    final rows = await session.execute(
+      'SELECT "state", "outcome", "activeBuild", "failureReason" '
+      'FROM "sde_admin_operation" '
+      r'WHERE "operationId" = $1::text::uuid AND "expectedRevision" = $2::bigint '
+      'AND "kind" = \'rollback\'',
+      parameters: [_operationId, _expectedRevision],
+    );
+    return rows.singleOrNull;
+  }
+
+  RollbackResult _endedResult(pg.ResultRow? row) {
+    if (row == null || row[0] != 'ended') return const RollbackUnconfirmed();
+    return switch ((row[1], row[2], row[3])) {
+      ('rolledBack', final int build, _) => RollbackSucceeded(toBuild: build),
+      ('buildsChanged', _, _) => const RollbackFailed(
+        'builds changed',
+        outcome: RollbackOutcome.buildsChanged,
+      ),
+      ('noPrevious', _, _) => const RollbackFailed(
+        'no previous build',
+        outcome: RollbackOutcome.noPrevious,
+      ),
+      ('importRunning', _, _) => const RollbackFailed(
+        'import running',
+        outcome: RollbackOutcome.importRunning,
+      ),
+      ('rollbackFailed' || 'failed', _, final String reason) => RollbackFailed(
+        reason,
+      ),
+      _ => const RollbackUnconfirmed(),
+    };
+  }
+}
+
 final class _PostgresWriter implements StaticDataWriter {
-  _PostgresWriter(this._session);
+  _PostgresWriter(this._session, this._operationId);
 
   final pg.Session _session;
+  final String? _operationId;
 
   @override
   Future<void> insertTyped(int build, List<TypedRow> rows) async {
@@ -710,10 +991,14 @@ final class _PostgresWriter implements StaticDataWriter {
       ],
     ]);
     await _updateRecord(_session, recordId, record);
+    if (state == BuildState.active) await _bumpBuildRevision(_session);
   }
 
   @override
   Future<void> switchTo(int build, {required DateTime at}) async {
+    if (_operationId case final id?) {
+      await _endBuildOperation(_session, id, build);
+    }
     final stored = await _buildStates(_session);
     if (stored[build] != BuildState.staged) {
       throw StateError('build $build is not staged');
@@ -742,50 +1027,73 @@ final class _PostgresWriter implements StaticDataWriter {
       r'UPDATE "sde_build" SET "held" = false WHERE "build" < $1::bigint',
       parameters: [build],
     );
-    // 6. The record, in the same transaction.
-    await _insertRows(_session, 'sde_switch', _switchColumns, [
-      _switchValues(
-        SwitchRecord(
-          kind: SwitchKind.forward,
-          fromBuild: fromBuild,
-          toBuild: build,
-          at: at,
-          outcome: SwitchOutcome.succeeded,
-        ),
-      ),
-    ]);
+    await _recordBuildChange(SwitchKind.forward, fromBuild, build, at);
   }
 
   @override
-  Future<void> rollBack({required DateTime at}) async {
+  Future<void> rollBack({required DateTime at}) =>
+      _swapPrevious(SwitchKind.rollback, at);
+
+  @override
+  Future<void> restoreHeld({
+    required DateTime at,
+    required String operationId,
+  }) {
+    if (operationId != _operationId) {
+      throw StateError('a held restore must use the claimed operation');
+    }
+    return _swapPrevious(SwitchKind.forward, at);
+  }
+
+  Future<void> _swapPrevious(SwitchKind kind, DateTime at) async {
+    if (_operationId case final id?) {
+      await _endBuildOperation(_session, id, null, kind: kind);
+    }
+    final restoring = kind == SwitchKind.forward;
     final stored = await _buildStates(_session);
     final active = _buildIn(stored, BuildState.active);
     final previous = _buildIn(stored, BuildState.previous);
     if (active == null || previous == null) {
       throw StateError('no previous build to roll back to');
     }
+    if (restoring && previous <= active) {
+      throw StateError('the held previous build is not newer');
+    }
     await _session.execute(
       'UPDATE "sde_build" SET "activeMarker" = NULL, "previousMarker" = NULL',
     );
-    // The build rolled back from is held, so the next check keeps it staged
-    // out; the build made active is released.
+    // Only rollback places a hold on the build it leaves behind.
     await _session.execute(
       'UPDATE "sde_build" SET "state" = \'previous\', '
-      '"previousMarker" = true, "held" = true '
+      r'"previousMarker" = true, "held" = $2::boolean '
       r'WHERE "build" = $1::bigint',
-      parameters: [active],
+      parameters: [active, !restoring],
     );
-    await _session.execute(
+    final promoted = await _session.execute(
       'UPDATE "sde_build" SET "state" = \'active\', "activeMarker" = true, '
-      r'"held" = false WHERE "build" = $1::bigint',
+      r'"held" = false WHERE "build" = $1::bigint'
+      '${restoring ? ' AND "held"' : ''}',
       parameters: [previous],
     );
+    if (promoted.affectedRows != 1) {
+      throw StateError('the previous build is not held');
+    }
+    await _recordBuildChange(kind, active, previous, at);
+  }
+
+  Future<void> _recordBuildChange(
+    SwitchKind kind,
+    int? from,
+    int to,
+    DateTime at,
+  ) async {
+    await _bumpBuildRevision(_session);
     await _insertRows(_session, 'sde_switch', _switchColumns, [
       _switchValues(
         SwitchRecord(
-          kind: SwitchKind.rollback,
-          fromBuild: active,
-          toBuild: previous,
+          kind: kind,
+          fromBuild: from,
+          toBuild: to,
           at: at,
           outcome: SwitchOutcome.succeeded,
         ),
@@ -793,6 +1101,37 @@ final class _PostgresWriter implements StaticDataWriter {
     ]);
   }
 }
+
+Future<void> _endBuildOperation(
+  pg.Session session,
+  String operationId,
+  int? build, {
+  SwitchKind kind = SwitchKind.forward,
+}) async {
+  final result = await session.execute(
+    'UPDATE "sde_admin_operation" SET "state" = \'ended\', '
+    r'"outcome" = $3::text, "changedBuilds" = true, '
+    '"endedAt" = clock_timestamp() AT TIME ZONE \'UTC\', '
+    r'"activeBuild" = COALESCE($2::bigint, '
+    '(SELECT "build" FROM "sde_build" WHERE "previousMarker")) '
+    r'WHERE "operationId" = $1::text::uuid AND "state" <> '
+    "'ended'",
+    parameters: [
+      operationId,
+      build,
+      kind == SwitchKind.forward ? 'switched' : 'rolledBack',
+    ],
+  );
+  if (result.affectedRows == 0) {
+    throw StateError('admin operation is no longer open');
+  }
+}
+
+Future<void> _bumpBuildRevision(pg.Session session) => session.execute(
+  'INSERT INTO "sde_build_revision" ("id", "revision") VALUES (1, 1) '
+  'ON CONFLICT ("id") DO UPDATE '
+  'SET "revision" = "sde_build_revision"."revision" + 1',
+);
 
 /// The state of every stored build, by build number.
 Future<Map<int, BuildState>> _buildStates(pg.Session session) async {

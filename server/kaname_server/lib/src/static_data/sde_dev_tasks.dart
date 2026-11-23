@@ -77,7 +77,7 @@ Future<int> runSdeRollback({
       ..writeln(precondition);
     return 1;
   }
-  switch (await RollbackJob(store: store).run()) {
+  switch (await RollbackJob(store: store, onWarning: err.writeln).run()) {
     case RollbackSucceeded(:final fromBuild, :final toBuild):
       out.writeln(
         'Rolled back: build $toBuild is active again; build $fromBuild is '
@@ -86,6 +86,9 @@ Future<int> runSdeRollback({
       return 0;
     case RollbackFailed(:final reason):
       err.writeln('sde:rollback: $reason');
+      return 1;
+    case RollbackUnconfirmed():
+      err.writeln('sde:rollback: outcome unknown');
       return 1;
   }
 }

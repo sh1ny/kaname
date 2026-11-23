@@ -32,10 +32,9 @@ Future<void> scheduleDailyCheck(Serverpod pod) async {
 /// Runs the daily build check on the compute worker.
 ///
 /// Serverpod's generated code creates the instance, so the call reaches the
-/// worker through [staticDataRuntime]. It sends the request with
-/// `WorkerSupervisor.runBuildCheck` and returns at once; the answer is logged
-/// through [StaticDataRuntime.log] when it arrives. While no worker runs the
-/// supervisor answers "worker not running" at once, and when it stops it
+/// worker through [staticDataRuntime]. It returns at once whether it sends a
+/// check or skips a still-pending one. Replies are logged after the RPC
+/// returns. The supervisor answers "worker not running" immediately and
 /// answers "worker stopped"; both are logged as warnings. A server whose
 /// start hook did not run (any role or run mode without one) has no
 /// supervisor: the call logs that and returns. Nothing is retried here: the
@@ -62,28 +61,33 @@ class StaticDataCheckCall extends FutureCall {
     }
     final log = staticDataRuntime.log;
     final announcer = staticDataRuntime.announcer;
+    final check = staticDataRuntime.tryCheck(CheckTrigger.daily);
+    if (check == null) {
+      log(
+        WorkerLogLevel.warning,
+        'static data: daily check skipped, previous check is still pending',
+      );
+      return;
+    }
     unawaited(
-      supervisor
-          .runBuildCheck(const CcpLatestSource())
-          .then(
-            (reply) {
-              if (announcer != null) unawaited(announcer.workerReplied(reply));
-              log(switch (reply) {
-                BuildCheckFinished(
-                  result: BuildCheckFailed() || BuildStaged(),
-                ) =>
-                  WorkerLogLevel.warning,
-                BuildCheckFinished() => WorkerLogLevel.info,
-                _ => WorkerLogLevel.warning,
-              }, 'static data: daily check answered: $reply');
-            },
-            onError: (Object error) {
-              log(
-                WorkerLogLevel.error,
-                'static data: daily check failed: $error',
-              );
-            },
-          ),
+      check.then<void>(
+        (reply) {
+          if (announcer != null) unawaited(announcer.workerReplied(reply));
+          log(switch (reply) {
+            BuildCheckFinished(
+              result: BuildCheckFailed() ||
+                  BuildStaged() ||
+                  SwitchUnconfirmed(),
+            ) =>
+              WorkerLogLevel.warning,
+            BuildCheckFinished() => WorkerLogLevel.info,
+            _ => WorkerLogLevel.warning,
+          }, 'static data: daily check answered: $reply');
+        },
+        onError: (Object error) {
+          log(WorkerLogLevel.error, 'static data: daily check failed: $error');
+        },
+      ),
     );
   }
 }

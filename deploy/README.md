@@ -44,6 +44,15 @@ and `SERVERPOD_SERVICE_SECRET`. Compose stops before starting any service and
 names the variable when one is missing or empty. The file is ignored by git;
 only `deploy/.env.example`, with placeholders, is committed.
 
+To enable static-data admin actions, set the optional `KANAME_ADMIN_KEY` to
+a random value of at least 32 characters. With no key, or with a shorter key,
+admin actions stay disabled and the public status remains readable. Compose
+passes the key to the server only as `SERVERPOD_PASSWORD_adminKey`; the image
+and migration service do not receive it. Do not enable it on a non-loopback
+deployment until a TLS reverse proxy is in front of the stack. The app only
+offers key entry over HTTPS or loopback HTTP and keeps the key in memory until
+the app closes or reloads (ADR 0015).
+
 ```sh
 mise run stack:down                     # stop and delete the data volumes
 (cd deploy && docker compose down)     # stop, keep the data
@@ -69,6 +78,16 @@ import is recorded as failed with its reason in the `sde_import` table, the
 server keeps running with no active build, and the next start tries again.
 There is no import from a local zip for self-hosted installs yet; a later
 change adds one.
+
+Open **Settings → Static data** to see the bundle this device is using, the
+builds on the server and the latest check, import and switch. **View change
+report** compares the active and previous builds. Record counts cover the
+whole comparison; a cut-off mark means some record keys are not shown.
+
+With a session admin key, **Update now** asks the server to check for a newer
+build. Turn **Auto-update** off to stage a newer build without switching.
+**Roll back** switches to the previous build after confirmation and holds the
+build it replaced so it is not immediately reactivated.
 
 ## Web app
 

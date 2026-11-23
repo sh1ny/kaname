@@ -1,0 +1,8 @@
+### The lifecycle of a durable static-data admin operation (D21).
+enum: SdeAdminOperationState
+serialized: byName
+serverOnly: true
+values:
+  - waiting
+  - running
+  - ended

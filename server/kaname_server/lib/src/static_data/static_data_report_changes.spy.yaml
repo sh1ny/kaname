@@ -1,0 +1,6 @@
+### Complete record count and a possibly cut-off prefix of stored keys.
+class: StaticDataReportChanges
+fields:
+  count: int
+  keys: List<String>
+  cutOff: bool

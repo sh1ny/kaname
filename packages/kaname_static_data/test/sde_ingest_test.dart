@@ -26,6 +26,12 @@ final class _BatchRecorder implements StaticDataWriter {
       throw UnimplementedError('the ingest never switches');
 
   @override
+  Future<void> restoreHeld({
+    required DateTime at,
+    required String operationId,
+  }) => throw UnimplementedError('the ingest never restores');
+
+  @override
   Future<void> rollBack({required DateTime at}) =>
       throw UnimplementedError('the ingest never rolls back');
 }

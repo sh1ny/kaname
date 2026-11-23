@@ -1,0 +1,9 @@
+### The result of checking the install admin key (D1, D6).
+enum: AdminKeyResult
+serialized: byName
+serverOnly: true
+values:
+  - accepted
+  - notConfigured
+  - rejected
+  - tooManyAttempts

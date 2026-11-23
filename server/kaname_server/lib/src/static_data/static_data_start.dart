@@ -29,11 +29,11 @@ StaticDataStartHook? startStaticData(Serverpod pod) {
     role: pod.config.role.name,
     withSession: <T>(action) => pod.withSession(action),
     scheduleDailyCheck: () => scheduleDailyCheck(pod),
-    log: (level, message) => _log(pod, level, message),
+    log: (level, message) => logStaticData(pod, level, message),
     announcer: bundleAnnouncementRuntime.announcer,
   );
   if (hook == null) {
-    _log(
+    logStaticData(
       pod,
       WorkerLogLevel.info,
       'static data: not started (run mode ${pod.runMode}, role '
@@ -49,7 +49,8 @@ StaticDataStartHook? startStaticData(Serverpod pod) {
   return hook;
 }
 
-void _log(Serverpod pod, WorkerLogLevel level, String message) {
+/// Logs a static-data event outside any individual request's session.
+void logStaticData(Serverpod pod, WorkerLogLevel level, String message) {
   final serverpodLevel = switch (level) {
     WorkerLogLevel.info => LogLevel.info,
     WorkerLogLevel.warning => LogLevel.warning,

@@ -1,0 +1,5 @@
+### The id of the newest committed auto-update write (D3).
+class: WriteRevision
+extends: SettingRevision
+fields:
+  id: int

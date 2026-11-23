@@ -146,7 +146,7 @@ final class ImportSdeJob implements Job<ImportResult> {
         batchSize: batchSize,
         onRecordInserted: (id) => _recordId = id,
       );
-      await _tryPrune();
+      if (store.jobConnectionOpen) await _tryPrune();
       return attempt.result;
     } on Object catch (error) {
       return ImportFailed('unexpected error: ${describeFailure(error)}');

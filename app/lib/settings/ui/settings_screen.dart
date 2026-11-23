@@ -5,6 +5,7 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../server/ui/server_section.dart';
 import 'about_section.dart';
 import 'appearance_section.dart';
+import 'static_data_section.dart';
 
 /// The widest the Settings content grows, for comfortable line lengths.
 const double _maxContentWidth = 640;
@@ -12,7 +13,7 @@ const double _maxContentWidth = 640;
 /// The window width below which Settings uses the tighter side padding.
 const double _narrowWidth = 600;
 
-/// The Settings destination: Appearance, Server and About, in one column.
+/// The Settings destination: Appearance, Server, Static data and About.
 ///
 /// The sections stack vertically and the column scrolls vertically only, so a
 /// 390px window needs no horizontal scrolling.
@@ -50,6 +51,8 @@ class SettingsScreen extends StatelessWidget {
                   const AppearanceSection(),
                   const SizedBox(height: EmberSpace.xl),
                   const ServerSection(),
+                  const SizedBox(height: EmberSpace.xl),
+                  const StaticDataSection(),
                   const SizedBox(height: EmberSpace.xl),
                   const AboutSection(),
                 ],

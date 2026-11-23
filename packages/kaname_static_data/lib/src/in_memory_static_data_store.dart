@@ -59,6 +59,12 @@ final class InMemoryStaticDataStore implements StaticDataStore {
   /// Whether [close] was called.
   bool isClosed = false;
 
+  /// The committed auto-update value; null stands for an empty write log.
+  bool? autoUpdateSetting;
+
+  @override
+  Future<bool> autoUpdate() async => autoUpdateSetting ?? true;
+
   /// When set, [storedBundle] throws it, as a store whose read failed.
   Object? storedBundleError;
 
@@ -185,6 +191,32 @@ final class InMemoryStaticDataStore implements StaticDataStore {
   }
 
   @override
+  Future<ImportRecordEnd?> finishFailedImport(
+    int id, {
+    required DateTime at,
+    required String reason,
+    int? build,
+  }) async {
+    final index = _records.indexWhere((stored) => stored.id == id);
+    if (index < 0) return null;
+    var record = _records[index].record;
+    if (record.outcome == ImportOutcome.running) {
+      record = record.finished(
+        ImportOutcome.failed,
+        at: at,
+        build: build,
+        failureReason: reason,
+      );
+      _records[index] = StoredImportRecord(id, record);
+    }
+    return (
+      outcome: record.outcome,
+      finishedAt: record.finishedAt,
+      reason: record.failureReason,
+    );
+  }
+
+  @override
   Future<void> pruneRecords({required int keep}) async {
     if (_records.length <= keep) return;
     final newest = [..._records]
@@ -224,6 +256,16 @@ final class InMemoryStaticDataStore implements StaticDataStore {
   Future<void> insertCheck(CheckRecord record) async => _checks.add(record);
 
   @override
+  Future<void> insertCheckAfterConnectionLoss(CheckRecord record) =>
+      insertCheck(record);
+
+  @override
+  bool get jobConnectionOpen => !isClosed;
+
+  @override
+  bool confirmedStatementFailure(Object error) => jobConnectionOpen;
+
+  @override
   Future<DateTime?> newestCheckedAt() async {
     DateTime? newest;
     for (final CheckRecord(:checkedAt) in _checks) {
@@ -249,7 +291,18 @@ final class InMemoryStaticDataStore implements StaticDataStore {
       _keepNewest(_switches, keep, (s) => s.at);
 
   @override
-  Future<void> insertDiff(BuildDiffRecord record) async => _diffs.add(record);
+  Future<void> insertDiff(BuildDiffRecord record) async {
+    final index = _diffs.indexWhere(
+      (stored) =>
+          stored.fromBuild == record.fromBuild &&
+          stored.toBuild == record.toBuild,
+    );
+    if (index < 0) {
+      _diffs.add(record);
+    } else if (!record.createdAt.isBefore(_diffs[index].createdAt)) {
+      _diffs[index] = record;
+    }
+  }
 
   @override
   Future<BuildDiffRecord?> diff(int fromBuild, int toBuild) async {
@@ -328,8 +381,9 @@ final class InMemoryStaticDataStore implements StaticDataStore {
 
   @override
   Future<T> inTransaction<T>(
-    Future<T> Function(StaticDataWriter writer) body,
-  ) async {
+    Future<T> Function(StaticDataWriter writer) body, {
+    int? activatingBuild,
+  }) async {
     final transaction = _Transaction(this);
     final result = await body(transaction);
     transaction.applyTo(this);
@@ -400,21 +454,37 @@ final class _Transaction implements StaticDataWriter {
   }
 
   @override
-  Future<void> rollBack({required DateTime at}) async {
+  Future<void> rollBack({required DateTime at}) =>
+      _swapPrevious(SwitchKind.rollback, at);
+
+  @override
+  Future<void> restoreHeld({
+    required DateTime at,
+    required String operationId,
+  }) => _swapPrevious(SwitchKind.forward, at);
+
+  Future<void> _swapPrevious(SwitchKind kind, DateTime at) async {
     final active = _store._buildIn(BuildState.active);
     final previous = _store._buildIn(BuildState.previous);
     if (active == null || previous == null) {
       throw StateError('no previous build to roll back to');
     }
+    final restoring = kind == SwitchKind.forward;
+    if (restoring && (previous <= active || !_store._held.contains(previous))) {
+      throw StateError('the previous build is not newer and held');
+    }
     _writes.add((store) {
       store._builds[active] = BuildState.previous;
       store._builds[previous] = BuildState.active;
-      store._held
-        ..add(active)
-        ..remove(previous);
+      store._held.remove(previous);
+      if (restoring) {
+        store._held.remove(active);
+      } else {
+        store._held.add(active);
+      }
       store._switches.add(
         SwitchRecord(
-          kind: SwitchKind.rollback,
+          kind: kind,
           fromBuild: active,
           toBuild: previous,
           at: at,

@@ -1,0 +1,8 @@
+### What started a static-data build check (D10).
+enum: SdeCheckTrigger
+serialized: byName
+serverOnly: true
+values:
+  - daily
+  - start
+  - updateNow

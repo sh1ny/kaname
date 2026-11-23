@@ -1,0 +1,5 @@
+### The newest check that learned CCP's latest build (D2).
+class: StaticDataCcpLatest
+fields:
+  build: int
+  checkedAt: DateTime

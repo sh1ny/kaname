@@ -35,7 +35,28 @@ final class InProcessPod {
     List<Middleware> middleware = const [],
     ServerpodConfig Function(ServerpodConfig)? configOverride,
   }) async {
-    final database = await ScratchDatabase.create();
+    return _start(
+      await ScratchDatabase.create(),
+      extraEndpoints: extraEndpoints,
+      extraMethods: extraMethods,
+      middleware: middleware,
+      configOverride: configOverride,
+    );
+  }
+
+  /// Restarts with only the generated endpoints, keeping the same database.
+  Future<InProcessPod> restart() async {
+    await shutdown();
+    return _start(_database);
+  }
+
+  static Future<InProcessPod> _start(
+    ScratchDatabase database, {
+    Map<String, Endpoint> extraEndpoints = const {},
+    Map<String, Map<String, EndpointMethodConnector>> extraMethods = const {},
+    List<Middleware> middleware = const [],
+    ServerpodConfig Function(ServerpodConfig)? configOverride,
+  }) async {
     final pod = Serverpod(
       ['--mode', 'test', '--apply-migrations'],
       Protocol(),

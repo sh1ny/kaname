@@ -15,6 +15,7 @@ database:
   port: 0
   name: kaname_test
   user: postgres
+  maxConnectionCount: 20
   dataPath: .serverpod/test/pgdata
 
 # Redis is enabled in every run mode. Tests use the development container in

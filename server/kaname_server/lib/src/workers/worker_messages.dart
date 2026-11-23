@@ -161,8 +161,13 @@ final class RunImport extends WorkerRequest {
 /// source built from [source]; production sends [CcpLatestSource].
 final class RunBuildCheck extends WorkerRequest {
   /// Creates a request with [requestId] to check the build [source] names.
-  const RunBuildCheck({required int requestId, required this.source})
-    : super(requestId);
+  const RunBuildCheck({
+    required int requestId,
+    required this.source,
+    required this.trigger,
+    this.operationId,
+  }) : assert((trigger == CheckTrigger.updateNow) == (operationId != null)),
+       super(requestId);
 
   /// The message's type name.
   static const String typeName = 'build.check.run';
@@ -173,10 +178,18 @@ final class RunBuildCheck extends WorkerRequest {
     source: ImportSourceSpec.fromJson(
       (json['source']! as Map).cast<String, Object?>(),
     ),
+    trigger: _enumByName(CheckTrigger.values, json['trigger']! as String),
+    operationId: json['operationId'] as String?,
   );
 
   /// Where the check reads CCP's build from.
   final ImportSourceSpec source;
+
+  /// What asked for this check.
+  final CheckTrigger trigger;
+
+  /// The waiting operation for an update-now check; null for other triggers.
+  final String? operationId;
 
   @override
   String get type => typeName;
@@ -188,10 +201,51 @@ final class RunBuildCheck extends WorkerRequest {
   Map<String, Object?> payloadToJson() => {
     'requestId': requestId,
     'source': source.toJson(),
+    'trigger': trigger.name,
+    'operationId': operationId,
   };
 
   @override
   String toString() => 'RunBuildCheck(requestId: $requestId, source: $source)';
+}
+
+/// Rolls back the pair of builds the admin confirmed (D5).
+final class RunRollback extends WorkerRequest {
+  /// Creates a request for the admitted operation and its confirmed revision.
+  const RunRollback({
+    required int requestId,
+    required this.operationId,
+    required this.expectedRevision,
+  }) : super(requestId);
+
+  /// The message's type name.
+  static const String typeName = 'build.rollback.run';
+
+  /// Decodes the payload [json].
+  factory RunRollback.fromJson(Map<String, Object?> json) => RunRollback(
+    requestId: json['requestId']! as int,
+    operationId: json['operationId']! as String,
+    expectedRevision: json['expectedRevision']! as int,
+  );
+
+  /// The admitted operation id.
+  final String operationId;
+
+  /// The build-state revision the caller confirmed.
+  final int expectedRevision;
+
+  @override
+  String get type => typeName;
+
+  @override
+  int get version => 1;
+
+  @override
+  Map<String, Object?> payloadToJson() => {
+    'requestId': requestId,
+    'operationId': operationId,
+    'expectedRevision': expectedRevision,
+  };
 }
 
 /// Asks the worker to repair the active build's client data bundle.
@@ -297,14 +351,113 @@ final class ImportFinished extends WorkerReply {
       'build: $build, reason: $reason)';
 }
 
+/// Interim acknowledgement sent after the durable operation is running (D4).
+final class BuildCheckStarted extends WorkerReply {
+  /// Creates the acknowledgement for [requestId].
+  const BuildCheckStarted({required int requestId}) : super(requestId);
+
+  /// The message's type name.
+  static const String typeName = 'build.check.started';
+
+  /// Decodes the payload [json].
+  factory BuildCheckStarted.fromJson(Map<String, Object?> json) =>
+      BuildCheckStarted(requestId: json['requestId']! as int);
+
+  @override
+  String get type => typeName;
+
+  @override
+  int get version => 1;
+
+  @override
+  Map<String, Object?> payloadToJson() => {'requestId': requestId};
+}
+
+/// A rollback's terminal reply, including the confirmation it used (D5).
+final class RollbackFinished extends WorkerReply {
+  /// Creates a terminal rollback reply.
+  const RollbackFinished({
+    required int requestId,
+    required this.expectedRevision,
+    required this.outcome,
+    this.activeBuild,
+    this.reason,
+  }) : super(requestId);
+
+  /// The message's type name.
+  static const String typeName = 'build.rollback.finished';
+
+  /// Decodes the payload [json].
+  factory RollbackFinished.fromJson(Map<String, Object?> json) =>
+      RollbackFinished(
+        requestId: json['requestId']! as int,
+        expectedRevision: json['expectedRevision']! as int,
+        outcome: _enumByName(
+          RollbackOutcome.values,
+          json['outcome']! as String,
+        ),
+        activeBuild: json['activeBuild'] as int?,
+        reason: json['reason'] as String?,
+      );
+
+  /// The build-state revision the request confirmed.
+  final int expectedRevision;
+
+  /// The worker's result; the durable operation can supply more evidence.
+  final RollbackOutcome outcome;
+
+  /// The build activated by this rollback, when known.
+  final int? activeBuild;
+
+  /// Why the rollback failed, when known.
+  final String? reason;
+
+  @override
+  String get type => typeName;
+
+  @override
+  int get version => 1;
+
+  @override
+  Map<String, Object?> payloadToJson() => {
+    'requestId': requestId,
+    'expectedRevision': expectedRevision,
+    'outcome': outcome.name,
+    'activeBuild': activeBuild,
+    'reason': reason,
+  };
+}
+
+/// A local reply indicating the request was never sent (D26).
+final class NotDispatched extends WorkerReply {
+  /// Creates the reply for an unsent request.
+  const NotDispatched({required int requestId}) : super(requestId);
+
+  @override
+  String get type => 'not.dispatched';
+
+  @override
+  int get version => 1;
+
+  @override
+  Map<String, Object?> payloadToJson() => {'requestId': requestId};
+
+  @override
+  String toString() => 'worker not running';
+}
+
 /// The worker's answer to [RunBuildCheck]: how the check ended.
 ///
 /// [result] is the job's [BuildCheckResult], encoded with a `kind` and the
 /// fields of that kind, so the main isolate gets the outcome faithfully.
 final class BuildCheckFinished extends WorkerReply {
   /// Creates the answer for [requestId].
-  const BuildCheckFinished({required int requestId, required this.result})
-    : super(requestId);
+  const BuildCheckFinished({
+    required int requestId,
+    required this.result,
+    this.lookupStartedAt,
+    this.notEntered = false,
+  }) : super(requestId);
 
   /// The message's type name.
   static const String typeName = 'build.check.finished';
@@ -315,6 +468,15 @@ final class BuildCheckFinished extends WorkerReply {
   factory BuildCheckFinished.fromJson(Map<String, Object?> json) =>
       BuildCheckFinished(
         requestId: json['requestId']! as int,
+        lookupStartedAt: switch (json['lookupStartedAt']) {
+          final int micros => DateTime.fromMicrosecondsSinceEpoch(
+            micros,
+            isUtc: true,
+          ),
+          null => null,
+          _ => throw const FormatException('invalid lookup start time'),
+        },
+        notEntered: json['notEntered'] as bool? ?? false,
         result: switch ((json['result']! as Map).cast<String, Object?>()) {
           {
             'kind': 'switched',
@@ -344,12 +506,20 @@ final class BuildCheckFinished extends WorkerReply {
             'latestBuild': final int? latestBuild,
           } =>
             BuildCheckFailed(reason, latestBuild: latestBuild),
+          {'kind': 'switchUnconfirmed', 'build': final int build} =>
+            SwitchUnconfirmed(build),
           _ => throw const FormatException('unknown build check result'),
         },
       );
 
   /// How the check ended.
   final BuildCheckResult result;
+
+  /// When the job holding the lock first asked CCP, if it got that far.
+  final DateTime? lookupStartedAt;
+
+  /// The worker failed before it invoked the job.
+  final bool notEntered;
 
   @override
   String get type => typeName;
@@ -360,6 +530,8 @@ final class BuildCheckFinished extends WorkerReply {
   @override
   Map<String, Object?> payloadToJson() => {
     'requestId': requestId,
+    'lookupStartedAt': lookupStartedAt?.microsecondsSinceEpoch,
+    'notEntered': notEntered,
     'result': switch (result) {
       BuildSwitched(:final build, :final replacedBuild) => {
         'kind': 'switched',
@@ -383,6 +555,10 @@ final class BuildCheckFinished extends WorkerReply {
         'reason': reason,
         'latestBuild': latestBuild,
       },
+      SwitchUnconfirmed(:final build) => {
+        'kind': 'switchUnconfirmed',
+        'build': build,
+      },
     },
   };
 
@@ -402,6 +578,7 @@ String _describeResult(BuildCheckResult result) => switch (result) {
   BuildStaged(:final build, :final reason) => 'build $build staged: $reason',
   BuildCheckFailed(:final reason, :final latestBuild) =>
     'failed (latest $latestBuild): $reason',
+  SwitchUnconfirmed(:final build) => 'switch outcome unknown for $build',
 };
 
 /// The worker's answer to [RunBundleRepair]: how the repair ended.
@@ -414,8 +591,11 @@ String _describeResult(BuildCheckResult result) => switch (result) {
 /// a `kind` and the fields of that kind.
 final class BundleRepairFinished extends WorkerReply {
   /// Creates the answer for [requestId].
-  const BundleRepairFinished({required int requestId, required this.result})
-    : super(requestId);
+  const BundleRepairFinished({
+    required int requestId,
+    required this.result,
+    this.notEntered = false,
+  }) : super(requestId);
 
   /// The message's type name.
   static const String typeName = 'bundle.repair.finished';
@@ -426,6 +606,7 @@ final class BundleRepairFinished extends WorkerReply {
   factory BundleRepairFinished.fromJson(Map<String, Object?> json) =>
       BundleRepairFinished(
         requestId: json['requestId']! as int,
+        notEntered: json['notEntered'] as bool? ?? false,
         result: switch ((json['result']! as Map).cast<String, Object?>()) {
           {'kind': 'ran', 'step': final Map<Object?, Object?> step} =>
             BundleRepairRan(_stepFromJson(step.cast<String, Object?>())),
@@ -440,6 +621,9 @@ final class BundleRepairFinished extends WorkerReply {
   /// How the repair ended.
   final BundleRepairResult result;
 
+  /// Whether the worker failed before invoking the repair job.
+  final bool notEntered;
+
   @override
   String get type => typeName;
 
@@ -449,6 +633,7 @@ final class BundleRepairFinished extends WorkerReply {
   @override
   Map<String, Object?> payloadToJson() => {
     'requestId': requestId,
+    'notEntered': notEntered,
     'result': switch (result) {
       BundleRepairRan(:final step) => {
         'kind': 'ran',
@@ -753,6 +938,11 @@ WorkerMessageCodec workerInboxCodec() => WorkerMessageCodec()
     decoder: RunBuildCheck.fromJson,
   )
   ..register(
+    type: RunRollback.typeName,
+    version: 1,
+    decoder: RunRollback.fromJson,
+  )
+  ..register(
     type: RunBundleRepair.typeName,
     version: 1,
     decoder: RunBundleRepair.fromJson,
@@ -766,9 +956,19 @@ WorkerMessageCodec workerOutboxCodec() => WorkerMessageCodec()
     decoder: ImportFinished.fromJson,
   )
   ..register(
+    type: BuildCheckStarted.typeName,
+    version: 1,
+    decoder: BuildCheckStarted.fromJson,
+  )
+  ..register(
     type: BuildCheckFinished.typeName,
     version: 1,
     decoder: BuildCheckFinished.fromJson,
+  )
+  ..register(
+    type: RollbackFinished.typeName,
+    version: 1,
+    decoder: RollbackFinished.fromJson,
   )
   ..register(
     type: BundleRepairFinished.typeName,

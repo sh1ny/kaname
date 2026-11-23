@@ -1,0 +1,15 @@
+### A durable operation owned by its id, action and confirmed revision (D21).
+class: SdeAdminOperation
+table: sde_admin_operation
+serverOnly: true
+fields:
+  operationId: UuidValue, unique
+  kind: SdeAdminOperationKind
+  expectedRevision: int?
+  state: SdeAdminOperationState
+  outcome: SdeAdminOperationOutcome?
+  failureReason: String?
+  activeBuild: int?
+  changedBuilds: bool, default=false
+  createdAt: DateTime
+  endedAt: DateTime?

@@ -20,7 +20,7 @@ x-server-build: &server-build
   platforms:
     - linux/amd64
 
-# Every secret is required: Compose stops and names the variable when one is
+# The shared secrets are required: Compose stops and names the variable when one is
 # missing or empty. `SERVERPOD_PASSWORD_*` is how Serverpod reads its passwords
 # from the environment, so no passwords.yaml is mounted.
 x-server-environment: &server-environment
@@ -86,7 +86,9 @@ services:
     platform: linux/amd64
     restart: unless-stopped
     command: ["--mode", "production"]
-    environment: *server-environment
+    environment:
+      <<: *server-environment
+      SERVERPOD_PASSWORD_adminKey: ${KANAME_ADMIN_KEY:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

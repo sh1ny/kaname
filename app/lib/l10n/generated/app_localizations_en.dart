@@ -217,4 +217,482 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get searchNoticeAppUpdate =>
       'Update the app to load the latest static data. Search keeps using the data you have.';
+
+  @override
+  String get sdTitle => 'Static data';
+
+  @override
+  String get sdAppBundle => 'This app’s bundle';
+
+  @override
+  String get sdInUse => 'In use';
+
+  @override
+  String get sdAnnounced => 'Announced build';
+
+  @override
+  String get sdConnection => 'Connection';
+
+  @override
+  String get sdDownload => 'Download';
+
+  @override
+  String get sdLastDownload => 'Last download';
+
+  @override
+  String get sdDownloadNow => 'Download now';
+
+  @override
+  String get sdServer => 'Server status';
+
+  @override
+  String get sdNoServer => 'No server configured';
+
+  @override
+  String get sdStatusLoading => 'Reading server status…';
+
+  @override
+  String get sdStatusUnavailable => 'Server status unavailable';
+
+  @override
+  String get sdRefresh => 'Refresh';
+
+  @override
+  String get sdOpenReport => 'View change report';
+
+  @override
+  String get sdNone => 'None';
+
+  @override
+  String sdBuild(int build) {
+    return 'Build $build';
+  }
+
+  @override
+  String get sdAwaitingServer => 'Waiting for the server';
+
+  @override
+  String get sdConnected => 'Connected';
+
+  @override
+  String sdStreamDown(String time) {
+    return 'Server unreachable, retrying at $time';
+  }
+
+  @override
+  String get sdReconnecting => 'Server unreachable, reconnecting';
+
+  @override
+  String get sdAwaitingBundle => 'Waiting for the first bundle';
+
+  @override
+  String get sdUpToDate => 'Up to date';
+
+  @override
+  String get sdDownloading => 'Downloading';
+
+  @override
+  String sdDownloadWait(String time, String reason) {
+    return 'Waiting to retry at $time: $reason';
+  }
+
+  @override
+  String get sdServerNoBundle => 'Server has no bundle yet';
+
+  @override
+  String get sdAppUpdate => 'App update needed';
+
+  @override
+  String get sdNetworkError => 'network error';
+
+  @override
+  String get sdServerError => 'server error';
+
+  @override
+  String get sdRefusedBundle => 'bundle refused';
+
+  @override
+  String get sdNoneYet => 'None yet';
+
+  @override
+  String sdSaving(int build) {
+    return 'Build $build in use, saving';
+  }
+
+  @override
+  String sdStored(int build, String time) {
+    return 'Build $build stored at $time';
+  }
+
+  @override
+  String sdNotSaved(int build) {
+    return 'Build $build in use, not saved on this device';
+  }
+
+  @override
+  String sdDownloadFailed(int build, String time, String reason) {
+    return 'Build $build failed at $time: $reason';
+  }
+
+  @override
+  String sdWithReason(String outcome, String reason) {
+    return '$outcome: $reason';
+  }
+
+  @override
+  String get sdSwitched => 'Switched';
+
+  @override
+  String get sdHeld => 'Held build';
+
+  @override
+  String get sdOlder => 'Older than the active build';
+
+  @override
+  String get sdStaged => 'Staged build';
+
+  @override
+  String get sdFailed => 'Failed';
+
+  @override
+  String sdAt(String result, String time) {
+    return '$result at $time';
+  }
+
+  @override
+  String get sdRunning => 'Work running';
+
+  @override
+  String get sdSucceeded => 'Succeeded';
+
+  @override
+  String get sdSkipped => 'Skipped';
+
+  @override
+  String get sdSwitchFailed => 'Switch failed';
+
+  @override
+  String get sdRolledBack => 'Rolled back';
+
+  @override
+  String get sdRollbackFailed => 'Rollback failed';
+
+  @override
+  String sdTransition(String outcome, String from, String to) {
+    return '$outcome from $from to $to';
+  }
+
+  @override
+  String get sdWorkerStuck => 'Worker stuck, restart the server';
+
+  @override
+  String get sdRecoveryStuck => 'Recovery stuck, restart the server';
+
+  @override
+  String get sdStartupStuck => 'Start-up stuck, restart the server';
+
+  @override
+  String get sdSettlementStuck => 'Settlement stuck, restart the server';
+
+  @override
+  String get sdWork => 'Static-data work';
+
+  @override
+  String get sdIdle => 'Idle';
+
+  @override
+  String get sdActive => 'Active build';
+
+  @override
+  String get sdPrevious => 'Previous build';
+
+  @override
+  String sdWaitingToSwitch(int build) {
+    return 'Build $build, waiting to be switched to';
+  }
+
+  @override
+  String get sdAutoUpdate => 'Auto-update';
+
+  @override
+  String get sdOn => 'On';
+
+  @override
+  String get sdOff => 'Off';
+
+  @override
+  String get sdCcpLatest => 'CCP latest';
+
+  @override
+  String get sdLastCheck => 'Last check';
+
+  @override
+  String get sdLastImport => 'Last import';
+
+  @override
+  String get sdImportFileCounts => 'Import file counts';
+
+  @override
+  String sdImportCountsCutOff(int count) {
+    return 'Only some file counts are shown ($count files total).';
+  }
+
+  @override
+  String get sdLastSwitch => 'Last switch or rollback';
+
+  @override
+  String get sdReasonCcp => 'Could not reach CCP';
+
+  @override
+  String get sdReasonPostgres => 'Could not reach the database';
+
+  @override
+  String get sdReasonTimeout => 'Timed out';
+
+  @override
+  String get sdReasonImportRunning => 'Import already running';
+
+  @override
+  String get sdReasonFile => 'A required file was missing';
+
+  @override
+  String get sdReasonComparison => 'Comparison failed';
+
+  @override
+  String get sdReasonWorkerStopped => 'Worker stopped';
+
+  @override
+  String get sdReasonWorkerNotRunning => 'Worker not running';
+
+  @override
+  String get sdReasonRestart => 'Server restarted';
+
+  @override
+  String get sdReasonUnknown => 'Outcome unknown';
+
+  @override
+  String get sdReasonConnection => 'Connection lost';
+
+  @override
+  String get sdReasonOther => 'Failed, see the server log';
+
+  @override
+  String get sdAdminKey => 'Admin key';
+
+  @override
+  String get sdAdminCheckKey => 'Check key';
+
+  @override
+  String get sdAdminForget => 'Forget key';
+
+  @override
+  String get sdAdminChecking => 'Checking key…';
+
+  @override
+  String get sdAdminUnconfirmed => 'Could not check the key';
+
+  @override
+  String get sdAdminRetryKey => 'Try again';
+
+  @override
+  String get sdAdminPaused => 'Too many attempts, try again in a minute';
+
+  @override
+  String get sdAdminCheckAgain => 'Check again';
+
+  @override
+  String get sdAdminRejected => 'Admin key rejected';
+
+  @override
+  String get sdAdminAccepted => 'Key accepted.';
+
+  @override
+  String get sdAdminNotConfigured =>
+      'Admin actions are not configured on this server.';
+
+  @override
+  String get sdAdminSecureRequired => 'Admin actions need a secure connection.';
+
+  @override
+  String get sdAdminUpdate => 'Update now';
+
+  @override
+  String get sdAdminRollback => 'Roll back';
+
+  @override
+  String get sdAdminRollbackTitle => 'Roll back static data?';
+
+  @override
+  String sdAdminRollbackQuestion(int build, int active) {
+    return 'Make build $build active and hold build $active?';
+  }
+
+  @override
+  String get sdAdminCancel => 'Cancel';
+
+  @override
+  String get sdAdminAutoUpdate => 'Auto-update';
+
+  @override
+  String get sdAdminSaving => 'Saving auto-update…';
+
+  @override
+  String get sdAdminSettingUnconfirmed => 'Not confirmed';
+
+  @override
+  String get sdAdminRetrySetting => 'Retry';
+
+  @override
+  String get sdAdminSettingConfirmed => 'Auto-update saved.';
+
+  @override
+  String get sdAdminSettingChanged => 'The setting was changed elsewhere';
+
+  @override
+  String get sdAdminSettingNotSaved => 'Setting not saved';
+
+  @override
+  String get sdAdminWaiting => 'Waiting for the last action.';
+
+  @override
+  String get sdAdminNoRecord => 'The server has no record of this action yet.';
+
+  @override
+  String get sdAdminRetryJob => 'Try again';
+
+  @override
+  String get sdAdminSending => 'Sending action…';
+
+  @override
+  String get sdAdminStarted => 'Work running.';
+
+  @override
+  String get sdAdminWatching => 'No answer yet, watching the server';
+
+  @override
+  String get sdAdminOutcomeUnknownWatching =>
+      'Outcome unknown, watching the server';
+
+  @override
+  String get sdAdminUnknown => 'Outcome unknown, check the builds';
+
+  @override
+  String get sdAdminEnded => 'Action ended.';
+
+  @override
+  String get sdAdminImportRunning => 'An import is running.';
+
+  @override
+  String get sdAdminWorkerDown => 'The worker is not running.';
+
+  @override
+  String get sdAdminUpdateFailed => 'Update failed.';
+
+  @override
+  String get sdAdminRollbackFailed => 'Rollback failed.';
+
+  @override
+  String get sdAdminBuildsChanged =>
+      'The builds changed, check them and try again';
+
+  @override
+  String get sdAdminNoPrevious => 'There is no previous build.';
+
+  @override
+  String get sdAdminRolledBack => 'Rolled back.';
+
+  @override
+  String get sdAdminBusy => 'The server is busy, try again';
+
+  @override
+  String get sdAdminMalformed => 'The server could not accept this action.';
+
+  @override
+  String get sdAdminSwitched => 'The new build is active.';
+
+  @override
+  String get sdAdminUpToDate => 'Static data is up to date.';
+
+  @override
+  String get sdAdminHeld => 'The build is held.';
+
+  @override
+  String get sdAdminOlder => 'The available build is older.';
+
+  @override
+  String get sdAdminStaged => 'The new build is staged.';
+
+  @override
+  String get sdReportTitle => 'Change report';
+
+  @override
+  String get sdReportBack => 'Back to Settings';
+
+  @override
+  String get sdReportLoading => 'Loading the report…';
+
+  @override
+  String get sdReportUnavailable => 'The report is unavailable';
+
+  @override
+  String get sdReportRetry => 'Try again';
+
+  @override
+  String get sdReportNoPrevious => 'No previous build to compare';
+
+  @override
+  String get sdReportMissing => 'No report was stored';
+
+  @override
+  String get sdReportComparisonFailed => 'The comparison failed';
+
+  @override
+  String get sdReportTooLarge => 'The report is too large to show';
+
+  @override
+  String get sdReportBuilds => 'Builds';
+
+  @override
+  String get sdReportFromBuild => 'Previous build';
+
+  @override
+  String get sdReportToBuild => 'Active build';
+
+  @override
+  String get sdReportNoFiles => 'No files to show';
+
+  @override
+  String get sdReportFileType => 'File';
+
+  @override
+  String get sdReportFileBoth => 'In both builds';
+
+  @override
+  String get sdReportFileNew => 'New file';
+
+  @override
+  String get sdReportFileRemoved => 'Removed file';
+
+  @override
+  String get sdReportAdded => 'Added';
+
+  @override
+  String get sdReportRemoved => 'Removed';
+
+  @override
+  String get sdReportChanged => 'Changed';
+
+  @override
+  String get sdReportFields => 'Changed fields';
+
+  @override
+  String get sdReportCutOff => 'List cut off';
+
+  @override
+  String get sdReportNoKeys => 'No keys to show';
+
+  @override
+  String sdReportKeys(String kind, int count) {
+    return '$kind keys ($count)';
+  }
 }

@@ -1,0 +1,7 @@
+### A check without its private failure text (D15).
+class: StaticDataCheckStatus
+fields:
+  checkedAt: DateTime
+  latestBuild: int?
+  outcome: SdeCheckOutcome
+  reason: PublicReason?

@@ -30,12 +30,20 @@ void main() {
     InMemoryStaticDataStore? on,
     StaticDataStore? using,
     DateTime Function()? clock,
+    CheckTrigger trigger = CheckTrigger.daily,
+    String? operationId,
+    void Function(BundleStepResult)? onBundle,
+    void Function(String)? onWarning,
   }) {
     final target = on ?? store;
     return TakeLatestBuildJob(
       store: using ?? target,
       source: ccp,
       differ: differ ?? InMemoryStaticDataDiffer(target),
+      trigger: trigger,
+      operationId: operationId,
+      onBundle: onBundle,
+      onWarning: onWarning,
       clock: clock ?? () => _t0,
       scratchRoot: scratch,
     ).run();
@@ -50,14 +58,16 @@ void main() {
   group('Given the active build 1000', () {
     setUp(() => store.seedBuild(1000, BuildState.active));
 
-    test('a newer announced build is imported, compared and '
-        'switched', () async {
+    test('with auto-update on a newer build is imported, compared, switched '
+        'and recorded switched', () async {
+      store.autoUpdateSetting = true;
       ccp.announce(1001);
 
       final result = await check();
 
       expect(result, isA<BuildSwitched>());
       expect((result as BuildSwitched).build, 1001);
+      expect(store.records.single.record.outcome, ImportOutcome.succeeded);
       expect(store.builds, {
         1000: BuildState.previous,
         1001: BuildState.active,
@@ -77,6 +87,120 @@ void main() {
       );
       expectClean();
     });
+
+    test(
+      'with no stored setting a newer build is imported and switched',
+      () async {
+        ccp.announce(1001);
+        expect(await check(), isA<BuildSwitched>());
+        expect(store.records.single.record.build, 1001);
+        expect(store.builds[1001], BuildState.active);
+      },
+    );
+
+    test('a check keeps the setting it read at its start and the next check '
+        'stages a newer build', () async {
+      ccp.announce(1001);
+      ccp.onLookup = () => store.autoUpdateSetting = false;
+      expect(await check(), isA<BuildSwitched>());
+      store.isClosed = false;
+      ccp.announce(1002);
+      expect(await check(), isA<BuildStaged>());
+      expect(store.builds[1001], BuildState.active);
+      expect(store.builds[1002], BuildState.staged);
+    });
+
+    test('with auto-update off a newer build is imported and staged with '
+        'no report and recorded staged', () async {
+      store.autoUpdateSetting = false;
+      ccp.announce(1001);
+      expect(await check(), isA<BuildStaged>());
+      expect(store.builds, {1000: BuildState.active, 1001: BuildState.staged});
+      expect(store.records.single.record.outcome, ImportOutcome.succeeded);
+      expect(store.checks.single.outcome, CheckOutcome.staged);
+      expect(store.diffs, isEmpty);
+      expect(store.switches, isEmpty);
+    });
+
+    test('update now with auto-update off switches to the staged build '
+        'without a second import', () async {
+      store.autoUpdateSetting = false;
+      ccp.announce(1001);
+      expect(await check(), isA<BuildStaged>());
+      store.isClosed = false;
+      expect(
+        await check(trigger: CheckTrigger.updateNow),
+        isA<BuildSwitched>(),
+      );
+      expect(store.records, hasLength(1));
+      expect(ccp.opens, 1);
+      expect(store.builds, {
+        1000: BuildState.previous,
+        1001: BuildState.active,
+      });
+    });
+
+    test('update now naming a held build below the active one records older '
+        'and changes nothing', () async {
+      store.seedBuild(999, BuildState.previous, held: true);
+      ccp.announce(999);
+      expect(await check(trigger: CheckTrigger.updateNow), isA<BuildOlder>());
+      expect(store.builds, {999: BuildState.previous, 1000: BuildState.active});
+      expect(store.heldBuilds, {999});
+      expect(store.switches, isEmpty);
+      expect(store.checks.single.outcome, CheckOutcome.older);
+    });
+
+    test('a failure after CCP answered records its latest build', () async {
+      ccp.announce(1001);
+      final failing = _SwitchFailingStore(
+        store,
+        buildsError: StateError('stored builds unavailable'),
+      );
+      expect(await check(using: failing), isA<BuildCheckFailed>());
+      expect(store.checks.single.outcome, CheckOutcome.failed);
+      expect(store.checks.single.latestBuild, 1001);
+    });
+
+    test('an update-now check that switches records trigger update now and '
+        'outcome switched', () async {
+      ccp.announce(1001);
+      expect(
+        await check(trigger: CheckTrigger.updateNow),
+        isA<BuildSwitched>(),
+      );
+      final CheckRecord(:trigger, :outcome, :lookupStartedAt) =
+          store.checks.single;
+      expect(
+        (trigger, outcome, lookupStartedAt),
+        (CheckTrigger.updateNow, CheckOutcome.switched, _t0),
+      );
+    });
+
+    test('update now finding the lock held writes no check record', () async {
+      final holder = InMemoryStaticDataStore(lock: store.lock);
+      addTearDown(holder.close);
+      expect(await holder.tryLock(), isTrue);
+      final result = await check(trigger: CheckTrigger.updateNow);
+      expect(result, isA<BuildCheckFailed>());
+      expect(store.checks, isEmpty);
+      expect(store.builds, {1000: BuildState.active});
+    });
+
+    for (final trigger in [CheckTrigger.daily, CheckTrigger.start]) {
+      test('a ${trigger.name} check refused by the lock records failed '
+          'import already running', () async {
+        final holder = InMemoryStaticDataStore(lock: store.lock);
+        addTearDown(holder.close);
+        expect(await holder.tryLock(), isTrue);
+        expect(await check(trigger: trigger), isA<BuildCheckFailed>());
+        final record = store.checks.single;
+        expect(record.trigger, trigger);
+        expect(record.outcome, CheckOutcome.failed);
+        expect(record.failureReason, 'import already running');
+        expect(record.lookupStartedAt, isNull);
+      });
+    }
 
     test('the active build announced gives up to date', () async {
       ccp.announce(1000);
@@ -161,8 +285,57 @@ void main() {
       expectClean();
     });
 
-    test('a newer build lifts the hold and makes the rolled-back-to build '
-        'previous', () async {
+    test('an update now restoring a held build with a failed report compares '
+        'the pair again before the swap', () async {
+      store.seedBuild(1001, BuildState.previous, held: true);
+      ccp.announce(1001);
+      await store.insertDiff(
+        BuildDiffRecord(
+          fromBuild: 1000,
+          toBuild: 1001,
+          createdAt: _t0,
+          outcome: DiffOutcome.failed,
+          failureReason: 'earlier report failure',
+        ),
+      );
+      BuildDiffRecord? beforeSwap;
+      final result = await check(
+        trigger: CheckTrigger.updateNow,
+        operationId: '2413bf7f-66cb-4aa5-9073-e66a86546c3f',
+        onBundle: (step) {
+          if (step.build == 1001 && store.builds[1001] == BuildState.previous) {
+            beforeSwap = store.diffs.single;
+          }
+        },
+      );
+      expect(result, isA<BuildSwitched>());
+      expect(beforeSwap?.outcome, DiffOutcome.succeeded);
+      expect(store.builds[1001], BuildState.active);
+      expect(store.heldBuilds, isEmpty);
+      expect(store.switches.single.kind, SwitchKind.forward);
+    });
+
+    test(
+      'a held pair with no report still restores when comparison fails',
+      () async {
+        store.seedBuild(1001, BuildState.previous, held: true);
+        ccp.announce(1001);
+        final result = await check(
+          trigger: CheckTrigger.updateNow,
+          operationId: '2413bf7f-66cb-4aa5-9073-e66a86546c3f',
+          differ: _FailingDiffer(),
+        );
+        expect(result, isA<BuildSwitched>());
+        expect(store.diffs.single.outcome, DiffOutcome.failed);
+        expect(store.builds[1001], BuildState.active);
+        expect(store.heldBuilds, isEmpty);
+        expect(ccp.opens, 0);
+      },
+    );
+
+    test('with auto-update on a newer build after a rollback switches and '
+        'lifts the hold', () async {
+      store.autoUpdateSetting = true;
       // 1001 was rolled back from: 1000 is active again, 1001 is previous
       // and held.
       store
@@ -242,8 +415,8 @@ void main() {
       expectClean();
     });
 
-    test('a failed comparison is recorded and the switch still '
-        'happens', () async {
+    test('a failed comparison stores its failed row with the reason and '
+        'the switch still happens', () async {
       ccp.announce(1001);
 
       final result = await check(differ: _FailingDiffer());
@@ -258,6 +431,72 @@ void main() {
       expect(store.builds[1001], BuildState.active);
       expect(store.checks.single.outcome, CheckOutcome.switched);
       expectClean();
+    });
+
+    test('a throwing report lookup is logged, counts as a failed '
+        'comparison and the switch goes on', () async {
+      ccp.announce(1001);
+      final warnings = <String>[];
+      final result = await check(
+        using: _SwitchFailingStore(
+          store,
+          failSwitch: false,
+          diffReadError: StateError('report lookup broke'),
+        ),
+        onWarning: warnings.add,
+      );
+      expect(result, isA<BuildSwitched>());
+      expect(store.diffs.single.outcome, DiffOutcome.failed);
+      expect(store.diffs.single.failureReason, contains('report lookup broke'));
+      expect(warnings.single, contains('report lookup broke'));
+    });
+
+    test('a failed row insert is logged at warning and the switch goes on '
+        'with no row', () async {
+      ccp.announce(1001);
+      final warnings = <String>[];
+      final result = await check(
+        using: _SwitchFailingStore(
+          store,
+          failSwitch: false,
+          diffWriteError: StateError('report store broke'),
+        ),
+        differ: _FailingDiffer(),
+        onWarning: warnings.add,
+      );
+      expect(result, isA<BuildSwitched>());
+      expect(store.diffs, isEmpty);
+      expect(warnings, contains(contains('report store broke')));
+    });
+
+    test('a failed switch keeps the stored report and the retry compares '
+        'nothing', () async {
+      ccp.announce(1001);
+      expect(
+        await check(using: _SwitchFailingStore(store)),
+        isA<BuildStaged>(),
+      );
+      final saved = store.diffs.single;
+      expect(saved.outcome, DiffOutcome.succeeded);
+      store.isClosed = false;
+      expect(await check(differ: _FailingDiffer()), isA<BuildSwitched>());
+      expect(store.diffs.single, same(saved));
+      expect(ccp.opens, 1);
+    });
+
+    test('a retried switch after a failed comparison compares again', () async {
+      ccp.announce(1001);
+      expect(
+        await check(
+          using: _SwitchFailingStore(store),
+          differ: _FailingDiffer(),
+        ),
+        isA<BuildStaged>(),
+      );
+      expect(store.diffs.single.outcome, DiffOutcome.failed);
+      store.isClosed = false;
+      expect(await check(), isA<BuildSwitched>());
+      expect(store.diffs.single.outcome, DiffOutcome.succeeded);
     });
 
     test('a failed switch is recorded, the build stays staged and the check '
@@ -381,6 +620,15 @@ void main() {
       expect(store.checks.single.latestBuild, 1000);
       expectClean();
     });
+
+    test('the first build becomes active and is recorded switched with '
+        'auto-update off', () async {
+      store.autoUpdateSetting = false;
+      ccp.announce(1000);
+      expect(await check(trigger: CheckTrigger.start), isA<BuildSwitched>());
+      expect(store.builds, {1000: BuildState.active});
+      expect(store.checks.single.outcome, CheckOutcome.switched);
+    });
   });
 
   group('Given an older build staged by an import', () {
@@ -436,6 +684,7 @@ final class _FakeCcp implements SdeSource {
 
   /// How many times a build was opened (downloaded).
   int opens = 0;
+  void Function()? onLookup;
 
   void announce(int build) => _announced = build;
 
@@ -449,6 +698,7 @@ final class _FakeCcp implements SdeSource {
 
   @override
   Future<int?> announcedBuild() async {
+    onLookup?.call();
     final reason = _unreachable;
     if (reason != null) throw SdeSourceException(reason);
     return _announced;
@@ -473,9 +723,31 @@ final class _FailingDiffer implements StaticDataDiffer {
 
 /// Forwards to [_inner], but the switch statement fails.
 final class _SwitchFailingStore implements StaticDataStore {
-  _SwitchFailingStore(this._inner);
+  _SwitchFailingStore(
+    this._inner, {
+    this.buildsError,
+    this.diffReadError,
+    this.diffWriteError,
+    this.failSwitch = true,
+  });
+
+  final Object? diffReadError;
+  final Object? diffWriteError;
+  final bool failSwitch;
+
+  final Object? buildsError;
 
   final InMemoryStaticDataStore _inner;
+
+  @override
+  Future<bool> autoUpdate() => _inner.autoUpdate();
+
+  @override
+  bool get jobConnectionOpen => _inner.jobConnectionOpen;
+
+  @override
+  bool confirmedStatementFailure(Object error) =>
+      _inner.confirmedStatementFailure(error);
 
   @override
   Future<bool> tryLock() => _inner.tryLock();
@@ -492,6 +764,13 @@ final class _SwitchFailingStore implements StaticDataStore {
   Future<void> updateRecord(int id, ImportRecord record) =>
       _inner.updateRecord(id, record);
   @override
+  Future<ImportRecordEnd?> finishFailedImport(
+    int id, {
+    required DateTime at,
+    required String reason,
+    int? build,
+  }) => _inner.finishFailedImport(id, at: at, reason: reason, build: build);
+  @override
   Future<void> pruneRecords({required int keep}) =>
       _inner.pruneRecords(keep: keep);
   @override
@@ -499,11 +778,18 @@ final class _SwitchFailingStore implements StaticDataStore {
   @override
   Future<bool> hasActiveBuild() => _inner.hasActiveBuild();
   @override
-  Future<List<StoredBuild>> storedBuilds() => _inner.storedBuilds();
+  Future<List<StoredBuild>> storedBuilds() {
+    if (buildsError case final error?) throw error;
+    return _inner.storedBuilds();
+  }
+
   @override
   Future<int?> dropStagedBuild() => _inner.dropStagedBuild();
   @override
   Future<void> insertCheck(CheckRecord record) => _inner.insertCheck(record);
+  @override
+  Future<void> insertCheckAfterConnectionLoss(CheckRecord record) =>
+      _inner.insertCheckAfterConnectionLoss(record);
   @override
   Future<DateTime?> newestCheckedAt() => _inner.newestCheckedAt();
   @override
@@ -516,10 +802,17 @@ final class _SwitchFailingStore implements StaticDataStore {
   Future<void> pruneSwitches({required int keep}) =>
       _inner.pruneSwitches(keep: keep);
   @override
-  Future<void> insertDiff(BuildDiffRecord record) => _inner.insertDiff(record);
+  Future<void> insertDiff(BuildDiffRecord record) {
+    if (diffWriteError case final error?) throw error;
+    return _inner.insertDiff(record);
+  }
+
   @override
-  Future<BuildDiffRecord?> diff(int fromBuild, int toBuild) =>
-      _inner.diff(fromBuild, toBuild);
+  Future<BuildDiffRecord?> diff(int fromBuild, int toBuild) {
+    if (diffReadError case final error?) throw error;
+    return _inner.diff(fromBuild, toBuild);
+  }
+
   @override
   Future<List<TypedRow>> readTypedRows(int build, TypedFile file) =>
       _inner.readTypedRows(build, file);
@@ -539,8 +832,12 @@ final class _SwitchFailingStore implements StaticDataStore {
   Future<void> recordBundle(BundleWrite write) => _inner.recordBundle(write);
   @override
   Future<T> inTransaction<T>(
-    Future<T> Function(StaticDataWriter writer) body,
-  ) => _inner.inTransaction((writer) => body(_FailingSwitchWriter(writer)));
+    Future<T> Function(StaticDataWriter writer) body, {
+    int? activatingBuild,
+  }) => _inner.inTransaction(
+    (writer) => body(failSwitch ? _FailingSwitchWriter(writer) : writer),
+    activatingBuild: activatingBuild,
+  );
   @override
   Future<void> close() => _inner.close();
 }
@@ -553,6 +850,11 @@ final class _FailingSwitchWriter implements StaticDataWriter {
   @override
   Future<void> switchTo(int build, {required DateTime at}) =>
       Future.error(StateError('switch statement failed'));
+  @override
+  Future<void> restoreHeld({
+    required DateTime at,
+    required String operationId,
+  }) => _inner.restoreHeld(at: at, operationId: operationId);
   @override
   Future<void> rollBack({required DateTime at}) => _inner.rollBack(at: at);
   @override

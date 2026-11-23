@@ -2,6 +2,7 @@
 library;
 
 import 'dart:io';
+import 'dart:math';
 
 import 'package:kaname_client/kaname_client.dart';
 import 'package:test/test.dart';
@@ -294,6 +295,44 @@ void main() {
         7,
         reason: 'port $port refuses connections: ${probe.output}',
       );
+    }
+  }, timeout: _slow);
+
+  test('the status reports admin actions configured with KANAME_ADMIN_KEY '
+      'and not configured without it', () async {
+    const recreate = [
+      'up',
+      '--detach',
+      '--wait',
+      '--no-deps',
+      '--force-recreate',
+      'server',
+    ];
+    addTearDown(() async {
+      final restored = await compose(recreate);
+      expect(restored.exitCode, 0, reason: restored.output);
+      await waitUntilReady();
+    });
+
+    final random = Random.secure();
+    final key = List.generate(
+      32,
+      (_) => random.nextInt(256),
+    ).map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+    final client = Client('$stackOrigin/api/');
+    try {
+      for (final configured in [true, false]) {
+        final started = await compose(
+          recreate,
+          environment: {'KANAME_ADMIN_KEY': configured ? key : ''},
+        );
+        expect(started.exitCode, 0, reason: started.output);
+        await waitUntilReady();
+        final result = await client.staticData.status();
+        expect(result.adminConfigured, configured);
+      }
+    } finally {
+      client.close();
     }
   }, timeout: _slow);
 

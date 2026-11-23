@@ -10,7 +10,7 @@ import 'package:kaname_app/server/data/server_address.dart';
 import 'package:kaname_app/server/logic/server_status.dart';
 import 'package:kaname_app/static_data/data/bundle_announcements.dart';
 import 'package:kaname_app/static_data/data/bundle_downloader.dart'
-    show BundleTooLarge;
+    show BundleTooLarge, BundleHttpStatus;
 import 'package:kaname_app/static_data/data/bundle_store.dart';
 import 'package:kaname_app/static_data/data/file_bundle_store.dart';
 import 'package:kaname_app/static_data/logic/static_data_notifier.dart';
@@ -74,6 +74,8 @@ final class Harness {
         bundleDownloaderProvider.overrideWithValue(this.downloader),
         bundleStoreProvider.overrideWithValue(this.store),
         bundleOpenerProvider.overrideWithValue(this.opener),
+        staticDataNowProvider.overrideWithValue(this.clock.now),
+        staticDataLogProvider.overrideWithValue(logs.add),
         bundleIndexerProvider.overrideWithValue(this.indexer),
         staticDataTimersProvider.overrideWithValue(this.clock.start),
       ],
@@ -88,6 +90,7 @@ final class Harness {
   final FakeBundleIndexer indexer;
   final FakeClock clock;
   final FakeServerHealth health;
+  final List<String> logs = [];
   late final ProviderContainer container;
 
   /// Every state the notifier took after its first.
@@ -932,6 +935,156 @@ void main() {
       expect(h.downloader.builds, [buildN + 1]);
       expect(h.source.subscribes, 2);
       expect(h.clock.delays, isEmpty);
+    },
+  );
+  test('download now during a backoff starts one download at once and the next wait is 2 min', () async {
+    final h = harnessHolding(copyN);
+    await h.start();
+    await h.send(announce(copyN1));
+    h.downloader.last.fail();
+    await pumpEventQueue();
+    await h.clock.elapse(const Duration(seconds: 20));
+    h.container.read(staticDataProvider.notifier).downloadNow();
+    expect(h.downloader.started, hasLength(2));
+    h.downloader.last.fail();
+    await pumpEventQueue();
+    expect(h.clock.delays.last, const Duration(minutes: 2));
+    expect(h.state.download, isA<WaitingToRetry>());
+  });
+
+  test('download now with the bundle in use, none announced or a download running starts nothing', () async {
+    final h = harnessHolding(copyN);
+    await h.start();
+    h.container.read(staticDataProvider.notifier).downloadNow();
+    await h.send(announce(copyN));
+    h.container.read(staticDataProvider.notifier).downloadNow();
+    await h.send(announceNone(revision: 2));
+    h.container.read(staticDataProvider.notifier).downloadNow();
+    expect(h.downloader.started, isEmpty);
+    await h.send(announce(copyN1, revision: 3));
+    h.container.read(staticDataProvider.notifier).downloadNow();
+    expect(h.downloader.started, hasLength(1));
+  });
+
+  test('before any announcement both lines wait and nothing says up to date or server has no bundle yet', () async {
+    final h = harnessHolding(copyN);
+    await h.start();
+    expect(h.state, readyOn(copyN));
+    expect(h.state.announced, isNull);
+    expect(h.state.connection, isA<AwaitingAnnouncement>());
+    expect(h.state.download, isA<WaitingForFirstBundle>());
+  });
+
+  test('a later retry time alone produces a new state', () async {
+    final h = harnessHolding(copyN);
+    await h.start();
+    await h.send(announce(copyN1));
+    h.downloader.last.fail();
+    await pumpEventQueue();
+    final first = h.state;
+    await h.clock.elapse(oneMinute);
+    h.downloader.last.fail();
+    await pumpEventQueue();
+    final second = h.state;
+    expect(
+      (second.download as WaitingToRetry).nextTry,
+      (first.download as WaitingToRetry).nextTry.add(
+        const Duration(minutes: 2),
+      ),
+    );
+    expect(second, isNot(first));
+    expect(h.history.last, same(second));
+    final earlierOnly = NoBundle(
+      const Starting(),
+      download: WaitingToRetry(h.clock.now(), DownloadFailure.network),
+    );
+    final laterOnly = NoBundle(
+      const Starting(),
+      download: WaitingToRetry(
+        h.clock.now().add(oneMinute),
+        DownloadFailure.network,
+      ),
+    );
+    expect(laterOnly, isNot(earlierOnly));
+  });
+
+  test('a withdrawn target keeps the last failure and drops the retry and Download now', () async {
+    final h = harnessHolding(copyN);
+    await h.start();
+    await h.send(announce(copyN1));
+    h.downloader.last.fail(const BundleHttpStatus(503));
+    await pumpEventQueue();
+    final failure = h.state.lastDownload as DownloadFailed;
+    expect(failure.reason, DownloadFailure.server);
+    await h.send(announceNone(revision: 2));
+    expect(h.state.lastDownload, failure);
+    expect((h.state.download as Stopped).reason, DownloadStopReason.noBundle);
+    h.container.read(staticDataProvider.notifier).downloadNow();
+    await h.clock.elapse(oneMinute);
+    expect(h.downloader.started, hasLength(1));
+  });
+
+  test('a refused save shows in use, not saved on this device', () async {
+    final h = harnessHolding(copyN);
+    h.fakeStore!.refuseSaves = true;
+    await h.start();
+    await h.send(announce(copyN1));
+    await h.deliver(copyN1);
+    expect(h.state, readyOn(copyN1));
+    expect(h.state.lastDownload, isA<DownloadNotSaved>());
+    expect(h.state.download, isA<UpToDate>());
+  });
+
+  test("a late refused save of N+1 never replaces N+2's failure", () async {
+    final h = harnessHolding(copyN);
+    h.fakeStore!
+      ..holdSave = true
+      ..refuseSaves = true;
+    await h.start();
+    await h.send(announce(copyN1));
+    await h.deliver(copyN1);
+    expect(h.state.lastDownload, isA<DownloadSaving>());
+    await h.send(announce(copyN2, revision: 2));
+    h.downloader.last.fail();
+    await pumpEventQueue();
+    final failure = h.state.lastDownload;
+    expect(
+      failure,
+      isA<DownloadFailed>().having((s) => s.build, 'build', buildN + 2),
+    );
+    h.fakeStore!.releaseSaves();
+    await pumpEventQueue();
+    expect(h.state.lastDownload, failure);
+  });
+
+  test("N+1's save ending after N+2 was withdrawn shows N+1 stored", () async {
+    final h = harnessHolding(copyN);
+    h.fakeStore!.holdSave = true;
+    await h.start();
+    await h.send(announce(copyN1));
+    await h.deliver(copyN1);
+    await h.send(announce(copyN2, revision: 2));
+    await h.send(announceNone(revision: 3));
+    h.fakeStore!.releaseSaves();
+    await pumpEventQueue();
+    expect(
+      h.state.lastDownload,
+      isA<DownloadSucceeded>().having((s) => s.build, 'build', buildN + 1),
+    );
+  });
+
+  test(
+    'a throwing save shows not saved on this device and logs the error',
+    () async {
+      final h = harnessHolding(copyN);
+      h.fakeStore!.throwOnSave = true;
+      await h.start();
+      await h.send(announce(copyN1));
+      await h.deliver(copyN1);
+      expect(h.state.lastDownload, isA<DownloadNotSaved>());
+      expect(h.state.download, isA<UpToDate>());
+      expect(h.clock.delays, isEmpty);
+      expect(h.logs, contains(contains('storage failed')));
     },
   );
 }

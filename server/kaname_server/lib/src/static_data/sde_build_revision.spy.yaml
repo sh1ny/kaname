@@ -1,0 +1,7 @@
+### The revision of the active, previous and held builds (D22).
+### The writer uses only id 1. A missing row represents revision 0.
+class: SdeBuildRevision
+table: sde_build_revision
+serverOnly: true
+fields:
+  revision: int

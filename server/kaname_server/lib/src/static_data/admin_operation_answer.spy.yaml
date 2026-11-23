@@ -1,0 +1,6 @@
+### Public progress for one operation id (D9, D21).
+class: AdminOperationAnswer
+fields:
+  state: AdminOperationReadState
+  kind: SdeAdminOperationKind?
+  operation: AdminOperationView?

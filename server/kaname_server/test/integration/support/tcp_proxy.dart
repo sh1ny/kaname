@@ -110,6 +110,19 @@ final class TcpProxy {
       onDone: () => unawaited(client.close().catchError((_) {})),
       cancelOnError: true,
     );
+    // A timed-out client may have closed before held replies are released.
+    // A write failure ends that forwarding stream, not the test's zone.
+    unawaited(
+      client.done.then<void>(
+        (_) => reads.cancel(),
+        onError: (Object error, StackTrace stack) {
+          if (error is! SocketException) {
+            Error.throwWithStackTrace(error, stack);
+          }
+          return reads.cancel();
+        },
+      ),
+    );
     _targetReads.add(reads);
     if (_holdingTargetReads) reads.pause();
   }
@@ -137,13 +150,19 @@ final class TcpProxy {
     }
   }
 
-  /// Stops listening and destroys every open connection.
-  Future<void> close() async {
-    await _server.close();
+  /// Cuts existing connections without refusing a later reconnection.
+  void disconnectClients() {
     for (final socket in _sockets) {
       socket.destroy();
     }
     _sockets.clear();
     _targetReads.clear();
+    _holdingTargetReads = false;
+  }
+
+  /// Stops listening and destroys every open connection.
+  Future<void> close() async {
+    await _server.close();
+    disconnectClients();
   }
 }

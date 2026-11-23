@@ -69,8 +69,11 @@ Future<bundle.BuiltBundle> buildBundleFromZip(
   );
   final build = switch (attempt.result) {
     ImportSucceeded(:final build) => build,
-    ImportFailed(:final reason) || ImportSkipped(:final reason) =>
-      throw ZipBundleException(zipFile.path, reason),
+    ImportFailed(:final reason) ||
+    ImportSkipped(:final reason) ||
+    ImportUnconfirmed(
+      :final reason,
+    ) => throw ZipBundleException(zipFile.path, reason),
   };
   try {
     return await buildStoredBundle(store, build);

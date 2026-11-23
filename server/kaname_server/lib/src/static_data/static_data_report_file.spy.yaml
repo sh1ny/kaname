@@ -1,0 +1,11 @@
+### A file comparison with complete counts and bounded details (D16).
+class: StaticDataReportFile
+fields:
+  file: String
+  status: StaticDataReportFileStatus
+  added: StaticDataReportChanges
+  removed: StaticDataReportChanges
+  changed: StaticDataReportChanges
+  changedFields: Map<String, int>
+  changedFieldCount: int
+  changedFieldsCutOff: bool

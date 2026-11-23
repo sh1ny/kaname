@@ -37,7 +37,7 @@ With a server address, the app SHALL subscribe to the build-change stream when i
 - **THEN** the app subscribes to nothing, downloads nothing and keeps any bundle it holds
 
 ### Requirement: Failed downloads keep the old bundle and retry
-A download that fails (a 503 included), or a bundle a reader refuses, SHALL leave the bundle in use unchanged. The app SHALL retry after 1 minute, doubling to at most 30 minutes, and at once only when the stream announces another bundle; a reconnect announcing the same bundle SHALL NOT bypass the wait.
+A download that fails (a 503 included), or a bundle a reader refuses, SHALL leave the bundle in use unchanged. The app SHALL retry after 1 minute, doubling to at most 30 minutes, and at once only when the stream announces another bundle or the user asks to download now; a reconnect announcing the same bundle SHALL NOT bypass the wait.
 
 #### Scenario: Network error
 - **WHEN** downloading build N+1's bundle fails with a network error while build N's is in use
@@ -54,6 +54,14 @@ A download that fails (a 503 included), or a bundle a reader refuses, SHALL leav
 #### Scenario: Hash mismatch
 - **WHEN** the app holds and has saved build N's bundle, and the downloaded bytes of build N+1 do not match the announced SHA-256
 - **THEN** the bytes are discarded, build N's bundle stays in use and kept, an offline restart loads build N's bundle, and a retry is scheduled
+
+#### Scenario: Download now during backoff
+- **WHEN** a download of build N+1's bundle failed 20 seconds ago and the user asks to download now
+- **THEN** one download of build N+1's bundle starts at once, and if it fails again the next wait is 2 minutes
+
+#### Scenario: Download now with nothing to fetch
+- **WHEN** the app already uses the announced bundle, or no bundle is announced, or a download is running, and the user asks to download now
+- **THEN** no download starts
 
 ### Requirement: The app skips a bundle format it cannot read
 When an announcement names a major format version the app does not support, the app SHALL download nothing, keep the bundle in use, show that an app update is needed, and try again only when the announcement changes.

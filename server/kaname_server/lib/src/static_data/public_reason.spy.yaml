@@ -1,0 +1,17 @@
+### Allowlisted static-data failure reasons. Raw stored text stays on the server (D15).
+enum: PublicReason
+serialized: byName
+values:
+  - ccpUnreachable
+  - postgresUnreachable
+  - timedOut
+  - importAlreadyRunning
+  - missingFile
+  - comparisonFailed
+  - switchFailed
+  - workerStopped
+  - workerNotRunning
+  - serverRestarted
+  - outcomeUnknown
+  - connectionLost
+  - other

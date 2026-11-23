@@ -17,8 +17,16 @@ import 'dart:io' as _idi;
 import 'package:kaname_server/src/generated/future_calls.dart' as _ibdqg5o2;
 import 'package:kaname_server/src/generated/health/health_report.dart'
     as _iaouzw49;
+import 'package:kaname_server/src/generated/static_data/admin_answer.dart'
+    as _izz9ft7x;
+import 'package:kaname_server/src/generated/static_data/admin_operation_answer.dart'
+    as _ilolg0lf;
 import 'package:kaname_server/src/generated/static_data/bundle_announcement.dart'
     as _imyjqkwl;
+import 'package:kaname_server/src/generated/static_data/setting_revision.dart'
+    as _isqu85ty;
+import 'package:kaname_server/src/generated/static_data/static_data_status.dart'
+    as _i652fs52;
 import 'package:serverpod/serverpod.dart' as _is;
 import 'package:serverpod_test/serverpod_test.dart' as _ist;
 import 'package:kaname_server/src/generated/protocol.dart';
@@ -158,6 +166,8 @@ class TestEndpoints {
 
   late final _HealthEndpoint health;
 
+  late final _StaticDataAdminEndpoint staticDataAdmin;
+
   late final _StaticDataEndpoint staticData;
 }
 
@@ -169,6 +179,7 @@ class _InternalTestEndpoints extends TestEndpoints
     _is.EndpointDispatch endpoints,
   ) {
     health = _HealthEndpoint(endpoints, serializationManager);
+    staticDataAdmin = _StaticDataAdminEndpoint(endpoints, serializationManager);
     staticData = _StaticDataEndpoint(endpoints, serializationManager);
   }
 }
@@ -213,12 +224,211 @@ class _HealthEndpoint {
   }
 }
 
+class _StaticDataAdminEndpoint {
+  _StaticDataAdminEndpoint(this._endpointDispatch, this._serializationManager);
+
+  final _is.EndpointDispatch _endpointDispatch;
+
+  final _is.SerializationManager _serializationManager;
+
+  _ida.Future<_izz9ft7x.AdminAnswer> checkKey(
+    _ist.TestSessionBuilder sessionBuilder,
+    String adminKey,
+  ) async {
+    return _ist.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'staticDataAdmin',
+            method: 'checkKey',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'staticDataAdmin',
+          methodName: 'checkKey',
+          parameters: _ist.testObjectToJson({'adminKey': adminKey}),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue = await (_localCallContext.method.call(
+          _localUniqueSession,
+          _localCallContext.arguments,
+        ) as _ida.Future<_izz9ft7x.AdminAnswer>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
+
+  _ida.Future<_izz9ft7x.AdminAnswer> updateNow(
+    _ist.TestSessionBuilder sessionBuilder,
+    String adminKey,
+    String operationId,
+  ) async {
+    return _ist.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'staticDataAdmin',
+            method: 'updateNow',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'staticDataAdmin',
+          methodName: 'updateNow',
+          parameters: _ist.testObjectToJson({
+            'adminKey': adminKey,
+            'operationId': operationId,
+          }),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue = await (_localCallContext.method.call(
+          _localUniqueSession,
+          _localCallContext.arguments,
+        ) as _ida.Future<_izz9ft7x.AdminAnswer>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
+
+  _ida.Future<_izz9ft7x.AdminAnswer> rollBack(
+    _ist.TestSessionBuilder sessionBuilder,
+    String adminKey,
+    String operationId,
+    int expectedRevision,
+  ) async {
+    return _ist.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'staticDataAdmin',
+            method: 'rollBack',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'staticDataAdmin',
+          methodName: 'rollBack',
+          parameters: _ist.testObjectToJson({
+            'adminKey': adminKey,
+            'operationId': operationId,
+            'expectedRevision': expectedRevision,
+          }),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue = await (_localCallContext.method.call(
+          _localUniqueSession,
+          _localCallContext.arguments,
+        ) as _ida.Future<_izz9ft7x.AdminAnswer>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
+
+  _ida.Future<_izz9ft7x.AdminAnswer> setAutoUpdate(
+    _ist.TestSessionBuilder sessionBuilder,
+    String adminKey,
+    bool value,
+    _isqu85ty.SettingRevision expectedRevision,
+    String writeId,
+  ) async {
+    return _ist.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'staticDataAdmin',
+            method: 'setAutoUpdate',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'staticDataAdmin',
+          methodName: 'setAutoUpdate',
+          parameters: _ist.testObjectToJson({
+            'adminKey': adminKey,
+            'value': value,
+            'expectedRevision': expectedRevision,
+            'writeId': writeId,
+          }),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue = await (_localCallContext.method.call(
+          _localUniqueSession,
+          _localCallContext.arguments,
+        ) as _ida.Future<_izz9ft7x.AdminAnswer>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
+}
+
 class _StaticDataEndpoint {
   _StaticDataEndpoint(this._endpointDispatch, this._serializationManager);
 
   final _is.EndpointDispatch _endpointDispatch;
 
   final _is.SerializationManager _serializationManager;
+
+  _ida.Future<_i652fs52.StaticDataStatus> status(
+    _ist.TestSessionBuilder sessionBuilder,
+  ) async {
+    return _ist.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'staticData',
+            method: 'status',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'staticData',
+          methodName: 'status',
+          parameters: _ist.testObjectToJson({}),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue = await (_localCallContext.method.call(
+          _localUniqueSession,
+          _localCallContext.arguments,
+        ) as _ida.Future<_i652fs52.StaticDataStatus>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
+
+  _ida.Future<_ilolg0lf.AdminOperationAnswer> operation(
+    _ist.TestSessionBuilder sessionBuilder,
+    String operationId,
+  ) async {
+    return _ist.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'staticData',
+            method: 'operation',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'staticData',
+          methodName: 'operation',
+          parameters: _ist.testObjectToJson({'operationId': operationId}),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue = await (_localCallContext.method.call(
+          _localUniqueSession,
+          _localCallContext.arguments,
+        ) as _ida.Future<_ilolg0lf.AdminOperationAnswer>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
 
   _ida.Stream<_imyjqkwl.BundleAnnouncement> bundleAnnouncements(
     _ist.TestSessionBuilder sessionBuilder,

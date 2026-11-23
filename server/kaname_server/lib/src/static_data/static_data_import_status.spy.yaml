@@ -1,0 +1,11 @@
+### A bounded import summary without private diagnostics (D2, D15).
+class: StaticDataImportStatus
+fields:
+  build: int?
+  startedAt: DateTime
+  finishedAt: DateTime?
+  outcome: SdeImportOutcome
+  reason: PublicReason?
+  fileCounts: Map<String, int>?
+  fileCount: int
+  fileCountsCutOff: bool

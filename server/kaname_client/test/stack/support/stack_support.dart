@@ -45,12 +45,14 @@ Future<CommandResult> run(
   String executable,
   List<String> arguments, {
   String? workingDirectory,
+  Map<String, String>? environment,
   Duration timeout = const Duration(minutes: 10),
 }) async {
   final process = await Process.start(
     executable,
     arguments,
     workingDirectory: workingDirectory,
+    environment: environment,
   );
   final output = StringBuffer();
   // Both pipes must be drained, or the process blocks on a full buffer.
@@ -71,9 +73,11 @@ Future<CommandResult> run(
 /// Runs `docker compose` on `deploy/compose.yaml` with [arguments].
 ///
 /// [envFile] replaces the default `deploy/.env`.
+/// [environment] overrides variables for this invocation only.
 Future<CommandResult> compose(
   List<String> arguments, {
   String? envFile,
+  Map<String, String>? environment,
   Duration timeout = const Duration(minutes: 10),
 }) => run(
   'docker',
@@ -85,6 +89,7 @@ Future<CommandResult> compose(
     ...arguments,
   ],
   workingDirectory: '${repositoryRoot()}/deploy',
+  environment: environment,
   timeout: timeout,
 );
 

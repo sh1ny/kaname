@@ -1,0 +1,21 @@
+### A safe snapshot of stored static-data state (D2, D15).
+class: StaticDataStatus
+fields:
+  activeBuild: int?
+  previousBuild: int?
+  stagedBuild: int?
+  heldBuild: int?
+  buildRevision: int
+  settingRevision: SettingRevision
+  autoUpdate: bool
+  busy: bool
+  adminConfigured: bool
+  workerStuck: bool
+  settlementStuck: bool
+  recoveryStuck: bool
+  startupStuck: bool
+  ccpLatest: StaticDataCcpLatest?
+  latestCheck: StaticDataCheckStatus?
+  latestImport: StaticDataImportStatus?
+  latestSwitch: StaticDataSwitchStatus?
+  latestDiff: StaticDataDiffStatus?

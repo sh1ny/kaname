@@ -1,0 +1,25 @@
+### Public admin command outcomes; never contains the submitted key (D9).
+enum: AdminAnswerOutcome
+serialized: byName
+values:
+  - keyAccepted
+  - notConfigured
+  - keyRejected
+  - tooManyAttempts
+  - started
+  - noAnswerYet
+  - outcomeUnknown
+  - ended
+  - importRunning
+  - workerNotRunning
+  - updateFailed
+  - rollbackFailed
+  - buildsChanged
+  - noPrevious
+  - rolledBack
+  - adminBusy
+  - malformed
+  - settingConfirmed
+  - settingChanged
+  - settingNotSaved
+  - settingNotConfirmed

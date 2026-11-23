@@ -15,8 +15,9 @@ import 'dart:async' as _ida;
 import 'package:serverpod/serverpod.dart' as _is;
 
 import '../static_data/sde_check_outcome.dart' as _ixsdo8ck;
+import '../static_data/sde_check_trigger.dart' as _ihb5mvcw;
 
-/// The record of one daily check for a new build (D5).
+/// The record of one static-data build check (D10).
 /// `checkedAt` is the time the check job started. A check that could not take
 /// the static-data lock is inserted without it, as `skipped` import records
 /// are. Only the newest 100 rows are kept.
@@ -25,14 +26,20 @@ abstract class SdeCheck
   SdeCheck._({
     this.id,
     required this.checkedAt,
+    _ihb5mvcw.SdeCheckTrigger? trigger,
+    this.lookupStarted,
+    this.lookupStartedAt,
     this.latestBuild,
     required this.outcome,
     this.failureReason,
-  });
+  }) : trigger = trigger ?? _ihb5mvcw.SdeCheckTrigger.daily;
 
   factory SdeCheck({
     int? id,
     required DateTime checkedAt,
+    _ihb5mvcw.SdeCheckTrigger? trigger,
+    bool? lookupStarted,
+    DateTime? lookupStartedAt,
     int? latestBuild,
     required _ixsdo8ck.SdeCheckOutcome outcome,
     String? failureReason,
@@ -44,6 +51,19 @@ abstract class SdeCheck
       checkedAt: _is.DateTimeJsonExtension.fromJson(
         jsonSerialization['checkedAt'],
       ),
+      trigger: jsonSerialization['trigger'] == null
+          ? null
+          : _ihb5mvcw.SdeCheckTrigger.fromJson(
+              (jsonSerialization['trigger'] as String),
+            ),
+      lookupStarted: jsonSerialization['lookupStarted'] == null
+          ? null
+          : _is.BoolJsonExtension.fromJson(jsonSerialization['lookupStarted']),
+      lookupStartedAt: jsonSerialization['lookupStartedAt'] == null
+          ? null
+          : _is.DateTimeJsonExtension.fromJson(
+              jsonSerialization['lookupStartedAt'],
+            ),
       latestBuild: jsonSerialization['latestBuild'] as int?,
       outcome: _ixsdo8ck.SdeCheckOutcome.fromJson(
         (jsonSerialization['outcome'] as String),
@@ -61,6 +81,12 @@ abstract class SdeCheck
 
   DateTime checkedAt;
 
+  _ihb5mvcw.SdeCheckTrigger trigger;
+
+  bool? lookupStarted;
+
+  DateTime? lookupStartedAt;
+
   int? latestBuild;
 
   _ixsdo8ck.SdeCheckOutcome outcome;
@@ -76,6 +102,9 @@ abstract class SdeCheck
   SdeCheck copyWith({
     int? id,
     DateTime? checkedAt,
+    _ihb5mvcw.SdeCheckTrigger? trigger,
+    bool? lookupStarted,
+    DateTime? lookupStartedAt = const _is.$UndefinedDateTime(),
     int? latestBuild,
     _ixsdo8ck.SdeCheckOutcome? outcome,
     String? failureReason,
@@ -86,6 +115,9 @@ abstract class SdeCheck
       '__className__': 'SdeCheck',
       if (id != null) 'id': id,
       'checkedAt': checkedAt.toJson(),
+      'trigger': trigger.toJson(),
+      if (lookupStarted != null) 'lookupStarted': lookupStarted,
+      if (lookupStartedAt != null) 'lookupStartedAt': lookupStartedAt?.toJson(),
       if (latestBuild != null) 'latestBuild': latestBuild,
       'outcome': outcome.toJson(),
       if (failureReason != null) 'failureReason': failureReason,
@@ -131,12 +163,18 @@ class _SdeCheckImpl extends SdeCheck {
   _SdeCheckImpl({
     int? id,
     required DateTime checkedAt,
+    _ihb5mvcw.SdeCheckTrigger? trigger,
+    bool? lookupStarted,
+    DateTime? lookupStartedAt,
     int? latestBuild,
     required _ixsdo8ck.SdeCheckOutcome outcome,
     String? failureReason,
   }) : super._(
          id: id,
          checkedAt: checkedAt,
+         trigger: trigger,
+         lookupStarted: lookupStarted,
+         lookupStartedAt: lookupStartedAt,
          latestBuild: latestBuild,
          outcome: outcome,
          failureReason: failureReason,
@@ -149,6 +187,9 @@ class _SdeCheckImpl extends SdeCheck {
   SdeCheck copyWith({
     Object? id = _Undefined,
     DateTime? checkedAt,
+    _ihb5mvcw.SdeCheckTrigger? trigger,
+    Object? lookupStarted = _Undefined,
+    DateTime? lookupStartedAt = const _is.$UndefinedDateTime(),
     Object? latestBuild = _Undefined,
     _ixsdo8ck.SdeCheckOutcome? outcome,
     Object? failureReason = _Undefined,
@@ -156,6 +197,13 @@ class _SdeCheckImpl extends SdeCheck {
     return SdeCheck(
       id: id is int? ? id : this.id,
       checkedAt: checkedAt ?? this.checkedAt,
+      trigger: trigger ?? this.trigger,
+      lookupStarted: lookupStarted is bool?
+          ? lookupStarted
+          : this.lookupStarted,
+      lookupStartedAt: lookupStartedAt is _is.UndefinedSentinel
+          ? this.lookupStartedAt
+          : lookupStartedAt,
       latestBuild: latestBuild is int? ? latestBuild : this.latestBuild,
       outcome: outcome ?? this.outcome,
       failureReason: failureReason is String?
@@ -170,6 +218,16 @@ class SdeCheckUpdateTable extends _is.UpdateTable<SdeCheckTable> {
 
   _is.ColumnValue<DateTime, DateTime> checkedAt(DateTime value) =>
       _is.ColumnValue(table.checkedAt, value);
+
+  _is.ColumnValue<_ihb5mvcw.SdeCheckTrigger, _ihb5mvcw.SdeCheckTrigger> trigger(
+    _ihb5mvcw.SdeCheckTrigger value,
+  ) => _is.ColumnValue(table.trigger, value);
+
+  _is.ColumnValue<bool, bool> lookupStarted(bool? value) =>
+      _is.ColumnValue(table.lookupStarted, value);
+
+  _is.ColumnValue<DateTime, DateTime> lookupStartedAt(DateTime? value) =>
+      _is.ColumnValue(table.lookupStartedAt, value);
 
   _is.ColumnValue<int, int> latestBuild(int? value) =>
       _is.ColumnValue(table.latestBuild, value);
@@ -186,6 +244,14 @@ class SdeCheckTable extends _is.Table<int?> {
   SdeCheckTable({super.tableRelation}) : super(tableName: 'sde_check') {
     updateTable = SdeCheckUpdateTable(this);
     checkedAt = _is.ColumnDateTime('checkedAt', this);
+    trigger = _is.ColumnEnum(
+      'trigger',
+      this,
+      _is.EnumSerialization.byName,
+      hasDefault: true,
+    );
+    lookupStarted = _is.ColumnBool('lookupStarted', this);
+    lookupStartedAt = _is.ColumnDateTime('lookupStartedAt', this);
     latestBuild = _is.ColumnInt('latestBuild', this);
     outcome = _is.ColumnEnum('outcome', this, _is.EnumSerialization.byName);
     failureReason = _is.ColumnString('failureReason', this);
@@ -194,6 +260,12 @@ class SdeCheckTable extends _is.Table<int?> {
   late final SdeCheckUpdateTable updateTable;
 
   late final _is.ColumnDateTime checkedAt;
+
+  late final _is.ColumnEnum<_ihb5mvcw.SdeCheckTrigger> trigger;
+
+  late final _is.ColumnBool lookupStarted;
+
+  late final _is.ColumnDateTime lookupStartedAt;
 
   late final _is.ColumnInt latestBuild;
 
@@ -205,6 +277,9 @@ class SdeCheckTable extends _is.Table<int?> {
   List<_is.Column> get columns => [
     id,
     checkedAt,
+    trigger,
+    lookupStarted,
+    lookupStartedAt,
     latestBuild,
     outcome,
     failureReason,

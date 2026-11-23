@@ -79,7 +79,7 @@ flowchart LR
 - **SSO v2:** confidential web flow for the server, PKCE for devices. JWTs are checked offline against CCP's JWKS.
 - **SDE:** CCP's build-numbered JSONL. Known columns are typed and the full record is kept as JSON. Never generated code (ADR 0004).
 - **Client data bundle:** one gzip JSON Lines file per static-data build, with a major and minor format version; readers accept any minor of a major they know (ADR 0013).
-- **Server ↔ app:** Serverpod `.spy.yaml` models and endpoints through the generated client, plus one plain HTTP route beside it: `GET /static-data/bundle/<build>/<sha256>` for the client data bundle (ADR 0013). Additive-first schema changes; a server refuses to start on a database from a newer version.
+- **Server ↔ app:** Serverpod `.spy.yaml` models and RPC endpoints through the generated client, plus two plain HTTP routes: `GET /static-data/bundle/<build>/<sha256>` for the client data bundle (ADR 0013) and `GET /static-data/report` for the static-data change report. Additive-first schema changes; a server refuses to start on a database from a newer version.
 - **Sync protocol:** per-user change log with sequence; field-level merge for personal records (ADR 0008). Defined in M4 and versioned with the server.
 - **Cross-isolate messages:** typed, serializable models (ADR 0009). Workers reach Postgres through their own per-job connections from a typed start message (ADR 0012).
 - **FitEngine:** Kaname's Dart interface. The pinned engine is reached over its C ABI or WASM build (ADR 0011).
@@ -120,3 +120,4 @@ Accepted, not superseded. Proposed ADRs are drafts and are not listed.
 | [0012](../docs/adr/0012-worker-isolate-access.md) | Workers reach Postgres through their own per-job connections; the bus is settled by ADR 0014 (workers send typed replies, only the main isolate publishes); Redis, vault and privacy scope still open (R56) | — |
 | [0013](../docs/adr/0013-client-data-bundle.md) | One versioned gzip JSON Lines bundle per SDE build, public data only, served by build and hash; same builder on server and device | — |
 | [0014](../docs/adr/0014-realtime-bus-topics.md) | RealtimeBus topics typed and versioned, public or scoped, local delivery first, only the main isolate publishes | — |
+| [0015](../docs/adr/0015-interim-install-admin-key.md) | One install-wide static-data admin key until M2 sign-in and roles; public reads stay open | — |

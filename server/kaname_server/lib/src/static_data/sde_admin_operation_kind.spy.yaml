@@ -1,0 +1,6 @@
+### The action an admin operation id reserves (D21).
+enum: SdeAdminOperationKind
+serialized: byName
+values:
+  - updateNow
+  - rollback

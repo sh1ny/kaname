@@ -6,63 +6,92 @@ import 'package:kaname_core/kaname_core.dart';
 import 'static_data_store.dart';
 import 'zip_sde_archive.dart' show describeFailure;
 
-/// How a rollback ended.
+/// How a rollback ended (D5).
+enum RollbackOutcome {
+  /// The previous build became active.
+  rolledBack,
+
+  /// The stored revision is not the one the admin confirmed.
+  buildsChanged,
+
+  /// There is no previous build to restore.
+  noPrevious,
+
+  /// Another job holds the static-data lock.
+  importRunning,
+
+  /// The rollback failed without changing the builds.
+  failed,
+
+  /// No durable evidence establishes whether it committed.
+  unconfirmed,
+}
+
+/// The result returned to the worker or development task.
 sealed class RollbackResult {
   const RollbackResult();
+
+  /// The terminal worker outcome.
+  RollbackOutcome get outcome;
 }
 
 /// The previous build is active again.
 final class RollbackSucceeded extends RollbackResult {
-  /// Creates the result.
-  const RollbackSucceeded({required this.fromBuild, required this.toBuild});
+  /// Creates the result, optionally naming the build this call left behind.
+  const RollbackSucceeded({this.fromBuild, required this.toBuild});
 
-  /// The build that was active and is now `previous` and held.
-  final int fromBuild;
+  /// The former active build, unavailable when answering from an ended row.
+  final int? fromBuild;
 
-  /// The build that is active now.
+  /// The build made active by the rollback.
   final int toBuild;
+
+  @override
+  RollbackOutcome get outcome => RollbackOutcome.rolledBack;
 }
 
-/// The rollback changed nothing.
+/// This rollback changed nothing.
 final class RollbackFailed extends RollbackResult {
-  /// Creates the result.
-  const RollbackFailed(this.reason);
+  /// Creates the reason and typed refusal.
+  const RollbackFailed(this.reason, {this.outcome = RollbackOutcome.failed});
 
-  /// Why nothing changed: `import running`, `no previous build`, or an
-  /// `unexpected error: ...` description that holds no credentials.
+  /// The stored or local reason.
   final String reason;
+
+  @override
+  final RollbackOutcome outcome;
 }
 
-/// Swaps the active build and the previous build in one transaction.
+/// Neither the original attempt nor durable evidence can confirm a commit.
+final class RollbackUnconfirmed extends RollbackResult {
+  /// Creates an unconfirmed result.
+  const RollbackUnconfirmed();
+
+  @override
+  RollbackOutcome get outcome => RollbackOutcome.unconfirmed;
+}
+
+/// The durable operation associated with an admin rollback (D5, D21).
+abstract interface class RollbackControl {
+  /// Under the job lock, returns an existing outcome or claims the operation
+  /// when its confirmed revision still matches.
+  Future<RollbackResult?> claim();
+
+  /// Ends the operation irrespective of the lock when it changed no builds.
+  Future<void> finish(RollbackFailed failure);
+
+  /// Orders the conditional failure and failed switch record against a
+  /// possibly committed transaction, then answers from the durable row.
+  Future<RollbackResult> reconcile(SwitchRecord failure);
+}
+
+/// Swaps the active and previous builds in one transaction, under the lock.
 ///
-/// The steps, in order:
-///
-/// 1. Take the store's lock without waiting. When another import or switch
-///    holds it, fail at once with `import running`. Nothing is recorded: without
-///    the lock a caller may only insert a `skipped` import record or a `failed`
-///    check record.
-/// 2. Read the stored builds. When none is `previous`, fail with
-///    `no previous build`, leave the active build active and insert a `failed`
-///    [SwitchRecord] of kind [SwitchKind.rollback] that names the active build
-///    as both ends. With no active build there is nothing to name and nothing
-///    is recorded.
-/// 3. Run [StaticDataWriter.rollBack] in one transaction on the lock's
-///    connection: the previous build becomes active and is no longer held, the
-///    build rolled back from becomes `previous` and is held, so the daily check
-///    does not switch straight back to it, and a `succeeded` [SwitchRecord] is
-///    written in the same transaction. Any other error rolls the transaction
-///    back and inserts a `failed` record with the reason.
-/// 4. Prune the switch records beyond the newest [keepRecords], release the lock
-///    and close the store, whatever the outcome.
-///
-/// The job never throws: every failure is a [RollbackFailed]. A job and its
-/// store are used once.
-///
-/// ## Carried constraints
-///
-/// - **C6:** Rollback is only reachable through the development task. Staging
-///   and production get it with `static-data-settings`. This is a deliberate
-///   gap: nothing in the server or the worker starts this job.
+/// C6 (static-data-settings): app rollbacks run on the compute worker through
+/// `RunRollback` with the operation id and the confirmed build revision.
+/// The development task has no operation or revision check; after a
+/// transaction error it writes a failed record only with evidence from the
+/// original lock connection that `COMMIT` was not sent (D5).
 final class RollbackJob implements Job<RollbackResult> {
   /// Creates a job that rolls back through [store].
   ///
@@ -71,10 +100,18 @@ final class RollbackJob implements Job<RollbackResult> {
     required this.store,
     DateTime Function()? clock,
     this.keepRecords = 100,
+    this.control,
+    this.onWarning,
   }) : _clock = clock ?? DateTime.now;
 
   /// The job's storage.
   final StaticDataStore store;
+
+  /// The durable operation used by the worker, absent in development.
+  final RollbackControl? control;
+
+  /// Reports failed attempts to log or settle a rollback.
+  final void Function(String message)? onWarning;
 
   /// How many switch records are kept.
   final int keepRecords;
@@ -89,51 +126,90 @@ final class RollbackJob implements Job<RollbackResult> {
     var locked = false;
     try {
       locked = await store.tryLock();
-      if (!locked) return const RollbackFailed('import running');
+      if (!locked) {
+        return await _refuse(
+          const RollbackFailed(
+            'import running',
+            outcome: RollbackOutcome.importRunning,
+          ),
+        );
+      }
+      if (await control?.claim() case final result?) return result;
       final at = _clock();
       final builds = await store.storedBuilds();
       final active = _buildIn(builds, BuildState.active);
       final previous = _buildIn(builds, BuildState.previous);
       if (active == null || previous == null) {
         const reason = 'no previous build';
-        if (active != null) await _recordFailure(active, active, at, reason);
-        return const RollbackFailed(reason);
+        if (active != null) {
+          await _recordFailure(_failure(active, active, at, reason));
+        }
+        return await _refuse(
+          const RollbackFailed(reason, outcome: RollbackOutcome.noPrevious),
+        );
       }
       try {
         await store.inTransaction((writer) => writer.rollBack(at: at));
       } on Object catch (error) {
-        final reason = 'unexpected error: ${describeFailure(error)}';
-        await _recordFailure(active, previous, at, reason);
+        final reason = 'switch failed: ${describeFailure(error)}';
+        final failure = _failure(active, previous, at, reason);
+        if (control case final admin?) {
+          try {
+            return await admin.reconcile(failure);
+          } on Object catch (error) {
+            onWarning?.call(
+              'could not reconcile rollback: ${describeFailure(error)}',
+            );
+            return const RollbackUnconfirmed();
+          }
+        }
+        if (!store.confirmedStatementFailure(error)) {
+          return const RollbackUnconfirmed();
+        }
+        await _recordFailure(failure);
         return RollbackFailed(reason);
       }
       await _quietly(() => store.pruneSwitches(keep: keepRecords));
       return RollbackSucceeded(fromBuild: active, toBuild: previous);
     } on Object catch (error) {
-      return RollbackFailed('unexpected error: ${describeFailure(error)}');
+      return await _refuse(
+        RollbackFailed('unexpected error: ${describeFailure(error)}'),
+      );
     } finally {
       if (locked) await _quietly(store.unlock);
       await _quietly(store.close);
     }
   }
 
-  Future<void> _recordFailure(
-    int fromBuild,
-    int toBuild,
-    DateTime at,
-    String reason,
-  ) => _quietly(() async {
-    await store.insertFailedSwitch(
+  Future<RollbackFailed> _refuse(RollbackFailed failure) async {
+    try {
+      await control?.finish(failure);
+    } on Object catch (error) {
+      onWarning?.call('could not end rollback: ${describeFailure(error)}');
+    }
+    return failure;
+  }
+
+  SwitchRecord _failure(int from, int to, DateTime at, String reason) =>
       SwitchRecord(
         kind: SwitchKind.rollback,
-        fromBuild: fromBuild,
-        toBuild: toBuild,
+        fromBuild: from,
+        toBuild: to,
         at: at,
         outcome: SwitchOutcome.failed,
         failureReason: reason,
-      ),
-    );
-    await store.pruneSwitches(keep: keepRecords);
-  });
+      );
+
+  Future<void> _recordFailure(SwitchRecord record) async {
+    try {
+      await store.insertFailedSwitch(record);
+      await store.pruneSwitches(keep: keepRecords);
+    } on Object catch (error) {
+      onWarning?.call(
+        'could not store rollback failure: ${describeFailure(error)}',
+      );
+    }
+  }
 
   static int? _buildIn(List<StoredBuild> builds, BuildState state) {
     for (final StoredBuild(:build, state: stored) in builds) {

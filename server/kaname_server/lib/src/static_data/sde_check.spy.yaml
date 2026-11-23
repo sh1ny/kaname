@@ -1,4 +1,4 @@
-### The record of one daily check for a new build (D5).
+### The record of one static-data build check (D10).
 ### `checkedAt` is the time the check job started. A check that could not take
 ### the static-data lock is inserted without it, as `skipped` import records
 ### are. Only the newest 100 rows are kept.
@@ -7,6 +7,9 @@ table: sde_check
 serverOnly: true
 fields:
   checkedAt: DateTime
+  trigger: SdeCheckTrigger, default=daily
+  lookupStarted: bool?
+  lookupStartedAt: DateTime?
   latestBuild: int?
   outcome: SdeCheckOutcome
   failureReason: String?

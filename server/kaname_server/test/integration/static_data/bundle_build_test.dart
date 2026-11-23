@@ -59,6 +59,19 @@ SdeSource fakeCcpFactory(
   );
 }
 
+Future<BuiltBundle> _blockFirstBundle(StaticDataStore store, int build) =>
+    Completer<BuiltBundle>().future;
+
+Future<BuiltBundle> _failHeldBundle(StaticDataStore store, int build) async {
+  if (build == 3501) {
+    throw const BundleBuildException(
+      BundleSection.types,
+      'synthetic held bundle failure',
+    );
+  }
+  return buildStoredBundle(store, build);
+}
+
 void main() {
   withServerpod('Given a migrated database', (sessionBuilder, endpoints) {
     late Session session;
@@ -105,6 +118,42 @@ void main() {
       // The server's start hook and daily call hand the reply on.
       await announced?.reply(reply);
       return (reply as BuildCheckFinished).result;
+    }
+
+    Future<BuildCheckFinished> updateNow(
+      WorkerHarness harness,
+      String operationId,
+    ) async {
+      await session.db.unsafeExecute(
+        'INSERT INTO sde_admin_operation '
+        '("operationId", kind, state, "createdAt") '
+        "VALUES ('$operationId', 'updateNow', 'waiting', now())",
+      );
+      const requestId = 100;
+      harness.sendMessage(
+        RunBuildCheck(
+          requestId: requestId,
+          source: const CcpLatestSource(),
+          trigger: CheckTrigger.updateNow,
+          operationId: operationId,
+        ),
+      );
+      final reply = await harness.waitFor<BuildCheckFinished>(
+        (r) => r.requestId == requestId,
+      );
+      await announced?.reply(reply);
+      return reply;
+    }
+
+    Future<WorkerHarness> holdPrevious() async {
+      final harness = await worker();
+      for (final build in [3500, 3501]) {
+        ccpAnnounces(build);
+        expect(await checkThrough(harness), isA<BuildSwitched>());
+      }
+      final store = await PostgresStaticDataStore.open(settings);
+      expect(await RollbackJob(store: store).run(), isA<RollbackSucceeded>());
+      return harness;
     }
 
     /// Expects [build]'s bundle built in the current format with one byte
@@ -282,6 +331,116 @@ void main() {
       await expectCurrentBundle(3001);
     });
 
+    test('with auto-update off a daily import stays staged and builds no '
+        'switch', () async {
+      final harness = await worker();
+      ccpAnnounces(3050);
+      expect(await checkThrough(harness), isA<BuildSwitched>());
+      await session.db.unsafeExecute(
+        'INSERT INTO sde_setting_write ("writeId", "autoUpdate", "createdAt") '
+        "VALUES ('a0f3888c-b389-4ba7-932a-1d17917869dc', false, now())",
+      );
+      ccpAnnounces(3051);
+      expect(await checkThrough(harness), isA<BuildStaged>());
+      final builds = await SdeBuild.db.find(session, orderBy: (t) => t.build);
+      expect(builds.map((b) => (b.build, b.state)), [
+        (3050, SdeBuildState.active),
+        (3051, SdeBuildState.staged),
+      ]);
+      expect(await SdeSwitch.db.find(session), isEmpty);
+      expect(await bundleRowOf(session, 3051), isNull);
+      final reply = await updateNow(
+        harness,
+        'a28b853d-f5b7-45b3-99b1-42049d7f5590',
+      );
+      expect(reply.result, isA<BuildSwitched>());
+      await expectCurrentBundle(3050);
+      final fresh = await expectCurrentBundle(3051);
+      final switched = (await SdeSwitch.db.find(session)).single;
+      expect(fresh.builtAt.isAfter(switched.at), isFalse);
+    });
+
+    for (final damage in ['corrupt bytes', 'missing', 'old format']) {
+      test('a held restore repairs $damage before the swap', () async {
+        final harness = await holdPrevious();
+        final before = await expectCurrentBundle(3501);
+        await session.db.unsafeExecute(switch (damage) {
+          'corrupt bytes' =>
+            'UPDATE sde_bundle_bytes SET bytes = '
+                'set_byte(bytes, 0, (get_byte(bytes, 0) + 1) % 256) '
+                'WHERE build = 3501',
+          'missing' => 'DELETE FROM sde_bundle_bytes WHERE build = 3501',
+          _ => 'UPDATE sde_bundle SET "formatMajor" = 0 WHERE build = 3501',
+        });
+        final reply = await updateNow(
+          harness,
+          '740ec031-dc28-4f1c-9561-7b35b99cf149',
+        );
+        expect(reply.result, isA<BuildSwitched>());
+        final restored = await expectCurrentBundle(3501);
+        expect(restored.builtAt.isAfter(before.builtAt), isTrue);
+        expect(restored.sha256, before.sha256);
+        final switches = await SdeSwitch.db.find(session, orderBy: (t) => t.id);
+        final swap = switches.last;
+        expect(swap.kind, SdeSwitchKind.forward);
+        expect((swap.fromBuild, swap.toBuild), (3500, 3501));
+        expect(restored.builtAt.isAfter(swap.at), isFalse);
+        final builds = await SdeBuild.db.find(session, orderBy: (t) => t.build);
+        expect(builds.map((b) => (b.build, b.state, b.held)), [
+          (3500, SdeBuildState.previous, false),
+          (3501, SdeBuildState.active, false),
+        ]);
+        final operation = (await SdeAdminOperation.db.find(session)).single;
+        expect(operation.outcome, SdeAdminOperationOutcome.switched);
+        expect(operation.changedBuilds, isTrue);
+      });
+    }
+
+    test('a failed bundle build for a held restore swaps nothing and ends '
+        'update failed with N still held', () async {
+      await holdPrevious();
+      await session.db.unsafeExecute(
+        'DELETE FROM sde_bundle_bytes WHERE build = 3501',
+      );
+      final harness = await WorkerHarness.start(
+        postgres: settings,
+        sourceFactory: fakeCcpFactory,
+        buildBundle: _failHeldBundle,
+      );
+      addTearDown(harness.close);
+      final revision = (await SdeBuildRevision.db.find(session))
+          .single
+          .revision;
+      final reply = await updateNow(
+        harness,
+        'e8c28d76-da42-45bb-829f-bc47bf16898c',
+      );
+      expect(
+        reply.result,
+        isA<BuildCheckFailed>().having(
+          (r) => r.reason,
+          'reason',
+          contains('synthetic held bundle failure'),
+        ),
+      );
+      final builds = await SdeBuild.db.find(session, orderBy: (t) => t.build);
+      expect(builds.map((b) => (b.build, b.state, b.held)), [
+        (3500, SdeBuildState.active, false),
+        (3501, SdeBuildState.previous, true),
+      ]);
+      expect(
+        (await SdeBuildRevision.db.find(session)).single.revision,
+        revision,
+      );
+      expect(
+        (await bundleRowOf(session, 3501))!.outcome,
+        SdeBundleOutcome.failed,
+      );
+      final operation = (await SdeAdminOperation.db.find(session)).single;
+      expect(operation.outcome, SdeAdminOperationOutcome.failed);
+      expect(operation.changedBuilds, isFalse);
+    });
+
     // Scenario: Every stored build has its bundle / First activation (D20).
     test('first activation builds and announces its bundle in the same '
         'check', () async {
@@ -299,6 +458,71 @@ void main() {
       // build 3100's bundle.
       expect(announced!.lastNamed.build, 3100);
       expect(announced!.lastNamed.sha256, stored.sha256);
+    });
+
+    test('a worker exit after the first activation leaves the bundle owed '
+        'until a tick repair stores and announces it', () async {
+      ccpAnnounces(3110);
+      final interrupted = await WorkerHarness.start(
+        postgres: settings,
+        sourceFactory: fakeCcpFactory,
+        buildBundle: _blockFirstBundle,
+      );
+      var stopped = false;
+      addTearDown(() async {
+        if (!stopped) await interrupted.close();
+      });
+      interrupted.sendMessage(
+        const RunBuildCheck(
+          requestId: 100,
+          source: CcpLatestSource(),
+          trigger: CheckTrigger.start,
+        ),
+      );
+      final opened = await interrupted.waitFor<JobConnectionOpened>(
+        (r) => r.requestId == 100,
+      );
+      final deadline = Stopwatch()..start();
+      while (await SdeBuild.db.count(session) == 0 &&
+          deadline.elapsed < const Duration(seconds: 10)) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(
+        (await SdeBuild.db.find(session)).single.state,
+        SdeBuildState.active,
+      );
+      await interrupted.close();
+      stopped = true;
+      await session.db.unsafeQuery(
+        'SELECT pg_terminate_backend(${opened.backend.pid}, 1000)',
+      );
+      expect(await bundleRowOf(session, 3110), isNull);
+
+      final restarted = await worker();
+      final repaired = Completer<WorkerReply>();
+      announced = await TestAnnouncer.start(
+        session,
+        runRepair: () async {
+          final reply = await restarted.runBundleRepair();
+          repaired.complete(reply);
+          return reply;
+        },
+      );
+      expect(announced!.announcer.installed, isA<BundleAnnouncementNone>());
+      announced!.clock.elapse(const Duration(seconds: 60));
+      expect(
+        (await repaired.future.timeout(
+          const Duration(seconds: 10),
+        ) as BundleRepairFinished).result,
+        isA<BundleRepairRan>(),
+      );
+      final published = Stopwatch()..start();
+      while (!announced!.builds.contains(3110) &&
+          published.elapsed < const Duration(seconds: 10)) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(announced!.lastNamed.build, 3110);
+      await expectCurrentBundle(3110);
     });
 
     // Scenario: A bundle of another format version is rebuilt (D20, C12).
