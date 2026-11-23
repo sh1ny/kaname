@@ -707,11 +707,21 @@ final class _Renderer {
     }
 
     final stems = <String>[];
+    final tagOfStem = <String, String>{};
     for (final op in spec.operations) {
       final stem = _fileStem(op.tag);
-      if (!stems.contains(stem)) {
-        _claim('${_typeName(op.tag)}Calls', 'tag ${op.tag}');
-        stems.add(stem);
+      switch (tagOfStem[stem]) {
+        case null:
+          _claim('${_typeName(op.tag)}Calls', 'tag ${op.tag}');
+          tagOfStem[stem] = op.tag;
+          stems.add(stem);
+        case final other when other != op.tag:
+          throw _Collision(
+            'name collision: file name ${stem}_client.dart derives from tag '
+            '$other and from tag ${op.tag}',
+          );
+        case _:
+          break;
       }
     }
     final files = <String, String>{
@@ -1049,7 +1059,7 @@ final class _Renderer {
       final pagination = switch (op.pagination) {
         'cursor' => 'cursor',
         _
-            when op.pagesHeader ||
+            when op.pagesHeader &&
                 op.parameters.any(
                   (p) =>
                       p.name == 'page' &&

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:kaname_esi/kaname_esi.dart';
 import 'package:test/test.dart';
 
@@ -22,6 +24,29 @@ void main() {
       ]);
       expect(target.toString(), '/jobs?after=a%2Bb%2Fc%3D');
       expect(target.queryParameters['after'], 'a+b/c=');
+    });
+  });
+
+  group('EsiRequest', () {
+    test('owns read-only copies of its headers and body', () {
+      final headers = {'X-Compatibility-Date': esiCompatibilityDate};
+      final bytes = Uint8List.fromList([0x5B, 0x31, 0x5D]);
+      final request = EsiRequest(
+        method: EsiMethod.post,
+        operationId: 'PostThings',
+        target: EsiCall.target('/things'),
+        headers: headers,
+        body: bytes,
+      );
+      bytes[1] = 0x32;
+      headers['X-Compatibility-Date'] = 'changed';
+      expect(request.body, [0x5B, 0x31, 0x5D]);
+      expect(request.headers['X-Compatibility-Date'], esiCompatibilityDate);
+      expect(() => request.body![1] = 0x32, throwsUnsupportedError);
+      expect(
+        () => request.headers['X-Compatibility-Date'] = 'changed',
+        throwsUnsupportedError,
+      );
     });
   });
 

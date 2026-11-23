@@ -120,6 +120,31 @@ void main() {
     });
   });
 
+  // Page-numbered pagination needs both the page parameter and X-Pages.
+  for (final (half, cut) in [
+    (
+      'no X-Pages header',
+      (Map<String, Object?> get) {
+        _map(_map(_map(get['responses'])['200'])['headers']).remove('X-Pages');
+      },
+    ),
+    (
+      'no page parameter',
+      (Map<String, Object?> get) {
+        (get['parameters']! as List<Object?>).removeAt(0);
+      },
+    ),
+  ]) {
+    test('a route with $half is not page-numbered', () {
+      final document = esiFixture();
+      cut(_map(_map(_map(document['paths'])['/widgets'])['get']));
+      expect(
+        _render(document)['catalogue.dart'],
+        isNot(_has('pagination: EsiPagination.pages')),
+      );
+    });
+  }
+
   test('a name collision fails, naming both sources', () {
     final document = esiFixture();
     final schemas = _map(_map(document['components'])['schemas']);

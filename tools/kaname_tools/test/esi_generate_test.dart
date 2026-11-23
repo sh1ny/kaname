@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:kaname_tools/kaname_tools.dart';
 import 'package:test/test.dart';
 
@@ -46,6 +48,19 @@ void main() {
       for (final path in _generated(fs)) path: fs.readAsString(path),
     }, first);
     expect(again.out, contains('0 written, 0 removed'));
+  });
+
+  test('a byte order mark added to a generated file is rewritten', () async {
+    final fs = esiRepository();
+    await runTool(fs, ['esi', 'generate']);
+    const edited = '$esiGeneratedDirectory/widgets_models.dart';
+    final text = fs.readAsString(edited);
+    fs.writeFile(edited, '\uFEFF$text');
+
+    final again = await runTool(fs, ['esi', 'generate']);
+    expect(again.code, exitSuccess, reason: again.err);
+    expect(again.out, contains('1 written, 0 removed'));
+    expect(fs.readAsString(edited), text);
   });
 
   test('a generated file the spec no longer yields is removed', () async {
@@ -106,5 +121,25 @@ void main() {
     expect(result.err, contains('#/components/schemas/PriceIsk'));
     expect(fs.writeCount, writes);
     expect(_generated(fs), isEmpty);
+  });
+
+  test('two tags deriving one file name write nothing and name both', () async {
+    final document = esiFixture();
+    final gadgets =
+        (document['paths']! as Map<String, Object?>)['/gadgets']!
+            as Map<String, Object?>;
+    (gadgets['post']! as Map<String, Object?>)['tags'] = ['gadgets'];
+    final fs = esiRepository(snapshot: jsonEncode(document));
+    final writes = fs.writeCount;
+    final result = await runTool(fs, ['esi', 'generate']);
+    expect(result.code, exitCheckFailed);
+    expect(
+      result.err,
+      contains(
+        'file name gadgets_client.dart derives from tag Gadgets and from tag '
+        'gadgets',
+      ),
+    );
+    expect(fs.writeCount, writes);
   });
 }

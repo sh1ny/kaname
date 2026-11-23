@@ -2,6 +2,7 @@
 /// `esi-client-generator`).
 library;
 
+import 'dart:convert';
 import 'dart:io' show Directory, FileSystemException;
 
 import 'esi_pin.dart';
@@ -78,8 +79,18 @@ List<String> existingEsiGeneratedFiles(FileSystem fileSystem) => [
 /// What [writeEsiGeneratedFiles] changed.
 typedef EsiWriteReport = ({List<String> written, List<String> removed});
 
+/// Whether [a] and [b] hold the same bytes. Bytes, not decoded text: the
+/// UTF-8 decoder would hide an added byte order mark.
+bool _sameBytes(List<int> a, List<int> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
 /// Writes [files], keyed by repository-relative path, skipping files whose
-/// text is already current, and removes generated files no longer
+/// exact bytes are already current, and removes generated files no longer
 /// rendered.
 EsiWriteReport writeEsiGeneratedFiles(
   FileSystem fileSystem,
@@ -88,7 +99,8 @@ EsiWriteReport writeEsiGeneratedFiles(
   final existing = existingEsiGeneratedFiles(fileSystem);
   final written = <String>[];
   for (final MapEntry(key: path, value: text) in files.entries) {
-    if (existing.contains(path) && fileSystem.readAsString(path) == text) {
+    if (existing.contains(path) &&
+        _sameBytes(fileSystem.readAsBytes(path), utf8.encode(text))) {
       continue;
     }
     fileSystem.writeAsString(path, text);
@@ -144,7 +156,7 @@ final class TempDirectoryEsiScratch implements EsiScratch {
   FileSystem fileSystem,
   EsiScratch scratch,
 ) {
-  final Map<String, String> generated;
+  final Map<String, List<int>> generated;
   final EsiPin pin;
   switch (renderPinnedEsiClient(fileSystem)) {
     case EsiGenerationRefused(:final problems):
@@ -156,7 +168,7 @@ final class TempDirectoryEsiScratch implements EsiScratch {
           writeEsiGeneratedFiles(temporary, files);
           return {
             for (final path in existingEsiGeneratedFiles(temporary))
-              path: temporary.readAsString(path),
+              path: temporary.readAsBytes(path),
           };
         });
       } on FileSystemException catch (e) {
@@ -172,7 +184,7 @@ final class TempDirectoryEsiScratch implements EsiScratch {
     for (final path in generated.keys.toList()..sort())
       if (!committed.contains(path))
         '$path is missing'
-      else if (fileSystem.readAsString(path) != generated[path])
+      else if (!_sameBytes(fileSystem.readAsBytes(path), generated[path]!))
         '$path differs from what the pinned snapshot generates',
     for (final path in committed.toList()..sort())
       if (!generated.containsKey(path))

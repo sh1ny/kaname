@@ -63,6 +63,19 @@ void main() {
     expect(fs.writeCount, writes);
   });
 
+  test('a byte order mark added to a generated file is named', () async {
+    final fs = await _generatedRepository();
+    const edited = '$esiGeneratedDirectory/widgets_models.dart';
+    fs.writeFile(edited, '\uFEFF${fs.readAsString(edited)}');
+
+    final result = await runTool(fs, ['esi', 'check']);
+    expect(result.code, exitCheckFailed);
+    expect(
+      result.err,
+      contains('$edited differs from what the pinned snapshot generates'),
+    );
+  });
+
   test('a missing and an extra generated file are both named', () async {
     final fs = await _generatedRepository()
       ..deleteFile('$esiGeneratedDirectory/pin.dart')

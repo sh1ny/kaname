@@ -30,14 +30,18 @@ enum EsiMethod {
 /// never holds a caller's identity, token or priority: those are bound on
 /// the transport instance (design D13 of `esi-client-generator`).
 final class EsiRequest {
-  /// Creates a request; [headers] are copied and cannot be changed later.
+  /// Creates a request; [headers] and [body] are copied and cannot be
+  /// changed later, through this request or the caller's originals.
   EsiRequest({
     required this.method,
     required this.operationId,
     required this.target,
     required Map<String, String> headers,
-    this.body,
-  }) : headers = Map.unmodifiable(headers);
+    Uint8List? body,
+  }) : headers = Map.unmodifiable(headers),
+       body = body == null
+           ? null
+           : Uint8List.fromList(body).asUnmodifiableView();
 
   /// The HTTP method.
   final EsiMethod method;
@@ -57,6 +61,7 @@ final class EsiRequest {
   final Map<String, String> headers;
 
   /// The JSON request body as UTF-8 bytes, or `null` when there is none.
+  /// Read-only: writing to it throws [UnsupportedError].
   final Uint8List? body;
 }
 
