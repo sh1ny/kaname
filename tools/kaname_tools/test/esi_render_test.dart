@@ -49,7 +49,7 @@ void main() {
       expect(files['pin.dart'], _has('enum EsiLanguage implements'));
     });
 
-    test('renders a required parameter as a required named argument', () {
+    test('required parameter left out: it renders as a required argument', () {
       final client = files['widgets_client.dart']!;
       expect(client, _has('extension WidgetsCalls on EsiClient'));
       expect(client, _has('required int widgetId'));

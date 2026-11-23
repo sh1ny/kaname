@@ -2,10 +2,13 @@
 /// `esi-client-generator`).
 library;
 
+import 'dart:io' show Directory, FileSystemException;
+
 import 'esi_pin.dart';
 import 'esi_render.dart';
 import 'esi_spec.dart';
 import 'file_system.dart';
+import 'real_file_system.dart';
 
 /// What [renderPinnedEsiClient] produced.
 sealed class EsiGeneration {
@@ -100,4 +103,92 @@ EsiWriteReport writeEsiGeneratedFiles(
     fileSystem.delete('$esiGeneratedDirectory/$name');
   }
   return (written: written, removed: removed);
+}
+
+/// A temporary directory the drift check regenerates into, outside the
+/// repository.
+abstract interface class EsiScratch {
+  /// Runs [body] over a fresh, empty temporary file system and removes it
+  /// afterwards. Raises [FileSystemException] when none can be made.
+  T use<T>(T Function(FileSystem scratch) body);
+}
+
+/// A scratch file system for runs without one: every use fails.
+final class NoEsiScratch implements EsiScratch {
+  /// Creates the scratch.
+  const NoEsiScratch();
+
+  @override
+  T use<T>(T Function(FileSystem scratch) body) =>
+      throw const FileSystemException('this run has no temporary directory');
+}
+
+/// A system temporary directory, deleted after each use.
+final class TempDirectoryEsiScratch implements EsiScratch {
+  /// Creates the scratch.
+  const TempDirectoryEsiScratch();
+
+  @override
+  T use<T>(T Function(FileSystem scratch) body) {
+    final directory = Directory.systemTemp.createTempSync('kaname_esi_');
+    try {
+      return body(RealFileSystem(directory.path));
+    } finally {
+      directory.deleteSync(recursive: true);
+    }
+  }
+}
+
+/// Regenerates the client into [scratch] and lists how the committed
+/// output in [fileSystem] differs from it: missing, extra and differing
+/// files, or why nothing could be generated. Writes nothing in
+/// [fileSystem].
+({EsiPin? pin, int files, List<String> problems}) checkEsiGenerated(
+  FileSystem fileSystem,
+  EsiScratch scratch,
+) {
+  final Map<String, String> generated;
+  final EsiPin pin;
+  switch (renderPinnedEsiClient(fileSystem)) {
+    case EsiGenerationRefused(:final problems):
+      return (pin: null, files: 0, problems: problems);
+    case EsiGenerationReady(pin: final ready, :final files):
+      pin = ready;
+      try {
+        generated = scratch.use((temporary) {
+          writeEsiGeneratedFiles(temporary, files);
+          return {
+            for (final name in existingEsiGeneratedFiles(temporary))
+              name: temporary.readAsString('$esiGeneratedDirectory/$name'),
+          };
+        });
+      } on FileSystemException catch (e) {
+        return (
+          pin: pin,
+          files: 0,
+          problems: ['the temporary directory cannot be written: $e'],
+        );
+      }
+  }
+  final committed = existingEsiGeneratedFiles(fileSystem);
+  final problems = <String>[
+    for (final name in generated.keys.toList()..sort())
+      if (!committed.contains(name))
+        '$esiGeneratedDirectory/$name is missing'
+      else if (fileSystem.readAsString('$esiGeneratedDirectory/$name') !=
+          generated[name])
+        '$esiGeneratedDirectory/$name differs from what the pinned snapshot '
+            'generates',
+    for (final name in committed.toList()..sort())
+      if (!generated.containsKey(name))
+        '$esiGeneratedDirectory/$name is not generated from the pinned '
+            'snapshot',
+  ];
+  if (problems.isNotEmpty) {
+    problems.add(
+      'Run `mise run esi:generate` and commit the result; never edit '
+      'generated files by hand.',
+    );
+  }
+  return (pin: pin, files: generated.length, problems: problems);
 }

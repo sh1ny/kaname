@@ -11,7 +11,7 @@ List<String> _generated(InMemoryFileSystem fs) => [
 ];
 
 void main() {
-  test('pinned bytes are accepted and every file is written', () async {
+  test('pinned bytes accepted: every file is written', () async {
     final fs = esiRepository();
     final result = await runTool(fs, ['esi', 'generate']);
     expect(result.code, exitSuccess, reason: result.err);
@@ -31,7 +31,7 @@ void main() {
     expect(result.out, contains('7 files for $esiFixtureDate, 7 written'));
   });
 
-  test('generating twice writes nothing the second time', () async {
+  test('generate twice: the second run writes nothing', () async {
     final fs = esiRepository();
     await runTool(fs, ['esi', 'generate']);
     final first = {
@@ -69,7 +69,7 @@ void main() {
     expect(_generated(fs), isEmpty);
   });
 
-  test('a pin missing a field names it and writes nothing', () async {
+  test('pin missing a field: names it and writes nothing', () async {
     final fs = esiRepository(
       pin: 'date: "$esiFixtureDate"\nsource: "$esiFixtureSource"\n',
     );

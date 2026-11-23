@@ -138,6 +138,10 @@ run = "dart run kaname_tools esi fetch"
 description = "Generate the typed ESI client and route catalogue from the pinned snapshot, offline"
 run = "dart run kaname_tools esi generate"
 
+[tasks."esi:check"]
+description = "Fail if the generated ESI client differs from a fresh generation in a temporary directory, or the snapshot from its pin"
+run = "dart run kaname_tools esi check"
+
 [tasks."l10n:check"]
 description = "Fail if the app's committed gen-l10n output differs from a fresh generation in a temporary directory"
 run = "dart run kaname_tools l10n --check"

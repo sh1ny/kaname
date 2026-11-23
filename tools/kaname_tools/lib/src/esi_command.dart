@@ -10,14 +10,16 @@ import 'file_system.dart';
 /// The `esi` command: the pinned ESI spec and the client generated from it.
 final class EsiCommand extends Command<int> {
   /// Creates the command and its subcommands over [fileSystem], downloading
-  /// with [downloader] and writing to [output].
+  /// with [downloader], checking in [scratch] and writing to [output].
   EsiCommand(
     FileSystem fileSystem,
     EsiDownloader downloader,
+    EsiScratch scratch,
     CliOutput output,
   ) {
     addSubcommand(EsiFetchCommand(fileSystem, downloader, output));
     addSubcommand(EsiGenerateCommand(fileSystem, output));
+    addSubcommand(EsiCheckCommand(fileSystem, scratch, output));
   }
 
   @override
@@ -102,5 +104,38 @@ final class EsiGenerateCommand extends Command<int> {
         );
         return exitSuccess;
     }
+  }
+}
+
+/// `esi check`: fail when the committed generated output differs from what
+/// the pinned snapshot generates, or when the snapshot does not match its
+/// pin. Regenerates into a temporary directory; writes nothing in the
+/// repository and needs no network.
+final class EsiCheckCommand extends Command<int> {
+  /// Creates the command.
+  EsiCheckCommand(this._fileSystem, this._scratch, this._output);
+
+  final FileSystem _fileSystem;
+  final EsiScratch _scratch;
+  final CliOutput _output;
+
+  @override
+  String get name => 'check';
+
+  @override
+  String get description =>
+      'Fail if the generated ESI client differs from the pinned snapshot.';
+
+  @override
+  int run() {
+    final (:pin, :files, :problems) = checkEsiGenerated(_fileSystem, _scratch);
+    if (problems.isNotEmpty) {
+      problems.forEach(_output.err.writeln);
+      return exitCheckFailed;
+    }
+    _output.out.writeln(
+      '$esiGeneratedDirectory: $files files current for ${pin?.date}',
+    );
+    return exitSuccess;
   }
 }

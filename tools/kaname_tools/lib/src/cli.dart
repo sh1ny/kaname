@@ -4,6 +4,7 @@ import 'package:args/command_runner.dart';
 
 import 'esi_command.dart';
 import 'esi_fetch.dart';
+import 'esi_generate.dart';
 import 'file_system.dart';
 import 'git_log.dart';
 import 'l10n.dart';
@@ -51,6 +52,7 @@ CommandRunner<int> buildRunner(
   GitLog gitLog = const NoGitLog(),
   L10nGenerator l10nGenerator = const NoL10nGenerator(),
   EsiDownloader esiDownloader = const NoEsiDownloader(),
+  EsiScratch esiScratch = const NoEsiScratch(),
 }) => _Runner(output)
   ..addCommand(WorkspaceCommand(fileSystem, output))
   ..addCommand(PurityCommand(fileSystem, output))
@@ -62,22 +64,24 @@ CommandRunner<int> buildRunner(
   ..addCommand(WebBuildCommand(fileSystem, output))
   ..addCommand(ServeCommand(output))
   ..addCommand(L10nCommand(fileSystem, l10nGenerator, output))
-  ..addCommand(EsiCommand(fileSystem, esiDownloader, output));
+  ..addCommand(EsiCommand(fileSystem, esiDownloader, esiScratch, output));
 
 /// Runs `kaname_tools` with [args] and returns the process exit status.
 ///
 /// Production callers pass only [args]; the file system is then the real
 /// repository found by walking up from the current directory, and the git
 /// history is read by running `git` there, and localisations are generated
-/// by running `flutter gen-l10n` in a temporary directory, and `esi fetch`
-/// downloads over HTTPS. Tests pass an in-memory [fileSystem], a fake
-/// [gitLog], [l10nGenerator] and [esiDownloader], and capture [output].
+/// by running `flutter gen-l10n` in a temporary directory, `esi fetch`
+/// downloads over HTTPS, and `esi check` regenerates into a temporary
+/// directory. Tests pass an in-memory [fileSystem], a fake [gitLog],
+/// [l10nGenerator], [esiDownloader] and [esiScratch], and capture [output].
 Future<int> runCli(
   List<String> args, {
   FileSystem? fileSystem,
   GitLog? gitLog,
   L10nGenerator? l10nGenerator,
   EsiDownloader? esiDownloader,
+  EsiScratch? esiScratch,
   CliOutput? output,
 }) async {
   final io = output ?? CliOutput(out: stdout, err: stderr);
@@ -108,12 +112,19 @@ Future<int> runCli(
           RealFileSystem() => const HttpEsiDownloader(),
           _ => const NoEsiDownloader(),
         };
+    final scratch =
+        esiScratch ??
+        switch (resolved) {
+          RealFileSystem() => const TempDirectoryEsiScratch(),
+          _ => const NoEsiScratch(),
+        };
     return await buildRunner(
           resolved,
           io,
           gitLog: git,
           l10nGenerator: generator,
           esiDownloader: downloader,
+          esiScratch: scratch,
         ).run(args) ??
         exitSuccess;
   } on UsageException catch (e) {

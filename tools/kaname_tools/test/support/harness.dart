@@ -7,12 +7,14 @@ typedef CliResult = ({int code, String out, String err});
 
 /// Runs `kaname_tools` with [args] over [fileSystem] and captures its output.
 ///
-/// Commands that read the git history use [gitLog].
+/// Commands that read the git history use [gitLog]; `esi check`
+/// regenerates into [esiScratch], a fresh in-memory one by default.
 Future<CliResult> runTool(
   InMemoryFileSystem fileSystem,
   List<String> args, {
   GitLog? gitLog,
   EsiDownloader? esiDownloader,
+  EsiScratch? esiScratch,
 }) async {
   final out = StringBuffer();
   final err = StringBuffer();
@@ -21,9 +23,26 @@ Future<CliResult> runTool(
     fileSystem: fileSystem,
     gitLog: gitLog,
     esiDownloader: esiDownloader,
+    esiScratch: esiScratch ?? InMemoryEsiScratch(),
     output: CliOutput(out: out, err: err),
   );
   return (code: code, out: out.toString(), err: err.toString());
+}
+
+/// A scratch that hands each use a fresh in-memory file system and keeps
+/// the last one for inspection.
+final class InMemoryEsiScratch implements EsiScratch {
+  /// The file system of the last use, or `null` before the first.
+  InMemoryFileSystem? last;
+
+  /// How many times the scratch was used.
+  int uses = 0;
+
+  @override
+  T use<T>(T Function(FileSystem scratch) body) {
+    uses++;
+    return body(last = InMemoryFileSystem());
+  }
 }
 
 /// Source of a pubspec for a fixture package called [name].
