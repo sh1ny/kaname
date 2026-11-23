@@ -115,8 +115,8 @@ Test paths: `tools/kaname_tools/test/` (abbreviated `tools/…`) and `packages/k
 
 ## 6. Drift check
 
-- [ ] 6.1 Write failing tests in `tools/esi_check_test.dart` ("Generated file edited by hand", "Snapshot bumped without regenerating") and `tools/esi_repo_test.dart` ("Pin matches snapshot", "Committed output current"). Verify they fail for the missing check.
-- [ ] 6.2 Implement `kaname_tools esi check` (pin and hash checks first, then regenerate into a temp directory and compare; report missing, extra and differing files; write nothing in the repository) and the `esi:check` mise task, added to `check` after `l10n:check`. Verify the 6.1 rows go green and the existing `tools/ci_workflow_test.dart` and mise-related tests still pass.
+- [x] 6.1 Write failing tests in `tools/esi_check_test.dart` ("Generated file edited by hand", "Snapshot bumped without regenerating") and `tools/esi_repo_test.dart` ("Pin matches snapshot", "Committed output current"). Verify they fail for the missing check.
+- [x] 6.2 Implement `kaname_tools esi check` (pin and hash checks first, then regenerate into a temp directory and compare; report missing, extra and differing files; write nothing in the repository) and the `esi:check` mise task, added to `check` after `l10n:check`. Verify the 6.1 rows go green and the existing `tools/ci_workflow_test.dart` and mise-related tests still pass.
 
 ## 7. Contract fixtures
 
