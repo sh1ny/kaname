@@ -29,7 +29,7 @@ Build on the character identity established in M2: model mains and alts, handle 
 
 ## Later
 
-- M4 - Privacy and sync: sharing policies and consent, privacy-scoped data paths, sync protocol (settles R51), local store spike (R32), solo engine skeleton.
+- M4 - Privacy and sync: sharing policies and consent, privacy-scoped data paths, sync protocol (settles R51), local store spike (R32), solo engine skeleton, on-device SDE import and solo auto-update.
 - M5 - Character data and member audit: ingestion recipes, corp data from role tokens, audit and compliance.
 - M6 - Rules, notifications and Discord v1: rule engine, smart groups, notification bus, Discord linking and role sync, pings. Release 0.1.
 - M7 - Personal space: multi-character console, skill planner, assets, personal worklist, solo complete, solo to join, mobile push (settles R40).
@@ -60,3 +60,4 @@ Build on the character identity established in M2: model mains and alts, handle 
 
 - M0 - Walking skeleton - 2026-11-18 - The skeleton holds end to end on six targets and the self-host stack. The grid spike passes on skwasm but CanvasKit misses on scrolling (missed frames, on a software GPU), so M1 opens with `--wasm`. The owner's grid check ran on the development PC instead of a low-end laptop (R58).
 - M1 - Static data pipeline - 2026-11-23 - The self-hosted stack took SDE build `3720952` over `3714173` without rebuilding; the owner saw Settings and the change report and found a type and a system offline. All 30 declared industry and logistics fields were present in the SDE audit, so no overlay is needed unless a future audit finds a gap.
+  [Static data settings decision S2](changes/archive/2026-11-23-static-data-settings/proposal.md#s2-meaning-of-the-solo-half-before-solo-mode-exists) kept the M1 app side to bundle status and Download now; on-device import and solo auto-update remain in M4.
