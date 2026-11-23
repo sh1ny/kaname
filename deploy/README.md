@@ -62,6 +62,77 @@ mise run stack:down                     # stop and delete the data volumes
 next `up` starts on the existing database and applies no migration twice.
 `mise run stack:down` removes them as well.
 
+## Clients and proxies
+
+The server holds at most 16 open announcement streams per client, and 2,000
+in all. A client is the address its connection comes from; IPv6 clients in
+the same `/64` count as one. A refused subscription ends at once with no
+event, and the app tries again later.
+
+When a connection comes from a trusted proxy, the server takes the client's
+address from the proxy's `X-Forwarded-For` header instead: the rightmost
+address in it that is not itself a trusted proxy. The server's
+`KANAME_TRUSTED_PROXIES` setting lists the trusted proxies, as IP addresses
+and CIDR ranges separated by commas. Unset or empty trusts nobody, and an
+invalid entry stops the server at start-up, naming the entry.
+
+### The shipped stack
+
+`compose.yaml` pins the stack's internal network to `172.30.0.0/24`, with
+gateway `172.30.0.1`, and lets Docker hand out addresses only from
+`172.30.0.128/25`. Caddy has the fixed address `172.30.0.10`, outside that
+range, and the server trusts exactly that address. Caddy replaces any
+`X-Forwarded-For` a client sends with the address the connection came from,
+so a client cannot choose its own bucket.
+
+Locally, the stack publishes Caddy on `127.0.0.1` only. A browser on the
+stack host reaches Caddy through Docker's gateway, so all local clients count
+as one client, the gateway's address. That is expected for a loopback stack.
+
+If `172.30.0.0/24` overlaps a network you already use (another Docker
+network, a VPN), change the subnet, the gateway, the dynamic range, Caddy's
+`ipv4_address` and `KANAME_TRUSTED_PROXIES` together. Caddy's address must
+stay inside the subnet and outside the dynamic range, and the server must
+trust only that address, never the whole subnet.
+
+A stack started before the subnet was pinned keeps its old network until the
+network is recreated. Run `(cd deploy && docker compose down)`, which keeps
+the data volumes, then start the stack again. Do not use `mise run
+stack:down` for this: it deletes the database.
+
+### A public deployment
+
+Caddy is meant to be the edge of a public deployment: the client's
+connection reaches it directly, and it writes the real client address. A
+proxy, CDN or tunnel you put in front of Caddy changes that. Caddy then sees
+the front proxy as every client's address, and every user shares one bucket
+of 16 streams, unless you configure both trust lists:
+
+1. The front proxy must append the address it received the connection from
+   to `X-Forwarded-For`. A proxy that passes a caller's header through
+   unchanged lets the caller choose its bucket; never trust one.
+2. The front proxy must reach Caddy over a route Caddy can tell apart from
+   other callers: give it a fixed address on the stack network, outside the
+   dynamic range and distinct from Caddy's and the gateway's. A separate
+   Caddy port is not enough, because Caddy's trust list applies to every
+   listener. Never trust the Docker gateway: it would trust every local
+   caller.
+3. Add the front proxy's address to Caddy's `trusted_proxies` and to
+   `KANAME_TRUSTED_PROXIES`, beside Caddy's address. The server then reads
+   the chain `client, front proxy` and counts the client.
+
+Check the route twice, in this order, and again after any change to the
+network or the addresses:
+
+- **Before trusting the front proxy**, check that Caddy sees the proxy's own
+  address as its peer, not the Docker gateway's.
+- **With both trust lists set, before the route goes public**, check end to
+  end: after one real client fills its 16 places through the front proxy, a
+  second client still receives announcements, and a forwarded header sent by
+  either client changes neither client's bucket.
+
+The project ships no such topology, so these checks are yours.
+
 ## Static data
 
 On a start with no active static-data build, the server queues an import of

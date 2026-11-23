@@ -68,10 +68,10 @@ Server tests live under `server/kaname_server/test/`: `unit/network/client_ident
 | realtime-bus → Announcement refusals are logged at a bounded rate | Full map reused after a minute | server/kaname_server/test/unit/static_data/refusal_log_test.dart | a full map evicts the oldest warning on elapsed time, despite a wall-clock step back | green |
 | realtime-bus → Announcement refusals are logged at a bounded rate | Many distinct clients | server/kaname_server/test/unit/static_data/refusal_log_test.dart | 5,000 clients log at most 4,096 named warnings and one other-clients warning | green |
 | realtime-bus → Announcement refusals are logged at a bounded rate | Server runs no announcer | server/kaname_server/test/integration/static_data/bundle_stream_test.dart | a server with no announcer refuses 100 subscriptions with one warning | green |
-| self-host-stack → The stack's server trusts only Caddy as proxy | Two clients through Caddy | server/kaname_client/test/stack/stack_test.dart | a host client holding 16 does not stop a container client on the stack network | red |
-| self-host-stack → The stack's server trusts only Caddy as proxy | Client sends its own forwarded header | server/kaname_client/test/stack/stack_test.dart | 17 WebSocket upgrades with spoofed headers: 16 live, the 17th completes cleanly, another client still served | red |
-| self-host-stack → The stack's server trusts only Caddy as proxy | Configuration check | tools/kaname_tools/test/compose_config_test.dart | pinned subnet, dynamic range, Caddy's fixed address outside it, and trusted proxies equal to Caddy's address | red |
-| self-host-stack → The stack's server trusts only Caddy as proxy | Local client through Docker's gateway | server/kaname_client/test/stack/stack_test.dart | a host browser's streams count for the gateway with no forwarded-header warning | red |
+| self-host-stack → The stack's server trusts only Caddy as proxy | Two clients through Caddy | server/kaname_client/test/stack/stack_test.dart | a host client holding 16 does not stop a container client on the stack network | green |
+| self-host-stack → The stack's server trusts only Caddy as proxy | Client sends its own forwarded header | server/kaname_client/test/stack/stack_test.dart | 17 WebSocket upgrades with spoofed headers: 16 live, the 17th completes cleanly, another client still served | green |
+| self-host-stack → The stack's server trusts only Caddy as proxy | Configuration check | tools/kaname_tools/test/compose_config_test.dart | pinned subnet, dynamic range, Caddy's fixed address outside it, and trusted proxies equal to Caddy's address | green |
+| self-host-stack → The stack's server trusts only Caddy as proxy | Local client through Docker's gateway | server/kaname_client/test/stack/stack_test.dart | a host browser's streams count for the gateway with no forwarded-header warning | green |
 
 ## 1. Settle the assumptions the server work relies on
 
@@ -105,9 +105,9 @@ Server tests live under `server/kaname_server/test/`: `unit/network/client_ident
 
 ## 5. Self-host stack
 
-- [ ] 5.1 Write the failing Compose configuration test in `tools/kaname_tools/test/compose_config_test.dart` for "Configuration check". Verify it fails on the current `deploy/compose.yaml`.
-- [ ] 5.2 In `deploy/compose.yaml`, pin the stack network's subnet, set its `ip_range`, and give Caddy a fixed IPv4 address outside that range. Set the server's `KANAME_TRUSTED_PROXIES` to exactly Caddy's address (C4). Verify task 5.1 passes and flip its row green.
-- [ ] 5.3 Write C6 as a comment in `deploy/Caddyfile`'s global options block. Update `deploy/README.md` with:
+- [x] 5.1 Write the failing Compose configuration test in `tools/kaname_tools/test/compose_config_test.dart` for "Configuration check". Verify it fails on the current `deploy/compose.yaml`.
+- [x] 5.2 In `deploy/compose.yaml`, pin the stack network's subnet, set its `ip_range`, and give Caddy a fixed IPv4 address outside that range. Set the server's `KANAME_TRUSTED_PROXIES` to exactly Caddy's address (C4). Verify task 5.1 passes and flip its row green.
+- [x] 5.3 Write C6 as a comment in `deploy/Caddyfile`'s global options block. Update `deploy/README.md` with:
   - the setting;
   - the shipped loopback stack versus a public deployment;
   - the front proxy: fixed address outside the dynamic range, in both trust lists, appending its peer's address, and the two checks, repeated after any network change;
@@ -115,7 +115,7 @@ Server tests live under `server/kaname_server/test/`: `unit/network/client_ident
   - adopting the pinned subnet through `docker compose down`, which keeps volumes, not `mise run stack:down`.
 
   Verify by reading the rendered README section.
-- [ ] 5.4 Write the stack tests for "Two clients through Caddy", "Client sends its own forwarded header" (17 separate WebSocket upgrades) and "Local client through Docker's gateway" in `server/kaname_client/test/stack/stack_test.dart`. They run in CI. Run them locally only with the owner's approval, when the owner's machine is free. Flip their rows green when CI passes them.
+- [x] 5.4 Write the stack tests for "Two clients through Caddy", "Client sends its own forwarded header" (17 separate WebSocket upgrades) and "Local client through Docker's gateway" in `server/kaname_client/test/stack/stack_test.dart`. They run in CI. Run them locally only with the owner's approval, when the owner's machine is free. Flip their rows green when CI passes them.
 
 ## 6. App behaviour on refusal
 
