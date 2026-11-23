@@ -478,6 +478,9 @@ final class _SwitchFailingStore implements StaticDataStore {
   final InMemoryStaticDataStore _inner;
 
   @override
+  bool get jobConnectionOpen => _inner.jobConnectionOpen;
+
+  @override
   Future<bool> tryLock() => _inner.tryLock();
   @override
   Future<void> unlock() => _inner.unlock();
@@ -492,6 +495,13 @@ final class _SwitchFailingStore implements StaticDataStore {
   Future<void> updateRecord(int id, ImportRecord record) =>
       _inner.updateRecord(id, record);
   @override
+  Future<ImportRecordEnd?> finishFailedImport(
+    int id, {
+    required DateTime at,
+    required String reason,
+    int? build,
+  }) => _inner.finishFailedImport(id, at: at, reason: reason, build: build);
+  @override
   Future<void> pruneRecords({required int keep}) =>
       _inner.pruneRecords(keep: keep);
   @override
@@ -504,6 +514,9 @@ final class _SwitchFailingStore implements StaticDataStore {
   Future<int?> dropStagedBuild() => _inner.dropStagedBuild();
   @override
   Future<void> insertCheck(CheckRecord record) => _inner.insertCheck(record);
+  @override
+  Future<void> insertCheckAfterConnectionLoss(CheckRecord record) =>
+      _inner.insertCheckAfterConnectionLoss(record);
   @override
   Future<DateTime?> newestCheckedAt() => _inner.newestCheckedAt();
   @override
@@ -539,8 +552,12 @@ final class _SwitchFailingStore implements StaticDataStore {
   Future<void> recordBundle(BundleWrite write) => _inner.recordBundle(write);
   @override
   Future<T> inTransaction<T>(
-    Future<T> Function(StaticDataWriter writer) body,
-  ) => _inner.inTransaction((writer) => body(_FailingSwitchWriter(writer)));
+    Future<T> Function(StaticDataWriter writer) body, {
+    int? activatingBuild,
+  }) => _inner.inTransaction(
+    (writer) => body(_FailingSwitchWriter(writer)),
+    activatingBuild: activatingBuild,
+  );
   @override
   Future<void> close() => _inner.close();
 }
@@ -553,6 +570,11 @@ final class _FailingSwitchWriter implements StaticDataWriter {
   @override
   Future<void> switchTo(int build, {required DateTime at}) =>
       Future.error(StateError('switch statement failed'));
+  @override
+  Future<void> restoreHeld({
+    required DateTime at,
+    required String operationId,
+  }) => _inner.restoreHeld(at: at, operationId: operationId);
   @override
   Future<void> rollBack({required DateTime at}) => _inner.rollBack(at: at);
   @override

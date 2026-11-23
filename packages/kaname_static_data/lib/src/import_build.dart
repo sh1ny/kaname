@@ -49,6 +49,18 @@ final class ImportFailed extends ImportResult {
   final int? build;
 }
 
+/// The job cannot prove whether the import transaction committed.
+final class ImportUnconfirmed extends ImportResult {
+  /// Creates an outcome with the build number if it was read.
+  const ImportUnconfirmed({this.build});
+
+  /// The build number, when it was known.
+  final int? build;
+
+  /// The recorded reason when the check can still write its own record.
+  String get reason => 'import outcome unknown';
+}
+
 /// The import stored nothing because another import runs or the build is
 /// already stored.
 final class ImportSkipped extends ImportResult {
@@ -104,16 +116,16 @@ final class ImportAttempt {
 ///    removed.
 /// 4. In one store transaction, write every row in batches, then the build
 ///    row and the record's `succeeded` outcome with its reports. The build is
-///    `active` only when no build is active, `staged` otherwise. Any error
-///    rolls the transaction back, and the record is then set to `failed`
-///    outside it.
+///    `active` only when no build is active, `staged` otherwise. A transaction
+///    error is reconciled from the exact import record, never the current
+///    state of its build.
 ///
 /// The import fails with "timed out" when it runs past
 /// [SdeLimits.importTimeout]; the check happens between batches, so a
 /// statement timeout in the store bounds a single hung write.
 ///
-/// Never throws: every failure is an [ImportFailed] result, recorded when a
-/// record could be written. [startedAt] is the record's start time; [clock]
+/// Never throws: a confirmed failure is [ImportFailed]; an unproven commit
+/// is [ImportUnconfirmed]. [startedAt] is the record's start time; [clock]
 /// supplies the other times and defaults to [DateTime.now]. [onRecordInserted]
 /// is called with the record's id as soon as it exists.
 Future<ImportAttempt> importBuild({
@@ -146,10 +158,27 @@ Future<ImportAttempt> importBuild({
     id = await store.insertRecord(record);
     onRecordInserted?.call(id);
     final result = await step.run(id, record, (updated) => record = updated);
-    if (result is! ImportSucceeded) {
-      record = await step.finish(id, record, result);
+    switch (result) {
+      case ImportSucceeded():
+        return ImportAttempt(
+          result: result,
+          recordId: id,
+          record: step._prepared!.record,
+        );
+      case ImportSkipped(:final reason, :final build):
+        record = record.finished(
+          ImportOutcome.skipped,
+          at: step.clock(),
+          build: build,
+          failureReason: reason,
+        );
+        await store.updateRecord(id, record);
+        return ImportAttempt(result: result, recordId: id, record: record);
+      case ImportFailed():
+        return await step.reconcile(id, record, result);
+      case ImportUnconfirmed():
+        return ImportAttempt(result: result, recordId: id, record: record);
     }
-    return ImportAttempt(result: result, recordId: id, record: record);
   } on Object catch (error) {
     return ImportAttempt(
       result: ImportFailed(_reasonOf(error)),
@@ -177,6 +206,8 @@ final class _BuildImport {
   final List<KnownId> knownIdTable;
   final List<IndustryLogisticsField> fieldTable;
   final int batchSize;
+  bool _enteredTransaction = false;
+  ({ImportSucceeded result, ImportRecord record})? _prepared;
 
   /// Runs the import and returns the result without recording a failure.
   Future<ImportResult> run(
@@ -226,6 +257,7 @@ final class _BuildImport {
           ? BuildState.staged
           : BuildState.active;
       final readyArchive = archive;
+      _enteredTransaction = true;
       return await store.inTransaction((writer) async {
         final fieldCheck = FieldCheckCollector(fieldTable);
         final ingest = SdeIngest(
@@ -266,9 +298,14 @@ final class _BuildImport {
           recordId: recordId,
           record: finished,
         );
-        onRecord(finished);
-        return ImportSucceeded(build: number, state: state, report: report);
-      });
+        final result = ImportSucceeded(
+          build: number,
+          state: state,
+          report: report,
+        );
+        _prepared = (result: result, record: finished);
+        return result;
+      }, activatingBuild: state == BuildState.active ? number : null);
     } on _ImportFailure catch (failure) {
       return ImportFailed(failure.reason, build: build);
     } on SdeSourceException catch (error) {
@@ -313,32 +350,53 @@ final class _BuildImport {
     );
   }
 
-  Future<ImportRecord> finish(
+  Future<ImportAttempt> reconcile(
     int id,
     ImportRecord record,
-    ImportResult result,
+    ImportFailed failure,
   ) async {
-    final (outcome, reason, build) = switch (result) {
-      ImportFailed(:final reason, :final build) => (
-        ImportOutcome.failed,
-        reason,
-        build,
-      ),
-      ImportSkipped(:final reason, :final build) => (
-        ImportOutcome.skipped,
-        reason,
-        build,
-      ),
-      ImportSucceeded() => throw StateError('a success records itself'),
-    };
-    final finished = record.finished(
-      outcome,
-      at: clock(),
-      build: build,
-      failureReason: reason,
+    final at = clock();
+    ImportRecordEnd? end;
+    try {
+      end = await store.finishFailedImport(
+        id,
+        at: at,
+        reason: failure.reason,
+        build: failure.build,
+      );
+    } on Object {
+      // No durable evidence: in particular, this is not proof of rollback.
+    }
+    final prepared = _prepared;
+    if (end?.outcome == ImportOutcome.succeeded && prepared != null) {
+      // The exact row can only have succeeded in this writer transaction;
+      // its report and build state are the ones that transaction prepared.
+      return ImportAttempt(
+        result: prepared.result,
+        recordId: id,
+        record: prepared.record,
+      );
+    }
+    if (end?.outcome == ImportOutcome.failed) {
+      final reason = end!.reason ?? failure.reason;
+      return ImportAttempt(
+        result: ImportFailed(reason, build: failure.build),
+        recordId: id,
+        record: record.finished(
+          ImportOutcome.failed,
+          at: end.finishedAt ?? at,
+          failureReason: reason,
+          build: failure.build,
+        ),
+      );
+    }
+    return ImportAttempt(
+      result: _enteredTransaction
+          ? ImportUnconfirmed(build: failure.build)
+          : failure,
+      recordId: id,
+      record: record,
     );
-    await store.updateRecord(id, finished);
-    return finished;
   }
 }
 

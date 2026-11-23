@@ -212,7 +212,7 @@ final class ComputeWorker {
   }
 
   Future<void> _runImport(RunImport request, WorkerStart start) async {
-    ImportFinished reply;
+    WorkerReply reply;
     try {
       reply = await _importOnce(request, start);
     } on Object catch (error) {
@@ -226,8 +226,8 @@ final class ComputeWorker {
     _reply(reply);
   }
 
-  Future<ImportFinished> _importOnce(RunImport request, WorkerStart start) =>
-      _withJobStore(
+  Future<WorkerReply> _importOnce(RunImport request, WorkerStart start) =>
+      _withJobStore<WorkerReply>(
         requestId: request.requestId,
         start: start,
         unreachable: () => ImportFinished(
@@ -378,7 +378,7 @@ final class ComputeWorker {
     }
   }
 
-  ImportFinished _finished(int requestId, ImportResult result) {
+  WorkerReply _finished(int requestId, ImportResult result) {
     switch (result) {
       case ImportSucceeded(:final build, :final state, :final report):
         _log(WorkerLogLevel.info, 'imported build $build as ${state.name}');
@@ -398,6 +398,9 @@ final class ComputeWorker {
           build: build,
           reason: reason,
         );
+      case ImportUnconfirmed(:final reason):
+        _log(WorkerLogLevel.warning, reason);
+        return WorkerError(requestId: requestId, reason: reason);
       case ImportSkipped(:final reason, :final build):
         _log(WorkerLogLevel.info, 'import skipped: $reason');
         return ImportFinished(

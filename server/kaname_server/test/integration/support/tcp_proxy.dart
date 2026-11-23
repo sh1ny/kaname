@@ -150,13 +150,19 @@ final class TcpProxy {
     }
   }
 
-  /// Stops listening and destroys every open connection.
-  Future<void> close() async {
-    await _server.close();
+  /// Cuts existing connections without refusing a later reconnection.
+  void disconnectClients() {
     for (final socket in _sockets) {
       socket.destroy();
     }
     _sockets.clear();
     _targetReads.clear();
+    _holdingTargetReads = false;
+  }
+
+  /// Stops listening and destroys every open connection.
+  Future<void> close() async {
+    await _server.close();
+    disconnectClients();
   }
 }

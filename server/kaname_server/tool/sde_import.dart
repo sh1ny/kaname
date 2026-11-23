@@ -118,6 +118,11 @@ Future<int> _import(SdeImportRun request) async {
     return 1;
   }
 
+  if (result case ImportUnconfirmed(:final reason)) {
+    stderr.writeln('Result: $reason');
+    return 1;
+  }
+
   // The job's own record, and the record that holds the build's reports when
   // the job stored nothing because the build was already there.
   final ImportRecordView? record;
@@ -150,6 +155,7 @@ Future<int> _import(SdeImportRun request) async {
       'Result: build $build stored as ${state.name}',
     ImportSkipped(:final reason) => 'Result: skipped ($reason)',
     ImportFailed(:final reason) => 'Result: failed ($reason)',
+    ImportUnconfirmed(:final reason) => 'Result: $reason',
   });
   stdout.write(renderImportSummary(record));
 
@@ -167,7 +173,7 @@ Future<int> _import(SdeImportRun request) async {
     stdout.writeln('R38 report written to ${target.path}');
   }
   return switch (result) {
-    ImportFailed() => 1,
+    ImportFailed() || ImportUnconfirmed() => 1,
     ImportSucceeded() || ImportSkipped() => 0,
   };
 }

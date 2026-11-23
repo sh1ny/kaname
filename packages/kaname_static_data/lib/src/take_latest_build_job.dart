@@ -195,6 +195,7 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
   final void Function(BundleStepResult result)? onBundle;
 
   final DateTime Function() _clock;
+  bool _importLostConnection = false;
 
   /// The builds whose bundle this run has attempted, so none is built twice
   /// in one check.
@@ -206,6 +207,7 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
   @override
   Future<BuildCheckResult> run() async {
     final startedAt = _clock();
+    _importLostConnection = false;
     var locked = false;
     try {
       locked = await store.tryLock();
@@ -220,6 +222,14 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
         scratchRoot: scratchRoot,
       );
       final result = await _check(startedAt);
+      if (_importLostConnection) {
+        await _quietly(
+          () => store.insertCheckAfterConnectionLoss(
+            _recordOf(result, startedAt),
+          ),
+        );
+        return result;
+      }
       await _repairActiveBundle();
       await store.insertCheck(_recordOf(result, startedAt));
       await _quietly(() async {
@@ -271,15 +281,19 @@ final class TakeLatestBuildJob implements Job<BuildCheckResult> {
         clock: _clock,
         batchSize: batchSize,
       );
+      _importLostConnection = !store.jobConnectionOpen;
       switch (attempt.result) {
-        case ImportFailed(:final reason):
-          return BuildCheckFailed(reason, latestBuild: announced);
-        case ImportSkipped(:final reason):
+        case ImportFailed(:final reason) ||
+            ImportSkipped(:final reason) ||
+            ImportUnconfirmed(:final reason):
           return BuildCheckFailed(reason, latestBuild: announced);
         case ImportSucceeded(state: BuildState.active, :final build):
-          await _bundle(build);
+          if (!_importLostConnection) await _bundle(build);
           return BuildSwitched(build);
         case ImportSucceeded(:final build):
+          if (_importLostConnection) {
+            return BuildStaged(build, 'connection lost');
+          }
           return _compareAndSwitch(active, build);
       }
     }

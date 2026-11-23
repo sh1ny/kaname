@@ -256,6 +256,13 @@ final class ImportRecord {
   );
 }
 
+/// The persisted end of one import, with no inference from the stored builds.
+typedef ImportRecordEnd = ({
+  ImportOutcome outcome,
+  DateTime? finishedAt,
+  String? reason,
+});
+
 /// The importer's storage: records, the lock and one transaction of data.
 ///
 /// A store holds one connection for one job. The job takes the lock first,
@@ -264,9 +271,11 @@ final class ImportRecord {
 /// session advisory lock, one transaction for the data) and
 /// `InMemoryStaticDataStore` for tests and solo.
 ///
-/// Locking rule: while it holds the lock, a caller may insert, update and
-/// delete anything. Without it, a caller may only insert a `skipped` import
-/// record or a `failed` check record that says the lock was held.
+/// C37 (static-data-settings): without the job lock, only its skipped import
+/// or lock-contention check, the conditional failure of its own running
+/// import, and its own check after connection loss may be written. The last
+/// may say switched or staged only when the exact import record proved it;
+/// otherwise it is failed. These paths change no builds and prune nothing.
 ///
 /// ## Carried constraints
 ///
@@ -283,6 +292,9 @@ final class ImportRecord {
 ///   staged build's removal ([dropStagedBuild]) and the switch's removal of
 ///   the old previous build ([StaticDataWriter.switchTo]).
 abstract interface class StaticDataStore {
+  /// Whether the original job connection is still open.
+  bool get jobConnectionOpen;
+
   /// Tries to take the static-data lock without waiting.
   ///
   /// Returns `false` when another import holds it.
@@ -305,6 +317,17 @@ abstract interface class StaticDataStore {
 
   /// Replaces the record [id] with [record].
   Future<void> updateRecord(int id, ImportRecord record);
+
+  /// Fails this exact [id] only if it is still running and reads its end.
+  ///
+  /// May use a fresh connection after the original is lost. A missing row is
+  /// not evidence of success, and an already-ended row is never changed.
+  Future<ImportRecordEnd?> finishFailedImport(
+    int id, {
+    required DateTime at,
+    required String reason,
+    int? build,
+  });
 
   /// Deletes every record but the newest [keep], by start time.
   Future<void> pruneRecords({required int keep});
@@ -330,6 +353,9 @@ abstract interface class StaticDataStore {
 
   /// Inserts [record] of a check.
   Future<void> insertCheck(CheckRecord record);
+
+  /// Inserts only the job's own check after it lost the connection (C37).
+  Future<void> insertCheckAfterConnectionLoss(CheckRecord record);
 
   /// When the newest check started, or `null` when none is recorded.
   Future<DateTime?> newestCheckedAt();
@@ -389,13 +415,23 @@ abstract interface class StaticDataStore {
   ///
   /// The transaction commits when [body] completes and rolls back when it
   /// throws, rethrowing the error.
-  Future<T> inTransaction<T>(Future<T> Function(StaticDataWriter writer) body);
+  ///
+  /// Supply [activatingBuild] for a first activation so a store handling an
+  /// admin operation can fence that operation before ingest writes any rows.
+  Future<T> inTransaction<T>(
+    Future<T> Function(StaticDataWriter writer) body, {
+    int? activatingBuild,
+  });
 
   /// Closes the connection. The lock is released with it.
   Future<void> close();
 }
 
-/// The writes of one import transaction.
+/// The writes of a static-data transaction.
+///
+/// C13 (static-data-settings): a writer step that changes the active,
+/// previous or held build bumps the revision and ends its admin operation in
+/// the same transaction. Staging a build does neither.
 abstract interface class StaticDataWriter {
   /// Inserts [rows], all of one typed table, for [build].
   Future<void> insertTyped(int build, List<TypedRow> rows);
@@ -426,6 +462,12 @@ abstract interface class StaticDataWriter {
   /// `previous`; makes [build] `active`; clears the hold on every build older
   /// than [build]; and inserts a `succeeded` forward [SwitchRecord].
   Future<void> switchTo(int build, {required DateTime at});
+
+  /// Restores the held previous build, lifting the hold and keeping both.
+  ///
+  /// C8 (static-data-settings): only the update-now check for [operationId]
+  /// may call this, under the job lock. It records a forward switch at [at].
+  Future<void> restoreHeld({required DateTime at, required String operationId});
 
   /// Swaps the active and the previous build at time [at], as one step of
   /// this transaction (C7: only inside a job that holds the lock).

@@ -20,6 +20,8 @@ import '../test_tools/serverpod_test_tools.dart';
 
 /// Every table the store writes, for the reset between tests.
 const _tables = [
+  'sde_admin_operation',
+  'sde_build_revision',
   'sde_import',
   'sde_check',
   'sde_switch',
@@ -396,6 +398,128 @@ void main() {
       };
       expect(rawBuilds, {1, 2});
       expect(await SdeBuildDiff.db.find(session), isEmpty);
+    });
+
+    test('a committed switch stores its succeeded record in the same '
+        'transaction', () async {
+      final store = await open();
+      expect(await store.tryLock(), isTrue);
+      await store1(store, 20, BuildState.active);
+      const operationId = '208ff14d-64ee-425a-a1a0-b05e78a79d46';
+      await session.db.unsafeExecute(
+        'INSERT INTO sde_admin_operation '
+        '("operationId", kind, state, "createdAt") '
+        "VALUES ('$operationId', 'updateNow', 'waiting', now())",
+      );
+      expect(await store.markAdminOperationRunning(operationId), isTrue);
+      await store1(store, 21, BuildState.staged);
+      Future<List<Object?>> committedState() async =>
+          (await session.db.unsafeQuery(
+            'SELECT b.build, r.revision, o.state, o.outcome, o."activeBuild", '
+            's.kind, s."fromBuild", s."toBuild", s.outcome '
+            'FROM sde_admin_operation o CROSS JOIN sde_build_revision r '
+            'CROSS JOIN sde_build b LEFT JOIN sde_switch s ON true '
+            'WHERE b."activeMarker"',
+          )).single.toList();
+
+      const before = [20, 1, 'running', null, null, null, null, null, null];
+      expect(await committedState(), before);
+      final abort = StateError('abort the switch');
+      Future<void> switchBuild({required bool commit}) =>
+          store.inTransaction((writer) async {
+            await writer.switchTo(21, at: _t0);
+            expect(await committedState(), before);
+            if (!commit) throw abort;
+          });
+
+      await expectLater(switchBuild(commit: false), throwsA(same(abort)));
+      expect(await committedState(), before);
+      await switchBuild(commit: true);
+      expect(await committedState(), [
+        21,
+        2,
+        'ended',
+        'switched',
+        21,
+        'forward',
+        20,
+        21,
+        'succeeded',
+      ]);
+    });
+
+    test('rollback and held restore each commit a new revision and '
+        'their own operation outcome', () async {
+      final rollback = await open();
+      expect(await rollback.tryLock(), isTrue);
+      await store1(rollback, 40, BuildState.previous);
+      await store1(rollback, 41, BuildState.active);
+
+      Future<void> admit(
+        PostgresStaticDataStore store,
+        String id,
+        String kind,
+      ) async {
+        await session.db.unsafeExecute(
+          'INSERT INTO sde_admin_operation '
+          '("operationId", kind, state, "createdAt") '
+          "VALUES ('$id', '$kind', 'waiting', now())",
+        );
+        expect(await store.markAdminOperationRunning(id), isTrue);
+      }
+
+      const rollbackId = '7e1d3b87-4370-43d6-a060-aaaca230cccc';
+      await admit(rollback, rollbackId, 'rollback');
+      await rollback.inTransaction((writer) => writer.rollBack(at: _t0));
+      await rollback.close();
+      expect((await builds()).map((b) => (b.build, b.state, b.held)), [
+        (40, SdeBuildState.active, false),
+        (41, SdeBuildState.previous, true),
+      ]);
+      expect((await SdeBuildRevision.db.find(session)).single.revision, 2);
+
+      final restore = await open();
+      expect(await restore.tryLock(), isTrue);
+      const restoreId = '690ffd6d-c348-435a-bc4a-0a2e76069d35';
+      await admit(restore, restoreId, 'updateNow');
+      await restore.inTransaction(
+        (writer) => writer.restoreHeld(at: _t0, operationId: restoreId),
+      );
+      expect((await builds()).map((b) => (b.build, b.state, b.held)), [
+        (40, SdeBuildState.previous, false),
+        (41, SdeBuildState.active, false),
+      ]);
+      expect((await SdeBuildRevision.db.find(session)).single.revision, 3);
+      expect(
+        (await SdeSwitch.db.find(
+          session,
+          orderBy: (t) => t.id,
+        )).map((s) => (s.kind, s.fromBuild, s.toBuild, s.outcome)),
+        [
+          (SdeSwitchKind.rollback, 41, 40, SdeSwitchOutcome.succeeded),
+          (SdeSwitchKind.forward, 40, 41, SdeSwitchOutcome.succeeded),
+        ],
+      );
+      expect(
+        (await SdeAdminOperation.db.find(
+          session,
+          orderBy: (t) => t.id,
+        )).map((o) => (o.state, o.outcome, o.activeBuild, o.changedBuilds)),
+        [
+          (
+            SdeAdminOperationState.ended,
+            SdeAdminOperationOutcome.rolledBack,
+            40,
+            true,
+          ),
+          (
+            SdeAdminOperationState.ended,
+            SdeAdminOperationOutcome.switched,
+            41,
+            true,
+          ),
+        ],
+      );
     });
 
     // Scenario: Every stored build has its bundle / Build removed (C5).
