@@ -14,6 +14,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -25,11 +26,13 @@ import 'package:kaname_app/static_data/logic/static_data_sync.dart';
 import 'package:kaname_client/kaname_client.dart' as wire;
 import 'package:kaname_core/kaname_core.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
+import 'package:kaname_server/src/network/client_identity.dart';
 import 'package:kaname_server/src/realtime/server_clock.dart';
 import 'package:kaname_server/src/realtime/serverpod_realtime_bus.dart';
 import 'package:kaname_server/src/static_data/bundle_announcement_runtime.dart';
 import 'package:kaname_server/src/static_data/bundle_announcer.dart';
 import 'package:kaname_server/src/static_data/static_data_bundle_topic.dart';
+import 'package:kaname_server/src/static_data/static_data_endpoint.dart';
 import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart'
     show BundleOpenResult, ClientBundle, SearchIndex;
 import 'package:serverpod/serverpod.dart' show MessageScope, Session;
@@ -486,7 +489,10 @@ void main() {
       final stalledClient = wire.Client('http://127.0.0.1:${proxy.port}/');
       addTearDown(stalledClient.close);
       const stalledCount = 1999;
-      bundleAnnouncementRuntime.maxStreams = stalledCount + 1;
+      bundleAnnouncementRuntime
+        ..maxStreams = stalledCount + 1
+        // Above the global bound, so only that bound refuses (D4).
+        ..maxStreamsPerClient = 2001;
       final stalled = [
         for (var i = 0; i < stalledCount; i++)
           _Feed(stalledClient.staticData.bundleAnnouncements()),
@@ -511,16 +517,23 @@ void main() {
       }
       final kernel = receiveBuffer + _maxSendBuffer();
 
-      // The only free place is taken: a further subscription is refused.
+      // The only free place is taken: a further subscription from the same
+      // client, which holds 2,000 of its 2,001, is refused by the global
+      // bound.
+      expect(bundleAnnouncementRuntime.streamsOf(_loopback), stalledCount + 1);
       final refused = rig.subscribe();
       await refused.ended;
       expect(refused.events, isEmpty);
+      expect(refused.errors, isEmpty);
 
       rig.streamClock.elapse(_thirtyMinutes);
       await _until(
         () => bundleAnnouncementRuntime.openStreams == 0,
         'the stalled streams to free their places',
       );
+      // Both places of every stream are free, so the replacement below comes
+      // from a client under its own limit.
+      expect(bundleAnnouncementRuntime.streamsOf(_loopback), 0);
       await rig.listenersAre(0);
       // Every stream, the stalled ones included, was ended by the server
       // and its end handed to Serverpod while the transport still does not
@@ -569,10 +582,13 @@ void main() {
       final feed = rig.subscribe();
       await feed.waitFor(1);
       await rig.listenersAre(1);
+      expect(bundleAnnouncementRuntime.streamsOf(_loopback), 1);
       rig.streamClock.elapse(_thirtyMinutes);
       await feed.ended;
       await rig.listenersAre(0);
+      // The place is free under both bounds.
       expect(bundleAnnouncementRuntime.openStreams, 0);
+      expect(bundleAnnouncementRuntime.streamsOf(_loopback), 0);
 
       final again = rig.subscribe();
       await again.waitFor(1);
@@ -639,6 +655,11 @@ void main() {
       await seedBuild(session, 100, SdeBuildState.active);
       await seedBundle(session, 100);
       await rig.start();
+      // One client holds all 2,000 streams under a per-client bound above
+      // the global one; the refused subscription comes from a second client
+      // holding none, so only the global bound refuses it (D4).
+      bundleAnnouncementRuntime.maxStreamsPerClient = 2001;
+      final first = rig.identifyAs('198.51.100.1');
 
       final admitted = [for (var i = 0; i < 2000; i++) rig.subscribe()];
       await _until(
@@ -653,8 +674,13 @@ void main() {
         isEmpty,
         reason: 'an admitted stream failed',
       );
+      expect(bundleAnnouncementRuntime.streamsOf(first), 2000);
+      final second = rig.identifyAs('203.0.113.7');
+      expect(bundleAnnouncementRuntime.streamsOf(second), 0);
       final refused = rig.subscribe();
       await refused.ended;
+      expect(refused.errors, isEmpty);
+      expect(bundleAnnouncementRuntime.streamsOf(second), 0);
       final stopwatch = Stopwatch()..start();
       final report = await rig.client.health.check();
       stopwatch.stop();
@@ -793,6 +819,432 @@ void main() {
       expect(_builds(public.events), [100, 101, 100]);
     });
   });
+
+  group('Given the per-client bound on announcement streams', () {
+    final clientA = ClientKey.forAddress(InternetAddress('198.51.100.1'));
+
+    // Scenario: Refused subscription (realtime-bus → Apps learn the current
+    // bundle from one stream).
+    test('a refused subscription completes with no event and no error, and '
+        'is never sent one later', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      final held = [for (var i = 0; i < 16; i++) rig.subscribe()];
+      for (final feed in held) {
+        await feed.waitFor(1);
+      }
+
+      final refused = rig.subscribe();
+      await refused.ended;
+      expect(refused.events, isEmpty);
+      expect(refused.errors, isEmpty);
+
+      await seedBuild(session, 101, SdeBuildState.staged);
+      await seedBundle(session, 101);
+      await switchTo(session, 101);
+      await rig.announcer.workerReplied(switchedReply(101));
+      for (final feed in held) {
+        await feed.waitFor(2);
+      }
+      await _quiet();
+
+      expect(refused.events, isEmpty);
+      expect(refused.errors, isEmpty);
+      expect(bundleAnnouncementRuntime.openStreams, 16);
+    });
+
+    // Scenario: One client cannot exhaust the pool.
+    test('a client\'s 17th subscription is refused cleanly while its 16 stay '
+        'live and another client is admitted', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      rig.identifyAs('198.51.100.1');
+      final held = [for (var i = 0; i < 16; i++) rig.subscribe()];
+      for (final feed in held) {
+        await feed.waitFor(1);
+      }
+
+      final refused = rig.subscribe();
+      await refused.ended;
+      expect(refused.events, isEmpty);
+      expect(refused.errors, isEmpty);
+      expect(bundleAnnouncementRuntime.streamsOf(clientA), 16);
+
+      final clientB = rig.identifyAs('203.0.113.7');
+      final other = rig.subscribe();
+      await other.waitFor(1);
+      expect(_builds(other.events), [100]);
+      expect(bundleAnnouncementRuntime.streamsOf(clientB), 1);
+
+      // The 16 are still live: a later announcement reaches them.
+      await seedBuild(session, 101, SdeBuildState.staged);
+      await seedBundle(session, 101);
+      await switchTo(session, 101);
+      await rig.announcer.workerReplied(switchedReply(101));
+      for (final feed in [...held, other]) {
+        await feed.waitFor(2);
+        expect(_builds(feed.events), [100, 101]);
+        expect(feed.errors, isEmpty);
+      }
+    });
+
+    // Scenario: Admitted before anyone listens.
+    test('16 unlistened streams from the endpoint hold the client\'s places '
+        'and the 17th is refused', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      rig.identifyAs('198.51.100.1');
+
+      final unlistened = [for (var i = 0; i < 16; i++) rig.open(session)];
+      expect(bundleAnnouncementRuntime.streamsOf(clientA), 16);
+      expect(bundleAnnouncementRuntime.openStreams, 16);
+      await rig.listenersAre(0);
+
+      final refused = _Direct(rig.open(session));
+      await refused.ended;
+      expect(refused.events, isEmpty);
+      expect(refused.errors, isEmpty);
+      expect(bundleAnnouncementRuntime.streamsOf(clientA), 16);
+
+      final listened = [for (final stream in unlistened) _Direct(stream)];
+      for (final feed in listened) {
+        await feed.waitFor(1);
+        expect(namedBuilds(feed.events), [100]);
+      }
+      await rig.listenersAre(16);
+      for (final feed in listened) {
+        await feed.close();
+      }
+      await rig.listenersAre(0);
+      expect(bundleAnnouncementRuntime.streamsOf(clientA), 0);
+    });
+
+    // Scenario: Publish before listen.
+    test('a stream listened to after B and C were announced first sends C, '
+        'with no replay of B', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      final unlistened = rig.open(session);
+
+      // B: a switch to 101; C: the rollback to 100, at a higher revision.
+      await seedBuild(session, 101, SdeBuildState.staged);
+      await seedBundle(session, 101);
+      await switchTo(session, 101);
+      await rig.announcer.workerReplied(switchedReply(101));
+      final b = rig.announcer.installed!;
+      expect(namedBuilds([b]), [101]);
+      await rollback(session);
+      await rig.announcer.request();
+      final c = rig.announcer.installed!;
+      expect(namedBuilds([c]), [100]);
+      expect(c.revision, greaterThan(b.revision));
+
+      final feed = _Direct(unlistened);
+      await feed.waitFor(1);
+      await _quiet();
+      expect(feed.events, hasLength(1));
+      expect(namedBuilds(feed.events), [100]);
+      expect(feed.events.single.revision, c.revision);
+      await feed.close();
+    });
+
+    // Scenario: Concurrent subscriptions from one client.
+    test('40 concurrent subscriptions from one client admit exactly '
+        '16', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+
+      final feeds = [for (var i = 0; i < 40; i++) rig.subscribe()];
+      await _until(
+        () => feeds.every((feed) => feed.events.isNotEmpty || feed.isEnded),
+        'every subscription to get its first event or end',
+      );
+
+      final admitted = feeds.where((feed) => feed.events.isNotEmpty);
+      final refused = feeds.where((feed) => feed.events.isEmpty);
+      expect(admitted, hasLength(16));
+      expect(refused, hasLength(24));
+      for (final feed in refused) {
+        expect(feed.isEnded, isTrue);
+        expect(feed.errors, isEmpty);
+      }
+      for (final feed in admitted) {
+        expect(feed.isEnded, isFalse);
+        expect(feed.errors, isEmpty);
+      }
+      expect(bundleAnnouncementRuntime.streamsOf(_loopback), 16);
+      expect(bundleAnnouncementRuntime.openStreams, 16);
+    });
+
+    // Scenario: Place freed when a stream ends.
+    test('a cancelled stream frees its client\'s place for the next '
+        'subscription', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      final held = [for (var i = 0; i < 16; i++) rig.subscribe()];
+      for (final feed in held) {
+        await feed.waitFor(1);
+      }
+      final refused = rig.subscribe();
+      await refused.ended;
+      expect(refused.events, isEmpty);
+
+      await held.first.close();
+      await _until(
+        () => bundleAnnouncementRuntime.streamsOf(_loopback) == 15,
+        'the cancelled stream to free its place',
+      );
+      final next = rig.subscribe();
+      await next.waitFor(1);
+      expect(_builds(next.events), [100]);
+      expect(bundleAnnouncementRuntime.streamsOf(_loopback), 16);
+    });
+
+    // Scenario: Global bound still applies.
+    test('with the global bound at 32 and two clients at 16, a third client '
+        'is refused', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      bundleAnnouncementRuntime.maxStreams = 32;
+
+      final feeds = <_Direct>[];
+      for (final address in ['198.51.100.1', '198.51.100.2']) {
+        final client = rig.identifyAs(address);
+        for (var i = 0; i < 16; i++) {
+          feeds.add(_Direct(rig.open(session)));
+        }
+        expect(bundleAnnouncementRuntime.streamsOf(client), 16);
+      }
+      expect(bundleAnnouncementRuntime.openStreams, 32);
+
+      final third = rig.identifyAs('198.51.100.3');
+      final refused = _Direct(rig.open(session));
+      await refused.ended;
+      expect(refused.events, isEmpty);
+      expect(refused.errors, isEmpty);
+      expect(bundleAnnouncementRuntime.streamsOf(third), 0);
+      for (final feed in feeds) {
+        await feed.waitFor(1);
+      }
+      for (final feed in feeds) {
+        await feed.close();
+      }
+    });
+
+    // Scenario: Stream listened to late but before its expiry.
+    test('a stream first listened to 10 min after admission sends the '
+        'current build at once', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      rig.identifyAs('198.51.100.1');
+      final unlistened = rig.open(session);
+
+      rig.streamClock.elapse(const Duration(minutes: 10));
+      final feed = _Direct(unlistened);
+      await feed.waitFor(1);
+      expect(namedBuilds(feed.events), [100]);
+      expect(bundleAnnouncementRuntime.streamsOf(clientA), 1);
+
+      // Its life still runs from admission: 30 minutes after it, not after
+      // the listen.
+      rig.streamClock.elapse(const Duration(minutes: 20));
+      await feed.ended;
+      expect(feed.errors, isEmpty);
+      expect(bundleAnnouncementRuntime.streamsOf(clientA), 0);
+      expect(bundleAnnouncementRuntime.openStreams, 0);
+      await rig.listenersAre(0);
+    });
+
+    // Scenario: Stream listened to only after its expiry.
+    test('a stream first listened to after its 30 min ends with no event, '
+        'no bus listener, and both places freed', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      rig.identifyAs('198.51.100.1');
+      final unlistened = rig.open(session);
+      expect(bundleAnnouncementRuntime.streamsOf(clientA), 1);
+
+      rig.streamClock.elapse(_thirtyMinutes);
+      expect(bundleAnnouncementRuntime.streamsOf(clientA), 0);
+      expect(bundleAnnouncementRuntime.openStreams, 0);
+      expect(bundleAnnouncementRuntime.endedByServer, 1);
+
+      final feed = _Direct(unlistened);
+      await feed.ended;
+      expect(feed.events, isEmpty);
+      expect(feed.errors, isEmpty);
+      await rig.listenersAre(0);
+      expect(bundleAnnouncementRuntime.openStreams, 0);
+    });
+
+    // Scenario: Direct connection (realtime-bus → A client is identified by
+    // its network address). The production identification, with no trusted
+    // proxy, over a real WebSocket whose upgrade request carries a header.
+    test('a direct WebSocket client\'s forwarded header is ignored and its '
+        'streams count for its peer', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      final headers = <List<String>?>[];
+      bundleAnnouncementRuntime.identifyClient = (opened) {
+        headers.add(opened.request?.headers['x-forwarded-for']?.toList());
+        return identifyConnection(
+          opened,
+          bundleAnnouncementRuntime.trustedProxies,
+        );
+      };
+      final injector = await _HeaderInjector.start(
+        server.port,
+        'X-Forwarded-For: 198.51.100.1',
+      );
+      addTearDown(injector.close);
+      final client = wire.Client('http://127.0.0.1:${injector.port}/');
+      addTearDown(client.close);
+
+      final feeds = [
+        for (var i = 0; i < 3; i++)
+          _Feed(client.staticData.bundleAnnouncements()),
+      ];
+      for (final feed in feeds) {
+        addTearDown(feed.close);
+        await feed.waitFor(1);
+      }
+
+      expect(headers, hasLength(3));
+      for (final lines in headers) {
+        expect(lines, [
+          '198.51.100.1',
+        ], reason: 'the header reached the server');
+      }
+      expect(bundleAnnouncementRuntime.trustedProxies.isEmpty, isTrue);
+      expect(bundleAnnouncementRuntime.streamsOf(_loopback), 3);
+      expect(bundleAnnouncementRuntime.streamsOf(clientA), 0);
+    });
+  });
+
+  // Assumption A6: Serverpod listens to the stream an endpoint returns
+  // promptly. Neither test waits on real time.
+  group('Given the first-event promise (A6)', () {
+    test('the first event is sent within 20 s of subscribing on the fake '
+        'clock, also when the first state read is held', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+
+      // A ready announcement.
+      final ready = _Rig(server, sharedClock: true);
+      addTearDown(ready.dispose);
+      await ready.start();
+      var steps = ready.recordSteps();
+      final readyAt = ready.streamClock.now();
+      final readyFeed = _Direct(ready.open(session));
+      addTearDown(readyFeed.close);
+      await readyFeed.waitFor(1);
+      expect(namedBuilds(readyFeed.events), [100]);
+      _expectFirstSendWithin20s(steps, readyAt);
+      await readyFeed.close();
+
+      // The first state read held: the announcer installs "none" 19 s after
+      // its start.
+      final held = _Rig(server, sharedClock: true);
+      addTearDown(held.dispose);
+      final gate = held.source.holdReads = Completer<void>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete();
+      });
+      held._publish(held.streamClock);
+      steps = held.recordSteps();
+      held.announcer
+        ..armFirstInstall()
+        ..start();
+      held.streamClock.elapse(const Duration(seconds: 3));
+      final heldAt = held.streamClock.now();
+      final heldFeed = _Direct(held.open(session));
+      addTearDown(heldFeed.close);
+      await held.listenersAre(1);
+      expect(heldFeed.events, isEmpty);
+
+      held.streamClock.elapse(
+        BundleAnnouncer.firstInstallLimit - const Duration(seconds: 3),
+      );
+      await heldFeed.waitFor(1);
+      expect(heldFeed.events.single, isA<BundleAnnouncementNone>());
+      _expectFirstSendWithin20s(steps, heldAt);
+      gate.complete();
+    });
+
+    test('each subscription is admitted, then listened to, then receives its '
+        'first event, for 1 and for 16 concurrent subscriptions', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      final steps = <(int, StreamStep)>[];
+      bundleAnnouncementRuntime.onStreamStep = (stream, step) =>
+          steps.add((stream, step));
+
+      for (final count in [1, 16]) {
+        steps.clear();
+        final feeds = [for (var i = 0; i < count; i++) rig.subscribe()];
+        // No wall-clock budget: the test's own timeout guards against a
+        // hang.
+        await Future.wait([for (final feed in feeds) feed.firstEvent]);
+
+        final streams = {for (final (stream, _) in steps) stream};
+        expect(streams, hasLength(count));
+        for (final stream in streams) {
+          final own = [
+            for (final (id, step) in steps)
+              if (id == stream) step,
+          ];
+          expect(own.take(3), [
+            StreamStep.admitted,
+            StreamStep.listened,
+            StreamStep.sent,
+          ], reason: 'stream $stream: admitted, listened, then sent');
+        }
+        for (final feed in feeds) {
+          expect(_builds(feed.events).first, 100);
+          expect(feed.errors, isEmpty);
+          await feed.close();
+        }
+        await _until(
+          () => bundleAnnouncementRuntime.openStreams == 0,
+          'the closed streams to free their places',
+        );
+      }
+    }, timeout: const Timeout(Duration(minutes: 2)));
+  });
+}
+
+/// The streams of the loopback client every in-process test connects as.
+final ClientKey _loopback = ClientKey.forAddress(InternetAddress.loopbackIPv4);
+
+/// Expects [steps] to show one stream admitted, listened to and sent its
+/// first announcement, in that order, the send before 20 s of fake time
+/// after [subscribedAt].
+void _expectFirstSendWithin20s(
+  List<(int, StreamStep, DateTime)> steps,
+  DateTime subscribedAt,
+) {
+  expect(
+    [for (final (_, step, _) in steps.take(3)) step],
+    [StreamStep.admitted, StreamStep.listened, StreamStep.sent],
+  );
+  final (_, _, admittedAt) = steps[0];
+  final (_, _, sentAt) = steps[2];
+  expect(admittedAt, subscribedAt);
+  expect(
+    sentAt.difference(subscribedAt),
+    lessThan(const Duration(seconds: 20)),
+  );
 }
 
 /// The builds of the announcements, in order.
@@ -911,18 +1363,21 @@ final class _HoldingBus implements RealtimeBus {
 /// What one test needs: an announcer over the real database, the endpoint's
 /// runtime pointing at it and a real generated client.
 final class _Rig {
-  _Rig(this._server);
+  _Rig(this._server, {this.sharedClock = false});
 
   /// The epoch of the announcer.
   static const String epoch = 'stream-test';
 
   final InProcessPod _server;
 
+  /// Whether the streams run on the announcer's clock.
+  final bool sharedClock;
+
   /// The announcer's clock.
   final FakeClock announcerClock = FakeClock();
 
-  /// The streams' clock.
-  final FakeClock streamClock = FakeClock();
+  /// The streams' clock: the announcer's own with `sharedClock`.
+  late final FakeClock streamClock = sharedClock ? announcerClock : FakeClock();
 
   /// The lines the announcer logged.
   final List<String> logs = [];
@@ -969,6 +1424,28 @@ final class _Rig {
       ..announcer = announcer
       ..bus = bus
       ..clock = clock;
+  }
+
+  /// Counts every stream that the runtime identifies from now on for
+  /// [address], until the next call or the runtime's reset, and returns
+  /// that client's key.
+  ClientKey identifyAs(String address) {
+    final key = ClientKey.forAddress(InternetAddress(address));
+    bundleAnnouncementRuntime.identifyClient = (_) => DirectClient(key);
+    return key;
+  }
+
+  /// Calls the production endpoint method under [session] and returns its
+  /// stream unlistened.
+  Stream<BundleAnnouncement> open(Session session) =>
+      StaticDataEndpoint().bundleAnnouncements(session);
+
+  /// Records every [StreamStep] from now on, with the stream clock's time.
+  List<(int, StreamStep, DateTime)> recordSteps() {
+    final steps = <(int, StreamStep, DateTime)>[];
+    bundleAnnouncementRuntime.onStreamStep = (stream, step) =>
+        steps.add((stream, step, streamClock.now()));
+    return steps;
   }
 
   /// Opens a stream through the generated client.
@@ -1018,13 +1495,34 @@ final class _Rig {
 final class _Feed {
   _Feed(Stream<wire.BundleAnnouncement> stream) {
     _subscription = stream.listen(
-      events.add,
-      onError: errors.add,
+      (event) {
+        events.add(event);
+        if (!_first.isCompleted) _first.complete();
+      },
+      onError: (Object error) {
+        errors.add(error);
+        if (!_first.isCompleted) _first.completeError(error);
+      },
       onDone: () {
         if (!_ended.isCompleted) _ended.complete();
+        if (!_first.isCompleted) {
+          _first.completeError(StateError('ended before its first event'));
+        }
       },
     );
+    // A stream that fails before its first event must not leave an
+    // unhandled error when nobody awaits [firstEvent].
+    _first.future.ignore();
   }
+
+  final Completer<void> _first = Completer<void>();
+
+  /// Completes with the first event, with no time limit of its own; fails
+  /// when the stream fails or ends first.
+  Future<void> get firstEvent => _first.future;
+
+  /// Whether the server ended the stream.
+  bool get isEnded => _ended.isCompleted;
 
   /// The events received, in order.
   final List<wire.BundleAnnouncement> events = [];
@@ -1057,6 +1555,119 @@ final class _Feed {
 
   /// Stops listening.
   Future<void> close() => _subscription.cancel();
+}
+
+/// The events of one stream returned by the endpoint method itself, in
+/// process, listened to from construction.
+final class _Direct {
+  _Direct(Stream<BundleAnnouncement> stream) {
+    _subscription = stream.listen(
+      events.add,
+      onError: errors.add,
+      onDone: () {
+        if (!_ended.isCompleted) _ended.complete();
+      },
+    );
+  }
+
+  /// The announcements sent, in order.
+  final List<BundleAnnouncement> events = [];
+
+  /// The errors sent.
+  final List<Object> errors = [];
+
+  final Completer<void> _ended = Completer<void>();
+  late final StreamSubscription<BundleAnnouncement> _subscription;
+
+  /// Completes when the stream ended.
+  Future<void> get ended => _ended.future.timeout(
+    const Duration(seconds: 20),
+    onTimeout: () => fail('the stream did not end'),
+  );
+
+  /// Waits until [count] announcements arrived, failing at once when the
+  /// stream failed or ended first.
+  Future<void> waitFor(int count) async {
+    await _until(
+      () => events.length >= count || errors.isNotEmpty || _ended.isCompleted,
+      '$count events (have ${events.length}, errors $errors)',
+    );
+    expect(
+      events.length,
+      greaterThanOrEqualTo(count),
+      reason: 'stream errors $errors, ended ${_ended.isCompleted}',
+    );
+  }
+
+  /// Stops listening, which ends the stream on the server.
+  Future<void> close() => _subscription.cancel();
+}
+
+/// A loopback forwarder that adds one header line to the first request of
+/// each connection: for a WebSocket client, its upgrade request.
+final class _HeaderInjector {
+  _HeaderInjector._(this._server, this._header);
+
+  final ServerSocket _server;
+  final String _header;
+  final List<Socket> _sockets = [];
+
+  /// The loopback port that forwards to the target.
+  int get port => _server.port;
+
+  /// Forwards a free loopback port to [targetPort] on 127.0.0.1, adding
+  /// [header] (a whole line without its CRLF) after each connection's
+  /// request line.
+  static Future<_HeaderInjector> start(int targetPort, String header) async {
+    final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final injector = _HeaderInjector._(server, header);
+    server.listen((client) => injector._forward(client, targetPort));
+    return injector;
+  }
+
+  Future<void> _forward(Socket client, int targetPort) async {
+    final target = await Socket.connect(
+      InternetAddress.loopbackIPv4,
+      targetPort,
+    );
+    _sockets.addAll([client, target]);
+    final pending = <int>[];
+    var injected = false;
+    client.listen(
+      (data) {
+        if (injected) {
+          target.add(data);
+          return;
+        }
+        pending.addAll(data);
+        for (var i = 0; i + 1 < pending.length; i++) {
+          if (pending[i] == 13 && pending[i + 1] == 10) {
+            target
+              ..add(pending.sublist(0, i + 2))
+              ..add(ascii.encode('$_header\r\n'))
+              ..add(pending.sublist(i + 2));
+            injected = true;
+            return;
+          }
+        }
+      },
+      onDone: target.destroy,
+      onError: (Object _) => target.destroy(),
+    );
+    target.listen(
+      client.add,
+      onDone: client.destroy,
+      onError: (Object _) => client.destroy(),
+    );
+  }
+
+  /// Stops accepting and drops every connection.
+  Future<void> close() async {
+    await _server.close();
+    for (final socket in _sockets) {
+      socket.destroy();
+    }
+  }
 }
 
 /// An app following the announcements: the app's own [StaticDataSync], with

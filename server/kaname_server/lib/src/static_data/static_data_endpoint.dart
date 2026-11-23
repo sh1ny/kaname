@@ -4,6 +4,7 @@ import 'package:kaname_core/kaname_core.dart';
 import 'package:serverpod/serverpod.dart';
 
 import '../generated/protocol.dart';
+import '../network/client_identity.dart';
 import 'admin_operation_reader.dart';
 import 'bundle_announcement_runtime.dart';
 import 'static_data_access.dart';
@@ -38,17 +39,29 @@ class StaticDataEndpoint extends Endpoint {
   /// event follows each change of the installed announcement. Needs no
   /// sign-in.
   ///
-  /// ## Carried constraint
+  /// The subscription is admitted, or refused, when this method is called:
+  /// at most `BundleAnnouncementRuntime.maxStreamsPerClient` (16) streams
+  /// per client and `maxStreams` (2,000) in all. A refused subscription ends
+  /// at once, without an event or an error. An admitted stream holds its
+  /// places and its 30-minute life runs from then; until Serverpod listens
+  /// to it, it has no bus listener and receives nothing, and once listened
+  /// to it first sends the announcement installed at that moment.
   ///
+  /// ## Carried constraints
+  ///
+  /// - **C2:** Both bounds are taken in the same synchronous step as their
+  ///   check (`BundleAnnouncementRuntime.admit`), and freed only by the
+  ///   stream's single `end()`. A stream that has ended never subscribes to
+  ///   the bus or sends, even if it is listened to later. Moving either
+  ///   count to `onListen` reopens the concurrent overshoot.
   /// - **C20:** The stream is bounded by count, rate and lifetime. The server
-  ///   holds at most 2,000 of them (`BundleAnnouncementRuntime.maxStreams`)
-  ///   and refuses more by ending the stream at once without an event. Each
-  ///   ends after 30 minutes on the server's clock, also while its client
-  ///   reads nothing, because Serverpod's endpoint streams have no
+  ///   refuses streams over its bounds by ending them at once without an
+  ///   event. Each ends after 30 minutes on the server's clock, also while
+  ///   its client reads nothing, because Serverpod's endpoint streams have no
   ///   backpressure (A14): what the stream sends is bounded by rate, at most
   ///   one event per change of the installed announcement, never by the
   ///   client's reading. Whatever ends the stream (expiry, the client's
-  ///   disconnect, an error) removes its bus listener and frees its place.
+  ///   disconnect, an error) removes its bus listener and frees its places.
   ///   Every send carries the announcement installed at that moment, and
   ///   only when its revision is higher than the last one this stream sent
   ///   (C16): bus messages are wake-ups, never the payload, so a late or
@@ -58,29 +71,30 @@ class StaticDataEndpoint extends Endpoint {
   ///   follows at once.
   Stream<BundleAnnouncement> bundleAnnouncements(Session session) {
     final runtime = bundleAnnouncementRuntime;
+    final identity = runtime.clientOf(session);
+    final client = identity.key;
+    if (identity case ProxyFallback(:final proxy, :final reason)) {
+      session.log(
+        'announcement stream: trusted proxy ${proxy.address} sent no usable '
+        'X-Forwarded-For (${reason.name}); counting it as the client',
+        level: LogLevel.warning,
+      );
+    }
     final announcer = runtime.announcer;
     final bus = runtime.bus;
     if (announcer == null || bus == null) {
-      session.log(
-        'announcement stream refused: this server runs no announcer',
-        level: LogLevel.warning,
-      );
-      return const Stream.empty();
+      return _refuse(session, client, AnnouncementRefusal.noAnnouncer);
     }
     final scope = runtime.scope ?? _topicScope();
     if (scope == null) {
-      session.log(
-        'announcement stream refused: the topic needs the privacy scope',
-        level: LogLevel.warning,
-      );
-      return const Stream.empty();
+      return _refuse(session, client, AnnouncementRefusal.noDeliveryScope);
     }
-    if (runtime.openStreams >= runtime.maxStreams) {
-      session.log(
-        'announcement stream refused: ${runtime.maxStreams} streams are open',
-        level: LogLevel.warning,
-      );
-      return const Stream.empty();
+    final StreamReservation reservation;
+    switch (runtime.admit(client)) {
+      case StreamRefused(:final reason):
+        return _refuse(session, client, reason);
+      case StreamAdmitted(reservation: final admitted):
+        reservation = admitted;
     }
 
     // A controller, not an `async*` body: a generator that waits for a
@@ -90,12 +104,12 @@ class StaticDataEndpoint extends Endpoint {
     // same step, with no queued delivery in between (C16).
     final controller = StreamController<BundleAnnouncement>(sync: true);
     StreamSubscription<BundleAnnouncement>? busSubscription;
-    Timer? expiry;
-    var open = false;
+    late final Timer expiry;
+    var open = true;
     var lastRevision = -1;
 
     // Sends the installed announcement when it is newer than the last one
-    // sent and passes the scope.
+    // sent and passes the scope. Only a listened stream calls it.
     void sendDue() {
       final installed = announcer.installed;
       if (!open || installed == null || installed.revision <= lastRevision) {
@@ -103,16 +117,17 @@ class StaticDataEndpoint extends Endpoint {
       }
       if (!scope.passes(installed)) return;
       lastRevision = installed.revision;
+      runtime.noteStep(reservation, StreamStep.sent);
       controller.add(installed);
     }
 
     // Ends the stream whichever way it ends: removes the bus listener and
-    // the timer and frees the place.
+    // the timer and frees both places, once (C2).
     Future<void> end({required bool closeController}) async {
       if (!open) return;
       open = false;
-      expiry?.cancel();
-      runtime.openStreams--;
+      expiry.cancel();
+      runtime.release(reservation);
       await busSubscription?.cancel();
       if (closeController) {
         // The sync controller hands Serverpod the end at once, whether or
@@ -123,10 +138,18 @@ class StaticDataEndpoint extends Endpoint {
       }
     }
 
+    // The 30-minute life runs from admission (D5): a stream Serverpod never
+    // listens to is ended by it, which frees its places.
+    expiry = runtime.clock.once(
+      announcementStreamLifetime,
+      () => unawaited(end(closeController: true)),
+    );
     controller
       ..onListen = () {
-        open = true;
-        runtime.openStreams++;
+        // A stream that ended before anyone listened is already closed: the
+        // listener gets its end and nothing else.
+        if (!open) return;
+        runtime.noteStep(reservation, StreamStep.listened);
         // Subscribe first, so no change falls between the snapshot and the
         // subscription; the messages only wake this stream up.
         busSubscription = bus
@@ -140,14 +163,24 @@ class StaticDataEndpoint extends Endpoint {
                 );
               },
             );
-        expiry = runtime.clock.once(
-          announcementStreamLifetime,
-          () => unawaited(end(closeController: true)),
-        );
         unawaited(announcer.firstInstalled.then((_) => sendDue()));
       }
       ..onCancel = () => end(closeController: false);
     return controller.stream;
+  }
+
+  /// Logs the refusal of [client]'s subscription for [reason] and returns
+  /// the stream that ends at once, without an event or an error.
+  static Stream<BundleAnnouncement> _refuse(
+    Session session,
+    ClientKey client,
+    AnnouncementRefusal reason,
+  ) {
+    session.log(
+      'announcement stream refused for client $client: ${reason.label}',
+      level: LogLevel.warning,
+    );
+    return const Stream.empty();
   }
 
   /// The scope the topic's visibility resolves to, or `null` when refused.
