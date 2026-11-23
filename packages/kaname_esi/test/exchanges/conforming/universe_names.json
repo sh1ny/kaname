@@ -1,0 +1,21 @@
+{
+  "operation": "PostUniverseNames",
+  "constructs": [
+    "request-body"
+  ],
+  "response": {
+    "status": 200,
+    "body": [
+      {
+        "category": "character",
+        "id": 90000001,
+        "name": "Kaname Pilot One"
+      },
+      {
+        "category": "corporation",
+        "id": 98000001,
+        "name": "Kaname Test Corp"
+      }
+    ]
+  }
+}

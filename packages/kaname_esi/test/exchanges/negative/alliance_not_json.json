@@ -1,0 +1,10 @@
+{
+  "operation": "GetAlliancesAllianceId",
+  "constructs": [
+    "malformed-body"
+  ],
+  "response": {
+    "status": 200,
+    "text": "<html>synthetic gateway page</html>"
+  }
+}

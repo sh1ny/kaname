@@ -53,6 +53,11 @@ description = "Run the kaname_core tests"
 dir = "packages/kaname_core"
 run = "dart test"
 
+[tasks."test:esi"]
+description = "Run the kaname_esi tests"
+dir = "packages/kaname_esi"
+run = "dart test"
+
 [tasks."test:tools"]
 description = "Run the kaname_tools tests"
 dir = "tools/kaname_tools"
@@ -92,6 +97,7 @@ run = "flutter test --platform chrome --tags web test/data"
 description = "Run every workspace member's tests"
 run = [
   { task = "test:core" },
+  { task = "test:esi" },
   { task = "test:static_data" },
   { task = "test:static_data_bundle" },
   { task = "test:tools" },
@@ -123,6 +129,18 @@ run = "dart run kaname_tools tokens --write"
 [tasks."tokens:check"]
 description = "Fail if the generated Ember UI tokens are stale or were edited by hand"
 run = "dart run kaname_tools tokens --check"
+
+[tasks."esi:fetch"]
+description = "Download ESI's spec for a compatibility date (-- --date YYYY-MM-DD) and replace the pinned snapshot; the only task that downloads it, never run in CI"
+run = "dart run kaname_tools esi fetch"
+
+[tasks."esi:generate"]
+description = "Generate the typed ESI client and route catalogue from the pinned snapshot, offline"
+run = "dart run kaname_tools esi generate"
+
+[tasks."esi:check"]
+description = "Fail if the generated ESI client differs from a fresh generation in a temporary directory, or the snapshot from its pin"
+run = "dart run kaname_tools esi check"
 
 [tasks."l10n:check"]
 description = "Fail if the app's committed gen-l10n output differs from a fresh generation in a temporary directory"
@@ -321,6 +339,7 @@ run = [
   { task = "format:check" },
   { task = "tokens:check" },
   { task = "l10n:check" },
+  { task = "esi:check" },
   { task = "test" },
   { task = "notices:check" },
   { task = "licences" },

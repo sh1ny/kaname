@@ -1,0 +1,27 @@
+{
+  "operation": "GetCharactersCharacterIdNotifications",
+  "constructs": [
+    "array"
+  ],
+  "response": {
+    "status": 200,
+    "body": [
+      {
+        "notification_id": 1,
+        "sender_id": 98000001,
+        "sender_type": "corporation",
+        "timestamp": "2026-11-19T10:00:00Z",
+        "type": "AcceptedAlly",
+        "is_read": true,
+        "text": "kaname: synthetic"
+      },
+      {
+        "notification_id": 2,
+        "sender_id": 90000001,
+        "sender_type": "character",
+        "timestamp": "2026-11-19T11:30:00Z",
+        "type": "AcceptedAlly"
+      }
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "operation": "DeleteCharactersCharacterIdContacts",
+  "constructs": [
+    "no-content"
+  ],
+  "response": {
+    "status": 204
+  }
+}

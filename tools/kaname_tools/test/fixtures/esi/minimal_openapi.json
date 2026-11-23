@@ -1,0 +1,146 @@
+{
+  "openapi": "3.1.0",
+  "info": {"title": "Kaname test fixture", "version": "2030-01-02"},
+  "servers": [{"url": "https://esi.example.invalid"}],
+  "tags": [{"name": "Widgets"}, {"name": "Gadgets"}],
+  "components": {
+    "headers": {
+      "ETag": {"description": "Entity tag.", "schema": {"type": "string"}}
+    },
+    "parameters": {
+      "AcceptLanguage": {"in": "header", "name": "Accept-Language", "schema": {"default": "en", "enum": ["en", "de"], "type": "string"}},
+      "CompatibilityDate": {"in": "header", "name": "X-Compatibility-Date", "required": true, "schema": {"enum": ["2030-01-02"], "format": "date", "type": "string"}},
+      "IfNoneMatch": {"in": "header", "name": "If-None-Match", "schema": {"type": "string"}},
+      "Tenant": {"in": "header", "name": "X-Tenant", "schema": {"type": "string"}},
+      "IfModifiedSince": {"in": "header", "name": "If-Modified-Since", "schema": {"type": "string"}}
+    },
+    "securitySchemes": {
+      "OAuth2": {"type": "oauth2", "flows": {"authorizationCode": {"authorizationUrl": "https://login.example.invalid", "tokenUrl": "https://login.example.invalid/token", "scopes": {"widgets.read.v1": "Read widgets"}}}}
+    },
+    "schemas": {
+      "WidgetID": {"format": "int64", "type": "integer", "x-common-model": "true"},
+      "Error": {"properties": {"error": {"type": "string"}}, "required": ["error"], "type": "object"},
+      "Price": {
+        "description": "A price in one currency.",
+        "oneOf": [
+          {"properties": {"isk": {"format": "double", "type": "number"}}, "title": "isk", "type": "object"},
+          {"properties": {"tokens": {"format": "int32", "type": "integer"}}, "title": "tokens", "type": "object"}
+        ]
+      },
+      "Widget": {
+        "description": "One widget.",
+        "properties": {
+          "widget_id": {"$ref": "#/components/schemas/WidgetID"},
+          "name": {"description": "Display name.", "type": "string"},
+          "kind": {"enum": ["round", "square"], "type": "string", "x-enum-descriptions": ["Round", "Square"]},
+          "created": {"format": "date-time", "type": "string"},
+          "price": {"$ref": "#/components/schemas/Price"},
+          "tags": {"items": {"type": "string"}, "type": "array", "uniqueItems": true},
+          "active": {"type": ["boolean", "null"]},
+          "extra": {"description": "Any JSON value."},
+          "labels": {"additionalProperties": {"type": "string"}, "type": "object"}
+        },
+        "required": ["widget_id", "name", "kind"],
+        "type": "object"
+      },
+      "Empty": {"type": "object"}
+    }
+  },
+  "paths": {
+    "/widgets/{widget_id}": {
+      "get": {
+        "operationId": "GetWidgetsWidgetId",
+        "summary": "Get a widget",
+        "description": "Returns one widget.",
+        "tags": ["Widgets"],
+        "parameters": [
+          {"in": "path", "name": "widget_id", "required": true, "schema": {"$ref": "#/components/schemas/WidgetID"}},
+          {"$ref": "#/components/parameters/AcceptLanguage"},
+          {"$ref": "#/components/parameters/IfNoneMatch"},
+          {"$ref": "#/components/parameters/CompatibilityDate"},
+          {"$ref": "#/components/parameters/Tenant"},
+          {"$ref": "#/components/parameters/IfModifiedSince"}
+        ],
+        "responses": {
+          "200": {"description": "OK", "headers": {"ETag": {"$ref": "#/components/headers/ETag"}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Widget"}}}},
+          "default": {"description": "Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        },
+        "x-compatibility-date": "2020-01-01",
+        "x-server-cache-mode": "ttl-based",
+        "x-server-cache-ttl": 3600,
+        "x-client-cache-ttl": 3600,
+        "x-cache-age": 3600
+      },
+      "delete": {
+        "operationId": "DeleteWidgetsWidgetId",
+        "summary": "Delete a widget",
+        "description": "Deletes one widget.",
+        "tags": ["Widgets"],
+        "parameters": [
+          {"in": "path", "name": "widget_id", "required": true, "schema": {"$ref": "#/components/schemas/WidgetID"}},
+          {"$ref": "#/components/parameters/CompatibilityDate"}
+        ],
+        "responses": {
+          "204": {"description": "No content"},
+          "default": {"description": "Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        },
+        "security": [{"OAuth2": ["widgets.write.v1"]}],
+        "x-compatibility-date": "2020-01-01",
+        "x-required-roles": ["Director"],
+        "x-rate-limit": {"group": "widget-write", "max-tokens": 150, "window-size": "15m"}
+      }
+    },
+    "/widgets": {
+      "get": {
+        "operationId": "GetWidgets",
+        "summary": "List widgets",
+        "description": "Lists widgets a page at a time.",
+        "tags": ["Widgets"],
+        "parameters": [
+          {"in": "query", "name": "page", "schema": {"format": "int32", "minimum": 1, "type": "integer"}},
+          {"in": "query", "name": "kinds", "explode": false, "schema": {"items": {"enum": ["round", "square"], "type": "string"}, "maxItems": 2, "minItems": 1, "type": "array"}},
+          {"$ref": "#/components/parameters/CompatibilityDate"}
+        ],
+        "responses": {
+          "200": {"description": "OK", "headers": {"X-Pages": {"schema": {"format": "int64", "type": "integer"}}}, "content": {"application/json": {"schema": {"items": {"$ref": "#/components/schemas/Widget"}, "type": "array"}}}},
+          "default": {"description": "Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        },
+        "security": [{"OAuth2": ["widgets.read.v1"]}],
+        "x-compatibility-date": "2020-01-01",
+        "x-rate-limit": {"group": "widget-read", "max-tokens": 300, "window-size": "15m"}
+      }
+    },
+    "/gadgets": {
+      "get": {
+        "operationId": "GetGadgets",
+        "summary": "List gadgets",
+        "description": "Lists gadgets by cursor.",
+        "tags": ["Gadgets"],
+        "parameters": [
+          {"explode": false, "in": "query", "name": "after", "schema": {"type": "string"}},
+          {"explode": false, "in": "query", "name": "before", "schema": {"type": "string"}},
+          {"$ref": "#/components/parameters/CompatibilityDate"}
+        ],
+        "responses": {
+          "200": {"description": "OK", "content": {"application/json": {"schema": {"items": {"format": "int64", "type": "integer"}, "type": "array"}}}},
+          "default": {"description": "Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        },
+        "x-compatibility-date": "2020-01-01",
+        "x-pagination": "cursor"
+      },
+      "post": {
+        "operationId": "PostGadgets",
+        "summary": "Look up gadgets",
+        "description": "Looks up gadgets by id.",
+        "tags": ["Gadgets"],
+        "parameters": [{"$ref": "#/components/parameters/CompatibilityDate"}],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"items": {"format": "int64", "type": "integer"}, "maxItems": 10, "minItems": 1, "type": "array", "uniqueItems": true}}}},
+        "responses": {
+          "201": {"description": "Created", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Empty"}}}},
+          "default": {"description": "Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        },
+        "x-compatibility-date": "2020-01-01"
+      }
+    }
+  }
+}

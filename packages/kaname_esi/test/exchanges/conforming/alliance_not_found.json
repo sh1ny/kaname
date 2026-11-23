@@ -1,0 +1,12 @@
+{
+  "operation": "GetAlliancesAllianceId",
+  "constructs": [
+    "error-body"
+  ],
+  "response": {
+    "status": 404,
+    "body": {
+      "error": "Alliance not found"
+    }
+  }
+}

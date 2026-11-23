@@ -42,6 +42,11 @@ abstract interface class FileSystem {
   /// Throws a `FileSystemException` when the file cannot be read.
   String readAsString(String path);
 
+  /// Reads the file at [path] as its exact bytes.
+  ///
+  /// Throws a `FileSystemException` when the file cannot be read.
+  List<int> readAsBytes(String path);
+
   /// Writes [content] as UTF-8 text to the file at [path], replacing it and
   /// creating missing parent directories.
   ///

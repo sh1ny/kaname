@@ -1,0 +1,23 @@
+{
+  "operation": "GetCharactersCharacterIdAssets",
+  "constructs": [
+    "page-count"
+  ],
+  "response": {
+    "status": 200,
+    "headers": {
+      "X-Pages": "3"
+    },
+    "body": [
+      {
+        "is_singleton": false,
+        "item_id": 1000000001,
+        "location_flag": "Hangar",
+        "location_id": 60000001,
+        "location_type": "station",
+        "quantity": 5,
+        "type_id": 34
+      }
+    ]
+  }
+}

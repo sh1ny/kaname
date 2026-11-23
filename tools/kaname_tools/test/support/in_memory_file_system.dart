@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:kaname_tools/kaname_tools.dart';
@@ -75,6 +76,9 @@ final class InMemoryFileSystem implements FileSystem {
   @override
   String readAsString(String path) =>
       _files[_resolve(path)] ?? (throw FileSystemException('no file', path));
+
+  @override
+  List<int> readAsBytes(String path) => utf8.encode(readAsString(path));
 
   @override
   void writeAsString(String path, String content) {

@@ -1,0 +1,20 @@
+{
+  "operation": "GetAlliancesAllianceId",
+  "constructs": [
+    "object"
+  ],
+  "response": {
+    "status": 200,
+    "body": {
+      "creator_corporation_id": 98000001,
+      "creator_id": 90000001,
+      "date_founded": "2010-11-04T13:11:00Z",
+      "executor_corporation_id": 98000001,
+      "name": "Kaname Test Alliance",
+      "ticker": "KTA",
+      "kaname_extra_field": {
+        "synthetic": true
+      }
+    }
+  }
+}

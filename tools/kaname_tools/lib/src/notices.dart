@@ -4,8 +4,24 @@ import 'dart:io';
 import 'package:args/command_runner.dart';
 
 import 'cli.dart';
+import 'esi_pin.dart';
+import 'esi_render.dart';
 import 'file_system.dart';
 import 'locked_packages.dart';
+
+/// The first line of the hand-written entry for CCP's ESI spec. The entry
+/// runs from this line to the next blank line.
+const String esiEntryHeading = "CCP's ESI OpenAPI spec";
+
+/// The licence CCP's ESI spec is used under.
+const String esiLicenceName = 'EVE Developer License';
+
+/// Where [esiLicenceName] is published.
+const String esiLicenceUrl =
+    'https://developers.eveonline.com/license-agreement';
+
+/// The first line of the proprietary notice the licence requires (§7.1).
+const String esiProprietaryNotice = '© 2014 CCP hf. All rights reserved.';
 
 /// The outcome of [NoticesGenerator.write].
 sealed class NoticesWriteResult {
@@ -359,7 +375,56 @@ final class NoticesGenerator {
     for (final path in _packageFontLicences()) {
       require(path, 'bundled font', 'licence file');
     }
+    problems.addAll(_esiEntryProblems(handWritten));
     return problems;
+  }
+
+  /// Lists what the hand-written entry for CCP's ESI spec lacks, once the
+  /// repository pins a snapshot: the snapshot's path, the generated folder,
+  /// the source URL the pin records, the licence name and URL, and CCP's
+  /// proprietary notice.
+  ///
+  /// Only the entry itself counts (from [esiEntryHeading] to the next blank
+  /// line), and each item must appear as a whole value: an item listed
+  /// under another entry, or a longer URL that starts with the pinned one,
+  /// does not satisfy it.
+  List<String> _esiEntryProblems(String handWritten) {
+    if (_fileSystem.kindOf(esiPinPath) != FsEntryKind.file) return const [];
+    final String pinText;
+    try {
+      pinText = _fileSystem.readAsString(esiPinPath);
+    } on FileSystemException catch (e) {
+      throw _NoticesError('$esiPinPath cannot be read: ${e.message}');
+    }
+    final (:pin, :problems) = parseEsiPin(pinText);
+    if (pin == null) return problems;
+    final items = <(String, String)>[
+      ('snapshot path', esiSnapshotPath),
+      ('generated folder', '$esiGeneratedDirectory/'),
+      ('source URL', pin.source),
+      ('licence name', esiLicenceName),
+      ('licence URL', esiLicenceUrl),
+      ('proprietary notice', esiProprietaryNotice),
+    ];
+    final entry = _esiEntry(handWritten);
+    return [
+      for (final (what, text) in items)
+        if (!_mentions(entry, text))
+          '$noticesPath: ESI spec snapshot: $what "$text" is not listed in '
+              'the hand-written sections',
+    ];
+  }
+
+  /// The ESI entry of [handWritten]: the lines from [esiEntryHeading] to the
+  /// next blank line, or nothing when no line is the heading.
+  static String _esiEntry(String handWritten) {
+    final lines = handWritten.split('\n');
+    final start = lines.indexWhere((line) => line.trim() == esiEntryHeading);
+    if (start < 0) return '';
+    return lines
+        .skip(start)
+        .takeWhile((line) => line.trim().isNotEmpty)
+        .join('\n');
   }
 
   /// Whether [text] contains [token] as a whole token.

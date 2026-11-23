@@ -1,3 +1,4 @@
+import 'package:kaname_tools/kaname_tools.dart';
 import 'package:test/test.dart';
 
 import 'support/harness.dart';
@@ -343,5 +344,102 @@ void main() {
     expect(lines, isNot(contains(contains('PROVENANCE'))));
     expect(lines, isNot(contains(contains('OFL-built'))));
     expect(fs.writeCount, writes);
+  });
+
+  group('ESI spec snapshot', () {
+    const source =
+        'https://esi.evetech.net/meta/openapi.json?compatibility_date=2030-01-02';
+    const entry =
+        "CCP's ESI OpenAPI spec\n"
+        '  CCP material: $esiSnapshotPath and the descriptions copied into\n'
+        '  $esiGeneratedDirectory/\n'
+        '  Source: $source\n'
+        '  Licence: $esiLicenceName, $esiLicenceUrl\n'
+        '  $esiProprietaryNotice "EVE", "EVE Online", "CCP", and all\n'
+        '  related logos and images are trademarks or registered trademarks\n'
+        '  of CCP hf.\n'
+        "  Kaname's own code keeps its AGPL-3.0 licence.\n"
+        '\n';
+
+    setUp(
+      () => fs.writeFile(
+        esiPinPath,
+        EsiPin(date: '2030-01-02', source: source, sha256: '0' * 64).render(),
+      ),
+    );
+
+    Future<CliResult> check(String handWritten) async {
+      fs.writeFile('THIRD_PARTY_NOTICES', _notices(handWritten, ''));
+      await runTool(fs, ['notices', '--write']);
+      return runTool(fs, ['notices', '--check']);
+    }
+
+    test('an entry with every item passes', () async {
+      final result = await check('$_fullHandWritten$entry');
+      expect(result.err, isEmpty);
+      expect(result.code, 0);
+    });
+
+    for (final (what, text) in [
+      ('snapshot path', esiSnapshotPath),
+      ('source URL', source),
+      ('licence name', esiLicenceName),
+      ('licence URL', esiLicenceUrl),
+      ('proprietary notice', esiProprietaryNotice),
+    ]) {
+      test(
+        'ESI spec snapshot without an entry: missing $what is named',
+        () async {
+          final result = await check(
+            '$_fullHandWritten${entry.replaceAll(text, '')}',
+          );
+          expect(result.code, 1);
+          expect(
+            result.err,
+            contains('ESI spec snapshot: $what "$text" is not listed'),
+          );
+        },
+      );
+    }
+
+    test('an item listed only under another entry is still missing', () async {
+      final result = await check(
+        '${_fullHandWritten}Another entry\n  Licence: $esiLicenceUrl\n\n'
+        '${entry.replaceAll(esiLicenceUrl, '')}',
+      );
+      expect(result.code, 1);
+      expect(
+        result.err,
+        contains(
+          'ESI spec snapshot: licence URL "$esiLicenceUrl" is not listed',
+        ),
+      );
+    });
+
+    test('a longer source URL does not match the pinned one', () async {
+      final result = await check(
+        '$_fullHandWritten${entry.replaceAll(source, '${source}9')}',
+      );
+      expect(result.code, 1);
+      expect(
+        result.err,
+        contains('ESI spec snapshot: source URL "$source" is not listed'),
+      );
+    });
+
+    test('a missing entry names every item', () async {
+      final result = await check(_fullHandWritten);
+      expect(result.code, 1);
+      for (final what in [
+        'snapshot path',
+        'generated folder',
+        'source URL',
+        'licence name',
+        'licence URL',
+        'proprietary notice',
+      ]) {
+        expect(result.err, contains('ESI spec snapshot: $what'));
+      }
+    });
   });
 }
