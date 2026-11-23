@@ -125,8 +125,8 @@ Test paths: `tools/kaname_tools/test/` (abbreviated `tools/…`) and `packages/k
 
 ## 8. Third-party notices
 
-- [ ] 8.1 Write failing tests: `tools/notices_test.dart` for "ESI spec snapshot without an entry" (each of path, source URL, licence name, licence URL and proprietary notice line removed in turn) and `tools/notices_repo_test.dart` for "ESI spec snapshot listed". Verify they fail for the missing check and entry.
-- [ ] 8.2 Extend the notices check to read `packages/kaname_esi/spec/pin.yaml` and require the ESI entry's items; add the hand-written CCP entry to `THIRD_PARTY_NOTICES` (snapshot path, `packages/kaname_esi/lib/src/generated/`, source URL, `EVE Developer License` and its URL, CCP's proprietary notice, and that Kaname's own code keeps AGPL-3.0). Run `mise run notices` if needed. Verify the two red rows go green, and re-run the existing tests for "Current vendored assets listed" and "A vendored source without an entry" to confirm they stay green.
+- [x] 8.1 Write failing tests: `tools/notices_test.dart` for "ESI spec snapshot without an entry" (each of path, source URL, licence name, licence URL and proprietary notice line removed in turn) and `tools/notices_repo_test.dart` for "ESI spec snapshot listed". Verify they fail for the missing check and entry.
+- [x] 8.2 Extend the notices check to read `packages/kaname_esi/spec/pin.yaml` and require the ESI entry's items; add the hand-written CCP entry to `THIRD_PARTY_NOTICES` (snapshot path, `packages/kaname_esi/lib/src/generated/`, source URL, `EVE Developer License` and its URL, CCP's proprietary notice, and that Kaname's own code keeps AGPL-3.0). Run `mise run notices` if needed. Verify the two red rows go green, and re-run the existing tests for "Current vendored assets listed" and "A vendored source without an entry" to confirm they stay green.
 
 ## 9. Integration
 
