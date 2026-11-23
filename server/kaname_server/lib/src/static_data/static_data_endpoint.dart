@@ -73,12 +73,9 @@ class StaticDataEndpoint extends Endpoint {
     final runtime = bundleAnnouncementRuntime;
     final identity = runtime.clientOf(session);
     final client = identity.key;
-    if (identity case ProxyFallback(:final proxy, :final reason)) {
-      session.log(
-        'announcement stream: trusted proxy ${proxy.address} sent no usable '
-        'X-Forwarded-For (${reason.name}); counting it as the client',
-        level: LogLevel.warning,
-      );
+    if (identity case ProxyFallback()) {
+      // The trusted proxy counts as the client; logged at the refusal rate.
+      _warn(session, runtime.noteRefusal(client, noUsableForwardedHeader));
     }
     final announcer = runtime.announcer;
     final bus = runtime.bus;
@@ -169,18 +166,23 @@ class StaticDataEndpoint extends Endpoint {
     return controller.stream;
   }
 
-  /// Logs the refusal of [client]'s subscription for [reason] and returns
-  /// the stream that ends at once, without an event or an error.
+  /// Counts the refusal of [client]'s subscription for [reason] in the
+  /// rate-limited refusal log (D6) and returns the stream that ends at once,
+  /// without an event or an error.
   static Stream<BundleAnnouncement> _refuse(
     Session session,
     ClientKey client,
     AnnouncementRefusal reason,
   ) {
-    session.log(
-      'announcement stream refused for client $client: ${reason.label}',
-      level: LogLevel.warning,
-    );
+    _warn(session, bundleAnnouncementRuntime.noteRefusal(client, reason.label));
     return const Stream.empty();
+  }
+
+  /// Writes [warning] through the runtime, when the refusal log gave one.
+  static void _warn(Session session, String? warning) {
+    if (warning != null) {
+      bundleAnnouncementRuntime.logWarning(session, warning);
+    }
   }
 
   /// The scope the topic's visibility resolves to, or `null` when refused.

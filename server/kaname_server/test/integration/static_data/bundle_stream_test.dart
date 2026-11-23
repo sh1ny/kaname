@@ -1131,6 +1131,30 @@ void main() {
     });
   });
 
+  // Scenario: Server runs no announcer (realtime-bus → Announcement refusals
+  // are logged at a bounded rate).
+  test('a server with no announcer refuses 100 subscriptions with one '
+      'warning', () async {
+    final warnings = <String>[];
+    bundleAnnouncementRuntime
+      ..announcer = null
+      ..logWarning = (_, warning) => warnings.add(warning);
+    final client = rig.identifyAs('198.51.100.1');
+
+    final feeds = [for (var i = 0; i < 100; i++) _Direct(rig.open(session))];
+    for (final feed in feeds) {
+      await feed.ended;
+      expect(feed.events, isEmpty);
+      expect(feed.errors, isEmpty);
+    }
+
+    expect(warnings, hasLength(1));
+    expect(warnings.single, contains('client $client'));
+    expect(warnings.single, contains(AnnouncementRefusal.noAnnouncer.label));
+    expect(bundleAnnouncementRuntime.openStreams, 0);
+    expect(bundleAnnouncementRuntime.streamsOf(client), 0);
+  });
+
   // Assumption A6: Serverpod listens to the stream an endpoint returns
   // promptly. Neither test waits on real time.
   group('Given the first-event promise (A6)', () {

@@ -1,8 +1,9 @@
+import 'dart:collection';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:kaname_core/kaname_core.dart';
-import 'package:serverpod/serverpod.dart' show Session;
+import 'package:serverpod/serverpod.dart' show LogLevel, Session;
 
 import '../generated/protocol.dart';
 import '../network/client_identity.dart';
@@ -24,6 +25,18 @@ const int defaultMaxStreams = 2000;
 ///   limit of 16 has no operator setting. Other unauthenticated calls rely
 ///   on their own bounds.
 const int defaultMaxStreamsPerClient = 16;
+
+/// How many client and reason pairs the refusal log tracks at most (D6).
+const int refusalLogPairs = 4096;
+
+/// How often the refusal log warns at most for one client and reason, on
+/// elapsed time (D6).
+const Duration refusalLogInterval = Duration(minutes: 1);
+
+/// The reason the refusal log gives for a trusted proxy whose
+/// `X-Forwarded-For` named no client (D1): not a refusal, but logged at the
+/// same rate.
+const String noUsableForwardedHeader = 'no usable forwarded header';
 
 /// Why an announcement subscription was refused.
 enum AnnouncementRefusal {
@@ -157,7 +170,17 @@ final class BundleAnnouncementRuntime {
   /// cancelled is not counted.
   int endedByServer = 0;
 
+  /// Writes a warning of the announcement stream opened under a session;
+  /// tests replace it to read the warnings.
+  void Function(Session session, String warning) logWarning = _sessionWarning;
+
   final Map<ClientKey, int> _perClient = {};
+
+  // Pairs in the order of their last warning: a pair moves to the end only
+  // when it warns.
+  final LinkedHashMap<(ClientKey, String), _RefusalCount> _refusals =
+      LinkedHashMap();
+  _RefusalCount _otherClients = _RefusalCount();
   int _nextStream = 0;
   int _generation = 0;
 
@@ -202,6 +225,62 @@ final class BundleAnnouncementRuntime {
     }
   }
 
+  /// Counts a refusal of [client]'s subscription for [reason] (or a proxy
+  /// fallback, [noUsableForwardedHeader]), and returns the warning to log,
+  /// or `null` when the pair warned less than [refusalLogInterval] ago.
+  ///
+  /// A warning names the client and reason and gives the refusals since the
+  /// pair's previous warning, this one included. Every interval is elapsed
+  /// time from [clock]'s monotonic `elapsed()`, so wall-clock changes do not
+  /// move it. At most [refusalLogPairs] pairs are tracked, in the order of
+  /// their last warning. When the map is full, a new pair looks only at the
+  /// first, which warned longest ago, and takes its place when that warning
+  /// is more than an interval old; otherwise the refusal counts under one
+  /// `other clients` entry, outside the map, under the same rule. There is
+  /// no timer and no sweep, and each call does constant work.
+  ///
+  /// ## Carried constraint
+  ///
+  /// - **C9:** The refusal log is rate-limited per client and reason with a
+  ///   bounded map and no timer. The suppressed count of a client that stops
+  ///   being refused is never reported, and a pair evicted to make room
+  ///   loses any count it had not yet reported, even if its last refusal was
+  ///   recent. The counts are a guide, not a complete tally.
+  String? noteRefusal(ClientKey client, String reason) {
+    final now = clock.elapsed();
+    final pair = (client, reason);
+    var count = _refusals[pair];
+    if (count == null) {
+      if (_refusals.length >= refusalLogPairs) {
+        final (oldestPair, oldest) = (
+          _refusals.keys.first,
+          _refusals.values.first,
+        );
+        if (!oldest.warnedBefore(now - refusalLogInterval, strictly: true)) {
+          return _otherClients.note(now)
+              ? _warning(reason, 'other clients', _otherClients)
+              : null;
+        }
+        _refusals.remove(oldestPair);
+      }
+      count = _refusals[pair] = _RefusalCount();
+    }
+    if (!count.note(now)) return null;
+    // Moves the pair to the end: it now has the latest warning.
+    _refusals
+      ..remove(pair)
+      ..[pair] = count;
+    return _warning(reason, 'client $client', count);
+  }
+
+  /// The client and reason pairs the refusal log tracks, oldest warning
+  /// first.
+  Iterable<(ClientKey, String)> get trackedRefusals => _refusals.keys;
+
+  static String _warning(String reason, String who, _RefusalCount count) =>
+      'announcement stream: $reason, $who, '
+      '${count.reported} since the last warning';
+
   /// Reports [step] of the stream holding [reservation] to [onStreamStep].
   void noteStep(StreamReservation reservation, StreamStep step) =>
       onStreamStep?.call(reservation.id, step);
@@ -216,12 +295,46 @@ final class BundleAnnouncementRuntime {
     trustedProxies = TrustedProxies.none;
     identifyClient = null;
     onStreamStep = null;
+    logWarning = _sessionWarning;
     maxStreams = defaultMaxStreams;
     maxStreamsPerClient = defaultMaxStreamsPerClient;
     openStreams = 0;
     endedByServer = 0;
     _perClient.clear();
+    _refusals.clear();
+    _otherClients = _RefusalCount();
     _generation++;
+  }
+}
+
+void _sessionWarning(Session session, String warning) =>
+    session.log(warning, level: LogLevel.warning);
+
+/// One client and reason pair of the refusal log: when it last warned and
+/// how many refusals it has had since.
+final class _RefusalCount {
+  Duration? _lastWarning;
+  int _since = 0;
+
+  /// The refusals the last warning reported.
+  int reported = 0;
+
+  /// Whether the last warning came before [time] (strictly, or at it).
+  bool warnedBefore(Duration time, {required bool strictly}) {
+    final last = _lastWarning;
+    if (last == null) return true;
+    return strictly ? last < time : last <= time;
+  }
+
+  /// Counts one refusal at [now]; returns whether it warns, which resets
+  /// the count.
+  bool note(Duration now) {
+    _since++;
+    if (!warnedBefore(now - refusalLogInterval, strictly: false)) return false;
+    _lastWarning = now;
+    reported = _since;
+    _since = 0;
+    return true;
   }
 }
 

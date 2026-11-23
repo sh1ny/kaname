@@ -9,6 +9,11 @@ abstract interface class ServerClock {
   /// The current time.
   DateTime now();
 
+  /// The time elapsed on a monotonic clock since an arbitrary fixed start:
+  /// setting the wall clock does not move it. Only differences between two
+  /// readings mean anything.
+  Duration elapsed();
+
   /// Calls [callback] once after [duration] until the timer is cancelled.
   Timer once(Duration duration, void Function() callback);
 
@@ -21,8 +26,15 @@ final class SystemClock implements ServerClock {
   /// Creates the clock.
   const SystemClock();
 
+  /// The monotonic stopwatch behind [elapsed], started when the process
+  /// first reads it.
+  static final Stopwatch _stopwatch = Stopwatch()..start();
+
   @override
   DateTime now() => DateTime.now();
+
+  @override
+  Duration elapsed() => _stopwatch.elapsed;
 
   @override
   Timer once(Duration duration, void Function() callback) =>
