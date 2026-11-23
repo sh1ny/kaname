@@ -375,9 +375,9 @@ Every implementer task follows the AGENTS.md "Dart and Flutter code" section: lo
 
 ## 1. ADRs and architecture
 
-- [ ] 1.1 Verify A5: read the pinned Serverpod 4.1.2 `Serverpod` constructor (Dart MCP `read_package_uris` on `package:serverpod/src/server/serverpod.dart`) and confirm it takes one `authenticationHandler` per server; record the finding for ADR 0015's rejected alternative (D1); disproved → stop for drift (D1).
-- [ ] 1.2 Write `docs/adr/0015-interim-install-admin-key.md` (D12: one install-wide admin key from `SERVERPOD_PASSWORD_adminKey`, at least 32 characters, constant-time compare, the 10-in-60 s pause, why not per-user scopes yet, and when it is replaced), carrying C1, C10 and C29; load `domain-modeling`; verify `mise run check` (policy docs test) passes and C1, C10 and C29 are each findable in the ADR.
-- [ ] 1.3 Update `openspec/architecture.md`: add ADR 0015's row to the in-force ADR index, and add `GET /static-data/report` (D31) beside `GET /static-data/bundle/<build>/<sha256>` on the server–app boundary line; verify `mise run spec:validate` passes and both lines read as stated.
+- [x] 1.1 Verify A5: read the pinned Serverpod 4.1.2 `Serverpod` constructor (Dart MCP `read_package_uris` on `package:serverpod/src/server/serverpod.dart`) and confirm it takes one `authenticationHandler` per server; record the finding for ADR 0015's rejected alternative (D1); disproved → stop for drift (D1).
+- [x] 1.2 Write `docs/adr/0015-interim-install-admin-key.md` (D12: one install-wide admin key from `SERVERPOD_PASSWORD_adminKey`, at least 32 characters, constant-time compare, the 10-in-60 s pause, why not per-user scopes yet, and when it is replaced), carrying C1, C10 and C29; load `domain-modeling`; verify `mise run check` (policy docs test) passes and C1, C10 and C29 are each findable in the ADR.
+- [x] 1.3 Update `openspec/architecture.md`: add ADR 0015's row to the in-force ADR index, and add `GET /static-data/report` (D31) beside `GET /static-data/bundle/<build>/<sha256>` on the server–app boundary line; verify `mise run spec:validate` passes and both lines read as stated.
 
 ## 2. Assumption checks
 
