@@ -884,15 +884,14 @@ void main() {
         }
 
         Future<void> expectNothingOfBuild(int build) async {
-          final tables = await _sdeTables(session);
-          // The record tables have no `build` column.
-          const recordTables = {
-            'sde_import',
-            'sde_check',
-            'sde_switch',
-            'sde_build_diff',
-          };
-          for (final table in tables.where((t) => !recordTables.contains(t))) {
+          final tables = [
+            for (final definition in Protocol().getTargetTableDefinitions())
+              if (definition.name.startsWith('sde_') &&
+                  definition.columns.any((column) => column.name == 'build') &&
+                  definition.name != 'sde_import')
+                definition.name,
+          ];
+          for (final table in tables) {
             final rows = await session.db.unsafeQuery(
               'SELECT count(*) FROM "$table" WHERE "build" = $build',
             );

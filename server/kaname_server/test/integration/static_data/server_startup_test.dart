@@ -11,8 +11,28 @@ import 'package:kaname_server/src/generated/serverpod.dart';
 import 'package:test/test.dart';
 
 import '../support/scratch_database.dart';
+import '../support/server_process.dart';
 
 void main() {
+  test('a maxConnectionCount below 16 refuses start', () async {
+    final database = await ScratchDatabase.create();
+    addTearDown(database.drop);
+    final server = await ServerProcess.start(
+      arguments: ['--apply-migrations'],
+      environment: {
+        'SERVERPOD_DATABASE_NAME': database.name,
+        'SERVERPOD_DATABASE_MAX_CONNECTION_COUNT': '15',
+      },
+    );
+    addTearDown(server.stop);
+    expect(
+      await server.exitCode.timeout(const Duration(seconds: 35)),
+      isNonZero,
+    );
+    expect(server.output, contains('maxConnectionCount must be at least 16'));
+    expect(await server.get('/livez'), isNull);
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
   test('a client subscribed while startup is held after the API listener '
       'binds gets none within 20 s, before startup ends', () async {
     final database = await ScratchDatabase.create();

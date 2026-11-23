@@ -1,0 +1,16 @@
+### The terminal result of a static-data admin operation (D21).
+enum: SdeAdminOperationOutcome
+serialized: byName
+serverOnly: true
+values:
+  - switched
+  - upToDate
+  - held
+  - older
+  - staged
+  - failed
+  - buildsChanged
+  - noPrevious
+  - importRunning
+  - rolledBack
+  - rollbackFailed

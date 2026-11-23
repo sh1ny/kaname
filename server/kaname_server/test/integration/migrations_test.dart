@@ -1,8 +1,11 @@
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+import 'package:postgres/postgres.dart' as pg;
 import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
 
+import 'support/migrated_database.dart';
 import 'support/scratch_database.dart';
 import 'support/server_process.dart';
 import 'test_tools/serverpod_test_tools.dart';
@@ -12,6 +15,51 @@ const _slow = Timeout(Duration(minutes: 3));
 
 /// A version no committed migration has.
 const _unknownVersion = '20991231235959999';
+
+const _previousStaticDataMigration = '20261120083015689-sde-bundle';
+
+Future<String> _migrationSql(String version, String file) =>
+    File(p.join('migrations', version, file)).readAsString();
+
+Future<pg.Connection> _seedLegacyReports(Session session) async {
+  final scratch = await ScratchDatabase.create();
+  addTearDown(scratch.drop);
+  final database = await migratedDatabaseSettings(session);
+  final connection = await pg.Connection.open(
+    pg.Endpoint(
+      host: database.host,
+      port: database.port,
+      database: scratch.name,
+      username: database.user,
+      password: database.password,
+      isUnixSocket: database.isUnixSocket,
+    ),
+    settings: const pg.ConnectionSettings(sslMode: pg.SslMode.disable),
+  );
+  addTearDown(connection.close);
+  await connection.execute(
+    await _migrationSql(_previousStaticDataMigration, 'definition.sql'),
+    queryMode: pg.QueryMode.simple,
+  );
+  await connection.execute('''
+INSERT INTO sde_check ("checkedAt", outcome)
+VALUES ('2026-11-01', 'failed');
+INSERT INTO sde_build_diff ("fromBuild", "toBuild", "createdAt", outcome, report)
+VALUES
+  (10, 11, '2026-11-02', 'failed', NULL),
+  (10, 11, '2026-11-02', 'succeeded', '{"file":"données"}'),
+  (10, 11, '2026-11-01', 'failed', NULL),
+  (11, 10, '2026-11-01', 'failed', NULL),
+  (11, 12, '2026-11-01', 'succeeded', '{}');
+''', queryMode: pg.QueryMode.simple);
+  return connection;
+}
+
+Future<String> _postgresMigrationVersion(pg.Connection db) async =>
+    (await db.execute(
+          "SELECT version FROM serverpod_migrations WHERE module = 'kaname'",
+        )).single.single!
+        as String;
 
 /// The newest migration in `migrations/`: the one a migrated database holds.
 String _latestCommittedMigration() {
@@ -119,4 +167,89 @@ void main() {
     },
     timeout: _slow,
   );
+
+  withServerpod('Upgrading the previous static-data schema', (sessions, _) {
+    test('check rows from before the migration read trigger daily', () async {
+      final db = await _seedLegacyReports(sessions.build());
+      await db.execute(
+        await _migrationSql(_latestCommittedMigration(), 'migration.sql'),
+        queryMode: pg.QueryMode.simple,
+      );
+      expect(
+        (await db.execute(
+          'SELECT trigger, "lookupStarted", "lookupStartedAt" FROM sde_check',
+        )).single,
+        ['daily', null, null],
+      );
+    });
+
+    test(
+      'keeps the newest report per direction and backfills byte sizes',
+      () async {
+        final db = await _seedLegacyReports(sessions.build());
+        await db.execute(
+          await _migrationSql(_latestCommittedMigration(), 'migration.sql'),
+          queryMode: pg.QueryMode.simple,
+        );
+        expect(
+          await db.execute('''
+SELECT "fromBuild", "toBuild", outcome, "reportBytes",
+       octet_length(report::text)
+FROM sde_build_diff ORDER BY "fromBuild", "toBuild"
+'''),
+          [
+            [10, 11, 'succeeded', 20, 20],
+            [11, 10, 'failed', null, null],
+            [11, 12, 'succeeded', 2, 2],
+          ],
+        );
+        expect(
+          await _postgresMigrationVersion(db),
+          _latestCommittedMigration(),
+        );
+      },
+    );
+
+    for (final operation in ['DELETE', 'UPDATE']) {
+      test(
+        'failure during $operation rolls back the data and version',
+        () async {
+          final db = await _seedLegacyReports(sessions.build());
+          await db.execute('''
+CREATE FUNCTION fail_report_upgrade() RETURNS trigger LANGUAGE plpgsql AS \$\$
+BEGIN
+  RAISE EXCEPTION 'intentional report upgrade failure';
+END
+\$\$;
+CREATE TRIGGER fail_report_upgrade BEFORE $operation ON sde_build_diff
+FOR EACH STATEMENT EXECUTE FUNCTION fail_report_upgrade();
+''', queryMode: pg.QueryMode.simple);
+          await expectLater(
+            db.execute(
+              await _migrationSql(_latestCommittedMigration(), 'migration.sql'),
+              queryMode: pg.QueryMode.simple,
+            ),
+            throwsA(
+              isA<pg.ServerException>().having(
+                (error) => error.message,
+                'message',
+                'intentional report upgrade failure',
+              ),
+            ),
+          );
+          await db.execute('ROLLBACK');
+          expect(
+            (await db.execute('SELECT count(*) FROM sde_build_diff'))
+                .single
+                .single,
+            5,
+          );
+          expect(
+            await _postgresMigrationVersion(db),
+            _previousStaticDataMigration,
+          );
+        },
+      );
+    }
+  }, rollbackDatabase: RollbackDatabase.disabled);
 }

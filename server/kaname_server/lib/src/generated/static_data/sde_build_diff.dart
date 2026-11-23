@@ -20,6 +20,7 @@ import '../static_data/sde_build_diff_outcome.dart' as _i122pkx3;
 /// The stored comparison of two builds (D4, D10).
 /// `report` is `SdeJson` stored as `jsonb`; it is `null` when the comparison
 /// failed. The row is removed with either of its builds.
+/// `reportBytes` is the JSON byte count used to bound public reads (D23).
 abstract class SdeBuildDiff
     implements _is.TableRow<int?>, _is.ProtocolSerialization {
   SdeBuildDiff._({
@@ -30,6 +31,7 @@ abstract class SdeBuildDiff
     required this.outcome,
     this.failureReason,
     this.report,
+    this.reportBytes,
   });
 
   factory SdeBuildDiff({
@@ -40,6 +42,7 @@ abstract class SdeBuildDiff
     required _i122pkx3.SdeBuildDiffOutcome outcome,
     String? failureReason,
     _idp9h2tz.SdeJson? report,
+    int? reportBytes,
   }) = _SdeBuildDiffImpl;
 
   factory SdeBuildDiff.fromJson(Map<String, dynamic> jsonSerialization) {
@@ -57,6 +60,7 @@ abstract class SdeBuildDiff
       report: jsonSerialization['report'] == null
           ? null
           : _idp9h2tz.SdeJson.fromJson(jsonSerialization['report']),
+      reportBytes: jsonSerialization['reportBytes'] as int?,
     );
   }
 
@@ -79,6 +83,8 @@ abstract class SdeBuildDiff
 
   _idp9h2tz.SdeJson? report;
 
+  int? reportBytes;
+
   @override
   _is.Table<int?> get table => t;
 
@@ -93,6 +99,7 @@ abstract class SdeBuildDiff
     _i122pkx3.SdeBuildDiffOutcome? outcome,
     String? failureReason,
     _idp9h2tz.SdeJson? report,
+    int? reportBytes,
   });
   @override
   Map<String, dynamic> toJson() {
@@ -105,6 +112,7 @@ abstract class SdeBuildDiff
       'outcome': outcome.toJson(),
       if (failureReason != null) 'failureReason': failureReason,
       if (report != null) 'report': report?.toJson(),
+      if (reportBytes != null) 'reportBytes': reportBytes,
     };
   }
 
@@ -152,6 +160,7 @@ class _SdeBuildDiffImpl extends SdeBuildDiff {
     required _i122pkx3.SdeBuildDiffOutcome outcome,
     String? failureReason,
     _idp9h2tz.SdeJson? report,
+    int? reportBytes,
   }) : super._(
          id: id,
          fromBuild: fromBuild,
@@ -160,6 +169,7 @@ class _SdeBuildDiffImpl extends SdeBuildDiff {
          outcome: outcome,
          failureReason: failureReason,
          report: report,
+         reportBytes: reportBytes,
        );
 
   /// Returns a shallow copy of this [SdeBuildDiff]
@@ -174,6 +184,7 @@ class _SdeBuildDiffImpl extends SdeBuildDiff {
     _i122pkx3.SdeBuildDiffOutcome? outcome,
     Object? failureReason = _Undefined,
     Object? report = _Undefined,
+    Object? reportBytes = _Undefined,
   }) {
     return SdeBuildDiff(
       id: id is int? ? id : this.id,
@@ -185,6 +196,7 @@ class _SdeBuildDiffImpl extends SdeBuildDiff {
           ? failureReason
           : this.failureReason,
       report: report is _idp9h2tz.SdeJson? ? report : this.report?.copyWith(),
+      reportBytes: reportBytes is int? ? reportBytes : this.reportBytes,
     );
   }
 }
@@ -211,6 +223,9 @@ class SdeBuildDiffUpdateTable extends _is.UpdateTable<SdeBuildDiffTable> {
   _is.ColumnValue<_idp9h2tz.SdeJson, _idp9h2tz.SdeJson> report(
     _idp9h2tz.SdeJson? value,
   ) => _is.ColumnValue(table.report, value);
+
+  _is.ColumnValue<int, int> reportBytes(int? value) =>
+      _is.ColumnValue(table.reportBytes, value);
 }
 
 class SdeBuildDiffTable extends _is.Table<int?> {
@@ -223,6 +238,7 @@ class SdeBuildDiffTable extends _is.Table<int?> {
     outcome = _is.ColumnEnum('outcome', this, _is.EnumSerialization.byName);
     failureReason = _is.ColumnString('failureReason', this);
     report = _is.ColumnStructured<_idp9h2tz.SdeJson>('report', this);
+    reportBytes = _is.ColumnInt('reportBytes', this);
   }
 
   late final SdeBuildDiffUpdateTable updateTable;
@@ -239,6 +255,8 @@ class SdeBuildDiffTable extends _is.Table<int?> {
 
   late final _is.ColumnStructured<_idp9h2tz.SdeJson> report;
 
+  late final _is.ColumnInt reportBytes;
+
   @override
   List<_is.Column> get columns => [
     id,
@@ -248,6 +266,7 @@ class SdeBuildDiffTable extends _is.Table<int?> {
     outcome,
     failureReason,
     report,
+    reportBytes,
   ];
 }
 

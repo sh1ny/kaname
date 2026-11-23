@@ -217,7 +217,7 @@ void main() {
       }
     });
 
-    test('every secret uses the required-variable form', () {
+    test('every required secret uses the required-variable form', () {
       // `$$` escapes a literal dollar in Compose, so it is not a variable.
       final text = _composeText().replaceAll(r'$$', '');
       final references = RegExp(r'\$(\{[^}]*\}|\w+)').allMatches(text).toList();
@@ -225,18 +225,39 @@ void main() {
       final required = RegExp(r'^\$\{([A-Z][A-Z0-9_]*):\?[^}]+\}$');
       final used = <String>{};
       for (final reference in references) {
-        final match = required.firstMatch(reference.group(0)!);
+        final variable = reference.group(0)!;
+        if (variable == r'${KANAME_ADMIN_KEY:-}') continue;
+        final match = required.firstMatch(variable);
         expect(
           match,
           isNotNull,
           reason:
-              '${reference.group(0)} must be ${r'${NAME:?message}'}, so a '
+              '$variable must be ${r'${NAME:?message}'}, so a '
               'missing value stops Compose',
         );
         used.add(match!.group(1)!);
       }
       expect(used, containsAll(_secrets));
     });
+
+    test(
+      'the server receives KANAME_ADMIN_KEY as SERVERPOD_PASSWORD_adminKey',
+      () {
+        final services = _compose()['services'] as YamlMap;
+        for (final MapEntry(key: name, value: raw) in services.entries) {
+          final service = raw as YamlMap;
+          final environment = service['environment'] as YamlMap?;
+          expect(
+            environment?['SERVERPOD_PASSWORD_adminKey'],
+            name == 'server' ? r'${KANAME_ADMIN_KEY:-}' : null,
+            reason: '$name environment',
+          );
+        }
+        // No build arg, migration environment or second interpolation can
+        // send the key anywhere else.
+        expect('KANAME_ADMIN_KEY'.allMatches(_composeText()), hasLength(1));
+      },
+    );
 
     test('the secrets reach the server through SERVERPOD_PASSWORD_*', () {
       final text = _composeText();

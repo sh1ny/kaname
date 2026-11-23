@@ -23,7 +23,17 @@ Future<void> run(List<String> args) => serve(Serverpod(args));
 ///
 /// [run] builds its pod from the command line; tests pass one built for
 /// them, so they exercise this same order (C29).
+/// Refuses to start with a database pool smaller than 16 connections (D28).
 Future<void> serve(Serverpod pod) async {
+  final maxConnections =
+      pod.config.database?.maxConnectionCount ??
+      DatabaseConfig.defaultMaxConnectionCount;
+  if (maxConnections < 16) {
+    throw StateError(
+      'maxConnectionCount must be at least 16 (configured: $maxConnections)',
+    );
+  }
+
   final announcer = buildBundleAnnouncer(pod);
   pod.server.addMiddleware(BundleRoute(announcer: announcer).middleware);
   // The API listener accepts subscriptions before pod.start() returns, while

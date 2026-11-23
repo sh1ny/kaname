@@ -44,6 +44,15 @@ and `SERVERPOD_SERVICE_SECRET`. Compose stops before starting any service and
 names the variable when one is missing or empty. The file is ignored by git;
 only `deploy/.env.example`, with placeholders, is committed.
 
+To enable static-data admin actions, set the optional `KANAME_ADMIN_KEY` to
+a random value of at least 32 characters. With no key, or with a shorter key,
+admin actions stay disabled and the public status remains readable. Compose
+passes the key to the server only as `SERVERPOD_PASSWORD_adminKey`; the image
+and migration service do not receive it. Do not enable it on a non-loopback
+deployment until a TLS reverse proxy is in front of the stack. The app only
+offers key entry over HTTPS or loopback HTTP and keeps the key in memory until
+the app closes or reloads (ADR 0015).
+
 ```sh
 mise run stack:down                     # stop and delete the data volumes
 (cd deploy && docker compose down)     # stop, keep the data

@@ -30,6 +30,7 @@ database:
   port: 8090
   name: kaname
   user: postgres
+  maxConnectionCount: 20
   dataPath: .serverpod/development/pgdata
 
 # Redis is enabled in every run mode. In development and test it is the

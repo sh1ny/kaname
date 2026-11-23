@@ -28,13 +28,17 @@ void main() {
       }
     });
 
-    test('when the models hold a static-data table then the store writes '
-        'it', () {
-      final modelled = {
-        for (final name in definitions.keys)
-          if (name.startsWith('sde_')) name,
+    test('job store and control-plane tables cover the SDE schema', () {
+      const controlPlane = {
+        'sde_admin_operation',
+        'sde_build_revision',
+        'sde_setting_write',
       };
-      expect(PostgresStaticDataStore.writtenTables.keys.toSet(), modelled);
+      final written = PostgresStaticDataStore.writtenTables.keys.toSet();
+      final modelled = definitions.keys.where(
+        (name) => name.startsWith('sde_'),
+      );
+      expect({...written, ...controlPlane}, unorderedEquals(modelled));
     });
 
     for (final MapEntry(key: table, value: columns)
@@ -46,10 +50,18 @@ void main() {
           for (final column in definition.columns)
             if (column.name != 'id') column.name: column,
         };
+        final written = columns.map((column) => column.name).toList();
         expect(
-          columns.map((column) => column.name).toList(),
-          generated.keys.toList(),
-          reason: 'columns written by the store, in table order',
+          written,
+          generated.values
+              .where(
+                (column) =>
+                    written.contains(column.name) ||
+                    (!column.isNullable && column.columnDefault == null),
+              )
+              .map((column) => column.name)
+              .toList(),
+          reason: 'written and required columns, in table order',
         );
         for (final column in columns) {
           final expected = generated[column.name]!;

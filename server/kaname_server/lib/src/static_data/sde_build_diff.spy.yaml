@@ -1,6 +1,7 @@
 ### The stored comparison of two builds (D4, D10).
 ### `report` is `SdeJson` stored as `jsonb`; it is `null` when the comparison
 ### failed. The row is removed with either of its builds.
+### `reportBytes` is the JSON byte count used to bound public reads (D23).
 class: SdeBuildDiff
 table: sde_build_diff
 serverOnly: true
@@ -11,6 +12,7 @@ fields:
   outcome: SdeBuildDiffOutcome
   failureReason: String?
   report: SdeJson?, serializationDataType=jsonb
+  reportBytes: int?
 indexes:
   sde_build_diff_builds_idx:
     fields: fromBuild, toBuild

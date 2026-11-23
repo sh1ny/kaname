@@ -1,8 +1,10 @@
 ### The record of one import attempt.
 ### Locking rule: `skipped` rows are inserted without the static-data
 ### advisory lock, because a skipped import is one that could not take it.
-### Every update or delete of a row happens while holding that lock, so
-### writes to existing rows never overlap.
+### After a job loses its connection, its own conditional failed finish may
+### run without the lock (`WHERE outcome = 'running'`). Every other update
+### or deletion holds the lock. An import whose commit landed keeps its build
+### and its succeeded record (C35, D4).
 ### The four reports and the field check are `SdeJson` stored as `jsonb`
 ### (assumption A8, verified against Serverpod 4.1.2); they stay `null` until
 ### the import writes them. Only the newest 100 rows are kept.

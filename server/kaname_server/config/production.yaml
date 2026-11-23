@@ -17,6 +17,7 @@ database:
   port: 5432
   name: kaname
   user: postgres
+  maxConnectionCount: 20
 
 # Redis is enabled in every run mode.
 redis:
