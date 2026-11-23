@@ -4,33 +4,31 @@ Strategy: [openspec/strategy.md](strategy.md) · Architecture: [openspec/archite
 
 Status is derived: a change is done when archived on `main`; a milestone is done when its changes are done and its exit criteria pass. Releases: 0.1 after M6, 0.2 after M8, 0.5 after M17, 1.0 after M27. Every milestone after M6 should ship on its own, so the project is useful wherever it stops.
 
-## Now: M1 - Static data pipeline
+## Now: M2 - ESI platform and SSO
 
-**Outcome:** the server imports any SDE build side by side, switches builds atomically, keeps the previous one and reports what changed between builds. Apps download a compact client bundle once per build and search types and systems offline. A new build is taken while server and apps run, with no rebuild and no code change: unknown fields and files are kept and reported (ADR 0004). An admin and solo settings page shows loaded versus latest build. It retires the risk that static data forces releases. The bundle format must also feed the fit engine later and keep mobile solo-lite's options open (R57). It also checks whether the SDE has every field industry and logistics need right after a patch (R38). First, the product web build moves to `--wasm`, as the M0 grid spike recommends (R61).
+**Outcome:** a test character signs in on a self-hosted server and in native solo mode, then makes a scoped ESI call through the same generated client and scheduler policy. One holder owns the character's token (ADR 0005). The platform keeps ESI limits and token handling out of product modules (ADR 0007); call-log reads follow ADR 0006.
 
 **Exit criteria:**
-- The product web build is `--wasm` (skwasm, CanvasKit fallback for browsers without WasmGC), without COOP/COEP headers, and `webbuild --check` passes on it. (agent)
-- The server imports an SDE build side by side with the active one. Known columns are typed and every row keeps its full record as JSON. A new field or file is kept and reported; only a missing file Kaname depends on stops the import, and a failed import leaves the active build untouched. No code is generated from SDE content, and the known-ids table is checked against each build. (agent)
-- The build switch is atomic: requests in flight finish on the old build, with no restart, and one previous build is kept for rollback and diffs. A report lists what changed between two builds. A daily check finds new builds. (agent)
-- The client data bundle: one per build, carrying the dogma data. The change's design names the fit engine's input (ADR 0011) the bundle maps to, and shows the format serves both importing on the device and downloading a prebuilt bundle (R57). Apps fetch it once per build after a server notice, swap it in at a safe point, and search types and systems offline. (agent)
-- An admin and solo settings page shows loaded versus latest build, the last check, "update now" and the last import's result; auto-update is on by default. (agent)
-- A report records whether the SDE has every field industry and logistics need right after a patch (R38). (agent)
-- The owner takes a new SDE build while the server and an app run, sees the change report and the settings page, and searches types and systems offline. (user)
+- Kaname's generator reads the ESI spec at one pinned compatibility date and produces a reproducible typed client and route catalogue (rate group, scopes, roles and cache behavior). Recorded responses exercise the generated contract. (agent)
+- Every ESI call goes through the shared scheduler. Tests prove atomic budget reservation across server isolates and in solo, response-header correction, four governor tiers, priorities, shared negative caching and conditional polling with downtime handling. (agent)
+- Call logs retain route, status, cost, latency and bucket for seven days, distinguish refused calls from errors, contain no tokens, and enforce ADR 0006 visibility. (agent)
+- Refresh tokens are encrypted with an install key kept outside the database. Tests prove one holder per character, single-flight refresh and rotation recovery, and re-login when a rotated token is lost. (agent)
+- The server uses confidential SSO and maps the validated character to a Serverpod identity; native solo uses PKCE. Both validate JWT claims against CCP's JWKS and derive requested scopes under ADR 0006. (agent)
+- The owner signs in with a test character through both flows and sees a scoped ESI call succeed in each, without concurrent token holders for that character. Use an owner-provided native registration; the shared native client ID decision (R45) stays open. (user)
 
 **Changes** (in order; each about one PR):
-1. `web-wasm-build` - product web build on `--wasm` (skwasm without COOP/COEP headers at first), the webbuild check, deploy notes.
-2. `sde-import` - side-by-side import into Postgres: typed known columns plus raw JSON, unknown files stored and reported, known-ids table check, the R38 field check, and settles R56 (worker isolate access: the importer is the first job on the compute worker isolate).
-3. `sde-build-switch` - atomic switch, previous build kept, build-to-build diff report, daily check; prerequisite `sde-import`.
-4. `client-data-bundle` - bundle format with dogma data, per-build bundle, server notice, app download, cache and safe-point swap, offline type and system search; prerequisite `sde-build-switch`.
-5. `static-data-settings` - admin and solo settings page: loaded versus latest build, last check, update now, last import result, auto-update; prerequisites `sde-build-switch`, `client-data-bundle`.
+1. `esi-client-generator` - pinned ESI spec and compatibility date, typed client and route catalogue.
+2. `esi-request-scheduler` - atomic budgets (Redis on server, in-process in solo), bucket mirrors, four-tier governor, priorities, negative cache and conditional polling; prerequisite `esi-client-generator`.
+3. `esi-call-log` - scheduler outcomes, seven-day retention, secret-free logging and ADR 0006 visibility; prerequisite `esi-request-scheduler`.
+4. `esi-token-vault` - install-key encryption, one token holder per ADR 0005, single-flight refresh and rotation recovery.
+5. `esi-sso` - confidential server flow and native PKCE, JWT/JWKS verification, Serverpod identity and a scoped ESI call through the platform; prerequisites `esi-call-log`, `esi-token-vault`.
 
-## Next: M2 - ESI platform and SSO
+## Next: M3 - Identity and access
 
-Every ESI call goes through one platform (ADR 0007). Kaname's own generator reads ESI's spec at a pinned compatibility date and produces a typed client and a route catalogue. One scheduler policy governs every call: an atomic budget reservation, bucket mirrors, a four-tier governor, priorities, a shared negative cache and polite polling. A token vault encrypts refresh tokens with an install key and refreshes single-flight per character. SSO uses a confidential web flow on the server and a PKCE native flow on solo devices. A call log records each call for 7 days, with visibility under ADR 0006. It retires the risk that ESI limits or token loss break the product.
+Build on the character identity established in M2: model mains and alts, handle ownership transfers using the SSO owner hash, and represent member states, groups and capabilities. Model the organisation tree through corporations, alliances and coalitions so access can follow membership and delegated roles.
 
 ## Later
 
-- M3 - Identity and access: mains and alts, owner-hash transfers, states, groups, capabilities, org tree with coalitions.
 - M4 - Privacy and sync: sharing policies and consent, privacy-scoped data paths, sync protocol (settles R51), local store spike (R32), solo engine skeleton.
 - M5 - Character data and member audit: ingestion recipes, corp data from role tokens, audit and compliance.
 - M6 - Rules, notifications and Discord v1: rule engine, smart groups, notification bus, Discord linking and role sync, pings. Release 0.1.
@@ -61,3 +59,4 @@ Every ESI call goes through one platform (ADR 0007). Kaname's own generator read
 ## Done
 
 - M0 - Walking skeleton - 2026-11-18 - The skeleton holds end to end on six targets and the self-host stack. The grid spike passes on skwasm but CanvasKit misses on scrolling (missed frames, on a software GPU), so M1 opens with `--wasm`. The owner's grid check ran on the development PC instead of a low-end laptop (R58).
+- M1 - Static data pipeline - 2026-11-23 - The self-hosted stack took SDE build `3720952` over `3714173` without rebuilding; the owner saw Settings and the change report and found a type and a system offline. All 30 declared industry and logistics fields were present in the SDE audit, so no overlay is needed unless a future audit finds a gap.

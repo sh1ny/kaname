@@ -37,6 +37,7 @@ The first real user is expected to be the owner's own corp; until then trials us
 
 - init 2026-11-14: all (source: setting)
 - close M0 2026-11-18: all (source: setting)
+- close M1 2026-11-23: all (source: setting)
 
 | # | Run | Decision | Choice | Rejected | Reason | Important | Chosen by |
 |---|---|---|---|---|---|---|---|
@@ -77,7 +78,7 @@ The first real user is expected to be the owner's own corp; until then trials us
 | R35 | init | Assistant: read-only SQL over the member's own data only | Open | — | Owner evaluating (2026-11-13) | yes | pending |
 | R36 | init | Assistant: an early M26b-lite after M8, with a minimal read-only game-log reader | Open | — | Owner evaluating (2026-11-13) | yes | pending |
 | R37 | init | Assistant: an OpenAI-compatible endpoint driver as a third route next to ACP and app-server | Open | — | Owner evaluating (2026-11-13) | yes | pending |
-| R38 | init | Optional community overlay of client-extracted game data for fields the SDE lacks right after a patch | Open (lean: only if the M1 check finds a gap). M1 check (`sde-import`): no gap; all 30 declared industry and logistics fields are present in SDE build 3714173 (`docs/static-data/r38-field-check.md`), and every import re-checks them | — | Lean only | no | pending |
+| R38 | init | Optional community overlay of client-extracted game data for fields the SDE lacks right after a patch | No overlay unless an import's field check finds a gap | Add an overlay now | All 30 declared fields were present in SDE build 3714173 ([field check](../docs/static-data/r38-field-check.md)); every import re-checks them | no | user |
 | R39 | init | First real user (Q6) | Open (likely the owner's corp) | — | Needed for user trials from M5 | no | pending |
 | R40 | init | Mobile scope (Q15) | Open, decide at M7 (lean: push plus read-only views and a few one-tap actions) | — | — | yes | pending |
 | R41 | init | Voice service adapter (Q16) | Open (lean: Mumble adapter near M25) | — | — | no | pending |
@@ -102,3 +103,8 @@ The first real user is expected to be the owner's own corp; until then trials us
 | R60 | close M0 | M1 split | Four changes: `sde-import`, `sde-build-switch`, `client-data-bundle`, `static-data-settings` | Three changes with the build switch folded into the import | Smaller PRs along ADR 0004's seams | yes | user |
 | R61 | close M0 | Product web build renderer | `--wasm` (skwasm, without COOP/COEP headers at first) as a small `web-wasm-build` change, first in M1 | A later milestone; keeping the CanvasKit-only build | The grid spike: CanvasKit missed S4, skwasm passed with margin | yes | user |
 | R62 | close M0 | New Next (M2) | One paragraph; split at M1's close | Agreeing M2's split now | Only Now is split | no | user |
+| R63 | close M1 | Owner demo of a live SDE switch and offline search | Accept the live `3714173` → `3720952` switch started at the owner's request; the owner saw Settings and the change report and found Tritanium and Jita with the API stopped | Replay the switch manually | The live switch and disconnected app demonstrated the full outcome | yes | user |
+| R64 | close M1 | Remaining pending strategy rows | Leave R35–R37, R39–R47, R56 and R57 open | Settle them now | Defer to their milestones or triggers; R38 is settled separately | no | user |
+| R65 | close M1 | M2 split | `esi-client-generator`, `esi-request-scheduler`, `esi-call-log`, `esi-token-vault`, `esi-sso` | Four changes with the log folded into the scheduler | Review call-log privacy and retention separately from scheduler correctness | yes | user |
+| R66 | close M1 | M2 owner exit demo | Owner proves confidential server SSO and native solo PKCE with a scoped ESI call in each; owner-provided native registration | Owner proves server SSO only | Prove both deployment modes without deciding a shared client ID (R45) | yes | user |
+| R67 | close M1 | New Next (M3) | One paragraph; split at M2 close | Agree the M3 split now | Let M2 prove the identity handoff first | no | user |
