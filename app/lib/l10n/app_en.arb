@@ -267,5 +267,693 @@
   "searchNoticeAppUpdate": "Update the app to load the latest static data. Search keeps using the data you have.",
   "@searchNoticeAppUpdate": {
     "description": "Notice beside results when the server's bundle format is newer than this app reads."
+  },
+  "sdTitle": "Static data",
+  "@sdTitle": {
+    "description": "Static data Settings label or message: Static data."
+  },
+  "sdAppBundle": "This app’s bundle",
+  "@sdAppBundle": {
+    "description": "Static data Settings label or message: This app’s bundle."
+  },
+  "sdInUse": "In use",
+  "@sdInUse": {
+    "description": "Static data Settings label or message: In use."
+  },
+  "sdAnnounced": "Announced build",
+  "@sdAnnounced": {
+    "description": "Static data Settings label or message: Announced build."
+  },
+  "sdConnection": "Connection",
+  "@sdConnection": {
+    "description": "Static data Settings label or message: Connection."
+  },
+  "sdDownload": "Download",
+  "@sdDownload": {
+    "description": "Static data Settings label or message: Download."
+  },
+  "sdLastDownload": "Last download",
+  "@sdLastDownload": {
+    "description": "Static data Settings label or message: Last download."
+  },
+  "sdDownloadNow": "Download now",
+  "@sdDownloadNow": {
+    "description": "Static data Settings label or message: Download now."
+  },
+  "sdServer": "Server status",
+  "@sdServer": {
+    "description": "Static data Settings label or message: Server status."
+  },
+  "sdNoServer": "No server configured",
+  "@sdNoServer": {
+    "description": "Static data Settings label or message: No server configured."
+  },
+  "sdStatusLoading": "Reading server status…",
+  "@sdStatusLoading": {
+    "description": "Static data Settings label or message: Reading server status…."
+  },
+  "sdStatusUnavailable": "Server status unavailable",
+  "@sdStatusUnavailable": {
+    "description": "Static data Settings label or message: Server status unavailable."
+  },
+  "sdRefresh": "Refresh",
+  "@sdRefresh": {
+    "description": "Static data Settings label or message: Refresh."
+  },
+  "sdOpenReport": "View change report",
+  "@sdOpenReport": {
+    "description": "Static data Settings label or message: View change report."
+  },
+  "sdNone": "None",
+  "@sdNone": {
+    "description": "Static data Settings label or message: None."
+  },
+  "sdBuild": "Build {build}",
+  "@sdBuild": {
+    "description": "Static data Settings label or message: Build build.",
+    "placeholders": {
+      "build": {
+        "type": "int"
+      }
+    }
+  },
+  "sdAwaitingServer": "Waiting for the server",
+  "@sdAwaitingServer": {
+    "description": "Static data Settings label or message: Waiting for the server."
+  },
+  "sdConnected": "Connected",
+  "@sdConnected": {
+    "description": "Static data Settings label or message: Connected."
+  },
+  "sdStreamDown": "Server unreachable, retrying at {time}",
+  "@sdStreamDown": {
+    "description": "Static data Settings label or message: Server unreachable, retrying at time.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sdReconnecting": "Server unreachable, reconnecting",
+  "@sdReconnecting": {
+    "description": "Static data Settings label or message: Server unreachable, reconnecting."
+  },
+  "sdAwaitingBundle": "Waiting for the first bundle",
+  "@sdAwaitingBundle": {
+    "description": "Static data Settings label or message: Waiting for the first bundle."
+  },
+  "sdUpToDate": "Up to date",
+  "@sdUpToDate": {
+    "description": "Static data Settings label or message: Up to date."
+  },
+  "sdDownloading": "Downloading",
+  "@sdDownloading": {
+    "description": "Static data Settings label or message: Downloading."
+  },
+  "sdDownloadWait": "Waiting to retry at {time}: {reason}",
+  "@sdDownloadWait": {
+    "description": "Static data Settings label or message: Waiting to retry at time: reason.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "sdServerNoBundle": "Server has no bundle yet",
+  "@sdServerNoBundle": {
+    "description": "Static data Settings label or message: Server has no bundle yet."
+  },
+  "sdAppUpdate": "App update needed",
+  "@sdAppUpdate": {
+    "description": "Static data Settings label or message: App update needed."
+  },
+  "sdNetworkError": "network error",
+  "@sdNetworkError": {
+    "description": "Static data Settings label or message: network error."
+  },
+  "sdServerError": "server error",
+  "@sdServerError": {
+    "description": "Static data Settings label or message: server error."
+  },
+  "sdRefusedBundle": "bundle refused",
+  "@sdRefusedBundle": {
+    "description": "Static data Settings label or message: bundle refused."
+  },
+  "sdNoneYet": "None yet",
+  "@sdNoneYet": {
+    "description": "Static data Settings label or message: None yet."
+  },
+  "sdSaving": "Build {build} in use, saving",
+  "@sdSaving": {
+    "description": "Static data Settings label or message: Build build in use, saving.",
+    "placeholders": {
+      "build": {
+        "type": "int"
+      }
+    }
+  },
+  "sdStored": "Build {build} stored at {time}",
+  "@sdStored": {
+    "description": "Static data Settings label or message: Build build stored at time.",
+    "placeholders": {
+      "build": {
+        "type": "int"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sdNotSaved": "Build {build} in use, not saved on this device",
+  "@sdNotSaved": {
+    "description": "Static data Settings label or message: Build build in use, not saved on this device.",
+    "placeholders": {
+      "build": {
+        "type": "int"
+      }
+    }
+  },
+  "sdDownloadFailed": "Build {build} failed at {time}: {reason}",
+  "@sdDownloadFailed": {
+    "description": "Static data Settings label or message: Build build failed at time: reason.",
+    "placeholders": {
+      "build": {
+        "type": "int"
+      },
+      "time": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "sdWithReason": "{outcome}: {reason}",
+  "@sdWithReason": {
+    "description": "Static data Settings label or message: outcome: reason.",
+    "placeholders": {
+      "outcome": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "sdSwitched": "Switched",
+  "@sdSwitched": {
+    "description": "Static data Settings label or message: Switched."
+  },
+  "sdHeld": "Held build",
+  "@sdHeld": {
+    "description": "Static data Settings label or message: Held build."
+  },
+  "sdOlder": "Older than the active build",
+  "@sdOlder": {
+    "description": "Static data Settings label or message: Older than the active build."
+  },
+  "sdStaged": "Staged build",
+  "@sdStaged": {
+    "description": "Static data Settings label or message: Staged build."
+  },
+  "sdFailed": "Failed",
+  "@sdFailed": {
+    "description": "Static data Settings label or message: Failed."
+  },
+  "sdAt": "{result} at {time}",
+  "@sdAt": {
+    "description": "Static data Settings label or message: result at time.",
+    "placeholders": {
+      "result": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "sdRunning": "Work running",
+  "@sdRunning": {
+    "description": "Static data Settings label or message: Work running."
+  },
+  "sdSucceeded": "Succeeded",
+  "@sdSucceeded": {
+    "description": "Static data Settings label or message: Succeeded."
+  },
+  "sdSkipped": "Skipped",
+  "@sdSkipped": {
+    "description": "Static data Settings label or message: Skipped."
+  },
+  "sdSwitchFailed": "Switch failed",
+  "@sdSwitchFailed": {
+    "description": "Static data Settings label or message: Switch failed."
+  },
+  "sdRolledBack": "Rolled back",
+  "@sdRolledBack": {
+    "description": "Static data Settings label or message: Rolled back."
+  },
+  "sdRollbackFailed": "Rollback failed",
+  "@sdRollbackFailed": {
+    "description": "Static data Settings label or message: Rollback failed."
+  },
+  "sdTransition": "{outcome} from {from} to {to}",
+  "@sdTransition": {
+    "description": "Static data Settings label or message: outcome from from to to.",
+    "placeholders": {
+      "outcome": {
+        "type": "String"
+      },
+      "from": {
+        "type": "String"
+      },
+      "to": {
+        "type": "String"
+      }
+    }
+  },
+  "sdWorkerStuck": "Worker stuck, restart the server",
+  "@sdWorkerStuck": {
+    "description": "Static data Settings label or message: Worker stuck, restart the server."
+  },
+  "sdRecoveryStuck": "Recovery stuck, restart the server",
+  "@sdRecoveryStuck": {
+    "description": "Static data Settings label or message: Recovery stuck, restart the server."
+  },
+  "sdStartupStuck": "Start-up stuck, restart the server",
+  "@sdStartupStuck": {
+    "description": "Static data Settings label or message: Start-up stuck, restart the server."
+  },
+  "sdSettlementStuck": "Settlement stuck, restart the server",
+  "@sdSettlementStuck": {
+    "description": "Static data Settings label or message: Settlement stuck, restart the server."
+  },
+  "sdWork": "Static-data work",
+  "@sdWork": {
+    "description": "Static data Settings label or message: Static-data work."
+  },
+  "sdIdle": "Idle",
+  "@sdIdle": {
+    "description": "Static data Settings label or message: Idle."
+  },
+  "sdActive": "Active build",
+  "@sdActive": {
+    "description": "Static data Settings label or message: Active build."
+  },
+  "sdPrevious": "Previous build",
+  "@sdPrevious": {
+    "description": "Static data Settings label or message: Previous build."
+  },
+  "sdWaitingToSwitch": "Build {build}, waiting to be switched to",
+  "@sdWaitingToSwitch": {
+    "description": "Static data Settings label or message: Build build, waiting to be switched to.",
+    "placeholders": {
+      "build": {
+        "type": "int"
+      }
+    }
+  },
+  "sdAutoUpdate": "Auto-update",
+  "@sdAutoUpdate": {
+    "description": "Static data Settings label or message: Auto-update."
+  },
+  "sdOn": "On",
+  "@sdOn": {
+    "description": "Static data Settings label or message: On."
+  },
+  "sdOff": "Off",
+  "@sdOff": {
+    "description": "Static data Settings label or message: Off."
+  },
+  "sdCcpLatest": "CCP latest",
+  "@sdCcpLatest": {
+    "description": "Static data Settings label or message: CCP latest."
+  },
+  "sdLastCheck": "Last check",
+  "@sdLastCheck": {
+    "description": "Static data Settings label or message: Last check."
+  },
+  "sdLastImport": "Last import",
+  "@sdLastImport": {
+    "description": "Static data Settings label or message: Last import."
+  },
+  "sdImportCountsCutOff": "Only some file counts are shown ({count} files total).",
+  "@sdImportCountsCutOff": {
+    "description": "Static data Settings label or message: Only some file counts are shown (count files total)..",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sdLastSwitch": "Last switch or rollback",
+  "@sdLastSwitch": {
+    "description": "Static data Settings label or message: Last switch or rollback."
+  },
+  "sdReasonCcp": "Could not reach CCP",
+  "@sdReasonCcp": {
+    "description": "Static data Settings label or message: Could not reach CCP."
+  },
+  "sdReasonPostgres": "Could not reach the database",
+  "@sdReasonPostgres": {
+    "description": "Static data Settings label or message: Could not reach the database."
+  },
+  "sdReasonTimeout": "Timed out",
+  "@sdReasonTimeout": {
+    "description": "Static data Settings label or message: Timed out."
+  },
+  "sdReasonImportRunning": "Import already running",
+  "@sdReasonImportRunning": {
+    "description": "Static data Settings label or message: Import already running."
+  },
+  "sdReasonFile": "A required file was missing",
+  "@sdReasonFile": {
+    "description": "Static data Settings label or message: A required file was missing."
+  },
+  "sdReasonComparison": "Comparison failed",
+  "@sdReasonComparison": {
+    "description": "Static data Settings label or message: Comparison failed."
+  },
+  "sdReasonWorkerStopped": "Worker stopped",
+  "@sdReasonWorkerStopped": {
+    "description": "Static data Settings label or message: Worker stopped."
+  },
+  "sdReasonWorkerNotRunning": "Worker not running",
+  "@sdReasonWorkerNotRunning": {
+    "description": "Static data Settings label or message: Worker not running."
+  },
+  "sdReasonRestart": "Server restarted",
+  "@sdReasonRestart": {
+    "description": "Static data Settings label or message: Server restarted."
+  },
+  "sdReasonUnknown": "Outcome unknown",
+  "@sdReasonUnknown": {
+    "description": "Static data Settings label or message: Outcome unknown."
+  },
+  "sdReasonConnection": "Connection lost",
+  "@sdReasonConnection": {
+    "description": "Static data Settings label or message: Connection lost."
+  },
+  "sdReasonOther": "Unknown error",
+  "@sdReasonOther": {
+    "description": "Static data Settings label or message: Unknown error."
+  },
+  "sdAdminKey": "Admin key",
+  "@sdAdminKey": {
+    "description": "Label for the session-only administrator key field."
+  },
+  "sdAdminCheckKey": "Check key",
+  "@sdAdminCheckKey": {
+    "description": "Submit the administrator key."
+  },
+  "sdAdminForget": "Forget key",
+  "@sdAdminForget": {
+    "description": "Forget the current administrator key."
+  },
+  "sdAdminChecking": "Checking key…",
+  "@sdAdminChecking": {
+    "description": "Key verification is in progress."
+  },
+  "sdAdminUnconfirmed": "Key could not be confirmed.",
+  "@sdAdminUnconfirmed": {
+    "description": "The key check did not answer."
+  },
+  "sdAdminRetryKey": "Retry key check",
+  "@sdAdminRetryKey": {
+    "description": "Retry checking the held key."
+  },
+  "sdAdminPaused": "Admin calls are paused after too many attempts.",
+  "@sdAdminPaused": {
+    "description": "The server temporarily paused administrator calls."
+  },
+  "sdAdminCheckAgain": "Check again",
+  "@sdAdminCheckAgain": {
+    "description": "Check the held admin key after the pause."
+  },
+  "sdAdminRejected": "Key rejected.",
+  "@sdAdminRejected": {
+    "description": "The server rejected the key."
+  },
+  "sdAdminAccepted": "Key accepted.",
+  "@sdAdminAccepted": {
+    "description": "The server accepted the key."
+  },
+  "sdAdminNotConfigured": "Admin actions are not configured on this server.",
+  "@sdAdminNotConfigured": {
+    "description": "The server has no administrator key configured."
+  },
+  "sdAdminSecureRequired": "Admin actions need a secure connection.",
+  "@sdAdminSecureRequired": {
+    "description": "The connection cannot safely carry an administrator key."
+  },
+  "sdAdminUpdate": "Update now",
+  "@sdAdminUpdate": {
+    "description": "Start a static-data update."
+  },
+  "sdAdminRollback": "Roll back",
+  "@sdAdminRollback": {
+    "description": "Roll back to the previous build."
+  },
+  "sdAdminRollbackTitle": "Roll back static data?",
+  "@sdAdminRollbackTitle": {
+    "description": "Title of the rollback confirmation."
+  },
+  "sdAdminRollbackQuestion": "Make build {build} active and hold build {active}?",
+  "@sdAdminRollbackQuestion": {
+    "description": "Confirmation naming the build to restore and the build to hold.",
+    "placeholders": {
+      "build": {
+        "type": "int"
+      },
+      "active": {
+        "type": "int"
+      }
+    }
+  },
+  "sdAdminCancel": "Cancel",
+  "@sdAdminCancel": {
+    "description": "Cancel the rollback confirmation."
+  },
+  "sdAdminAutoUpdate": "Auto-update",
+  "@sdAdminAutoUpdate": {
+    "description": "Label for the server auto-update switch."
+  },
+  "sdAdminSaving": "Saving auto-update…",
+  "@sdAdminSaving": {
+    "description": "The auto-update setting is being saved."
+  },
+  "sdAdminSettingUnconfirmed": "Auto-update change not confirmed.",
+  "@sdAdminSettingUnconfirmed": {
+    "description": "The auto-update write has an unknown outcome."
+  },
+  "sdAdminRetrySetting": "Retry auto-update change",
+  "@sdAdminRetrySetting": {
+    "description": "Retry the same auto-update write."
+  },
+  "sdAdminSettingConfirmed": "Auto-update saved.",
+  "@sdAdminSettingConfirmed": {
+    "description": "The setting was saved."
+  },
+  "sdAdminSettingChanged": "Auto-update changed on the server.",
+  "@sdAdminSettingChanged": {
+    "description": "The setting changed since it was displayed."
+  },
+  "sdAdminSettingNotSaved": "Auto-update could not be saved.",
+  "@sdAdminSettingNotSaved": {
+    "description": "The setting write failed."
+  },
+  "sdAdminWaiting": "Waiting for the last action.",
+  "@sdAdminWaiting": {
+    "description": "A previous admin action is still pending or followed."
+  },
+  "sdAdminNoRecord": "The server has no record of this action yet.",
+  "@sdAdminNoRecord": {
+    "description": "Public job lookup has not found the operation."
+  },
+  "sdAdminRetryJob": "Retry last action",
+  "@sdAdminRetryJob": {
+    "description": "Resend the same action with its original ID."
+  },
+  "sdAdminSending": "Sending action…",
+  "@sdAdminSending": {
+    "description": "An admin action is being sent."
+  },
+  "sdAdminStarted": "Work running.",
+  "@sdAdminStarted": {
+    "description": "The server started the action."
+  },
+  "sdAdminWatching": "No answer yet; watching the server.",
+  "@sdAdminWatching": {
+    "description": "Following an action whose answer is uncertain."
+  },
+  "sdAdminUnknown": "The action outcome is unknown.",
+  "@sdAdminUnknown": {
+    "description": "Following expired without a terminal outcome."
+  },
+  "sdAdminEnded": "Action ended.",
+  "@sdAdminEnded": {
+    "description": "An action ended."
+  },
+  "sdAdminImportRunning": "An import is running.",
+  "@sdAdminImportRunning": {
+    "description": "An action was refused because an import is running."
+  },
+  "sdAdminWorkerDown": "The worker is not running.",
+  "@sdAdminWorkerDown": {
+    "description": "The server worker is unavailable."
+  },
+  "sdAdminUpdateFailed": "Update failed.",
+  "@sdAdminUpdateFailed": {
+    "description": "The update failed."
+  },
+  "sdAdminRollbackFailed": "Rollback failed.",
+  "@sdAdminRollbackFailed": {
+    "description": "The rollback failed."
+  },
+  "sdAdminBuildsChanged": "Builds changed since confirmation. Refresh and try again.",
+  "@sdAdminBuildsChanged": {
+    "description": "The rollback confirmation was stale."
+  },
+  "sdAdminNoPrevious": "There is no previous build.",
+  "@sdAdminNoPrevious": {
+    "description": "There is no build to roll back to."
+  },
+  "sdAdminRolledBack": "Rolled back.",
+  "@sdAdminRolledBack": {
+    "description": "The rollback completed."
+  },
+  "sdAdminBusy": "Admin actions are busy.",
+  "@sdAdminBusy": {
+    "description": "The server refused a busy admin action."
+  },
+  "sdAdminMalformed": "The server could not accept this action.",
+  "@sdAdminMalformed": {
+    "description": "The server rejected a malformed action."
+  },
+  "sdAdminSwitched": "The new build is active.",
+  "@sdAdminSwitched": {
+    "description": "The update switched builds."
+  },
+  "sdAdminUpToDate": "Static data is up to date.",
+  "@sdAdminUpToDate": {
+    "description": "The update found no newer build."
+  },
+  "sdAdminHeld": "The build is held.",
+  "@sdAdminHeld": {
+    "description": "The update held the build."
+  },
+  "sdAdminOlder": "The available build is older.",
+  "@sdAdminOlder": {
+    "description": "The update found an older build."
+  },
+  "sdAdminStaged": "The new build is staged.",
+  "@sdAdminStaged": {
+    "description": "The update staged a build."
+  },
+  "sdReportTitle": "Change report",
+  "@sdReportTitle": {
+    "description": "Title of the static data change report page."
+  },
+  "sdReportBack": "Back to Settings",
+  "@sdReportBack": {
+    "description": "Back control on the change report page."
+  },
+  "sdReportLoading": "Loading the report…",
+  "@sdReportLoading": {
+    "description": "Shown while the change report is loading."
+  },
+  "sdReportUnavailable": "The report is unavailable",
+  "@sdReportUnavailable": {
+    "description": "Shown when a report request fails or is busy."
+  },
+  "sdReportRetry": "Try again",
+  "@sdReportRetry": {
+    "description": "Retries a change report request."
+  },
+  "sdReportNoPrevious": "No previous build to compare",
+  "@sdReportNoPrevious": {
+    "description": "No previous static data build exists."
+  },
+  "sdReportMissing": "No report was stored",
+  "@sdReportMissing": {
+    "description": "The change report was not stored."
+  },
+  "sdReportComparisonFailed": "The comparison failed",
+  "@sdReportComparisonFailed": {
+    "description": "The static data comparison failed."
+  },
+  "sdReportTooLarge": "The report is too large to show",
+  "@sdReportTooLarge": {
+    "description": "The report exceeds the server size limit."
+  },
+  "sdReportBuilds": "Builds",
+  "@sdReportBuilds": {
+    "description": "Heading for the two compared builds."
+  },
+  "sdReportFromBuild": "Previous build",
+  "@sdReportFromBuild": {
+    "description": "The older build in the comparison."
+  },
+  "sdReportToBuild": "Active build",
+  "@sdReportToBuild": {
+    "description": "The newer build in the comparison."
+  },
+  "sdReportNoFiles": "No files to show",
+  "@sdReportNoFiles": {
+    "description": "The report contains no files."
+  },
+  "sdReportFileType": "File",
+  "@sdReportFileType": {
+    "description": "Label for the file comparison type."
+  },
+  "sdReportFileBoth": "In both builds",
+  "@sdReportFileBoth": {
+    "description": "A file is present in both builds."
+  },
+  "sdReportFileNew": "New file",
+  "@sdReportFileNew": {
+    "description": "A file was added in the new build."
+  },
+  "sdReportFileRemoved": "Removed file",
+  "@sdReportFileRemoved": {
+    "description": "A file was removed in the new build."
+  },
+  "sdReportAdded": "Added",
+  "@sdReportAdded": {
+    "description": "Added records count and key list label."
+  },
+  "sdReportRemoved": "Removed",
+  "@sdReportRemoved": {
+    "description": "Removed records count and key list label."
+  },
+  "sdReportChanged": "Changed",
+  "@sdReportChanged": {
+    "description": "Changed records count and key list label."
+  },
+  "sdReportFields": "Changed fields",
+  "@sdReportFields": {
+    "description": "Changed field count and list heading."
+  },
+  "sdReportCutOff": "List cut off",
+  "@sdReportCutOff": {
+    "description": "Indicates a bounded list does not include all entries."
+  },
+  "sdReportNoKeys": "No keys to show",
+  "@sdReportNoKeys": {
+    "description": "There are no keys in this list."
+  },
+  "sdReportKeys": "{kind} keys ({count})",
+  "@sdReportKeys": {
+    "description": "Heading for a list of changed record keys, with its complete count.",
+    "placeholders": {
+      "kind": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
   }
 }

@@ -10,6 +10,9 @@ abstract final class SettingsKeys {
   /// The Server section.
   static const Key server = Key('settings.server');
 
+  /// The Static data section.
+  static const Key staticData = Key('settings.static-data');
+
   /// The About section.
   static const Key about = Key('settings.about');
 

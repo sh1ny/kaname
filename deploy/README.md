@@ -79,6 +79,16 @@ server keeps running with no active build, and the next start tries again.
 There is no import from a local zip for self-hosted installs yet; a later
 change adds one.
 
+Open **Settings → Static data** to see the bundle this device is using, the
+builds on the server and the latest check, import and switch. **View change
+report** compares the active and previous builds. Record counts cover the
+whole comparison; a cut-off mark means some record keys are not shown.
+
+With a session admin key, **Update now** asks the server to check for a newer
+build. Turn **Auto-update** off to stage a newer build without switching.
+**Roll back** switches to the previous build after confirmation and holds the
+build it replaced so it is not immediately reactivated.
+
 ## Web app
 
 The web app is one `--wasm` build that holds two builds of the same code, and

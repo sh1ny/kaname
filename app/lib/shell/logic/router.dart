@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../settings/ui/change_report_page.dart';
 import '../ui/app_frame.dart';
 import '../ui/not_found_screen.dart';
 import 'slot_registry.dart';
@@ -10,6 +11,9 @@ const String notFoundPath = '/not-found';
 
 /// The sub-path of the licences page under Settings.
 const String licencesSubPath = 'licences';
+
+/// The address of the static data change report under Settings.
+const String staticDataReportPath = '/settings/static-data/report';
 
 NoTransitionPage<void> _page(GoRouterState state, Widget child) =>
     NoTransitionPage<void>(key: state.pageKey, child: child);
@@ -69,6 +73,12 @@ GoRouter buildRouter({
                         path: licencesSubPath,
                         pageBuilder: (context, state) =>
                             _page(state, const LicensePage()),
+                      ),
+                    if (identical(slot, registry.settings))
+                      GoRoute(
+                        path: 'static-data/report',
+                        pageBuilder: (context, state) =>
+                            _page(state, const ChangeReportPage()),
                       ),
                   ],
                 ),
