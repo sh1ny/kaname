@@ -49,14 +49,14 @@ Test paths: `tools/kaname_tools/test/` (abbreviated `tools/…`) and `packages/k
 | esi-client → The transport is the only way out | Disallowed library imported | esi/guard_test.dart | disallowed dart: library in lib/ fails naming file and library | green |
 | esi-client → The transport is the only way out | Import leaves the package | esi/guard_test.dart | import, export or conditional URI leaving lib/ fails naming file and URI | green |
 | esi-client → The transport is the only way out | Runtime dependency added | esi/guard_test.dart | runtime dependency in pubspec fails naming it | green |
-| esi-client → The transport is the only way out | Transport fails | esi/result_test.dart | transport failure becomes a result, never an exception | red |
+| esi-client → The transport is the only way out | Transport fails | esi/result_test.dart | transport failure becomes a result, never an exception | green |
 | esi-client → Call identity stays with the transport | Two clients, two transports | esi/request_test.dart | two clients on two transports each send only their own request | red |
 | esi-client → Call identity stays with the transport | No identity in requests | esi/request_test.dart | built requests hold no Authorization, token or priority | red |
-| esi-client → Typed results, never thrown | Success | esi/result_test.dart | 200 with ETag, Expires, Last-Modified and X-Pages 3 | red |
-| esi-client → Typed results, never thrown | No content | esi/result_test.dart | 204 is a success without a body | red |
-| esi-client → Typed results, never thrown | Not modified | esi/result_test.dart | 304 is not modified with ETag and Expires | red |
-| esi-client → Typed results, never thrown | ESI error with body | esi/result_test.dart | 404 with an error message | red |
-| esi-client → Typed results, never thrown | ESI error without a readable body | esi/result_test.dart | 502 with a non-JSON body | red |
+| esi-client → Typed results, never thrown | Success | esi/result_test.dart | 200 with ETag, Expires, Last-Modified and X-Pages 3 | green |
+| esi-client → Typed results, never thrown | No content | esi/result_test.dart | 204 is a success without a body | green |
+| esi-client → Typed results, never thrown | Not modified | esi/result_test.dart | 304 is not modified with ETag and Expires | green |
+| esi-client → Typed results, never thrown | ESI error with body | esi/result_test.dart | 404 with an error message | green |
+| esi-client → Typed results, never thrown | ESI error without a readable body | esi/result_test.dart | 502 with a non-JSON body | green |
 | esi-client → Malformed responses are reported | Conforming body | esi/decode_test.dart | conforming alliance body decodes | red |
 | esi-client → Malformed responses are reported | Body that is not JSON | esi/decode_test.dart | non-JSON 200 is malformed at the root path | red |
 | esi-client → Malformed responses are reported | Missing required field | esi/decode_test.dart | missing required field is malformed with its path | red |
@@ -86,12 +86,12 @@ Test paths: `tools/kaname_tools/test/` (abbreviated `tools/…`) and `packages/k
 
 ## 2. Hand-written runtime
 
-- [ ] 2.1 Write failing tests in `esi/result_test.dart` for "Transport fails", "Success", "No content", "Not modified", "ESI error with body" and "ESI error without a readable body", driving a small hand-written test operation through a fixture transport (no generated code yet). Verify they fail for the missing runtime.
-- [ ] 2.2 Implement `lib/src/transport.dart` (`EsiTransport.send(EsiRequest) → Future<EsiTransportOutcome>`, sealed outcome; `EsiRequest` with method, operation id, relative `Uri` target, headers and body bytes), `lib/src/result.dart` (sealed `EsiResult<T>`: success, not modified, ESI error, malformed, invalid request, transport failure) and the response-header reading (ETag, Expires, Last-Modified, X-Pages). Verify the 2.1 rows go green.
-- [ ] 2.3 C6: write the doc comment on `EsiTransport` in `packages/kaname_esi/lib/src/transport.dart` stating that `User-Agent`, `Authorization`, `If-Modified-Since` and `X-Tenant` are the transport's headers, never the generated client's. Verify by reading the file; `dart doc`-style lint (`public_member_api_docs`) passes in `mise run analyze`.
-- [ ] 2.4 Implement `lib/src/catalogue_types.dart` (`EsiRoute`, `EsiRateGroup` with `none`, scopes, roles, cache facts as optional values, pagination kind) with its unit tests for value equality. C5: write the doc comment on `EsiRateGroup` stating that routes without `x-rate-limit` carry `EsiRateGroup.none` and that budget meaning belongs to the scheduler. Verify `mise run test:esi` and `mise run analyze`.
-- [ ] 2.5 C3: write the `packages/kaname_esi/lib/kaname_esi.dart` library doc comment stating that `int` is exact only up to 2^53 on the web and the client is not meant for web builds (ADR 0005). Verify by reading the file and `mise run analyze`.
-- [ ] 2.6 C8: confirm the text of C8 is in `specs/esi-client/spec.md` → "Call identity stays with the transport"; tick when present.
+- [x] 2.1 Write failing tests in `esi/result_test.dart` for "Transport fails", "Success", "No content", "Not modified", "ESI error with body" and "ESI error without a readable body", driving a small hand-written test operation through a fixture transport (no generated code yet). Verify they fail for the missing runtime.
+- [x] 2.2 Implement `lib/src/transport.dart` (`EsiTransport.send(EsiRequest) → Future<EsiTransportOutcome>`, sealed outcome; `EsiRequest` with method, operation id, relative `Uri` target, headers and body bytes), `lib/src/result.dart` (sealed `EsiResult<T>`: success, not modified, ESI error, malformed, invalid request, transport failure) and the response-header reading (ETag, Expires, Last-Modified, X-Pages). Verify the 2.1 rows go green.
+- [x] 2.3 C6: write the doc comment on `EsiTransport` in `packages/kaname_esi/lib/src/transport.dart` stating that `User-Agent`, `Authorization`, `If-Modified-Since` and `X-Tenant` are the transport's headers, never the generated client's. Verify by reading the file; `dart doc`-style lint (`public_member_api_docs`) passes in `mise run analyze`.
+- [x] 2.4 Implement `lib/src/catalogue_types.dart` (`EsiRoute`, `EsiRateGroup` with `none`, scopes, roles, cache facts as optional values, pagination kind) with its unit tests for value equality. C5: write the doc comment on `EsiRateGroup` stating that routes without `x-rate-limit` carry `EsiRateGroup.none` and that budget meaning belongs to the scheduler. Verify `mise run test:esi` and `mise run analyze`.
+- [x] 2.5 C3: write the `packages/kaname_esi/lib/kaname_esi.dart` library doc comment stating that `int` is exact only up to 2^53 on the web and the client is not meant for web builds (ADR 0005). Verify by reading the file and `mise run analyze`.
+- [x] 2.6 C8: confirm the text of C8 is in `specs/esi-client/spec.md` → "Call identity stays with the transport"; tick when present.
 
 ## 3. Spec reader and pin
 
