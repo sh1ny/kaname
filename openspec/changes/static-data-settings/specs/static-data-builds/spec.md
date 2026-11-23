@@ -34,7 +34,7 @@ The server SHALL treat auto-update as on when no setting is stored, and SHALL re
 - **THEN** the number of check records naming `update now` is unchanged
 
 ### Requirement: Switch and rollback records follow their outcome
-A committed switch or rollback SHALL store its succeeded record, with its time and builds, in its own transaction. A confirmed failure SHALL attempt a failed record, which MAY be missing when storing it fails. An outcome the server cannot confirm SHALL write no failed record; if it committed, its succeeded record committed with it.
+A committed switch or rollback SHALL store its succeeded record, with its time and builds, in its own transaction. A confirmed failure SHALL attempt a failed record, which MAY be missing if storing it fails. After an admin rollback loses its job connection, only the reconciliation transaction that conditionally ends its exact operation MAY write its failed record. An unconfirmed outcome SHALL write no failed record.
 
 #### Scenario: Committed switch recorded
 - **WHEN** a switch from build N to build N+1 commits
