@@ -1,0 +1,13 @@
+{
+  "operation": "GetAlliances",
+  "constructs": [
+    "not-modified"
+  ],
+  "response": {
+    "status": 304,
+    "headers": {
+      "ETag": "\"list-1\"",
+      "Expires": "Thu, 19 Nov 2026 12:05:00 GMT"
+    }
+  }
+}

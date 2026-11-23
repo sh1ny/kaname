@@ -1,0 +1,12 @@
+{
+  "operation": "GetCorporationsFreelanceJobsListing",
+  "constructs": [
+    "cursor"
+  ],
+  "response": {
+    "status": 503,
+    "body": {
+      "error": "synthetic: service unavailable"
+    }
+  }
+}

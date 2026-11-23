@@ -1,0 +1,22 @@
+{
+  "operation": "GetCharactersCosmeticsSkinrComponents",
+  "constructs": [
+    "unknown-variant"
+  ],
+  "response": {
+    "status": 200,
+    "body": {
+      "licenses": [
+        {
+          "component_id": 7003,
+          "runs": {
+            "seasonal": {
+              "until": "2027-01-01"
+            }
+          },
+          "type": "nanocoating"
+        }
+      ]
+    }
+  }
+}

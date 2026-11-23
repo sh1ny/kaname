@@ -1,0 +1,18 @@
+{
+  "operation": "GetCharactersCharacterIdNotifications",
+  "constructs": [
+    "unknown-enum"
+  ],
+  "response": {
+    "status": 200,
+    "body": [
+      {
+        "notification_id": 3,
+        "sender_id": 90000001,
+        "sender_type": "character",
+        "timestamp": "2026-11-19T12:00:00Z",
+        "type": "KanameSyntheticNotice"
+      }
+    ]
+  }
+}

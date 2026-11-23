@@ -1,0 +1,17 @@
+{
+  "operation": "GetAlliances",
+  "constructs": [
+    "scalar-array"
+  ],
+  "response": {
+    "status": 200,
+    "headers": {
+      "ETag": "\"list-1\""
+    },
+    "body": [
+      99000001,
+      99000002,
+      99000003
+    ]
+  }
+}

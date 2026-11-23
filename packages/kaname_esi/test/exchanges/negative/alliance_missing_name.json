@@ -1,0 +1,16 @@
+{
+  "operation": "GetAlliancesAllianceId",
+  "constructs": [
+    "malformed-body"
+  ],
+  "response": {
+    "status": 200,
+    "body": {
+      "creator_corporation_id": 98000001,
+      "creator_id": 90000001,
+      "date_founded": "2010-11-04T13:11:00Z",
+      "executor_corporation_id": 98000001,
+      "ticker": "KTA"
+    }
+  }
+}

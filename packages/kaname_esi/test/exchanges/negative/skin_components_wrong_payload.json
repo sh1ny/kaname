@@ -1,0 +1,20 @@
+{
+  "operation": "GetCharactersCosmeticsSkinrComponents",
+  "constructs": [
+    "malformed-body"
+  ],
+  "response": {
+    "status": 200,
+    "body": {
+      "licenses": [
+        {
+          "component_id": 7001,
+          "runs": {
+            "remaining": "three"
+          },
+          "type": "nanocoating"
+        }
+      ]
+    }
+  }
+}

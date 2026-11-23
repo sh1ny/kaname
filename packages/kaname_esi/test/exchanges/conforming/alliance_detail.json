@@ -1,0 +1,21 @@
+{
+  "operation": "GetAlliancesAllianceId",
+  "constructs": [
+    "object"
+  ],
+  "response": {
+    "status": 200,
+    "headers": {
+      "ETag": "\"kta-1\"",
+      "Expires": "Thu, 19 Nov 2026 12:00:00 GMT"
+    },
+    "body": {
+      "creator_corporation_id": 98000001,
+      "creator_id": 90000001,
+      "date_founded": "2010-11-04T13:11:00Z",
+      "executor_corporation_id": 98000001,
+      "name": "Kaname Test Alliance",
+      "ticker": "KTA"
+    }
+  }
+}
