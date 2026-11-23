@@ -125,14 +125,19 @@ class StaticDataEndpoint extends Endpoint {
       open = false;
       expiry.cancel();
       runtime.release(reservation);
-      await busSubscription?.cancel();
+      // Everything above and the close below happen in the caller's step,
+      // with no await in between: the expiry frees the places and hands
+      // Serverpod the end at once.
+      final cancelled = busSubscription?.cancel();
+      Future<void>? closed;
       if (closeController) {
         // The sync controller hands Serverpod the end at once, whether or
         // not the transport can take it.
-        final closed = controller.close();
+        closed = controller.close();
         runtime.endedByServer++;
-        await closed;
       }
+      await cancelled;
+      await closed;
     }
 
     // The 30-minute life runs from admission (D5): a stream Serverpod never
