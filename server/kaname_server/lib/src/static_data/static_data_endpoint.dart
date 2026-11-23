@@ -90,9 +90,19 @@ class StaticDataEndpoint extends Endpoint {
     if (announcer == null || bus == null) {
       return _refuse(session, client, AnnouncementRefusal.noAnnouncer);
     }
-    final scope = runtime.scope ?? _topicScope();
-    if (scope == null) {
-      return _refuse(session, client, AnnouncementRefusal.noDeliveryScope);
+    final DeliveryScope<BundleAnnouncement> scope;
+    switch (runtime.scope) {
+      case final DeliveryScope<BundleAnnouncement> given:
+        scope = given;
+      case null:
+        switch (resolveDeliveryScope(runtime.topic)) {
+          case DeliveryScopeAccepted(scope: final resolved):
+            scope = resolved;
+          case DeliveryScopeRefused(:final reason):
+            // The resolver's own reason, such as "topic needs the privacy
+            // scope", is the one the refusal log names.
+            return _refuseFor(session, client, reason);
+        }
     }
     final StreamReservation reservation;
     switch (runtime.admit(client)) {
@@ -186,8 +196,15 @@ class StaticDataEndpoint extends Endpoint {
     Session session,
     ClientKey client,
     AnnouncementRefusal reason,
+  ) => _refuseFor(session, client, reason.label);
+
+  /// As [_refuse], for a refusal the log names by [reason].
+  static Stream<BundleAnnouncement> _refuseFor(
+    Session session,
+    ClientKey client,
+    String reason,
   ) {
-    _warn(session, bundleAnnouncementRuntime.noteRefusal(client, reason.label));
+    _warn(session, bundleAnnouncementRuntime.noteRefusal(client, reason));
     return const Stream.empty();
   }
 
@@ -197,11 +214,4 @@ class StaticDataEndpoint extends Endpoint {
       bundleAnnouncementRuntime.logWarning(session, warning);
     }
   }
-
-  /// The scope the topic's visibility resolves to, or `null` when refused.
-  static DeliveryScope<BundleAnnouncement>? _topicScope() =>
-      switch (resolveDeliveryScope(staticDataTopic)) {
-        DeliveryScopeAccepted(:final scope) => scope,
-        DeliveryScopeRefused() => null,
-      };
 }

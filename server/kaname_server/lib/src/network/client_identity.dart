@@ -7,6 +7,8 @@ library;
 
 import 'dart:io';
 
+import 'package:meta/meta.dart';
+
 import 'ip_address.dart';
 import 'trusted_proxies.dart';
 
@@ -158,23 +160,26 @@ ClientIdentity clientKeyFor({
   // Whether every entry walked so far was blank: a blank entry before any
   // other is not an address, unless the whole header is blank.
   var blank = false;
-  final wholeHeader = _walkEntries(lines, (raw) {
-    final entry = raw.trim();
-    if (entry.isEmpty) {
-      blank = true;
+  final wholeHeader = walkForwardedEntries(
+    [for (final line in lines) _StringLine(line)],
+    (raw) {
+      final entry = raw.trim();
+      if (entry.isEmpty) {
+        blank = true;
+        return false;
+      }
+      final address = blank ? null : _parseEntry(entry);
+      if (address == null) {
+        found = ProxyFallback(proxy, ForwardedFallback.notAnAddress);
+        return true;
+      }
+      if (!trusted.trusts(address)) {
+        found = ForwardedClient(address);
+        return true;
+      }
       return false;
-    }
-    final address = blank ? null : _parseEntry(entry);
-    if (address == null) {
-      found = ProxyFallback(proxy, ForwardedFallback.notAnAddress);
-      return true;
-    }
-    if (!trusted.trusts(address)) {
-      found = ForwardedClient(address);
-      return true;
-    }
-    return false;
-  });
+    },
+  );
   if (found case final identity?) return identity;
   if (blank) {
     return ProxyFallback(
@@ -185,46 +190,89 @@ ClientIdentity clientKeyFor({
   return ProxyFallback(proxy, ForwardedFallback.noUntrustedEntry);
 }
 
-/// Walks the complete entries of the virtually joined [lines] from right
-/// to left, calling [visit] with each until it returns `true`.
+/// One `X-Forwarded-For` line as [walkForwardedEntries] reads it.
 ///
-/// Reads nothing outside the last [forwardedBudget] characters, separators
-/// included, and visits at most [maxForwardedEntries] entries. An entry is
-/// complete when its left end, a comma or the start of the first line,
-/// lies within the budget, so a fragment cut by it is never visited. Each
-/// entry is one substring of one line: nothing else is copied.
+/// The walk reads a line only through this: its length, single code
+/// units, and the substring of each entry it visits.
+abstract interface class ForwardedLine {
+  /// The line's length in UTF-16 code units.
+  int get length;
+
+  /// The code unit at [index].
+  int codeUnitAt(int index);
+
+  /// The text from [start] to [end], one entry.
+  String substring(int start, int end);
+}
+
+final class _StringLine implements ForwardedLine {
+  const _StringLine(this._text);
+
+  final String _text;
+
+  @override
+  int get length => _text.length;
+
+  @override
+  int codeUnitAt(int index) => _text.codeUnitAt(index);
+
+  @override
+  String substring(int start, int end) => _text.substring(start, end);
+}
+
+const int _comma = 0x2c;
+
+/// Walks the complete entries of the virtually joined [lines] from right
+/// to left, calling [visit] with each until it returns `true` (C8).
+///
+/// Reads nothing outside the last [forwardedBudget] code units, separators
+/// included: the search for an entry's left comma stops at the budget, and
+/// an entry is copied only once it is known to fit. Visits at most
+/// [maxForwardedEntries] entries and reads nothing of a 21st. An entry is
+/// complete when its left end, a comma or the start of the first line, lies
+/// within the budget, so a fragment cut by it is never visited.
 ///
 /// Returns whether every entry of the header was visited.
-bool _walkEntries(List<String> lines, bool Function(String entry) visit) {
+@visibleForTesting
+bool walkForwardedEntries(
+  List<ForwardedLine> lines,
+  bool Function(String entry) visit,
+) {
   var room = forwardedBudget;
   var visited = 0;
-
-  // Visits [entry], whose left end is within the budget; returns whether
-  // the walk stops there.
-  bool stopsAt(String entry) {
-    if (visited == maxForwardedEntries) return true;
-    visited++;
-    return visit(entry);
-  }
-
   for (var i = lines.length - 1; i >= 0; i--) {
     final line = lines[i];
     var end = line.length;
     while (true) {
-      final comma = end == 0 ? -1 : line.lastIndexOf(',', end - 1);
-      final entry = line.substring(comma + 1, end);
-      if (entry.length > room) return false;
-      room -= entry.length;
-      // The entry's left end: a comma in the line, the virtual comma before
-      // this line, or the start of the first line, which takes no room.
-      final atStart = comma < 0 && i == 0;
-      if (!atStart) {
-        if (room == 0) return false;
-        room--;
+      if (visited == maxForwardedEntries) return false;
+      // Search left for the entry's comma, reading only code units that
+      // the entry, or the comma, would still fit the budget with.
+      var at = end - 1;
+      while (at >= 0 && end - at <= room && line.codeUnitAt(at) != _comma) {
+        at--;
       }
-      if (stopsAt(entry)) return false;
-      if (comma < 0) break;
-      end = comma;
+      final int start;
+      if (at >= 0 && end - at <= room) {
+        // A comma within the budget: it and the entry take room.
+        start = at + 1;
+        room -= end - at;
+      } else if (at < 0 && end <= room) {
+        // The entry starts the line: the virtual comma before it takes
+        // room, unless this is the first line.
+        start = 0;
+        room -= end;
+        if (i > 0) {
+          if (room == 0) return false;
+          room--;
+        }
+      } else {
+        // The budget ends inside the entry.
+        return false;
+      }
+      visited++;
+      if (visit(line.substring(start, end))) return false;
+      if (start == 0) break;
+      end = start - 1;
     }
   }
   return true;

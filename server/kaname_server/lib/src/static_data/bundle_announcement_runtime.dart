@@ -10,6 +10,7 @@ import '../network/client_identity.dart';
 import '../network/trusted_proxies.dart';
 import '../realtime/server_clock.dart';
 import 'bundle_announcer.dart';
+import 'static_data_bundle_topic.dart';
 
 /// How many announcement streams the server holds at most (C20).
 const int defaultMaxStreams = 2000;
@@ -49,10 +50,7 @@ enum AnnouncementRefusal {
   serverLimit('server limit'),
 
   /// The server runs no announcer.
-  noAnnouncer('no announcer'),
-
-  /// The topic's delivery scope was refused.
-  noDeliveryScope('no delivery scope');
+  noAnnouncer('no announcer');
 
   const AnnouncementRefusal(this.label);
 
@@ -134,6 +132,10 @@ final class BundleAnnouncementRuntime {
   /// The delivery scope each send must pass, or `null` for the topic's own
   /// (public) scope (D7).
   DeliveryScope<BundleAnnouncement>? scope;
+
+  /// The topic whose delivery scope a stream resolves when [scope] is
+  /// `null`: the public [staticDataTopic], unless a test replaces it.
+  Topic<BundleAnnouncement> topic = staticDataTopic;
 
   /// The clock the streams' 30-minute lives run on.
   ServerClock clock = const SystemClock();
@@ -294,6 +296,7 @@ final class BundleAnnouncementRuntime {
     announcer = null;
     bus = null;
     scope = null;
+    topic = staticDataTopic;
     clock = const SystemClock();
     trustedProxies = TrustedProxies.none;
     identifyClient = null;

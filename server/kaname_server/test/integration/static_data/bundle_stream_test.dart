@@ -1091,6 +1091,32 @@ void main() {
       expect(bundleAnnouncementRuntime.openStreams, 0);
     });
 
+    // Scenario: Scoped topic without a privacy scope (realtime-bus → Every
+    // delivery passes the delivery scope), at the endpoint.
+    test('a scoped topic is refused at the endpoint with reason "topic needs '
+        'the privacy scope"', () async {
+      await seedBuild(session, 100, SdeBuildState.active);
+      await seedBundle(session, 100);
+      await rig.start();
+      final warnings = <String>[];
+      bundleAnnouncementRuntime
+        ..logWarning = ((_, warning) {
+          warnings.add(warning);
+        })
+        ..topic = const Topic<BundleAnnouncement>(
+          name: 'static-data',
+          version: 1,
+          visibility: TopicVisibility.scoped,
+        );
+
+      final refused = _Direct(rig.open(session));
+      await refused.ended;
+      expect(refused.events, isEmpty);
+      expect(refused.errors, isEmpty);
+      expect(warnings, [contains('topic needs the privacy scope')]);
+      expect(bundleAnnouncementRuntime.openStreams, 0);
+    });
+
     // The proxy fallback is warned at the refusal rate (D6), naming the
     // proxy's own address while its /64 key counts its streams.
     test('a trusted IPv6 proxy with no usable forwarded header is warned '

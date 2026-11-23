@@ -212,6 +212,46 @@ void main() {
     );
   });
 
+  group('the walk reads only within its bounds (C8)', () {
+    test('no code unit left of the last 2 KiB is read, and no entry is '
+        'copied before it is known to fit', () {
+      // Fifteen 200-unit entries: ten and their commas fit in 2 KiB, and
+      // the budget ends inside the eleventh.
+      final tail = List.filled(15, 'y' * 200).join(',');
+      final line = _ReadLog('${'x' * 10000},$tail');
+      final visited = <String>[];
+      final whole = walkForwardedEntries([line], (entry) {
+        visited.add(entry);
+        return false;
+      });
+      expect(whole, isFalse);
+      expect(visited, List.filled(10, 'y' * 200));
+      expect(line.lowestRead, line.length - forwardedBudget);
+      for (final (start, end) in line.copies) {
+        expect(line.length - start, lessThanOrEqualTo(forwardedBudget));
+        expect(end - start, lessThan(forwardedBudget));
+      }
+    });
+
+    test('an entry longer than the budget is never copied', () {
+      final line = _ReadLog('x' * 10000);
+      final whole = walkForwardedEntries([line], (_) => false);
+      expect(whole, isFalse);
+      expect(line.copies, isEmpty);
+      expect(line.lowestRead, line.length - forwardedBudget);
+    });
+
+    test('nothing of a 21st entry is read', () {
+      final entries = [for (var i = 1; i <= 30; i++) '10.0.0.$i'];
+      final line = _ReadLog(entries.join(','));
+      walkForwardedEntries([line], (_) => false);
+      // The 20th entry from the right and the comma left of it.
+      final twentieth = entries.reversed.take(20).join(',').length;
+      expect(line.copies, hasLength(maxForwardedEntries));
+      expect(line.lowestRead, line.length - twentieth - 1);
+    });
+  });
+
   test('the walk stops at the first untrusted entry and never reads the '
       'entries to its left', () {
     // Left of the client: more than 2 KiB of entries, none an address.
@@ -272,4 +312,32 @@ void main() {
     expect(identity, isA<DirectClient>());
     expect(identity.key, keyOf('203.0.113.7'));
   });
+}
+
+/// A [ForwardedLine] that records what the walk reads of it.
+final class _ReadLog implements ForwardedLine {
+  _ReadLog(this._text);
+
+  final String _text;
+
+  /// The lowest index read through [codeUnitAt], or [length] if none.
+  late int lowestRead = _text.length;
+
+  /// The ranges copied through [substring], in order.
+  final List<(int, int)> copies = [];
+
+  @override
+  int get length => _text.length;
+
+  @override
+  int codeUnitAt(int index) {
+    if (index < lowestRead) lowestRead = index;
+    return _text.codeUnitAt(index);
+  }
+
+  @override
+  String substring(int start, int end) {
+    copies.add((start, end));
+    return _text.substring(start, end);
+  }
 }
