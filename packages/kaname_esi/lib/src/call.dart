@@ -105,8 +105,18 @@ abstract final class EsiCall {
     );
   }
 
-  /// Percent-encodes one path parameter value.
-  static String segment(Object? value) => Uri.encodeComponent('$value');
+  /// Percent-encodes one path parameter value, the parameter named [path].
+  ///
+  /// Percent-encoding leaves `.` and `..` as they are, and URI
+  /// normalisation would treat them as path syntax, so an empty, `.` or `..`
+  /// value raises [EsiInvalidArgument] instead of reaching the transport.
+  static String segment(Object? value, String path) => switch ('$value') {
+    '' || '.' || '..' => throw EsiInvalidArgument(
+      path,
+      'must not be empty, "." or ".." in a path segment',
+    ),
+    final text => Uri.encodeComponent(text),
+  };
 
   /// The headers a request carries: always `X-Compatibility-Date`, and the
   /// optional ones only when given.

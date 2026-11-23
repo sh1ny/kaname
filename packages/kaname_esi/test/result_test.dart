@@ -10,7 +10,7 @@ Future<EsiResult<int>> getThing(EsiTransport transport, int id) => EsiCall.run(
   EsiRequest(
     method: EsiMethod.get,
     operationId: 'GetThingsId',
-    target: EsiCall.target('/things/${EsiCall.segment(id)}'),
+    target: EsiCall.target('/things/${EsiCall.segment(id, 'id')}'),
     headers: EsiCall.headers(compatibilityDate: '2026-11-19'),
   ),
   decode: (json) => switch (json) {
@@ -26,7 +26,7 @@ Future<EsiResult<void>> deleteThing(EsiTransport transport, int id) =>
       EsiRequest(
         method: EsiMethod.delete,
         operationId: 'DeleteThingsId',
-        target: EsiCall.target('/things/${EsiCall.segment(id)}'),
+        target: EsiCall.target('/things/${EsiCall.segment(id, 'id')}'),
         headers: EsiCall.headers(compatibilityDate: '2026-11-19'),
       ),
       decode: (_) {},

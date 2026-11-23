@@ -49,8 +49,37 @@ void main() {
       );
       expect(
         () => EsiJson.dateTime('soon', r'$.at'),
-        throwsA(_decodeError(r'$.at', 'expected a date, got "soon"')),
+        throwsA(_decodeError(r'$.at', 'expected a date-time, got "soon"')),
       );
+    });
+
+    test('dates and date-times are read strictly, never normalised', () {
+      expect(EsiJson.date('2030-02-28', r'$'), DateTime.utc(2030, 2, 28));
+      expect(
+        EsiJson.dateTime('2030-01-02T05:04:05.5+02:00', r'$'),
+        DateTime.utc(2030, 1, 2, 3, 4, 5, 500),
+      );
+      for (final text in ['2030-02-30', '2030-13-01', '2030-1-2', '20300102']) {
+        expect(
+          () => EsiJson.date(text, r'$.d'),
+          throwsA(_decodeError(r'$.d', 'expected a date, got "$text"')),
+          reason: text,
+        );
+      }
+      for (final text in [
+        '2030-01-02',
+        '2030-01-02T03:04:05',
+        '2030-02-30T03:04:05Z',
+        '2030-01-02T24:00:00Z',
+        '2030-01-02T03:60:00Z',
+        '2030-01-02 03:04:05Z',
+      ]) {
+        expect(
+          () => EsiJson.dateTime(text, r'$.t'),
+          throwsA(_decodeError(r'$.t', 'expected a date-time, got "$text"')),
+          reason: text,
+        );
+      }
     });
 
     test('a missing required field is a mismatch at its path', () {

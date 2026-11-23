@@ -85,6 +85,17 @@ void main() {
       );
     });
 
+    for (final founded in ['2010-11-04', '2010-02-30T13:11:00Z']) {
+      test('date_founded "$founded" is malformed with its path', () async {
+        expect(
+          await _alliance200(
+            _alliance.replaceFirst('2010-11-04T13:11:00Z', founded),
+          ),
+          _malformed(r'$.date_founded'),
+        );
+      });
+    }
+
     test('explicit null for an optional, non-nullable field is malformed '
         'with its path', () async {
       expect(

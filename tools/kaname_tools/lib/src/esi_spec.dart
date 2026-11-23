@@ -910,6 +910,48 @@ final class _Reader {
     return EsiOneOfShape(variants);
   }
 
+  /// Refuses a parameter [schema] the client cannot write into a request:
+  /// a path parameter must be a scalar (integer, number, string or
+  /// boolean), a query parameter a scalar or an array of scalars. A
+  /// `$ref` is followed to the schema it names.
+  void _serialisable(
+    EsiSchema schema,
+    EsiParameterLocation location,
+    String path,
+  ) {
+    final shape = _resolved(schema.shape);
+    final ok = switch (shape) {
+      EsiArrayShape(:final items) =>
+        location == EsiParameterLocation.query && _isScalar(items.shape),
+      _ => _isScalar(shape),
+    };
+    if (!ok) {
+      _refuse(
+        path,
+        'a ${location.name} parameter must be a scalar'
+        '${location == EsiParameterLocation.query ? ' or an array of scalars' : ''}',
+      );
+    }
+  }
+
+  bool _isScalar(EsiShape shape) => switch (_resolved(shape)) {
+    EsiIntegerShape() ||
+    EsiNumberShape() ||
+    EsiStringShape() ||
+    EsiBooleanShape() => true,
+    _ => false,
+  };
+
+  /// [shape], with references followed to the component they name.
+  EsiShape _resolved(EsiShape shape) {
+    final seen = <String>{};
+    var current = shape;
+    while (current is EsiRefShape && seen.add(current.name)) {
+      current = _components[current.name]!.shape;
+    }
+    return current;
+  }
+
   /// Checks the `default` response has the shape the runtime assumes when
   /// it reads an error message: no body, or a JSON object whose `error`
   /// field is a string.
@@ -923,9 +965,7 @@ final class _Reader {
     final media = _object(content['application/json'], mediaPath);
     _onlyKeys(media, {'schema'}, mediaPath);
     final schemaPath = _child(mediaPath, 'schema');
-    var shape = _schema(media['schema'], schemaPath).shape;
-    if (shape case EsiRefShape(:final name)) shape = _components[name]!.shape;
-    switch (shape) {
+    switch (_resolved(_schema(media['schema'], schemaPath).shape)) {
       case EsiObjectShape(:final properties)
           when properties['error']?.shape is EsiStringShape:
         return;
@@ -1011,12 +1051,15 @@ final class _Reader {
           (!required || !template.contains('{$name}'))) {
         _refuse(parameterPath, 'path parameter not required in "$template"');
       }
+      final schemaPath = _child(parameterPath, 'schema');
+      final schema = _schema(node['schema'], schemaPath);
+      _serialisable(schema, location, schemaPath);
       parameters.add(
         EsiParameter(
           name: name,
           location: location,
           required: required,
-          schema: _schema(node['schema'], _child(parameterPath, 'schema')),
+          schema: schema,
           description: _optionalString(node, 'description', parameterPath),
           explode: _optionalBool(node, 'explode', parameterPath, orElse: true),
         ),

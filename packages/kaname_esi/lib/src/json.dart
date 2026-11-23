@@ -102,12 +102,59 @@ abstract final class EsiJson {
     _ => _mismatch(path, 'a boolean', json),
   };
 
-  /// A `date` or `date-time` string.
+  /// A `date` string, `YYYY-MM-DD`, as a UTC midnight.
+  ///
+  /// Anything else, or a day the calendar does not have, is a mismatch:
+  /// nothing is normalised.
+  static DateTime date(Object? json, String path) {
+    final text = string(json, path);
+    if (_date.firstMatch(text) case final match?) {
+      final [year, month, day] = [
+        for (final group in [1, 2, 3]) int.parse(match[group]!),
+      ];
+      if (_isDay(year, month, day)) return DateTime.utc(year, month, day);
+    }
+    throw EsiDecodeException(path, 'expected a date, got "$text"');
+  }
+
+  /// A `date-time` string as RFC 3339 states it: a date, a time and an
+  /// offset (`Z` or `±hh:mm`).
+  ///
+  /// A missing time or offset, or a component out of range, is a mismatch:
+  /// nothing is normalised.
   static DateTime dateTime(Object? json, String path) {
     final text = string(json, path);
-    return DateTime.tryParse(text) ??
-        (throw EsiDecodeException(path, 'expected a date, got "$text"'));
+    if (_dateTime.firstMatch(text) case final match?) {
+      final [year, month, day, hour, minute, second] = [
+        for (final group in [1, 2, 3, 4, 5, 6]) int.parse(match[group]!),
+      ];
+      final offsetHour = int.tryParse(match[7] ?? '') ?? 0;
+      final offsetMinute = int.tryParse(match[8] ?? '') ?? 0;
+      if (_isDay(year, month, day) &&
+          hour < 24 &&
+          minute < 60 &&
+          second < 60 &&
+          offsetHour < 24 &&
+          offsetMinute < 60) {
+        return DateTime.parse(text).toUtc();
+      }
+    }
+    throw EsiDecodeException(path, 'expected a date-time, got "$text"');
   }
+
+  static final RegExp _date = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');
+
+  static final RegExp _dateTime = RegExp(
+    r'^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?'
+    r'(?:[Zz]|[+-](\d{2}):(\d{2}))$',
+  );
+
+  /// Whether [day] exists in [month] of [year].
+  static bool _isDay(int year, int month, int day) =>
+      month >= 1 &&
+      month <= 12 &&
+      day >= 1 &&
+      DateTime.utc(year, month, day).day == day;
 
   /// Any JSON value, as decoded.
   static Object? any(Object? json, String path) => json;

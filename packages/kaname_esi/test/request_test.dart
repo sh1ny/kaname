@@ -34,7 +34,6 @@ void main() {
         final request = transport.requests.single;
         expect(request.method, EsiMethod.get);
         expect('${request.target}', '/characters/90000001/assets?page=2');
-        expect(request.headers['X-Compatibility-Date'], '2026-11-19');
         expect(request.headers['X-Compatibility-Date'], esiCompatibilityDate);
         for (final absent in [
           'If-None-Match',
@@ -67,6 +66,29 @@ void main() {
         ),
       );
       expect(transport.requests, isEmpty);
+    });
+
+    for (final id in ['', '.', '..']) {
+      test(
+        'path argument "$id" is an invalid request and nothing is sent',
+        () async {
+          final result = await client.getCosmeticsSkinr(skinrId: id);
+          expect(
+            result,
+            isA<EsiInvalidRequest<Object?>>().having(
+              (r) => r.parameter,
+              'parameter',
+              'skinr_id',
+            ),
+          );
+          expect(transport.requests, isEmpty);
+        },
+      );
+    }
+
+    test('a path argument holding dots among other text is encoded', () async {
+      await client.getCosmeticsSkinr(skinrId: 'a.b');
+      expect('${transport.requests.single.target}', '/cosmetics/skinr/a.b');
     });
   });
 

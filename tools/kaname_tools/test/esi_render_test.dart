@@ -58,7 +58,7 @@ void main() {
       expect(client, _has('required int widgetId'));
       expect(client, _has('EsiLanguage? acceptLanguage'));
       expect(client, _has('String? ifNoneMatch'));
-      expect(client, _has(r'${EsiCall.segment(widgetId)}'));
+      expect(client, _has(r"${EsiCall.segment(widgetId, 'widget_id')}"));
     });
 
     test('renders an operation without a body as returning void', () {

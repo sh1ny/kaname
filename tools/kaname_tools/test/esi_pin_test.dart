@@ -114,6 +114,53 @@ void main() {
     ]);
   });
 
+  test('a header enum holding the pin date and another is refused', () {
+    final document = esiFixture();
+    final parameters =
+        (document['components']! as Map<String, Object?>)['parameters']!
+            as Map<String, Object?>;
+    ((parameters['CompatibilityDate']! as Map<String, Object?>)['schema']!
+        as Map<String, Object?>)['enum'] = [
+      esiFixtureDate,
+      '2030-01-01',
+    ];
+    final problems = _refusal(
+      loadEsiSnapshot(esiRepository(snapshot: jsonEncode(document))),
+    );
+    expect(problems, [
+      "The pin's date 2030-01-02 differs from the snapshot's "
+          'X-Compatibility-Date enum 2030-01-02, 2030-01-01',
+    ]);
+  });
+
+  test('another header definition naming the pin date does not hide a '
+      'mismatch', () {
+    final document = esiFixture();
+    final parameters =
+        (document['components']! as Map<String, Object?>)['parameters']!
+            as Map<String, Object?>;
+    ((parameters['CompatibilityDate']! as Map<String, Object?>)['schema']!
+        as Map<String, Object?>)['enum'] = [
+      '2030-01-01',
+    ];
+    parameters['UnusedCompatibilityDate'] = {
+      'in': 'header',
+      'name': 'X-Compatibility-Date',
+      'required': true,
+      'schema': {
+        'type': 'string',
+        'enum': [esiFixtureDate],
+      },
+    };
+    final problems = _refusal(
+      loadEsiSnapshot(esiRepository(snapshot: jsonEncode(document))),
+    );
+    expect(problems, [
+      "The pin's date 2030-01-02 differs from the snapshot's "
+          'X-Compatibility-Date enum 2030-01-01',
+    ]);
+  });
+
   // Scenario: Snapshot edited by hand.
   test('a changed snapshot byte fails the hash check before parsing', () {
     final text = esiFixtureText();

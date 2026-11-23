@@ -281,6 +281,43 @@ void main() {
             'unsupported response status "202"',
           ),
           (
+            'an object query parameter',
+            (d) =>
+                _map(
+                  (_at(d, ['paths', '/widgets', 'get'])['parameters']!
+                      as List<Object?>)[0],
+                )['schema'] = {
+                  'type': 'object',
+                  'properties': {
+                    'a': {'type': 'string'},
+                  },
+                },
+            '#/paths/~1widgets/get/parameters/0/schema',
+            'a query parameter must be a scalar or an array of scalars',
+          ),
+          (
+            'a query array whose items reference an object',
+            (d) =>
+                _map(
+                  (_at(d, ['paths', '/widgets', 'get'])['parameters']!
+                      as List<Object?>)[1],
+                )['schema'] = {
+                  'type': 'array',
+                  'items': {r'$ref': '#/components/schemas/Widget'},
+                },
+            '#/paths/~1widgets/get/parameters/1/schema',
+            'a query parameter must be a scalar or an array of scalars',
+          ),
+          (
+            'a path parameter referencing an object',
+            (d) => _map(
+              (_at(d, ['paths', '/widgets/{widget_id}', 'get'])['parameters']!
+                  as List<Object?>)[0],
+            )['schema'] = {r'$ref': '#/components/schemas/Widget'},
+            '#/paths/~1widgets~1{widget_id}/get/parameters/0/schema',
+            'a path parameter must be a scalar',
+          ),
+          (
             'a default response that is not JSON',
             (d) =>
                 _at(d, ['paths', '/gadgets', 'get', 'responses'])['default'] = {

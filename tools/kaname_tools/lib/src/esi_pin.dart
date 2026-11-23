@@ -100,8 +100,11 @@ final class EsiPin {
 }
 
 /// Lists how [document], a decoded spec, disagrees with the compatibility
-/// [date]: its `info.version` and its `X-Compatibility-Date` parameter enum
-/// must both name it.
+/// [date]: its `info.version` must name it, and every `X-Compatibility-Date`
+/// header parameter must exist and list exactly that one date.
+///
+/// Each header definition is checked on its own, so another definition,
+/// or a second date in the same enum, cannot make a mismatch pass.
 List<String> esiDateProblems(
   Object? document,
   String date, {
@@ -111,26 +114,28 @@ List<String> esiDateProblems(
     {'info': {'version': final String version}} => version,
     _ => null,
   };
-  final dates = <String>[
+  final enums = <List<Object?>?>[
     if (document case {
       'components': {'parameters': final Map<String, Object?> parameters},
     })
       for (final parameter in parameters.values)
-        if (parameter case {
-          'in': 'header',
-          'name': 'X-Compatibility-Date',
-          'schema': {'enum': final List<Object?> values},
-        })
-          for (final value in values)
-            if (value is String) value,
+        if (parameter case {'in': 'header', 'name': 'X-Compatibility-Date'})
+          switch (parameter) {
+            {'schema': {'enum': final List<Object?> values}} => values,
+            _ => null,
+          },
   ];
   return [
     if (version != date)
       '$what date $date differs from the snapshot\'s info.version '
           '${version ?? '(missing)'}',
-    if (!dates.contains(date))
+    if (enums.isEmpty)
       '$what date $date differs from the snapshot\'s X-Compatibility-Date '
-          'enum ${dates.isEmpty ? '(missing)' : dates.join(', ')}',
+          'enum (missing)',
+    for (final values in enums)
+      if (values == null || values.length != 1 || values.single != date)
+        '$what date $date differs from the snapshot\'s X-Compatibility-Date '
+            'enum ${values == null || values.isEmpty ? '(missing)' : values.join(', ')}',
   ];
 }
 
