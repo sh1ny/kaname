@@ -1075,6 +1075,10 @@ void main() {
       await seedBundle(session, 100);
       await rig.start();
       rig.identifyAs('198.51.100.1');
+      // The endpoint takes the bus at admission, so it is counted from
+      // there: a late listen must subscribe to it not even for a moment.
+      final bus = _CountingBus(bundleAnnouncementRuntime.bus!);
+      bundleAnnouncementRuntime.bus = bus;
       final unlistened = rig.open(session);
       expect(bundleAnnouncementRuntime.streamsOf(clientA), 1);
 
@@ -1087,6 +1091,7 @@ void main() {
       await feed.ended;
       expect(feed.events, isEmpty);
       expect(feed.errors, isEmpty);
+      expect(bus.subscriptions, 0, reason: 'the late listen subscribed');
       await rig.listenersAre(0);
       expect(bundleAnnouncementRuntime.openStreams, 0);
     });
@@ -1331,6 +1336,27 @@ void main() {
       }
     }, timeout: const Timeout(Duration(minutes: 2)));
   });
+}
+
+/// A [RealtimeBus] that counts its [subscribe] calls and passes everything
+/// to the bus it wraps.
+final class _CountingBus implements RealtimeBus {
+  _CountingBus(this._inner);
+
+  final RealtimeBus _inner;
+
+  /// How many times [subscribe] was called.
+  int subscriptions = 0;
+
+  @override
+  Future<void> publish<T>(Topic<T> topic, T message) =>
+      _inner.publish(topic, message);
+
+  @override
+  Stream<T> subscribe<T>(Topic<T> topic) {
+    subscriptions++;
+    return _inner.subscribe(topic);
+  }
 }
 
 /// The longest a subscriber waits for its first event (A6).
