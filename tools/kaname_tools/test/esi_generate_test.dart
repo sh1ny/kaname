@@ -21,14 +21,13 @@ void main() {
         'catalogue.dart',
         'esi.dart',
         'gadgets_client.dart',
-        'gadgets_models.dart',
         'pin.dart',
         'widgets_client.dart',
         'widgets_models.dart',
       ])
         '$esiGeneratedDirectory/$name',
     ]);
-    expect(result.out, contains('7 files for $esiFixtureDate, 7 written'));
+    expect(result.out, contains('6 files for $esiFixtureDate, 6 written'));
   });
 
   test('generate twice: the second run writes nothing', () async {
@@ -60,7 +59,14 @@ void main() {
   });
 
   test('a snapshot that differs from its pin writes nothing', () async {
-    final fs = esiRepository(snapshot: '${esiFixtureText()}\n');
+    final fs = esiRepository(
+      snapshot: '${esiFixtureText()}\n',
+      pin: EsiPin(
+        date: esiFixtureDate,
+        source: esiFixtureSource,
+        sha256: esiSha256(esiFixtureText()),
+      ).render(),
+    );
     final writes = fs.writeCount;
     final result = await runTool(fs, ['esi', 'generate']);
     expect(result.code, exitCheckFailed);
@@ -83,7 +89,8 @@ void main() {
   test('a name collision writes nothing and names both sources', () async {
     final text = esiFixtureText().replaceFirst(
       '"Empty": {',
-      '"PriceIsk": {"type": "object"}, "Empty": {',
+      '"PriceIsk": {"type": "object", "properties": '
+          '{"amount": {"type": "number"}}}, "Empty": {',
     );
     // Reach PriceIsk from the POST response so it is generated.
     final collides = text.replaceFirst(

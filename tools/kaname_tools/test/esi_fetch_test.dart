@@ -55,7 +55,7 @@ void main() {
     final (url, headers) = downloader.calls.single;
     expect(url, esiSpecUrl(esiFixtureDate));
     expect(headers, {'X-Compatibility-Date': esiFixtureDate});
-    expect(fs.filePaths, [esiPinPath, esiSnapshotPath]);
+    expect(fs.filePaths, [esiSnapshotPath, esiPinPath]);
     expect(fs.readAsString(esiSnapshotPath), esiFixtureText());
     final (:pin, :problems) = parseEsiPin(fs.readAsString(esiPinPath));
     expect(problems, isEmpty);
@@ -205,7 +205,7 @@ void main() {
             ),
           ),
     );
-    expect(fs.filePaths, [esiPinPath, esiSnapshotPath]);
+    expect(fs.filePaths, [esiSnapshotPath, esiPinPath]);
     expect(
       loadEsiSnapshot(fs),
       isA<EsiSnapshotRefused>().having(

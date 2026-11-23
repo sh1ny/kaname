@@ -39,7 +39,6 @@ void main() {
         'catalogue.dart',
         'esi.dart',
         'gadgets_client.dart',
-        'gadgets_models.dart',
         'pin.dart',
         'widgets_client.dart',
         'widgets_models.dart',
