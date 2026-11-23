@@ -1077,8 +1077,9 @@ final class _Renderer {
     return out.toString();
   }
 
-  /// The generated files [types] reference outside [file].
-  Set<String> _imports(String file, Iterable<_Ty> types) {
+  /// The models files [types] reference, other than the one of the tag
+  /// whose file stem is [stem].
+  Set<String> _imports(String stem, Iterable<_Ty> types) {
     final files = <String>{};
     void visit(_Ty ty) {
       switch (ty) {
@@ -1091,7 +1092,7 @@ final class _Renderer {
         case _Nullable(:final inner):
           visit(inner);
         case _NamedTy(:final named):
-          if (named.file != file) files.add('${named.file}_models.dart');
+          if (named.file != stem) files.add('${named.file}_models.dart');
       }
     }
 
@@ -1108,20 +1109,7 @@ final class _Renderer {
           _Enum() => const <_Ty>[],
         },
     ];
-    final out =
-        StringBuffer(
-            _header(
-              'Models of the pinned spec, first used by its ${_tagOf(stem)} '
-              'operations.',
-            ),
-          )
-          ..writeln("import '../call.dart';")
-          ..writeln("import '../json.dart';")
-          ..writeln("import '../values.dart';");
-    for (final file in _imports('${stem}_models.dart', used).toList()..sort()) {
-      out.writeln("import '$file';");
-    }
-    out.writeln();
+    final out = StringBuffer();
     for (final type in types) {
       switch (type) {
         case _Enum():
@@ -1133,7 +1121,45 @@ final class _Renderer {
       }
       out.writeln();
     }
-    return out.toString();
+    return _withImports(
+      'Models of the pinned spec, first used by its ${_tagOf(stem)} '
+      'operations.',
+      _imports(stem, used),
+      out.toString(),
+    );
+  }
+
+  /// The runtime libraries of `kaname_esi` and the names each declares
+  /// that generated code uses.
+  static const Map<String, List<String>> _runtime = {
+    '../call.dart': ['EsiCall', 'EsiDecodeException', 'EsiInvalidArgument'],
+    '../client.dart': ['EsiClient'],
+    '../json.dart': ['EsiJson', 'EsiCheck'],
+    '../result.dart': ['EsiResult'],
+    '../transport.dart': ['EsiMethod', 'EsiRequest'],
+    '../values.dart': [
+      'EsiEnum',
+      'EsiOneOf',
+      'EsiVariant',
+      'EsiUnknownVariant',
+      'EsiWireEnum',
+    ],
+  };
+
+  /// A file headed by [what], an import of each runtime library [body] names
+  /// and of each generated file in [generated], then [body].
+  String _withImports(String what, Set<String> generated, String body) {
+    final imports = [
+      for (final MapEntry(key: file, value: names) in _runtime.entries)
+        if (RegExp('\\b(${names.join('|')})\\b').hasMatch(body)) file,
+      ...generated.toList()..sort(),
+    ];
+    return [
+      _header(what),
+      for (final file in imports) "import '$file';\n",
+      if (imports.isNotEmpty) '\n',
+      body,
+    ].join();
   }
 
   String _tagOf(String stem) =>
@@ -1357,28 +1383,17 @@ final class _Renderer {
         ?call.success,
       ],
     ];
-    final out = StringBuffer(_header('The $tag operations of the pinned spec.'))
-      ..writeln("import '../call.dart';")
-      ..writeln("import '../client.dart';")
-      ..writeln("import '../json.dart';")
-      ..writeln("import '../result.dart';")
-      ..writeln("import '../transport.dart';")
-      ..writeln("import '../values.dart';");
-    for (final file in {
-      ..._imports('${stem}_client.dart', used),
-      'pin.dart',
-    }.toList()..sort()) {
-      out.writeln("import '$file';");
-    }
-    out
-      ..writeln()
+    final out = StringBuffer()
       ..writeln('/// The $tag operations of the pinned spec.')
       ..writeln('extension ${_typeName(tag)}Calls on EsiClient {');
     for (final call in calls) {
       _renderCall(out, call);
     }
     out.writeln('}');
-    return out.toString();
+    return _withImports('The $tag operations of the pinned spec.', {
+      ..._imports('', used),
+      'pin.dart',
+    }, out.toString());
   }
 
   void _renderCall(StringBuffer out, _Call call) {
@@ -1426,7 +1441,7 @@ final class _Renderer {
                   '${parameters.join('\n')}\n}) =>',
       )
       ..writeln('EsiCall.invoke<$result>(')
-      ..writeln('this.transport,')
+      ..writeln('transport,')
       ..writeln('() => EsiRequest(')
       ..writeln('method: EsiMethod.${op.method.name},')
       ..writeln('operationId: ${_literal(op.operationId)},')
