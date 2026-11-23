@@ -54,9 +54,13 @@ enum _KeyPhase { absent, checking, unconfirmed, accepted, rejected, paused }
 
 /// Owns the key, admin presses, follow and setting writes (D8, D18).
 ///
-/// C33: the key is held only in memory and is never published or logged.
+/// The key is held only in memory and is never published or logged (D8).
 /// A gate refusal affects the sending key session only. Job and setting
 /// ownership use their own fences, so replacing a key never drops the job.
+///
+/// C33: only fencing evidence clears a pending, unconfirmed auto-update
+/// write: a confirmed answer, "setting changed", or a status read above the
+/// write's revision (D3, D8). A refused retry does not clear the write.
 final class AdminSessionNotifier extends Notifier<AdminSessionState> {
   static const _followLimit = Duration(minutes: 10);
   static const _readInterval = Duration(seconds: 5);

@@ -207,7 +207,7 @@ void staticDataAdminWidgetCases() {
           find.text(
             outcome == AdminAnswerOutcome.started
                 ? 'Work running.'
-                : 'No answer yet; watching the server.',
+                : 'No answer yet, watching the server',
           ),
           findsOneWidget,
         );
@@ -317,19 +317,49 @@ void staticDataAdminWidgetCases() {
       h.dispose();
     },
   );
+  testWidgets('rollback shows uncertainty while its outcome is still watched', (
+    tester,
+  ) async {
+    final h = _Harness();
+    await h.mount(tester);
+    await h.accept(tester);
+    await h.tap(tester, 'Roll back');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Roll back').last);
+    await tester.pump();
+    h.api.rollbacks.single.complete(
+      RpcAnswered(AdminAnswer(outcome: AdminAnswerOutcome.outcomeUnknown)),
+    );
+    await tester.pump();
+    expect(find.text('Outcome unknown, watching the server'), findsOneWidget);
+    expect(find.text('Outcome unknown, check the builds'), findsNothing);
+    expect(find.text('Update now'), findsNothing);
+    expect(h.api.reads, hasLength(1));
+    h.dispose();
+  });
   testWidgets(
     'import running, worker not running and update failed show in text and the actions return when idle',
     (tester) async {
       final h = _Harness();
       await h.mount(tester);
       await h.accept(tester);
-      for (final (outcome, text) in [
-        (AdminAnswerOutcome.importRunning, 'An import is running.'),
-        (AdminAnswerOutcome.workerNotRunning, 'The worker is not running.'),
-        (AdminAnswerOutcome.updateFailed, 'Update failed.'),
+      for (final (outcome, reason, text) in [
+        (AdminAnswerOutcome.importRunning, null, 'An import is running.'),
+        (
+          AdminAnswerOutcome.workerNotRunning,
+          null,
+          'The worker is not running.',
+        ),
+        (
+          AdminAnswerOutcome.updateFailed,
+          PublicReason.other,
+          'Update failed. Failed, see the server log',
+        ),
       ]) {
         await h.tap(tester, 'Update now');
-        h.api.updates.last.complete(RpcAnswered(AdminAnswer(outcome: outcome)));
+        h.api.updates.last.complete(
+          RpcAnswered(AdminAnswer(outcome: outcome, reason: reason)),
+        );
         await tester.pump();
         expect(find.text(text), findsOneWidget);
         expect(find.text('Update now'), findsOneWidget);

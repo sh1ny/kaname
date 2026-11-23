@@ -940,10 +940,10 @@ abstract class AppLocalizations {
   /// **'Connection lost'**
   String get sdReasonConnection;
 
-  /// Static data Settings label or message: Unknown error.
+  /// Public fallback for a failure whose details stay in the server log.
   ///
   /// In en, this message translates to:
-  /// **'Unknown error'**
+  /// **'Failed, see the server log'**
   String get sdReasonOther;
 
   /// Label for the session-only administrator key field.
@@ -973,19 +973,19 @@ abstract class AppLocalizations {
   /// The key check did not answer.
   ///
   /// In en, this message translates to:
-  /// **'Key could not be confirmed.'**
+  /// **'Could not check the key'**
   String get sdAdminUnconfirmed;
 
   /// Retry checking the held key.
   ///
   /// In en, this message translates to:
-  /// **'Retry key check'**
+  /// **'Try again'**
   String get sdAdminRetryKey;
 
   /// The server temporarily paused administrator calls.
   ///
   /// In en, this message translates to:
-  /// **'Admin calls are paused after too many attempts.'**
+  /// **'Too many attempts, try again in a minute'**
   String get sdAdminPaused;
 
   /// Check the held admin key after the pause.
@@ -997,7 +997,7 @@ abstract class AppLocalizations {
   /// The server rejected the key.
   ///
   /// In en, this message translates to:
-  /// **'Key rejected.'**
+  /// **'Admin key rejected'**
   String get sdAdminRejected;
 
   /// The server accepted the key.
@@ -1063,13 +1063,13 @@ abstract class AppLocalizations {
   /// The auto-update write has an unknown outcome.
   ///
   /// In en, this message translates to:
-  /// **'Auto-update change not confirmed.'**
+  /// **'Not confirmed'**
   String get sdAdminSettingUnconfirmed;
 
   /// Retry the same auto-update write.
   ///
   /// In en, this message translates to:
-  /// **'Retry auto-update change'**
+  /// **'Retry'**
   String get sdAdminRetrySetting;
 
   /// The setting was saved.
@@ -1081,13 +1081,13 @@ abstract class AppLocalizations {
   /// The setting changed since it was displayed.
   ///
   /// In en, this message translates to:
-  /// **'Auto-update changed on the server.'**
+  /// **'The setting was changed elsewhere'**
   String get sdAdminSettingChanged;
 
   /// The setting write failed.
   ///
   /// In en, this message translates to:
-  /// **'Auto-update could not be saved.'**
+  /// **'Setting not saved'**
   String get sdAdminSettingNotSaved;
 
   /// A previous admin action is still pending or followed.
@@ -1105,7 +1105,7 @@ abstract class AppLocalizations {
   /// Resend the same action with its original ID.
   ///
   /// In en, this message translates to:
-  /// **'Retry last action'**
+  /// **'Try again'**
   String get sdAdminRetryJob;
 
   /// An admin action is being sent.
@@ -1123,13 +1123,19 @@ abstract class AppLocalizations {
   /// Following an action whose answer is uncertain.
   ///
   /// In en, this message translates to:
-  /// **'No answer yet; watching the server.'**
+  /// **'No answer yet, watching the server'**
   String get sdAdminWatching;
+
+  /// The rollback outcome is unknown, but the app is still watching the operation.
+  ///
+  /// In en, this message translates to:
+  /// **'Outcome unknown, watching the server'**
+  String get sdAdminOutcomeUnknownWatching;
 
   /// Following expired without a terminal outcome.
   ///
   /// In en, this message translates to:
-  /// **'The action outcome is unknown.'**
+  /// **'Outcome unknown, check the builds'**
   String get sdAdminUnknown;
 
   /// An action ended.
@@ -1165,7 +1171,7 @@ abstract class AppLocalizations {
   /// The rollback confirmation was stale.
   ///
   /// In en, this message translates to:
-  /// **'Builds changed since confirmation. Refresh and try again.'**
+  /// **'The builds changed, check them and try again'**
   String get sdAdminBuildsChanged;
 
   /// There is no build to roll back to.
@@ -1183,7 +1189,7 @@ abstract class AppLocalizations {
   /// The server refused a busy admin action.
   ///
   /// In en, this message translates to:
-  /// **'Admin actions are busy.'**
+  /// **'The server is busy, try again'**
   String get sdAdminBusy;
 
   /// The server rejected a malformed action.

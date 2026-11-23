@@ -474,7 +474,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sdReasonConnection => 'Connection lost';
 
   @override
-  String get sdReasonOther => 'Unknown error';
+  String get sdReasonOther => 'Failed, see the server log';
 
   @override
   String get sdAdminKey => 'Admin key';
@@ -489,19 +489,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sdAdminChecking => 'Checking key…';
 
   @override
-  String get sdAdminUnconfirmed => 'Key could not be confirmed.';
+  String get sdAdminUnconfirmed => 'Could not check the key';
 
   @override
-  String get sdAdminRetryKey => 'Retry key check';
+  String get sdAdminRetryKey => 'Try again';
 
   @override
-  String get sdAdminPaused => 'Admin calls are paused after too many attempts.';
+  String get sdAdminPaused => 'Too many attempts, try again in a minute';
 
   @override
   String get sdAdminCheckAgain => 'Check again';
 
   @override
-  String get sdAdminRejected => 'Key rejected.';
+  String get sdAdminRejected => 'Admin key rejected';
 
   @override
   String get sdAdminAccepted => 'Key accepted.';
@@ -537,19 +537,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sdAdminSaving => 'Saving auto-update…';
 
   @override
-  String get sdAdminSettingUnconfirmed => 'Auto-update change not confirmed.';
+  String get sdAdminSettingUnconfirmed => 'Not confirmed';
 
   @override
-  String get sdAdminRetrySetting => 'Retry auto-update change';
+  String get sdAdminRetrySetting => 'Retry';
 
   @override
   String get sdAdminSettingConfirmed => 'Auto-update saved.';
 
   @override
-  String get sdAdminSettingChanged => 'Auto-update changed on the server.';
+  String get sdAdminSettingChanged => 'The setting was changed elsewhere';
 
   @override
-  String get sdAdminSettingNotSaved => 'Auto-update could not be saved.';
+  String get sdAdminSettingNotSaved => 'Setting not saved';
 
   @override
   String get sdAdminWaiting => 'Waiting for the last action.';
@@ -558,7 +558,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sdAdminNoRecord => 'The server has no record of this action yet.';
 
   @override
-  String get sdAdminRetryJob => 'Retry last action';
+  String get sdAdminRetryJob => 'Try again';
 
   @override
   String get sdAdminSending => 'Sending action…';
@@ -567,10 +567,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sdAdminStarted => 'Work running.';
 
   @override
-  String get sdAdminWatching => 'No answer yet; watching the server.';
+  String get sdAdminWatching => 'No answer yet, watching the server';
 
   @override
-  String get sdAdminUnknown => 'The action outcome is unknown.';
+  String get sdAdminOutcomeUnknownWatching =>
+      'Outcome unknown, watching the server';
+
+  @override
+  String get sdAdminUnknown => 'Outcome unknown, check the builds';
 
   @override
   String get sdAdminEnded => 'Action ended.';
@@ -589,7 +593,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sdAdminBuildsChanged =>
-      'Builds changed since confirmation. Refresh and try again.';
+      'The builds changed, check them and try again';
 
   @override
   String get sdAdminNoPrevious => 'There is no previous build.';
@@ -598,7 +602,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sdAdminRolledBack => 'Rolled back.';
 
   @override
-  String get sdAdminBusy => 'Admin actions are busy.';
+  String get sdAdminBusy => 'The server is busy, try again';
 
   @override
   String get sdAdminMalformed => 'The server could not accept this action.';

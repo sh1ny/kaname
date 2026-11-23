@@ -660,9 +660,9 @@
   "@sdReasonConnection": {
     "description": "Static data Settings label or message: Connection lost."
   },
-  "sdReasonOther": "Unknown error",
+  "sdReasonOther": "Failed, see the server log",
   "@sdReasonOther": {
-    "description": "Static data Settings label or message: Unknown error."
+    "description": "Public fallback for a failure whose details stay in the server log."
   },
   "sdAdminKey": "Admin key",
   "@sdAdminKey": {
@@ -680,15 +680,15 @@
   "@sdAdminChecking": {
     "description": "Key verification is in progress."
   },
-  "sdAdminUnconfirmed": "Key could not be confirmed.",
+  "sdAdminUnconfirmed": "Could not check the key",
   "@sdAdminUnconfirmed": {
     "description": "The key check did not answer."
   },
-  "sdAdminRetryKey": "Retry key check",
+  "sdAdminRetryKey": "Try again",
   "@sdAdminRetryKey": {
     "description": "Retry checking the held key."
   },
-  "sdAdminPaused": "Admin calls are paused after too many attempts.",
+  "sdAdminPaused": "Too many attempts, try again in a minute",
   "@sdAdminPaused": {
     "description": "The server temporarily paused administrator calls."
   },
@@ -696,7 +696,7 @@
   "@sdAdminCheckAgain": {
     "description": "Check the held admin key after the pause."
   },
-  "sdAdminRejected": "Key rejected.",
+  "sdAdminRejected": "Admin key rejected",
   "@sdAdminRejected": {
     "description": "The server rejected the key."
   },
@@ -748,11 +748,11 @@
   "@sdAdminSaving": {
     "description": "The auto-update setting is being saved."
   },
-  "sdAdminSettingUnconfirmed": "Auto-update change not confirmed.",
+  "sdAdminSettingUnconfirmed": "Not confirmed",
   "@sdAdminSettingUnconfirmed": {
     "description": "The auto-update write has an unknown outcome."
   },
-  "sdAdminRetrySetting": "Retry auto-update change",
+  "sdAdminRetrySetting": "Retry",
   "@sdAdminRetrySetting": {
     "description": "Retry the same auto-update write."
   },
@@ -760,11 +760,11 @@
   "@sdAdminSettingConfirmed": {
     "description": "The setting was saved."
   },
-  "sdAdminSettingChanged": "Auto-update changed on the server.",
+  "sdAdminSettingChanged": "The setting was changed elsewhere",
   "@sdAdminSettingChanged": {
     "description": "The setting changed since it was displayed."
   },
-  "sdAdminSettingNotSaved": "Auto-update could not be saved.",
+  "sdAdminSettingNotSaved": "Setting not saved",
   "@sdAdminSettingNotSaved": {
     "description": "The setting write failed."
   },
@@ -776,7 +776,7 @@
   "@sdAdminNoRecord": {
     "description": "Public job lookup has not found the operation."
   },
-  "sdAdminRetryJob": "Retry last action",
+  "sdAdminRetryJob": "Try again",
   "@sdAdminRetryJob": {
     "description": "Resend the same action with its original ID."
   },
@@ -788,11 +788,15 @@
   "@sdAdminStarted": {
     "description": "The server started the action."
   },
-  "sdAdminWatching": "No answer yet; watching the server.",
+  "sdAdminWatching": "No answer yet, watching the server",
   "@sdAdminWatching": {
     "description": "Following an action whose answer is uncertain."
   },
-  "sdAdminUnknown": "The action outcome is unknown.",
+  "sdAdminOutcomeUnknownWatching": "Outcome unknown, watching the server",
+  "@sdAdminOutcomeUnknownWatching": {
+    "description": "The rollback outcome is unknown, but the app is still watching the operation."
+  },
+  "sdAdminUnknown": "Outcome unknown, check the builds",
   "@sdAdminUnknown": {
     "description": "Following expired without a terminal outcome."
   },
@@ -816,7 +820,7 @@
   "@sdAdminRollbackFailed": {
     "description": "The rollback failed."
   },
-  "sdAdminBuildsChanged": "Builds changed since confirmation. Refresh and try again.",
+  "sdAdminBuildsChanged": "The builds changed, check them and try again",
   "@sdAdminBuildsChanged": {
     "description": "The rollback confirmation was stale."
   },
@@ -828,7 +832,7 @@
   "@sdAdminRolledBack": {
     "description": "The rollback completed."
   },
-  "sdAdminBusy": "Admin actions are busy.",
+  "sdAdminBusy": "The server is busy, try again",
   "@sdAdminBusy": {
     "description": "The server refused a busy admin action."
   },
