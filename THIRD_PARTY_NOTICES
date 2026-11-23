@@ -86,6 +86,20 @@ Context7 find-docs skill
   Licence: MIT
   Licence text: .claude/skills/LICENSE.find-docs
 
+EVE Online API (ESI) spec
+-------------------------
+
+CCP's ESI OpenAPI spec
+  CCP material: the pinned spec snapshot packages/kaname_esi/spec/openapi.json
+  and the descriptions copied from it into the generated client in
+  packages/kaname_esi/lib/src/generated/
+  Source: https://esi.evetech.net/meta/openapi.json?compatibility_date=2026-11-19
+  Licence: EVE Developer License, https://developers.eveonline.com/license-agreement
+  Notice: © 2014 CCP hf. All rights reserved. "EVE", "EVE Online", "CCP",
+  and all related logos and images are trademarks or registered trademarks
+  of CCP hf.
+  Kaname's own code keeps its AGPL-3.0 licence.
+
 Pub dependencies
 ----------------
 

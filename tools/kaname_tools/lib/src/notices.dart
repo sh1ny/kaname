@@ -4,8 +4,20 @@ import 'dart:io';
 import 'package:args/command_runner.dart';
 
 import 'cli.dart';
+import 'esi_pin.dart';
+import 'esi_render.dart';
 import 'file_system.dart';
 import 'locked_packages.dart';
+
+/// The licence CCP's ESI spec is used under.
+const String esiLicenceName = 'EVE Developer License';
+
+/// Where [esiLicenceName] is published.
+const String esiLicenceUrl =
+    'https://developers.eveonline.com/license-agreement';
+
+/// The first line of the proprietary notice the licence requires (§7.1).
+const String esiProprietaryNotice = '© 2014 CCP hf. All rights reserved.';
 
 /// The outcome of [NoticesGenerator.write].
 sealed class NoticesWriteResult {
@@ -359,7 +371,38 @@ final class NoticesGenerator {
     for (final path in _packageFontLicences()) {
       require(path, 'bundled font', 'licence file');
     }
+    problems.addAll(_esiEntryProblems(handWritten));
     return problems;
+  }
+
+  /// Lists what the hand-written entry for CCP's ESI spec lacks, once the
+  /// repository pins a snapshot: the snapshot's path, the generated folder,
+  /// the source URL the pin records, the licence name and URL, and CCP's
+  /// proprietary notice.
+  List<String> _esiEntryProblems(String handWritten) {
+    if (_fileSystem.kindOf(esiPinPath) != FsEntryKind.file) return const [];
+    final String pinText;
+    try {
+      pinText = _fileSystem.readAsString(esiPinPath);
+    } on FileSystemException catch (e) {
+      throw _NoticesError('$esiPinPath cannot be read: ${e.message}');
+    }
+    final (:pin, :problems) = parseEsiPin(pinText);
+    if (pin == null) return problems;
+    final items = <(String, String)>[
+      ('snapshot path', esiSnapshotPath),
+      ('generated folder', '$esiGeneratedDirectory/'),
+      ('source URL', pin.source),
+      ('licence name', esiLicenceName),
+      ('licence URL', esiLicenceUrl),
+      ('proprietary notice', esiProprietaryNotice),
+    ];
+    return [
+      for (final (what, text) in items)
+        if (!handWritten.contains(text))
+          '$noticesPath: ESI spec snapshot: $what "$text" is not listed in '
+              'the hand-written sections',
+    ];
   }
 
   /// Whether [text] contains [token] as a whole token.
