@@ -42,8 +42,8 @@ void main() {
         'catalogue.dart',
         'esi.dart',
         'gadgets_client.dart',
-        'pin.dart',
         '$esiGeneratedTestDirectory/operations_test.dart',
+        'pin.dart',
         'widgets_client.dart',
         'widgets_models.dart',
       ]);
