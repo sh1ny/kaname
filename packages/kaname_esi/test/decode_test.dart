@@ -84,6 +84,19 @@ void main() {
         _malformed(r'$.creator_id'),
       );
     });
+
+    test('explicit null for an optional, non-nullable field is malformed '
+        'with its path', () async {
+      expect(
+        await _alliance200(
+          _alliance.replaceFirst(
+            '"executor_corporation_id": 98000001',
+            '"executor_corporation_id": null',
+          ),
+        ),
+        _malformed(r'$.executor_corporation_id'),
+      );
+    });
   });
 
   group('Values the pinned spec does not list', () {

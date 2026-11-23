@@ -146,6 +146,28 @@ void main() {
     expect(fs.filePaths, isEmpty);
   });
 
+  test('fetch refuses a body that starts with a byte order mark', () async {
+    final fs = InMemoryFileSystem();
+    final result = await runTool(
+      fs,
+      ['esi', 'fetch', '--date', esiFixtureDate],
+      esiDownloader: _FakeDownloader(
+        EsiDownloaded(
+          200,
+          Uint8List.fromList([
+            0xEF,
+            0xBB,
+            0xBF,
+            ...utf8.encode(esiFixtureText()),
+          ]),
+        ),
+      ),
+    );
+    expect(result.code, exitCheckFailed);
+    expect(result.err, contains('byte order mark'));
+    expect(fs.filePaths, isEmpty);
+  });
+
   // Scenario: Bad date argument.
   for (final args in [
     <String>[],

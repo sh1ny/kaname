@@ -9,6 +9,10 @@ import 'esi_render.dart';
 import 'file_system.dart';
 import 'locked_packages.dart';
 
+/// The first line of the hand-written entry for CCP's ESI spec. The entry
+/// runs from this line to the next blank line.
+const String esiEntryHeading = "CCP's ESI OpenAPI spec";
+
 /// The licence CCP's ESI spec is used under.
 const String esiLicenceName = 'EVE Developer License';
 
@@ -379,6 +383,11 @@ final class NoticesGenerator {
   /// repository pins a snapshot: the snapshot's path, the generated folder,
   /// the source URL the pin records, the licence name and URL, and CCP's
   /// proprietary notice.
+  ///
+  /// Only the entry itself counts (from [esiEntryHeading] to the next blank
+  /// line), and each item must appear as a whole value: an item listed
+  /// under another entry, or a longer URL that starts with the pinned one,
+  /// does not satisfy it.
   List<String> _esiEntryProblems(String handWritten) {
     if (_fileSystem.kindOf(esiPinPath) != FsEntryKind.file) return const [];
     final String pinText;
@@ -397,12 +406,25 @@ final class NoticesGenerator {
       ('licence URL', esiLicenceUrl),
       ('proprietary notice', esiProprietaryNotice),
     ];
+    final entry = _esiEntry(handWritten);
     return [
       for (final (what, text) in items)
-        if (!handWritten.contains(text))
+        if (!_mentions(entry, text))
           '$noticesPath: ESI spec snapshot: $what "$text" is not listed in '
               'the hand-written sections',
     ];
+  }
+
+  /// The ESI entry of [handWritten]: the lines from [esiEntryHeading] to the
+  /// next blank line, or nothing when no line is the heading.
+  static String _esiEntry(String handWritten) {
+    final lines = handWritten.split('\n');
+    final start = lines.indexWhere((line) => line.trim() == esiEntryHeading);
+    if (start < 0) return '';
+    return lines
+        .skip(start)
+        .takeWhile((line) => line.trim().isNotEmpty)
+        .join('\n');
   }
 
   /// Whether [text] contains [token] as a whole token.

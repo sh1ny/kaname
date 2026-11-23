@@ -48,8 +48,20 @@ abstract final class EsiJson {
         );
 
   /// The optional field [key] of [object] read with [read], or `null` when
-  /// it is absent or `null`.
+  /// it is absent.
+  ///
+  /// Optional only permits omission: a present `null` is read like any
+  /// other value, so a schema that does not allow `null` rejects it.
   static T? optional<T extends Object>(
+    Map<String, Object?> object,
+    String key,
+    String path,
+    EsiRead<T> read,
+  ) => object.containsKey(key) ? read(object[key], '$path.$key') : null;
+
+  /// The optional, nullable field [key] of [object] read with [read], or
+  /// `null` when it is absent or `null`.
+  static T? optionalNullable<T extends Object>(
     Map<String, Object?> object,
     String key,
     String path,
@@ -182,20 +194,22 @@ abstract final class EsiCheck {
     return value;
   }
 
-  /// [value]'s length against [minLength] and [maxLength].
+  /// [value]'s length against [minLength] and [maxLength], counted in
+  /// Unicode code points as OpenAPI counts them, not UTF-16 code units.
   static String length(
     String value,
     String path, {
     int? minLength,
     int? maxLength,
   }) {
-    if (minLength != null && value.length < minLength) {
+    final length = value.runes.length;
+    if (minLength != null && length < minLength) {
       throw EsiInvalidArgument(
         path,
         'must be at least $minLength characters long',
       );
     }
-    if (maxLength != null && value.length > maxLength) {
+    if (maxLength != null && length > maxLength) {
       throw EsiInvalidArgument(
         path,
         'must be at most $maxLength characters long',

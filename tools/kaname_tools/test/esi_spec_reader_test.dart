@@ -280,6 +280,30 @@ void main() {
             '#/paths/~1gadgets/get/responses/202',
             'unsupported response status "202"',
           ),
+          (
+            'a default response that is not JSON',
+            (d) =>
+                _at(d, ['paths', '/gadgets', 'get', 'responses'])['default'] = {
+                  'description': 'Error',
+                  'content': {
+                    'text/plain': {
+                      'schema': {'type': 'string'},
+                    },
+                  },
+                },
+            '#/paths/~1gadgets/get/responses/default/content/text~1plain',
+            'unsupported key "text/plain"',
+          ),
+          (
+            'a default response without a string error field',
+            (d) => _at(d, ['components', 'schemas', 'Error'])['properties'] = {
+              'error': {'type': 'integer'},
+            },
+            '#/paths/~1widgets~1{widget_id}/get/responses/default/content/'
+                'application~1json/schema',
+            'the default response is not an object with a string "error" '
+                'field, which the client reads as the error message',
+          ),
         ];
 
     for (final (name, change, path, reason) in cases) {

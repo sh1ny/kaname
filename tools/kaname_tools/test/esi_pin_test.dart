@@ -128,6 +128,15 @@ void main() {
     );
   });
 
+  test('a byte order mark added to the snapshot fails the hash check', () {
+    final repository = esiRepository()
+      ..writeFile(esiSnapshotPath, '\uFEFF${esiFixtureText()}');
+    expect(
+      _refusal(loadEsiSnapshot(repository)).single,
+      startsWith("$esiSnapshotPath does not match the pin's hash"),
+    );
+  });
+
   test('a missing pin or snapshot is refused naming the file', () {
     final noPin = esiRepository()..deleteFile(esiPinPath);
     expect(_refusal(loadEsiSnapshot(noPin)).single, startsWith(esiPinPath));

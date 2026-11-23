@@ -575,6 +575,9 @@ final class _Reader {
   final Object? document;
   late final Map<String, Object?> _schemas;
 
+  /// The component schemas, read before any operation.
+  late final Map<String, EsiSchema> _components;
+
   Never _refuse(String path, String reason) => throw _Refusal(path, reason);
 
   static String _child(String path, String key) =>
@@ -659,7 +662,7 @@ final class _Reader {
       '#/components/parameters',
     );
 
-    final schemas = <String, EsiSchema>{
+    final schemas = _components = <String, EsiSchema>{
       for (final MapEntry(:key, :value) in _schemas.entries)
         key: _schema(value, _child('#/components/schemas', key)),
     };
@@ -907,6 +910,34 @@ final class _Reader {
     return EsiOneOfShape(variants);
   }
 
+  /// Checks the `default` response has the shape the runtime assumes when
+  /// it reads an error message: no body, or a JSON object whose `error`
+  /// field is a string.
+  void _defaultResponse(Map<String, Object?> node, String path) {
+    final contentNode = node['content'];
+    if (contentNode == null) return;
+    final contentPath = _child(path, 'content');
+    final content = _object(contentNode, contentPath);
+    _onlyKeys(content, {'application/json'}, contentPath);
+    final mediaPath = _child(contentPath, 'application/json');
+    final media = _object(content['application/json'], mediaPath);
+    _onlyKeys(media, {'schema'}, mediaPath);
+    final schemaPath = _child(mediaPath, 'schema');
+    var shape = _schema(media['schema'], schemaPath).shape;
+    if (shape case EsiRefShape(:final name)) shape = _components[name]!.shape;
+    switch (shape) {
+      case EsiObjectShape(:final properties)
+          when properties['error']?.shape is EsiStringShape:
+        return;
+      default:
+        _refuse(
+          schemaPath,
+          'the default response is not an object with a string "error" '
+          'field, which the client reads as the error message',
+        );
+    }
+  }
+
   String _ref(Object? value, String path) {
     const prefix = '#/components/schemas/';
     final ref = _string(value, path);
@@ -1014,7 +1045,10 @@ final class _Reader {
       final responsePath = _child(responsesPath, status);
       final node = _object(response, responsePath);
       _onlyKeys(node, {'description', 'content', 'headers'}, responsePath);
-      if (status == 'default') continue;
+      if (status == 'default') {
+        _defaultResponse(node, responsePath);
+        continue;
+      }
       if (!EsiSpecReader._successStatuses.contains(status)) {
         _refuse(responsePath, 'unsupported response status "$status"');
       }

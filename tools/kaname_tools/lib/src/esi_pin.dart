@@ -25,7 +25,10 @@ bool isEsiDate(String value) => _date.hasMatch(value);
 ///
 /// The repository stores the snapshot with LF line endings and no byte
 /// order mark (`.gitattributes`), so these are the bytes on disk.
-String esiSha256(String text) => sha256.convert(utf8.encode(text)).toString();
+String esiSha256(String text) => esiSha256Bytes(utf8.encode(text));
+
+/// The lowercase hex SHA-256 of [bytes], exactly as they are stored.
+String esiSha256Bytes(List<int> bytes) => sha256.convert(bytes).toString();
 
 /// What `pin.yaml` records.
 final class EsiPin {
@@ -158,7 +161,7 @@ final class EsiSnapshotRefused extends EsiSnapshotLoad {
 }
 
 /// Reads the pin and the snapshot from [fileSystem], hashes the snapshot's
-/// exact text, and only then parses that same text and checks its dates.
+/// exact bytes, and only then parses those same bytes and checks its dates.
 EsiSnapshotLoad loadEsiSnapshot(FileSystem fileSystem) {
   final String pinText;
   try {
@@ -169,13 +172,13 @@ EsiSnapshotLoad loadEsiSnapshot(FileSystem fileSystem) {
   final (:pin, :problems) = parseEsiPin(pinText);
   if (pin == null) return EsiSnapshotRefused(problems);
 
-  final String snapshot;
+  final List<int> bytes;
   try {
-    snapshot = fileSystem.readAsString(esiSnapshotPath);
+    bytes = fileSystem.readAsBytes(esiSnapshotPath);
   } on Exception catch (e) {
     return EsiSnapshotRefused(['$esiSnapshotPath cannot be read: $e']);
   }
-  final hash = esiSha256(snapshot);
+  final hash = esiSha256Bytes(bytes);
   if (hash != pin.sha256) {
     return EsiSnapshotRefused([
       '$esiSnapshotPath does not match the pin\'s hash '
@@ -186,7 +189,7 @@ EsiSnapshotLoad loadEsiSnapshot(FileSystem fileSystem) {
 
   final Object? document;
   try {
-    document = jsonDecode(snapshot);
+    document = jsonDecode(utf8.decode(bytes));
   } on FormatException catch (e) {
     return EsiSnapshotRefused(['$esiSnapshotPath is not JSON: ${e.message}']);
   }

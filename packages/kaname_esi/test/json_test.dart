@@ -61,9 +61,19 @@ void main() {
       expect(EsiJson.required({'b': null}, 'b', r'$'), isNull);
     });
 
-    test('an optional field is null when absent or null', () {
+    test('an optional field is null when absent, and a present null is '
+        'checked against its schema', () {
       expect(EsiJson.optional({}, 'a', r'$', EsiJson.integer), isNull);
-      expect(EsiJson.optional({'a': null}, 'a', r'$', EsiJson.integer), isNull);
+      expect(
+        () => EsiJson.optional({'a': null}, 'a', r'$', EsiJson.integer),
+        throwsA(isA<EsiDecodeException>()),
+      );
+      expect(
+        EsiJson.optionalNullable({'a': null}, 'a', r'$', EsiJson.integer),
+        isNull,
+      );
+      expect(EsiJson.optionalNullable({}, 'a', r'$', EsiJson.integer), isNull);
+      expect(EsiJson.optionalNullable({'a': 2}, 'a', r'$', EsiJson.integer), 2);
       expect(EsiJson.optional({'a': 2}, 'a', r'$', EsiJson.integer), 2);
       expect(
         () => EsiJson.optional({'a': 'x'}, 'a', r'$', EsiJson.integer),
@@ -152,6 +162,14 @@ void main() {
         () => EsiCheck.length('abc', 'name', maxLength: 2),
         throwsA(_invalid('name', 'must be at most 2 characters long')),
       );
+      // OpenAPI counts code points: a supplementary character is one,
+      // though Dart's String.length counts it as two code units.
+      expect(
+        () => EsiCheck.length('\u{1F680}a', 'search', minLength: 3),
+        throwsA(_invalid('search', 'must be at least 3 characters long')),
+      );
+      final rockets = '\u{1F680}' * 50;
+      expect(EsiCheck.length(rockets, 'name', maxLength: 50), rockets);
       expect(
         () => EsiCheck.known(const EsiUnknown<_Kind>('delta'), 'body.kind'),
         throwsA(

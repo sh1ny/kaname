@@ -185,6 +185,12 @@ final class EsiFetcher {
       case EsiDownloaded(:final status) when status != 200:
         return EsiFetchFailed(['download of $url returned HTTP $status']);
       case EsiDownloaded(:final bytes):
+        if (bytes case [0xEF, 0xBB, 0xBF, ...]) {
+          return EsiFetchFailed([
+            'the spec from $url has a byte order mark, which the repository '
+                'would rewrite; its hash would no longer match',
+          ]);
+        }
         try {
           text = utf8.decode(bytes);
         } on FormatException {

@@ -147,7 +147,13 @@ Future<List<ContractFact>> _skinComponents(Exchange exchange) async {
   final result = await EsiClient(exchange.transport())
       .getCharactersCosmeticsSkinrComponents(characterId: _pilot);
   if (exchange.name == 'negative/skin_components_wrong_payload') {
-    return [('result', result, _malformed(r'$.licenses[0].runs.remaining'))];
+    return [
+      (
+        'malformed at path',
+        result,
+        _malformed(r'$.licenses[0].runs.remaining'),
+      ),
+    ];
   }
   return [
     ('result', result, _success()),
@@ -205,7 +211,7 @@ final Map<String, Contract> contracts = {
         .getAlliances(ifNoneMatch: '"list-1"');
     return [
       (
-        'result',
+        'not modified',
         result,
         isA<EsiNotModified<Object?>>()
             .having((r) => r.etag, 'etag', '"list-1"')
@@ -224,7 +230,7 @@ final Map<String, Contract> contracts = {
   },
   'conforming/alliance_not_found': (exchange) async => [
     (
-      'result',
+      'error message',
       await EsiClient(exchange.transport())
           .getAlliancesAllianceId(allianceId: _alliance),
       isA<EsiError<Object?>>()
@@ -241,7 +247,15 @@ final Map<String, Contract> contracts = {
     final result = await EsiClient(exchange.transport())
         .getCharactersCharacterIdAssets(characterId: _pilot, page: 1);
     return [
-      ('result', result, _success().having((r) => r.pages, 'pages', 3)),
+      ('result', result, _success()),
+      (
+        'pages',
+        switch (result) {
+          EsiSuccess(:final pages) => pages,
+          _ => null,
+        },
+        3,
+      ),
       (
         'items',
         switch (bodyOf(result)) {
@@ -271,7 +285,7 @@ final Map<String, Contract> contracts = {
           contactIds: [_corporation],
         );
     return [
-      ('result', result, _success(status: 204)),
+      ('no content', result, _success(status: 204)),
       ('request method', transport.requests.single.method, EsiMethod.delete),
     ];
   },
@@ -330,7 +344,7 @@ final Map<String, Contract> contracts = {
   },
   'negative/alliance_missing_name': (exchange) async => [
     (
-      'result',
+      'malformed at path',
       await EsiClient(exchange.transport())
           .getAlliancesAllianceId(allianceId: _alliance),
       _malformed(r'$.name'),
@@ -338,7 +352,7 @@ final Map<String, Contract> contracts = {
   ],
   'negative/alliance_not_json': (exchange) async => [
     (
-      'result',
+      'malformed at path',
       await EsiClient(exchange.transport())
           .getAlliancesAllianceId(allianceId: _alliance),
       _malformed(r'$'),
@@ -347,19 +361,23 @@ final Map<String, Contract> contracts = {
 };
 
 /// The constructs the contract tests must cover, inbound then outbound
-/// (esi-client → Contract coverage).
-const List<String> requiredConstructs = [
-  'object',
-  'array',
-  'scalar-array',
-  'oneof-variant',
-  'unknown-enum',
-  'unknown-variant',
-  'no-content',
-  'not-modified',
-  'error-body',
-  'malformed-body',
-  'page-count',
-  'cursor',
-  'request-body',
-];
+/// (esi-client → Contract coverage), each with the fact that asserts it.
+///
+/// An exchange covers a construct only when it is tagged with it and its
+/// contract returns that fact, so removing the asserting fact uncovers the
+/// construct even while the exchange keeps its tag.
+const Map<String, String> requiredConstructs = {
+  'object': 'name',
+  'array': 'items',
+  'scalar-array': 'body',
+  'oneof-variant': 'licenses',
+  'unknown-enum': 'items',
+  'unknown-variant': 'licenses',
+  'no-content': 'no content',
+  'not-modified': 'not modified',
+  'error-body': 'error message',
+  'malformed-body': 'malformed at path',
+  'page-count': 'pages',
+  'cursor': 'cursor decoded once',
+  'request-body': 'request body',
+};

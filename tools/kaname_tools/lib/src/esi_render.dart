@@ -1262,6 +1262,9 @@ final class _Renderer {
               _childPath('path', field.key),
             ),
             _Field(ty: _Any()) => 'object[$key]',
+            _Field(ty: _Nullable()) =>
+              'EsiJson.optionalNullable<${field.present.type()}>(object, $key, '
+                  'path, ${field.present.reader()})',
             _ =>
               'EsiJson.optional<${field.present.type()}>(object, $key, path, '
                   '${field.present.reader()})',

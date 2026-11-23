@@ -7,19 +7,28 @@ void main() {
   final names = Exchange.all();
   final exchanges = [for (final name in names) Exchange.load(name)];
 
-  test('every listed inbound and outbound construct has an asserting '
-      'exchange', () {
-    final covered = {
-      for (final exchange in exchanges)
-        if (contracts.containsKey(exchange.name)) ...exchange.constructs,
-    };
+  test('every listed inbound and outbound construct has an exchange whose '
+      'contract asserts it', () async {
+    final covered = <String>{};
+    for (final exchange in exchanges) {
+      final contract = contracts[exchange.name];
+      if (contract == null) continue;
+      final asserted = {
+        for (final (what, _, _) in await contract(exchange)) what,
+      };
+      for (final construct in exchange.constructs) {
+        if (asserted.contains(requiredConstructs[construct])) {
+          covered.add(construct);
+        }
+      }
+    }
     expect(
       [
-        for (final construct in requiredConstructs)
+        for (final construct in requiredConstructs.keys)
           if (!covered.contains(construct)) construct,
       ],
       isEmpty,
-      reason: 'constructs without an asserting exchange',
+      reason: 'constructs without an exchange asserting them',
     );
   });
 
@@ -40,7 +49,7 @@ void main() {
   test('exchanges tag only listed constructs', () {
     for (final exchange in exchanges) {
       expect(
-        requiredConstructs.toSet().containsAll(exchange.constructs),
+        requiredConstructs.keys.toSet().containsAll(exchange.constructs),
         isTrue,
         reason: '${exchange.name}: ${exchange.constructs}',
       );

@@ -402,6 +402,31 @@ void main() {
       );
     }
 
+    test('an item listed only under another entry is still missing', () async {
+      final result = await check(
+        '${_fullHandWritten}Another entry\n  Licence: $esiLicenceUrl\n\n'
+        '${entry.replaceAll(esiLicenceUrl, '')}',
+      );
+      expect(result.code, 1);
+      expect(
+        result.err,
+        contains(
+          'ESI spec snapshot: licence URL "$esiLicenceUrl" is not listed',
+        ),
+      );
+    });
+
+    test('a longer source URL does not match the pinned one', () async {
+      final result = await check(
+        '$_fullHandWritten${entry.replaceAll(source, '${source}9')}',
+      );
+      expect(result.code, 1);
+      expect(
+        result.err,
+        contains('ESI spec snapshot: source URL "$source" is not listed'),
+      );
+    });
+
     test('a missing entry names every item', () async {
       final result = await check(_fullHandWritten);
       expect(result.code, 1);
