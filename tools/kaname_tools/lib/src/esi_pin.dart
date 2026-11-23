@@ -64,12 +64,13 @@ final class EsiPin {
       problems: ['$esiPinPath is not valid YAML: ${e.message}'],
     );
   }
-  if (document is! Map) {
+  if (document is! Map<Object?, Object?>) {
     return (pin: null, problems: ['$esiPinPath is not a YAML mapping']);
   }
+  final fields = document;
   final problems = <String>[];
   String? field(String name, bool Function(String) valid, String form) {
-    final Object? value = document[name];
+    final value = fields[name];
     if (value == null) {
       problems.add('$esiPinPath lacks its $name');
       return null;
