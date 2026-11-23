@@ -2,86 +2,77 @@
 
 ## Metadata
 
-- **Round:** 44. This is a targeted re-check of the Required Changes from round 43, not a new design pass and not a pre-ship review.
-- **Prior round:** 43 (Codex cross-model review, `APPROVE_WITH_CHANGES`, `CHANGES_APPLIED: no`).
+- **Round:** 47. This is a targeted full Specwright design review of A13 and task 2.9 only. Round 46 approved the rest, and no finding outside this amendment is reopened.
+- **Prior round:** 46 (Claude, APPROVE_WITH_CHANGES, no Required Changes outstanding).
 - **Route:** Claude
-- **Artifacts read:**
-  - `openspec/changes/static-data-settings/review.md` (round 43's findings and Required Changes)
-  - Working-tree `openspec/changes/static-data-settings/design.md`: D4 and D5 (L115–166), D26–D31 (L405–469), A11 (L528), C30 and C32 (L563, L565), the failure table (L726–755) and Flow & State Gaps (L776–794)
-  - Working-tree `openspec/changes/static-data-settings/tasks.md`: tasks 2.7 (L392), 5.4 (L424), 5.5 (L425) and 8.4 (L459)
-  - `openspec/changes/static-data-settings/specs/static-data-admin/spec.md`: the stalled-writer scenario (L262), the replay and admission scenarios (L341–435) and the rollback answers (L578–626)
-  - `.claude/skills/serverpod-testing/SKILL.md`, `.claude/skills/serverpod-database/SKILL.md`, `.claude/skills/serverpod-webserver/SKILL.md` and `.claude/skills/dart-add-unit-test/SKILL.md`
-  - I read only tracked repository files and edited nothing.
+- **Artifacts read (tracked files only; none edited; no caches or untracked paths):**
+  - `openspec/changes/static-data-settings/design.md`: A13 (L530), plus D28 (L431–442) to check the token rule.
+  - `openspec/changes/static-data-settings/tasks.md`: task 2.9 (L394), with 2.7 and 2.8 (L392–393) for context.
+  - `openspec/changes/static-data-settings/review.md` (round 46).
+  - `.claude/skills/serverpod-database/SKILL.md` and `.claude/skills/serverpod-testing/SKILL.md` (transaction use; `RollbackDatabase.disabled` at L91; `configOverride` at L157).
+- **Evidence taken as given:**
+  - A real Serverpod 4.1.2 diagnostic confirmed backend pid 910563 twice as reusable. It then entered a real transaction on that backend and ran `pg_sleep(10)` with a 1 s driver timeout. The call failed with `DatabaseQueryException` reporting query cancellation, and the next borrower got backend 910564.
+  - Pinned source explains why: Serverpod wraps PostgreSQL exceptions inside the callback, its own non-`PgException` escapes, and the pool discards that connection.
+  - The user has already approved checking for safe reuse or replacement, rather than requiring reuse.
 
 ## Findings
 
-### Required Change 1: D31 copied chunks and full Content-Length — applied
+### F1: The replacement outcome is expressed (passes)
 
-- `design.md:463` now reads: "The body streams independent copies of up to 64 KB and declares the full encoded answer's `Content-Length`." This is the replacement text that round 43 asked for.
-- The phrase "chunk views" no longer appears anywhere in `design.md`.
-- The preceding paragraph (`design.md:462`) also requires "a stream of 64 KB copies, never views of that array". The two paragraphs no longer contradict each other.
-- The parts round 43 said to keep are still there:
-  - The stalled-writer scenario: `specs/static-data-admin/spec.md:262` says "at most that one 64 KB copied chunk, not its encoded answer".
-  - Task 8.4: `tasks.md:459` says "64 KB copied chunks".
-- An implementer can no longer reuse the bundle writer's `sublistView` pump by following D31.
+- A13 (L530) now separates the two layers:
+  - The driver says "can reuse a connection after a clean cancellation".
+  - Serverpod "maps a PostgreSQL query error to `DatabaseQueryException` inside its transaction callback, and the pool discards that connection when the error escapes."
+- This matches the pinned-source explanation.
+- A13 records the observation: "Apply observed a replacement backend after a clean client cancellation in a Serverpod transaction."
+- Its check now reads: "a later borrower sees a clean replacement after clean cancellation or an unrecoverable timeout."
+- Task 2.9 (L394) matches this:
+  - "Let the error escape the Serverpod transaction."
+  - "in both cases verify it is discarded and the borrower on its replacement sees the defaults."
+  - The old "same backend after clean cancellation" expectation is gone.
+- The task requires replacement in both cases. That is narrower than "reuse or replacement", but it is what A13 now claims and what the pinned source does. If a future pin reused the connection, the task would stop for drift and send the change back for a decision, which is the right result. A silent pass would be wrong. This fits the user's approval because it doesn't require reuse.
 
-### Required Change 2: admission and forward-switch summaries and the lost-insert flow — applied
+### F2: Both real timeout cases are kept (passes)
 
-- **"Admission store slow" row (`design.md:748`):**
-  - If the store did not start, the call answers "update failed" or "rollback failed" with "Postgres unreachable".
-  - If the store started, no worker request is sent. Update now answers "no answer yet" and rollback answers "outcome unknown", and the app follows X.
-  - The settler "preserves an unexpired ended X, else applies D26's conditional upsert".
-  - This matches D4 (L119), D5 (L153), D19 and D26's upsert rules (L411).
-  - It also matches the replay scenario: `spec.md:381` says the call answers "outcome unknown" and X keeps its stored success.
-- **Lost-acknowledgement flow (`design.md:789`):** it uses the same wording: no worker request, "no answer yet" or "outcome unknown", the app follows X, and the same settler rule. It adds that the slot is freed after settlement. The contradiction that would have reported failure for an X that already succeeded is gone.
-- **"Forward switch, commit acknowledgement lost" row (`design.md:738`):**
-  - A reread counts as evidence only "on the original usable connection still holding the lock".
-  - After the lock is lost, the settler decides an update now from X's operation row.
-  - Daily and start-up checks return `switchUnconfirmed` and attempt a "switch outcome unknown" check record, with no failed switch record.
-  - This matches D4 at `design.md:131–133`.
+- Task 2.9 still runs both trials under the real Serverpod `queryTimeout`:
+  - "replies flowing", which is the clean cancellation, with "an extra cancel connection at about 60 s".
+  - "replies held", with "the hard timeout at about 75 s", and the replies released "before the next checkout".
+- It still requires "a Serverpod pool of 16 through `TcpProxy`, with no test-harness rollback transaction". That matches serverpod-testing L91 and L157.
+- It still requires recording the timings and setting explicit test timeouts above those budgets.
+- The 1 s diagnostic is evidence only and does not replace either trial.
 
-### Required Change 3: tasks 5.4 and 5.5 make the owner-level fault checks explicit — applied
+### F3: Transaction cleanliness is kept (passes)
 
-- **Task 5.4 (`tasks.md:424`)** now requires all three checks:
-  - The real TCP proxy withholds the reply to an in-flight settle statement.
-  - The test verifies that "the settler token returns within 20 s".
-  - The test verifies that "an eligible retry settles X once the proxy heals".
+- The interrupted backend is still identified "by pid and start time".
+- The borrower on the replacement must see "the defaults, not the interrupted transaction's read-only mode or `SET LOCAL` marker".
+- Both checks apply in both cases.
 
-  The 20-second limit matches D26 (L413) and C30.
-- **Task 5.5 (`tasks.md:425`)** now requires:
-  - The real proxy withholds the recovery update's reply "until the attempt is abandoned before sending `COMMIT`".
-  - A check "from another session that the abandoned update does not commit".
-  - A check that "admission stays closed until the successor's own commit returns".
+### F4: No public promise or token release rule changed (passes)
 
-  These match D26's start-up recovery text (L414) and D27 (L424).
-- **What round 43 said to keep is still there:**
-  - Task 5.5 still lists the post-`COMMIT` row "Recovery commit lands after abandonment".
-  - Task 2.7 (`tasks.md:392`) still checks that the 3 s `connectTimeout` bounds opening on a silent proxy.
-- **A11 still fits D26's policy.** A11 (`design.md:528`) records two observations:
-  - Graceful `close()` waits for the in-flight query, which can still succeed.
-  - `close(force: true)` fails the pending query.
+- A13 says "D28 keeps tokens until the session future and grace end, independent of those driver timers." This matches D28 L434: a token is held until the session future completes (commit or rollback included) and the per-path statement timeout has passed.
+- D28 L436 and L438 are unchanged in substance. Tokens cap visible work at 8, the rule doesn't rely on checkout, setup or cleanup deadlines, and a stalled pool still fails closed.
+- A13 still names the public-read bounds as verified by the same scenarios: "Repeated lost replies" and "Waiting calls during a stall" (7.3), and "Repeated connection losses" (8.3).
+- The dependents (D2, D9, D23, D28, D3, D19) and task 2.9's drift target are unchanged.
+- No new product promise is made, and none is removed.
 
-  A11 says only forced close is used for abandonment. D26 (L413) and D27 already require `close(force: true)`, a 5 s cleanup wait and one logged orphan. Task 2.7 now probes both close modes. A11's last sentence correctly points the owner-level checks to the settlement and recovery tests.
+### Advisory (non-blocking, no change required)
 
-### Non-blocking observations (outside round 43's required scope)
-
-- The "Operation insert" row (`design.md:731`) still says the settler upserts X "unless X already ended". D26's upsert actually deletes and replaces an ended row older than 30 days. Row 748 and the flow at L789 now use the more precise wording "preserves an unexpired ended X". Aligning row 731 with that wording would be a small consistency edit, but nothing in the design contradicts it.
-- Round 43 suggested scoping the query failure in D26's retry paragraph to the forced-close probe. In D26 (L413), "after which its futures complete with an error (A11)" is now followed directly by "Abandonment calls `close(force: true)` and waits for it at most 5 s; if it has not returned, the token is released anyway". So the forced-close policy and the token-return bound are both stated. The suggestion is adequately resolved.
+- **AD1:** Make "verify it is discarded" observable, not inferred. Two ways to do this:
+  - Before each trial, snapshot the pool's (pid, `backend_start`) set. Afterwards, check that the interrupted pair is absent from `pg_stat_activity` (or never reappears while borrowing past all 16 slots).
+  - Check that the borrower's pair is new.
+- **AD2:** A13's sentence "The driver can reuse a connection after a clean cancellation" is explanation only. No decision depends on it and task 2.9 doesn't probe it, which is fine. Don't turn it into a claim later without a probe.
+- **AD3:** Round 46's advisory on the marker still applies: use a custom setting such as `SET LOCAL kaname.probe = 'x'`, not a short `statement_timeout`.
 
 ## Verdict
 
-VERDICT: APPROVE_WITH_CHANGES
+The amendment states the replacement outcome that the diagnostic and pinned source show. It keeps both real 60 s and 75 s timeout trials and the transaction-cleanliness checks, and it leaves D28's token release rule and the public-read promises unchanged.
 
-All three of round 43's Required Changes are in the working-tree `design.md` and `tasks.md`, and they agree with the `static-data-admin` spec delta. No Critical issue remains from round 43's findings.
+VERDICT: APPROVE
+CHANGES_APPLIED: n/a
 
 ## Required Changes
 
-CHANGES_APPLIED: yes
-
-1. D31 copied chunks and full `Content-Length`: verified at `design.md:462–463`. It matches `spec.md:262` and task 8.4.
-2. The admission store, lost-insert and forward-switch summaries: verified at `design.md:738`, `design.md:748` and `design.md:789`. They match D4 (L119, L131–133), D5 (L153), D19 and D26 (L411–412).
-3. The owner-level fault checks: verified in tasks 5.4 and 5.5 at `tasks.md:424–425`. The post-`COMMIT` case and task 2.7's silent-handshake check are still there.
+None.
 
 ## Rebuttals
 
-- None. Round 43's findings are resolved as described above. Its rebuttals on A11 and task 2.7, on recovery ordering and ADR alignment, and on the round 42 follow-through still hold against the working tree.
+- **Requiring replacement rather than "reuse or replacement":** I accept it. A13 now asserts that the connection is discarded, based on pinned source and an observed run. A test that accepted either outcome would leave that claim unchecked. Stopping for drift if reuse ever appears keeps the user's approved scope, because reuse is not required. It only becomes a reason to re-decide.
