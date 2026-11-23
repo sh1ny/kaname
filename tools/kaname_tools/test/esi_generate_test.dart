@@ -7,7 +7,7 @@ import 'support/in_memory_file_system.dart';
 
 List<String> _generated(InMemoryFileSystem fs) => [
   for (final path in fs.filePaths)
-    if (path.startsWith('$esiGeneratedDirectory/')) path,
+    if (esiGeneratedDirectories.any((d) => path.startsWith('$d/'))) path,
 ];
 
 void main() {
@@ -26,8 +26,9 @@ void main() {
         'widgets_models.dart',
       ])
         '$esiGeneratedDirectory/$name',
+      '$esiGeneratedTestDirectory/operations_test.dart',
     ]);
-    expect(result.out, contains('6 files for $esiFixtureDate, 6 written'));
+    expect(result.out, contains('7 files for $esiFixtureDate, 7 written'));
   });
 
   test('generate twice: the second run writes nothing', () async {

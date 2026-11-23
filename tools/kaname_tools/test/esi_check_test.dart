@@ -33,7 +33,7 @@ void main() {
 
     final result = await runTool(fs, ['esi', 'check'], esiScratch: scratch);
     expect(result.code, exitSuccess, reason: result.err);
-    expect(result.out, contains('6 files current for $esiFixtureDate'));
+    expect(result.out, contains('7 files current for $esiFixtureDate'));
     expect(fs.writeCount, writes);
     expect({
       for (final path in fs.filePaths) path: fs.readAsString(path),
@@ -41,9 +41,9 @@ void main() {
     expect(scratch.uses, 1);
     expect(
       scratch.last!.filePaths.where(
-        (path) => path.startsWith('$esiGeneratedDirectory/'),
+        (path) => esiGeneratedDirectories.any((d) => path.startsWith('$d/')),
       ),
-      hasLength(6),
+      hasLength(7),
     );
   });
 

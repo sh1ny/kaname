@@ -65,43 +65,40 @@ EsiGeneration renderPinnedEsiClient(FileSystem fileSystem) {
   };
 }
 
-/// The generated `.dart` files on disk, by name inside
-/// [esiGeneratedDirectory]; none when the directory does not exist.
-List<String> existingEsiGeneratedFiles(FileSystem fileSystem) =>
-    fileSystem.kindOf(esiGeneratedDirectory) == FsEntryKind.directory
-    ? [
-        for (final entry in fileSystem.list(esiGeneratedDirectory))
-          if (entry.kind == FsEntryKind.file && entry.name.endsWith('.dart'))
-            entry.name,
-      ]
-    : const [];
+/// The generated `.dart` files on disk, by repository-relative path, in
+/// every directory of [esiGeneratedDirectories] that exists.
+List<String> existingEsiGeneratedFiles(FileSystem fileSystem) => [
+  for (final directory in esiGeneratedDirectories)
+    if (fileSystem.kindOf(directory) == FsEntryKind.directory)
+      for (final entry in fileSystem.list(directory))
+        if (entry.kind == FsEntryKind.file && entry.name.endsWith('.dart'))
+          '$directory/${entry.name}',
+];
 
 /// What [writeEsiGeneratedFiles] changed.
 typedef EsiWriteReport = ({List<String> written, List<String> removed});
 
-/// Writes [files] into [esiGeneratedDirectory], skipping files whose text
-/// is already current, and removes generated files no longer rendered.
+/// Writes [files], keyed by repository-relative path, skipping files whose
+/// text is already current, and removes generated files no longer
+/// rendered.
 EsiWriteReport writeEsiGeneratedFiles(
   FileSystem fileSystem,
   Map<String, String> files,
 ) {
   final existing = existingEsiGeneratedFiles(fileSystem);
   final written = <String>[];
-  for (final MapEntry(key: name, value: text) in files.entries) {
-    final path = '$esiGeneratedDirectory/$name';
-    if (existing.contains(name) && fileSystem.readAsString(path) == text) {
+  for (final MapEntry(key: path, value: text) in files.entries) {
+    if (existing.contains(path) && fileSystem.readAsString(path) == text) {
       continue;
     }
     fileSystem.writeAsString(path, text);
-    written.add(name);
+    written.add(path);
   }
   final removed = [
     for (final name in existing)
       if (!files.containsKey(name)) name,
   ]..sort();
-  for (final name in removed) {
-    fileSystem.delete('$esiGeneratedDirectory/$name');
-  }
+  removed.forEach(fileSystem.delete);
   return (written: written, removed: removed);
 }
 
@@ -158,8 +155,8 @@ final class TempDirectoryEsiScratch implements EsiScratch {
         generated = scratch.use((temporary) {
           writeEsiGeneratedFiles(temporary, files);
           return {
-            for (final name in existingEsiGeneratedFiles(temporary))
-              name: temporary.readAsString('$esiGeneratedDirectory/$name'),
+            for (final path in existingEsiGeneratedFiles(temporary))
+              path: temporary.readAsString(path),
           };
         });
       } on FileSystemException catch (e) {
@@ -172,17 +169,14 @@ final class TempDirectoryEsiScratch implements EsiScratch {
   }
   final committed = existingEsiGeneratedFiles(fileSystem);
   final problems = <String>[
-    for (final name in generated.keys.toList()..sort())
-      if (!committed.contains(name))
-        '$esiGeneratedDirectory/$name is missing'
-      else if (fileSystem.readAsString('$esiGeneratedDirectory/$name') !=
-          generated[name])
-        '$esiGeneratedDirectory/$name differs from what the pinned snapshot '
-            'generates',
-    for (final name in committed.toList()..sort())
-      if (!generated.containsKey(name))
-        '$esiGeneratedDirectory/$name is not generated from the pinned '
-            'snapshot',
+    for (final path in generated.keys.toList()..sort())
+      if (!committed.contains(path))
+        '$path is missing'
+      else if (fileSystem.readAsString(path) != generated[path])
+        '$path differs from what the pinned snapshot generates',
+    for (final path in committed.toList()..sort())
+      if (!generated.containsKey(path))
+        '$path is not generated from the pinned snapshot',
   ];
   if (problems.isNotEmpty) {
     problems.add(

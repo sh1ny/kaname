@@ -99,7 +99,7 @@ final class EsiGenerateCommand extends Command<int> {
       case EsiGenerationReady(:final pin, :final files):
         final (:written, :removed) = writeEsiGeneratedFiles(_fileSystem, files);
         _output.out.writeln(
-          '$esiGeneratedDirectory: ${files.length} files for ${pin.date}, '
+          'ESI client: ${files.length} files for ${pin.date}, '
           '${written.length} written, ${removed.length} removed',
         );
         return exitSuccess;
@@ -133,9 +133,7 @@ final class EsiCheckCommand extends Command<int> {
       problems.forEach(_output.err.writeln);
       return exitCheckFailed;
     }
-    _output.out.writeln(
-      '$esiGeneratedDirectory: $files files current for ${pin?.date}',
-    );
+    _output.out.writeln('ESI client: $files files current for ${pin?.date}');
     return exitSuccess;
   }
 }

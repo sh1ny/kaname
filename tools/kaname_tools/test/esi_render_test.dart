@@ -13,7 +13,10 @@ EsiSpec _read(Object? document) =>
 
 Map<String, String> _render(Object? document) =>
     switch (renderEsiClient(_read(document), date: esiFixtureDate)) {
-      EsiRendered(:final files) => files,
+      EsiRendered(:final files) => {
+        for (final MapEntry(:key, :value) in files.entries)
+          key.replaceFirst('$esiGeneratedDirectory/', ''): value,
+      },
       EsiRenderRefused(:final reason) => fail('expected files: $reason'),
     };
 
@@ -40,6 +43,7 @@ void main() {
         'esi.dart',
         'gadgets_client.dart',
         'pin.dart',
+        '$esiGeneratedTestDirectory/operations_test.dart',
         'widgets_client.dart',
         'widgets_models.dart',
       ]);
