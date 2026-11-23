@@ -18,7 +18,7 @@ review:
   cross_model: true
   order: [omp, codex, claude]
   timeout: 20m
-  max_diff_kb: 1536
+  max_diff_kb: 2048
   preship: true
 
 # Paths reserve locations only; setup creates no planning documents.
