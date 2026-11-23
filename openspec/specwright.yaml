@@ -1,4 +1,4 @@
-# Specwright 0.34.0. Owner-approved setup; decisions always return to the owner.
+# Owner-approved Specwright settings; decisions always return to the owner.
 decision_making: all
 finish: pr
 main_branch: main
