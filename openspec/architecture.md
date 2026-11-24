@@ -68,7 +68,7 @@ flowchart LR
 | Client data bundle (server) | Check job and bundle repair on the compute worker, under the static-data lock (solo: local builder) | One per stored build, removed with its build | A missing, failed or other-format active bundle is rebuilt by the next check, start or 60-second repair (ADR 0013) | Postgres `sde_bundle` and `sde_bundle_bytes` |
 | Announced bundle and its served bytes | `BundleAnnouncer` in the server main isolate, one refresh at a time | Process lifetime; at most the announced and previous bundles held | Re-read at start, after each check and repair reply, and every 60 s; published on the RealtimeBus | Derived from `sde_build` and `sde_bundle` |
 | Client data bundle (device) | `StaticDataNotifier` in the app, one save at a time | Until the next save replaces it | Downloaded when the announced build and hash differ from the bundle the device holds (it keeps only its current one), swapped in at a safe point, then saved whole | Server's stored bundle |
-| Rate buckets, governor tier, negative cache | Scheduler code in each calling isolate, through one atomic check-and-spend | Rolling 15-minute window; backoff caps | Reservation before send; response headers correct it | Redis (server) or memory (solo) |
+| ESI budgets, governor, negative and polling metadata | Scheduler transitions atomically shared by calling isolates (ADR 0016) | Rolling group windows, connection error epochs and bounded polling deadlines | Reserve before sending; reconcile from upstream headers | Redis (server) or one in-process store (native solo) |
 | Per-user change log | Server sync layer | Bounded by compaction (set in M4) | Clients resync from a snapshot | Postgres |
 | Collaborative event logs | Server realtime layer | Per object | Gap → client resync | Postgres |
 | Offline cache on clients | App sync layer | Own data and org records until invalidated; other members' data in memory only | Server stream invalidation | Server |
@@ -117,7 +117,8 @@ Accepted, not superseded. Proposed ADRs are drafts and are not listed.
 | [0009](../docs/adr/0009-server-process-and-isolates.md) | One process; main, realtime, Discord and compute isolates; pure-Dart jobs behind a runner | — |
 | [0010](../docs/adr/0010-flutter-app-state.md) | Riverpod 3 in the presentation layer only, no codegen or persist | — |
 | [0011](../docs/adr/0011-fit-engine-behind-an-interface.md) | Kaname `FitEngine` interface over EVEShipFit's pinned engine | — |
-| [0012](../docs/adr/0012-worker-isolate-access.md) | Workers reach Postgres through their own per-job connections; the bus is settled by ADR 0014 (workers send typed replies, only the main isolate publishes); Redis, vault and privacy scope still open (R56) | — |
+| [0012](../docs/adr/0012-worker-isolate-access.md) | Worker-owned per-job Postgres; bus settled by ADR 0014, ESI Redis by ADR 0016; vault and privacy scope still open (R56) | — |
 | [0013](../docs/adr/0013-client-data-bundle.md) | One versioned gzip JSON Lines bundle per SDE build, public data only, served by build and hash; same builder on server and device | — |
 | [0014](../docs/adr/0014-realtime-bus-topics.md) | RealtimeBus topics typed and versioned, public or scoped, local delivery first, only the main isolate publishes | — |
 | [0015](../docs/adr/0015-interim-install-admin-key.md) | One install-wide static-data admin key until M2 sign-in and roles; public reads stay open | — |
+| [0016](../docs/adr/0016-esi-scheduler-shared-state.md) | Isolate-owned Redis connections and one atomic scheduler state; solo in process | — |

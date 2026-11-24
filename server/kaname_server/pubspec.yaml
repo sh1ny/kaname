@@ -12,6 +12,10 @@ dependencies:
   http: ^1.6.0
   kaname_core:
     path: ../../packages/kaname_core
+  kaname_esi:
+    path: ../../packages/kaname_esi
+  kaname_esi_scheduler:
+    path: ../../packages/kaname_esi_scheduler
   kaname_static_data:
     path: ../../packages/kaname_static_data
   kaname_static_data_bundle:
@@ -19,6 +23,7 @@ dependencies:
   meta: ^1.19.0
   path: ^1.9.1
   postgres: 3.6.0
+  redis: 4.1.0
   serverpod: 4.1.2
   yaml: ^3.1.3
 

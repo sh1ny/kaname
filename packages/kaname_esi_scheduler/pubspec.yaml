@@ -1,0 +1,16 @@
+name: kaname_esi_scheduler
+description: Shared ESI scheduling policy and native runtime composition.
+publish_to: none
+version: 0.1.0
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  crypto: ^3.0.8
+  kaname_esi:
+    path: ../kaname_esi
+
+dev_dependencies:
+  test: ^1.26.0

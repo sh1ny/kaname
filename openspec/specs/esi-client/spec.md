@@ -81,7 +81,9 @@ The client SHALL send every request through the one transport it was built with,
 - **THEN** it holds no `Authorization` header, token, character id beyond the operation's own parameters, or priority
 
 ### Requirement: Typed results, never thrown
-Each call SHALL return one result of a closed set: success, not modified, ESI error, malformed response, invalid request or transport failure. The client SHALL NOT throw for any HTTP status or response body.
+Each call SHALL return one result of a closed set: success, not modified, ESI error, malformed response, invalid request, transport failure or scheduler refusal. The client SHALL NOT throw for any HTTP status or response body.
+
+Stable refusal reasons SHALL be `budget`, `stopped`, `queueFull`, `waitExpired`, `negativeCached`, `notDue`, `outage`, `stateUnavailable`, `corpBusy`, `scopeCapacity`, `routeConflict`, `invalidContext` and `stateRecovering`.
 
 #### Scenario: Success
 - **WHEN** the transport answers 200 with a body that matches the operation's schema and headers `ETag`, `Expires`, `Last-Modified` and `X-Pages: 3`
@@ -102,6 +104,14 @@ Each call SHALL return one result of a closed set: success, not modified, ESI er
 #### Scenario: ESI error without a readable body
 - **WHEN** the transport answers 502 with a body that is not JSON
 - **THEN** the result is an ESI error with status 502 and no parsed message
+
+#### Scenario: Scheduler refuses before dispatch
+- **WHEN** the transport reports that scheduler policy refused to send a call
+- **THEN** the client returns a distinct not-sent result with a stable reason and any supplied retry deadline, without an HTTP status
+
+#### Scenario: Negative suppression is not a wire result
+- **WHEN** the transport refuses with `negativeCached`
+- **THEN** the not-sent result carries the suppressed 403 or 404 separately and has no wire HTTP status
 
 ### Requirement: Malformed responses are reported
 A success status whose body does not match the operation's schema SHALL give a malformed-response result naming the status and the JSON path of the first mismatch. A missing required field, a JSON type that differs from the schema, or a body that is not JSON SHALL each count as a mismatch.

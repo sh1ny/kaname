@@ -5,6 +5,7 @@ import 'package:test/test.dart';
 
 import 'support/contracts.dart';
 import 'support/exchanges.dart';
+import 'support/fixture_transport.dart';
 
 /// Runs [body] where opening any socket or HTTP client fails the test.
 Future<T> _offline<T>(Future<T> Function() body) => HttpOverrides.runZoned(
@@ -25,6 +26,40 @@ void main() {
         final exchange = Exchange.load(name);
         verifyContract(exchange, await _offline(() => contract(exchange)));
       });
+    }
+  });
+
+  test('decodes scheduler refusal without wire status', () async {
+    final until = DateTime.utc(2026, 11, 24, 15);
+    final result = await EsiClient(
+      FixtureTransport(
+        EsiTransportRefused(EsiRefusalReason.budget, retryAt: until),
+      ),
+    ).getAlliancesAllianceId(allianceId: 99000001);
+
+    expect(
+      result,
+      isA<EsiNotSent<AlliancesDetail>>()
+          .having((r) => r.refusal.reason, 'reason', EsiRefusalReason.budget)
+          .having((r) => r.refusal.retryAt, 'retry deadline', until),
+    );
+  });
+
+  test('preserves suppressed status separately', () async {
+    for (final status in [403, 404]) {
+      final result = await EsiClient(
+        FixtureTransport(EsiTransportRefused.negativeCached(status)),
+      ).getAlliancesAllianceId(allianceId: 99000001);
+      expect(
+        result,
+        isA<EsiNotSent<AlliancesDetail>>()
+            .having(
+              (r) => r.refusal.reason,
+              'reason',
+              EsiRefusalReason.negativeCached,
+            )
+            .having((r) => r.refusal.suppressedStatus, 'cached status', status),
+      );
     }
   });
 

@@ -99,7 +99,15 @@ final class EsiResponse extends EsiTransportOutcome {
          for (final MapEntry(:key, :value) in headers.entries)
            key.toLowerCase(): value,
        }),
-       body = body ?? Uint8List(0);
+       body = body ?? Uint8List(0),
+       decodeReceipt = null;
+
+  /// Reuses a wire response without copying its headers or body. The
+  /// generated call awaits [decodeReceipt] once after attempting to decode.
+  EsiResponse.withDecodeReceipt(EsiResponse wire, this.decodeReceipt)
+    : status = wire.status,
+      headers = wire.headers,
+      body = wire.body;
 
   /// The HTTP status code.
   final int status;
@@ -109,6 +117,9 @@ final class EsiResponse extends EsiTransportOutcome {
 
   /// The response body bytes; empty when there is none.
   final Uint8List body;
+
+  /// Reports whether the generated call produced a usable representation.
+  final Future<void> Function(bool usable)? decodeReceipt;
 }
 
 /// The request could not be sent or no answer came back.
@@ -118,4 +129,69 @@ final class EsiTransportFailure extends EsiTransportOutcome {
 
   /// Why the request failed, for logs and diagnostics.
   final String reason;
+}
+
+/// Why the scheduler declined a request before opening an HTTP exchange.
+enum EsiRefusalReason {
+  /// An applicable budget did not cover the reservation.
+  budget,
+
+  /// The governor stopped the applicable scope.
+  stopped,
+
+  /// The waiting queue had no space for this priority.
+  queueFull,
+
+  /// The admission ticket expired before dispatch.
+  waitExpired,
+
+  /// A prior forbidden or not-found result still suppresses this read.
+  negativeCached,
+
+  /// The caller already holds a representation that is not due for polling.
+  notDue,
+
+  /// Polling is paused while Tranquility is unavailable.
+  outage,
+
+  /// The shared scheduler state could not confirm dispatch.
+  stateUnavailable,
+
+  /// Another caller is polling the equivalent corporation representation.
+  corpBusy,
+
+  /// The scheduler could not track another scope without dropping live state.
+  scopeCapacity,
+
+  /// Upstream group observations disagree about which budget applies.
+  routeConflict,
+
+  /// The operation and supplied context cannot safely be used together.
+  invalidContext,
+
+  /// The shared store is waiting for prior upstream debits to drain.
+  stateRecovering,
+}
+
+/// A scheduler decision, not an upstream response or a transport error.
+final class EsiTransportRefused extends EsiTransportOutcome {
+  /// Creates a refusal that is not a negative-cache hit.
+  const EsiTransportRefused(this.reason, {this.retryAt})
+    : assert(reason != EsiRefusalReason.negativeCached),
+      suppressedStatus = null;
+
+  /// Creates a refusal carrying the original forbidden or not-found status.
+  const EsiTransportRefused.negativeCached(int status, {this.retryAt})
+    : assert(status == 403 || status == 404),
+      reason = EsiRefusalReason.negativeCached,
+      suppressedStatus = status;
+
+  /// The stable reason the scheduler refused to send.
+  final EsiRefusalReason reason;
+
+  /// The earliest indicated time to reconsider the request, when known.
+  final DateTime? retryAt;
+
+  /// The prior negative status, not a status of this request.
+  final int? suppressedStatus;
 }
