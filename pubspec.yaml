@@ -10,6 +10,7 @@ workspace:
   - app_packages/kaname_ember_ui
   - packages/kaname_core
   - packages/kaname_esi
+  - packages/kaname_esi_scheduler
   - packages/kaname_static_data
   - packages/kaname_static_data_bundle
   - server/kaname_client

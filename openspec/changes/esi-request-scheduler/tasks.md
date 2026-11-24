@@ -40,8 +40,8 @@ Test paths below are relative to the workspace. `shared` = `packages/kaname_esi_
 
 ## 2. Implement scheduling and solo state
 
-- [ ] 2.1 Add the pure-Dart workspace module and shared conformance fixture; test atomic admission, uncertain delivery, reconciliation, tiers and priority red first. Implement the synchronous state transition and bound scheduled transport; verify the solo conformance cases and the no-replay invariant C6.
-- [ ] 2.2 Test shared negative metadata, freshness/304, outages and corp leases red first; implement them in the scoped transitions. Verify fake-time conformance including FIFO, dead heads, expiry, capped cache, page isolation and corp ownership (C2, C3, C5, C9).
+- [x] 2.1 Add the pure-Dart workspace module and shared conformance fixture; test atomic admission, uncertain delivery, reconciliation, tiers and priority red first. Implement the synchronous state transition and bound scheduled transport; verify the solo conformance cases and the no-replay invariant C6.
+- [x] 2.2 Test shared negative metadata, freshness/304, outages and corp leases red first; implement them in the scoped transitions. Verify fake-time conformance including FIFO, dead heads, expiry, capped cache, page isolation and corp ownership (C2, C3, C5, C9).
 
 ## 3. Wire server and native transports
 

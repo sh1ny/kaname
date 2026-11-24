@@ -58,6 +58,11 @@ description = "Run the kaname_esi tests"
 dir = "packages/kaname_esi"
 run = "dart test"
 
+[tasks."test:esi_scheduler"]
+description = "Run deterministic ESI scheduler and native solo tests"
+dir = "packages/kaname_esi_scheduler"
+run = "dart test"
+
 [tasks."test:tools"]
 description = "Run the kaname_tools tests"
 dir = "tools/kaname_tools"
@@ -98,6 +103,7 @@ description = "Run every workspace member's tests"
 run = [
   { task = "test:core" },
   { task = "test:esi" },
+  { task = "test:esi_scheduler" },
   { task = "test:static_data" },
   { task = "test:static_data_bundle" },
   { task = "test:tools" },
