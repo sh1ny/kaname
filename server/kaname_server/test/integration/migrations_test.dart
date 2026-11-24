@@ -18,6 +18,10 @@ const _unknownVersion = '20991231235959999';
 
 const _previousStaticDataMigration = '20261120083015689-sde-bundle';
 
+// The static-data upgrade cases apply this specific data migration, not
+// whichever unrelated schema migration was added most recently.
+const _staticDataSettingsMigration = '20261123085740775-static-data-settings';
+
 Future<String> _migrationSql(String version, String file) =>
     File(p.join('migrations', version, file)).readAsString();
 
@@ -172,7 +176,7 @@ void main() {
     test('check rows from before the migration read trigger daily', () async {
       final db = await _seedLegacyReports(sessions.build());
       await db.execute(
-        await _migrationSql(_latestCommittedMigration(), 'migration.sql'),
+        await _migrationSql(_staticDataSettingsMigration, 'migration.sql'),
         queryMode: pg.QueryMode.simple,
       );
       expect(
@@ -188,7 +192,7 @@ void main() {
       () async {
         final db = await _seedLegacyReports(sessions.build());
         await db.execute(
-          await _migrationSql(_latestCommittedMigration(), 'migration.sql'),
+          await _migrationSql(_staticDataSettingsMigration, 'migration.sql'),
           queryMode: pg.QueryMode.simple,
         );
         expect(
@@ -205,7 +209,7 @@ FROM sde_build_diff ORDER BY "fromBuild", "toBuild"
         );
         expect(
           await _postgresMigrationVersion(db),
-          _latestCommittedMigration(),
+          _staticDataSettingsMigration,
         );
       },
     );
@@ -226,7 +230,10 @@ FOR EACH STATEMENT EXECUTE FUNCTION fail_report_upgrade();
 ''', queryMode: pg.QueryMode.simple);
           await expectLater(
             db.execute(
-              await _migrationSql(_latestCommittedMigration(), 'migration.sql'),
+              await _migrationSql(
+                _staticDataSettingsMigration,
+                'migration.sql',
+              ),
               queryMode: pg.QueryMode.simple,
             ),
             throwsA(
