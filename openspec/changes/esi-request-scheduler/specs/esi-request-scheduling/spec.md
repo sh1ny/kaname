@@ -80,6 +80,8 @@ The scheduler SHALL suppress repeat reads after a 403 or 404 for a bounded perio
 
 The scheduler SHALL preserve a caller's matching validator, honor valid Expires with bounded delay and install jitter, and suspend polls while Tranquility is unavailable until a successful recovery probe. It SHALL NOT manufacture a 304 from stored metadata.
 
+Each page or cursor SHALL be scheduled independently. Callers own traversal and cross-page representation consistency.
+
 #### Scenario: Unchanged page
 - **WHEN** a page becomes due and the caller has that page's ETag and representation
 - **THEN** the sender includes If-None-Match and returns an upstream 304 as not modified

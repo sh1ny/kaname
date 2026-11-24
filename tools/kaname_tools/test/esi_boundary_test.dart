@@ -25,6 +25,32 @@ void main() {
     );
   });
 
+  test('reports independent scheduler construction in a product module', () {
+    expect(
+      _bypass('''
+        import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart' as esi;
+        final scheduler = esi.EsiScheduler(
+          state: esi.MemorySchedulerState(), key: [1], send: sendDirect,
+        );
+      '''),
+      ['ESI scheduler composition outside its owner'],
+    );
+    expect(
+      _bypass('''
+        import 'dart:io' if (dart.library.io)
+          'package:kaname_esi_scheduler/native.dart';
+      '''),
+      ['ESI scheduler composition outside its owner'],
+    );
+    expect(
+      _bypass('''
+        import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart'
+          show EsiPriority, EsiPrincipal;
+      '''),
+      isEmpty,
+    );
+  });
+
   test('production modules cannot bypass the ESI scheduler', () {
     final root = p.normalize(p.absolute('../..'));
     final violations = <String>[];
@@ -97,6 +123,12 @@ final class _Boundary extends RecursiveAstVisitor<void> {
     'EsiCall',
     'EsiRequest',
   };
+  static const _compositionTypes = {
+    'EsiScheduler',
+    'MemorySchedulerState',
+    'SchedulerState',
+    'EsiWireSend',
+  };
   final bool allowImport;
   final bool allowOrigin;
   final violations = <String>[];
@@ -119,11 +151,31 @@ final class _Boundary extends RecursiveAstVisitor<void> {
 
   void _checkImport(String? uri, Iterable<Combinator> combinators) {
     if (allowImport || uri == null) return;
-    final exposesSender =
-        uri == 'package:kaname_esi/kaname_esi.dart' ||
-        uri.startsWith('package:kaname_esi/src/');
-    if (!exposesSender) return;
-    var available = _sendTypes;
+    final (blocked, message) = switch (uri) {
+      'package:kaname_esi/kaname_esi.dart' => (
+        _sendTypes,
+        'unscheduled ESI client import',
+      ),
+      'package:kaname_esi_scheduler/kaname_esi_scheduler.dart' => (
+        _compositionTypes,
+        'ESI scheduler composition outside its owner',
+      ),
+      _
+          when uri.startsWith('package:kaname_esi_scheduler/') ||
+              uri.endsWith('/esi/redis_scheduler_state.dart') =>
+        (null, 'ESI scheduler composition outside its owner'),
+      _ when uri.startsWith('package:kaname_esi/src/') => (
+        null,
+        'unscheduled ESI client import',
+      ),
+      _ => (null, null),
+    };
+    if (message == null) return;
+    if (blocked == null) {
+      violations.add(message);
+      return;
+    }
+    var available = blocked;
     for (final c in combinators) {
       if (c is ShowCombinator) {
         available = available.intersection({
@@ -135,7 +187,7 @@ final class _Boundary extends RecursiveAstVisitor<void> {
         });
       }
     }
-    if (available.isNotEmpty) violations.add('unscheduled ESI client import');
+    if (available.isNotEmpty) violations.add(message);
   }
 
   @override
