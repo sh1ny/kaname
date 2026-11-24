@@ -1,6 +1,6 @@
 ## Test map
 
-Test paths below are relative to the workspace. `shared` = `packages/kaname_esi_scheduler/test/scheduler_conformance_test.dart` and the same conformance suite invoked by `server/kaname_server/test/integration/esi/redis_scheduler_test.dart` with real Redis; `redis` refers to that integration file alone. `client` = `packages/kaname_esi/test/contract_test.dart`.
+Test paths below are relative to the workspace. `shared` = `packages/kaname_esi_scheduler/test/scheduler_conformance_test.dart` cases registered by `schedulerConformance`, which also run against real Redis in `server/kaname_server/test/integration/esi/redis_scheduler_test.dart`. `memory` = transport cases in the first file's `main()` that use only `MemorySchedulerState`. `redis` refers to cases in the integration file alone. `client` = `packages/kaname_esi/test/contract_test.dart`.
 
 | Requirement | Scenario | File | Named test | State |
 |---|---|---|---|---|
@@ -8,7 +8,7 @@ Test paths below are relative to the workspace. `shared` = `packages/kaname_esi_
 | Shared atomic admission | State unavailable | redis | refuses when Redis cannot confirm | green |
 | Shared atomic admission | Redis was replaced or restarted | redis | quarantines stale state from a prior incarnation | green |
 | Shared atomic admission | Product transport bypass | `tools/kaname_tools/test/esi_boundary_test.dart` | reports direct production ESI access | green |
-| Shared atomic admission | Delivery is uncertain | shared | never replays an ambiguous send; sender boundary failures settle without replay | green |
+| Shared atomic admission | Delivery is uncertain | memory | never replays an ambiguous send; sender boundary failures settle without replay | green |
 | Response reconciliation | Response changes available capacity | shared | charges outstanding work against observed remaining | green |
 | Response reconciliation | Retry and reset | shared | distinguishes group cooldown from connection reset | green |
 | Response reconciliation | Older observation arrives late | shared | settles late response without replacing ceiling | green |
@@ -19,11 +19,11 @@ Test paths below are relative to the workspace. `shared` = `packages/kaname_esi_
 | Governor tiers and priorities | Capacity stays occupied | shared | expires a lease and never sends an expired ticket | green |
 | Shared negative result suppression | Another isolate repeats a denied read | shared; redis | shares suppressed 403 and 404 without sending; shares negative cache across server isolates | green |
 | Shared negative result suppression | Suppression does not cross identities | shared | isolates authorization and expires at logical deadline | green |
-| Conditional polling and downtime | Unchanged page | shared | forwards retained page validator and wire 304 | green |
-| Conditional polling and downtime | Response body is incomplete or malformed | shared | incomplete/malformed body does not mark a retained poll fresh | green |
+| Conditional polling and downtime | Unchanged page | memory | forwards retained page validator and wire 304 | green |
+| Conditional polling and downtime | Response body is incomplete or malformed | memory | incomplete/malformed body does not mark a retained poll fresh | green |
 | Conditional polling and downtime | Tranquility is unreachable | shared | grants one shared status probe per retry opportunity | green |
 | Conditional polling and downtime | Fresh page and stale worker | shared | distinguishes not due from no local representation | green |
-| Conditional polling and downtime | Probe fails or reports VIP mode | shared | does not resume for a failed probe; decoded VIP status does not resume polling | green |
+| Conditional polling and downtime | Probe fails or reports VIP mode | shared; memory | does not resume for a failed probe; decoded VIP status does not resume polling | green |
 | Conditional polling and downtime | ESI reachable but every route answers 503 | shared | repeated failures refresh the outage window for distinct routes | green |
 | Equivalent corporation polls | Two qualified holders poll the same corporation page | shared | deduplicates corp representation across holders | green |
 | Equivalent corporation polls | Poller fails before releasing its claim | shared | reclaims expired corp lease | green |
