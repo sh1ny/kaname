@@ -1,13 +1,17 @@
 /// The deploy proxy closes both sides of a stalled bundle download.
 ///
-/// The pinned Caddy and its explicit production idle setting run against
-/// bounded TCP buffers on a directly reachable native Linux Docker bridge.
-/// The test needs namespaced TCP sysctls, but not the running Compose stack.
-/// Caddy's matching write timeout and upstream release trace are independent
-/// of the peer's close event; the client does not read until both arrive.
-/// The minimum is measured within Caddy's failing write, never by the hang
-/// guard. The disabled-timer control waits for an open, zero-window upstream
-/// with unsent bytes, then drains the complete response.
+/// Requires a directly reachable native Linux Docker bridge and namespaced
+/// TCP sysctls; it does not need the Compose stack.
+///
+/// The probe checks the explicit production idle limit, the duration of
+/// Caddy's failing write, its immediate upstream release, and both socket
+/// ends independently. The client reads only after the trace and upstream
+/// end arrive, regardless of their delivery order. The watchdog is not an
+/// expected outcome.
+///
+/// The drain control verifies effective timer disablement. It waits for an
+/// open upstream with a zero receive window and unsent bytes, then requires
+/// full delivery once the client starts reading.
 @Tags(['stack'])
 library;
 
@@ -61,12 +65,15 @@ Future<void> _probe({required bool disableIdle}) async {
   final name = 'kaname-caddy-idle-$pid-${disableIdle ? 'drain' : 'timeout'}';
   final trace = _Trace();
   Future<_Docker>? launch;
+  _Response? downstream;
   var stage = 'adapting the Caddyfile';
   var passed = false;
   addTearDown(() async {
     if (!passed) {
       printOnFailure(
-        'Caddy probe stage: $stage; ${upstream.progress}\n'
+        'Caddy probe stage: $stage; ${upstream.progress}; '
+        'downstream bytes=${downstream?.received ?? 0}, '
+        'error=${downstream?.error}\n'
         '${trace.tail.join('\n')}',
       );
     }
@@ -78,16 +85,19 @@ Future<void> _probe({required bool disableIdle}) async {
         } finally {
           // Removal was registered before starting Docker, even if the CLI
           // did not return the result of creating the container.
-          await _docker(['rm', '--force', name], cleanup: true);
-          final remaining = await _checkedDocker([
-            'ps',
-            '--all',
-            '--filter',
-            'name=^/$name\$',
-            '--format',
-            '{{.Names}}',
-          ], cleanup: true);
-          expect(remaining.trim(), isEmpty, reason: 'container still exists');
+          try {
+            await _docker(['rm', '--force', name], cleanup: true);
+          } finally {
+            final remaining = await _checkedDocker([
+              'ps',
+              '--all',
+              '--filter',
+              'name=^/$name\$',
+              '--format',
+              '{{.Names}}',
+            ], cleanup: true);
+            expect(remaining.trim(), isEmpty, reason: 'container still exists');
+          }
         }
       }
       await scratch.delete(recursive: true);
@@ -179,7 +189,7 @@ Future<void> _probe({required bool disableIdle}) async {
   final client = await Socket.connect(InternetAddress(host.trim()), 80);
   addTearDown(client.destroy);
   _clampBuffer(client, _optionReceiveBuffer);
-  final response = _Response(client, full: disableIdle);
+  final response = downstream = _Response(client, full: disableIdle);
   client.write(_request);
   await client.flush();
 
@@ -559,8 +569,8 @@ Future<({int code, String stdout, String stderr})> _docker(
         ? command.result.timeout(const Duration(seconds: 25))
         : command.result);
     return (code: code, stdout: out.toString(), stderr: err.toString());
-  } on TimeoutException {
-    await command._forceStop();
+  } on Object {
+    if (cleanup) await command._forceStop();
     rethrow;
   }
 }
