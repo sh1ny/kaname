@@ -5,10 +5,10 @@
 | Requirement | Scenario | Test file | Test name | State |
 |---|---|---|---|---|
 | One active holder per character | Park before activating another holder | `packages/kaname_esi_vault/test/vault_test.dart` | `park invalidates the old holder before another activates` | green |
-| One active holder per character | Two holders contend | `server/kaname_server/test/integration/esi/postgres_vault_test.dart` | `first activations contend across Postgres sessions` | red |
+| One active holder per character | Two holders contend | `server/kaname_server/test/integration/esi/postgres_vault_test.dart` | `first activations contend across Postgres sessions` | green |
 | One active holder per character | A non-holder cannot use the authority | `packages/kaname_esi_vault/test/vault_test.dart` | `non-holder and missing authority never exchange` | green |
 | One active holder per character | Superseded authorization cannot read credentials | `packages/kaname_esi_vault/test/vault_test.dart` | `reauthorization fences old handles` | green |
-| Credentials are encrypted and failures are secret-free | A store reader cannot read credential material | `server/kaname_server/test/integration/esi/postgres_vault_test.dart` | `Postgres holds only ciphertext through install and rotation` | red |
+| Credentials are encrypted and failures are secret-free | A store reader cannot read credential material | `server/kaname_server/test/integration/esi/postgres_vault_test.dart` | `Postgres holds only ciphertext through install and rotation` | green |
 | Credentials are encrypted and failures are secret-free | Key missing or invalid | `packages/kaname_esi_vault/test/vault_test.dart` | `bad key fails closed before reading the store` | green |
 | Credentials are encrypted and failures are secret-free | Ciphertext fails authentication | `packages/kaname_esi_vault/test/vault_test.dart` | `wrong key tampering and cross-authorization copies are unavailable` | green |
 | Credentials are encrypted and failures are secret-free | Dependency error contains a secret | `packages/kaname_esi_vault/test/vault_test.dart` | `dependency failures keep secrets out of results and diagnostics` | green |
@@ -34,9 +34,9 @@
 
 ## 2. Persist the server vault in Postgres
 
-- [ ] 2.1 Verify A1 and A2 before relying on either in the adapter. Add real Postgres probes for quiet session failure (enable log capture; inject synthetic diagnostic text and assert it is not printed or persisted) and concurrent two-key/single-key advisory locks, including both forms with identical numeric bits and the existing static-data key. Use `RollbackDatabase.disabled`, distinct connections and event barriers. Run the probe file in the Linux `server` job locally when not gaming, or in that job on CI.
-- [ ] 2.2 Write the Postgres test-map cases before the adapter. Exercise independent store sessions, use synthetic env-equivalent key input, inspect raw rows for absence of plaintext and key, and verify reuse and rotation with a newly constructed vault. Also verify live-lease contention across two Postgres-backed vault instances and fail-closed behavior on an injected database operation failure. Record the targeted pre-implementation failure.
-- [ ] 2.3 Generate the server-only model and migration for D1, then implement the committed-snapshot store, try-lock/bounded completion seam, and opt-in server factory. Write the lock and key comments (C7, C9, C10) and the separate key backup/restore warning in `deploy/README.md`. Run targeted Postgres tests and codegen/analysis checks, verify the generated client excludes the model, and flip the remaining test-map rows green.
+- [x] 2.1 Verify A1 and A2 before relying on either in the adapter. Add real Postgres probes for quiet session failure (enable log capture; inject synthetic diagnostic text and assert it is not printed or persisted) and concurrent two-key/single-key advisory locks, including both forms with identical numeric bits and the existing static-data key. Use `RollbackDatabase.disabled`, distinct connections and event barriers. Run the probe file in the Linux `server` job locally when not gaming, or in that job on CI.
+- [x] 2.2 Write the Postgres test-map cases before the adapter. Exercise independent store sessions, use synthetic env-equivalent key input, inspect raw rows for absence of plaintext and key, and verify reuse and rotation with a newly constructed vault. Also verify live-lease contention across two Postgres-backed vault instances and fail-closed behavior on an injected database operation failure. Record the targeted pre-implementation failure.
+- [x] 2.3 Generate the server-only model and migration for D1, then implement the committed-snapshot store, try-lock/bounded completion seam, and opt-in server factory. Write the lock and key comments (C7, C9, C10) and the separate key backup/restore warning in `deploy/README.md`. Run targeted Postgres tests and codegen/analysis checks, verify the generated client excludes the model, and flip the remaining test-map rows green.
 
 ## Workflow follow-up
 

@@ -1,0 +1,13 @@
+### Authoritative ESI holder, encrypted credential and refresh lease (ADRs 0005 and 0007).
+class: EsiTokenVaultRow
+table: esi_token_vault
+serverOnly: true
+fields:
+  characterId: int, unique
+  holderKind: String
+  holderId: String
+  generation: int
+  status: String
+  sealedCredential: String?
+  fence: int
+  leaseUntil: DateTime?
