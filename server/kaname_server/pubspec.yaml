@@ -16,6 +16,8 @@ dependencies:
     path: ../../packages/kaname_esi
   kaname_esi_scheduler:
     path: ../../packages/kaname_esi_scheduler
+  kaname_esi_vault:
+    path: ../../packages/kaname_esi_vault
   kaname_static_data:
     path: ../../packages/kaname_static_data
   kaname_static_data_bundle:
