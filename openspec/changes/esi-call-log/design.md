@@ -15,7 +15,7 @@ TIER: FULL
 
 ## Context
 
-The scheduler resolves the canonical operation, owner and rate group before admission (`packages/kaname_esi_scheduler/lib/src/scheduler.dart:131-161`). Admission and bearer acquisition return explicit refusals, and the sender can fail without or with a response head (`packages/kaname_esi_scheduler/lib/src/scheduler.dart:169-224`). Response observation validates cost and handles an upstream-supplied rate group (`packages/kaname_esi_scheduler/lib/src/scheduler.dart:285-310`). Server composition uses the native runtime with Redis (`server/kaname_server/lib/src/esi/server_esi_runtime.dart:50-68`); solo composes with in-process state (`packages/kaname_esi_scheduler/lib/native.dart:22-31`). Server startup does not wire an identity provider (`server/kaname_server/lib/server.dart:24-61`).
+The scheduler resolves the canonical operation, owner and rate group before admission (`packages/kaname_esi_scheduler/lib/src/scheduler.dart:212-253`). Admission and bearer acquisition return explicit refusals, and the sender can fail without or with a response head (`packages/kaname_esi_scheduler/lib/src/scheduler.dart:254-316`). Response observation validates cost and handles an upstream-supplied rate group (`packages/kaname_esi_scheduler/lib/src/scheduler.dart:399-437`). Server composition uses the native runtime with Redis (`server/kaname_server/lib/src/esi/server_esi_runtime.dart:61-81`); solo composes with in-process state (`packages/kaname_esi_scheduler/lib/native.dart:22-35`). Server startup does not wire an identity provider (`server/kaname_server/lib/server.dart:24-61`).
 
 ## Decisions
 
@@ -30,7 +30,7 @@ The scheduler resolves the canonical operation, owner and rate group before admi
 
 ### D2: Store and expire at the holder
 
-- **Choice:** the server token-holder composition appends to one server-only Postgres table through short-lived internal sessions using the existing pool. Worker composition takes the shared sink interface; the first production ESI worker owns binding it under ADR 0012 subject to C8. No worker transaction machinery is introduced here (S2). Native solo uses the same receipt contract and an explicitly supplied local sink; the general solo database stays in M4 (ADR 0005). Server newest-first pages are keyed by timestamp and ID; a single scheduled prune removes expired rows in batches. Reads never rely on the prune having run.
+- **Choice:** the server token-holder composition appends to one server-only Postgres table through short-lived internal sessions using the existing pool. Worker composition takes the shared sink interface; the first production ESI worker binds it to its own job-owned connection under ADR 0012 and C8. Worker transaction integration and its SQL compatibility tests are outside this change (S2). Native solo uses the same receipt contract and an explicitly supplied local sink; the general solo database stays in M4 (ADR 0005). Server newest-first pages are keyed by timestamp and ID; a single scheduled prune removes expired rows in batches. Reads never rely on the prune having run.
 - **Rejected:** place retained history in shared Redis admission state; scheduler recovery and history would become coupled.
 - **Reversal cost:** medium.
 - **Important:** yes, binds stored shape.
@@ -49,7 +49,7 @@ The scheduler resolves the canonical operation, owner and rate group before admi
 | # | Decision | Choice | Rejected | Reversal cost | Important | Chosen by |
 |---|---|---|---|---|---|---|
 | S1 | Delivery | Data access only; `esi-sso` exposes app reads | Premature remote RPC | Low | Yes | User |
-| S2 | Worker integration | Shared receipt seam; no worker database lifecycle | Synthetic job integration | Low | Yes | Agent |
+| S2 | Worker integration | Shared receipt seam; first ESI worker binds its job-owned connection | Synthetic worker integration and SQL compatibility tests | Low | Yes | User |
 | D1 | Capture | Allowlisted terminal receipt | Redaction | Medium | Yes | Agent |
 | D2 | Store | Holder-local sink; server Postgres | Redis history | Medium | Yes | Agent |
 | D3 | Read | Query predicates and fixed route aggregates | Unscoped rows | Medium | Yes | Agent |
@@ -136,7 +136,7 @@ flowchart LR
 
 ## Flow & State Gaps (FULL)
 
-On usable HTTP outcomes, collect the generated decoder’s terminal classification through a receipt on poll and non-poll calls. Non-poll admission settlement is unchanged; on polls reuse the existing decode settlement (`packages/kaname_esi_scheduler/lib/src/scheduler.dart:235-244`). Stage a detached, bounded append after settlement so a database failure never changes the ESI result or causes a replay. Internal status probes are separate public calls (`packages/kaname_esi_scheduler/lib/src/scheduler.dart:181-187,363-377`). Only include rows in admin totals once their recording UTC day has ended; in-flight work is recorded at outcome time, never backdated to dispatch.
+On usable HTTP outcomes, collect the generated decoder’s terminal classification through a receipt on poll and non-poll calls. Non-poll admission settlement is unchanged; on polls reuse the existing decode settlement (`packages/kaname_esi_scheduler/lib/src/scheduler.dart:327-349`). Stage a detached, bounded append after settlement so a database failure never changes the ESI result or causes a replay. Internal status probes are separate public calls (`packages/kaname_esi_scheduler/lib/src/scheduler.dart:267-273,477-491`). Only include rows in admin totals once their recording UTC day has ended; in-flight work is recorded at outcome time, never backdated to dispatch.
 
 In Postgres the insert rejects a receipt after ten seconds using `clock_timestamp()` after acquisition of a shared transaction-scoped advisory lock. A statement timeout bounds the operation. The aggregate reader acquires that lock exclusively in a barrier transaction and commits before issuing the range query as a separate read-committed statement; on lock timeout fail unavailable. The barrier waits out every eligible pre-midnight append. Once grace ends, no novel prior-day receipt can pass the insert predicate. Using five days keeps the oldest row at most six days plus one minute old at rollover.
 

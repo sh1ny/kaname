@@ -42,8 +42,8 @@ DECISION_MAKING: all
 
 ### S2: Worker database lifecycle
 
-- **Choice:** wire server Postgres persistence through the existing server runtime, expose the same typed sink seam to worker composition, and leave worker-specific transaction and connection lifecycle to the first ESI worker job under ADR 0012.
-- **Rejected:** introduce a synthetic worker job and job-transaction state just to bind the sink.
+- **Choice:** ship the shared scheduler receipt sink and server data-access logging, retention and privacy now. The first production ESI worker binds the sink to its own job-owned PostgreSQL connection under ADR 0012.
+- **Rejected:** introduce worker-specific PostgreSQL transaction integration and its SQL compatibility tests without a production ESI worker job.
 - **Reversal cost:** low.
 - **Important:** yes, defines integration scope.
-- **Chosen by:** agent after Orca handed back the unanswered decision.
+- **Chosen by:** user, 2026-11-25 (Ormy item 51): “Yes, cut it” in answer to “cut the background-job logging layer and leave it to the first real ESI background job?”
