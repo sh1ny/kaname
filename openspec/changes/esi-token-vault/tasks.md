@@ -4,33 +4,33 @@
 
 | Requirement | Scenario | Test file | Test name | State |
 |---|---|---|---|---|
-| One active holder per character | Park before activating another holder | `packages/kaname_esi_vault/test/vault_test.dart` | `park invalidates the old holder before another activates` | red |
+| One active holder per character | Park before activating another holder | `packages/kaname_esi_vault/test/vault_test.dart` | `park invalidates the old holder before another activates` | green |
 | One active holder per character | Two holders contend | `server/kaname_server/test/integration/esi/postgres_vault_test.dart` | `first activations contend across Postgres sessions` | red |
-| One active holder per character | A non-holder cannot use the authority | `packages/kaname_esi_vault/test/vault_test.dart` | `non-holder and missing authority never exchange` | red |
-| One active holder per character | Superseded authorization cannot read credentials | `packages/kaname_esi_vault/test/vault_test.dart` | `reauthorization fences old handles` | red |
+| One active holder per character | A non-holder cannot use the authority | `packages/kaname_esi_vault/test/vault_test.dart` | `non-holder and missing authority never exchange` | green |
+| One active holder per character | Superseded authorization cannot read credentials | `packages/kaname_esi_vault/test/vault_test.dart` | `reauthorization fences old handles` | green |
 | Credentials are encrypted and failures are secret-free | A store reader cannot read credential material | `server/kaname_server/test/integration/esi/postgres_vault_test.dart` | `Postgres holds only ciphertext through install and rotation` | red |
-| Credentials are encrypted and failures are secret-free | Key missing or invalid | `packages/kaname_esi_vault/test/vault_test.dart` | `bad key fails closed before reading the store` | red |
-| Credentials are encrypted and failures are secret-free | Ciphertext fails authentication | `packages/kaname_esi_vault/test/vault_test.dart` | `wrong key tampering and cross-authorization copies are unavailable` | red |
-| Credentials are encrypted and failures are secret-free | Dependency error contains a secret | `packages/kaname_esi_vault/test/vault_test.dart` | `dependency failures keep secrets out of results and diagnostics` | red |
-| Refresh is single-flight and commits before bearer use | Concurrent callers need a new bearer | `packages/kaname_esi_vault/test/vault_test.dart` | `same character waits for a committed rotation without duplicate exchange` | red |
-| Refresh is single-flight and commits before bearer use | Bearer is too close to expiry to dispatch | `packages/kaname_esi_vault/test/vault_test.dart` | `dispatch threshold refuses and refreshes near expiry` | red |
-| Refresh is single-flight and commits before bearer use | Pre-refresh leaves room for admission | `packages/kaname_esi_vault/test/vault_test.dart` | `pre-refresh has more expiry headroom than read-only dispatch` | red |
-| Refresh is single-flight and commits before bearer use | An abandoned refresh lease expires | `packages/kaname_esi_vault/test/vault_test.dart` | `lease expires exactly at its deadline` | red |
-| Refresh is single-flight and commits before bearer use | Different characters refresh independently | `packages/kaname_esi_vault/test/vault_test.dart` | `independent characters complete out of order` | red |
-| Refresh is single-flight and commits before bearer use | Rotation save cannot be confirmed | `packages/kaname_esi_vault/test/vault_test.dart` | `lost commit acknowledgement never releases an unconfirmed bearer` | red |
-| Refresh is single-flight and commits before bearer use | Superseded success salvages an unchanged credential | `packages/kaname_esi_vault/test/vault_test.dart` | `superseded success preserves rotation without publishing bearer or replacing lease` | red |
-| Refresh is single-flight and commits before bearer use | Late success cannot overwrite a changed credential | `packages/kaname_esi_vault/test/vault_test.dart` | `late success cannot overwrite a new refresh token or authorization` | red |
-| Resolve invalid grant from committed state | Committed rotation differs from the rejected token | `packages/kaname_esi_vault/test/vault_test.dart` | `current invalid grant retries an actual salvaged rotation once` | red |
-| Resolve invalid grant from committed state | Rotated token was lost before save | `packages/kaname_esi_vault/test/vault_test.dart` | `lost rotation requires new login and is never retried` | red |
-| Resolve invalid grant from committed state | The recovery retry also rejects the current credential | `packages/kaname_esi_vault/test/vault_test.dart` | `second invalid grant marks the current token dead` | red |
-| Resolve invalid grant from committed state | Superseded rejection does not refresh or kill a newer credential | `packages/kaname_esi_vault/test/vault_test.dart` | `a superseded invalid grant cannot retry or kill the current grant` | red |
-| Resolve invalid grant from committed state | Upstream is temporarily unavailable | `packages/kaname_esi_vault/test/vault_test.dart` | `temporary exchange failure keeps the grant usable` | red |
+| Credentials are encrypted and failures are secret-free | Key missing or invalid | `packages/kaname_esi_vault/test/vault_test.dart` | `bad key fails closed before reading the store` | green |
+| Credentials are encrypted and failures are secret-free | Ciphertext fails authentication | `packages/kaname_esi_vault/test/vault_test.dart` | `wrong key tampering and cross-authorization copies are unavailable` | green |
+| Credentials are encrypted and failures are secret-free | Dependency error contains a secret | `packages/kaname_esi_vault/test/vault_test.dart` | `dependency failures keep secrets out of results and diagnostics` | green |
+| Refresh is single-flight and commits before bearer use | Concurrent callers need a new bearer | `packages/kaname_esi_vault/test/vault_test.dart` | `same character waits for a committed rotation without duplicate exchange` | green |
+| Refresh is single-flight and commits before bearer use | Bearer is too close to expiry to dispatch | `packages/kaname_esi_vault/test/vault_test.dart` | `dispatch threshold refuses and refreshes near expiry` | green |
+| Refresh is single-flight and commits before bearer use | Pre-refresh leaves room for admission | `packages/kaname_esi_vault/test/vault_test.dart` | `pre-refresh has more expiry headroom than read-only dispatch` | green |
+| Refresh is single-flight and commits before bearer use | An abandoned refresh lease expires | `packages/kaname_esi_vault/test/vault_test.dart` | `lease expires exactly at its deadline` | green |
+| Refresh is single-flight and commits before bearer use | Different characters refresh independently | `packages/kaname_esi_vault/test/vault_test.dart` | `independent characters complete out of order` | green |
+| Refresh is single-flight and commits before bearer use | Rotation save cannot be confirmed | `packages/kaname_esi_vault/test/vault_test.dart` | `lost commit acknowledgement never releases an unconfirmed bearer` | green |
+| Refresh is single-flight and commits before bearer use | Superseded success salvages an unchanged credential | `packages/kaname_esi_vault/test/vault_test.dart` | `superseded success preserves rotation without publishing bearer or replacing lease` | green |
+| Refresh is single-flight and commits before bearer use | Late success cannot overwrite a changed credential | `packages/kaname_esi_vault/test/vault_test.dart` | `late success cannot overwrite a new refresh token or authorization` | green |
+| Resolve invalid grant from committed state | Committed rotation differs from the rejected token | `packages/kaname_esi_vault/test/vault_test.dart` | `current invalid grant retries an actual salvaged rotation once` | green |
+| Resolve invalid grant from committed state | Rotated token was lost before save | `packages/kaname_esi_vault/test/vault_test.dart` | `lost rotation requires new login and is never retried` | green |
+| Resolve invalid grant from committed state | The recovery retry also rejects the current credential | `packages/kaname_esi_vault/test/vault_test.dart` | `second invalid grant marks the current token dead` | green |
+| Resolve invalid grant from committed state | Superseded rejection does not refresh or kill a newer credential | `packages/kaname_esi_vault/test/vault_test.dart` | `a superseded invalid grant cannot retry or kill the current grant` | green |
+| Resolve invalid grant from committed state | Upstream is temporarily unavailable | `packages/kaname_esi_vault/test/vault_test.dart` | `temporary exchange failure keeps the grant usable` | green |
 
 ## 1. Implement shared encrypted vault
 
-- [ ] 1.1 Add `kaname_esi_vault` to the pub workspace and `mise run test` fan-out so Windows/macOS/Linux CI runs it; update the exact workspace listing test. Resolve dependencies, regenerate notices, and verify workspace, licence and notices checks.
-- [ ] 1.2 Write the shared package's test-map cases first. Use a hand-written atomic store, an injected clock, event barriers and a generous hang guard, never sleep or assert elapsed time. Exercise salvage by returning a synthetic exchange result through the vault, not by writing the desired token directly. Record the targeted test command and its pre-implementation failure.
-- [ ] 1.3 Implement D1–D3 in pure Dart. Document the caller and refresh-exchange contracts (C1, C3, C6, C8) and verify the delta carries C2, C4 and C5. Run the package tests and scoped analysis; flip the shared test-map rows green.
+- [x] 1.1 Add `kaname_esi_vault` to the pub workspace and `mise run test` fan-out so Windows/macOS/Linux CI runs it; update the exact workspace listing test. Resolve dependencies, regenerate notices, and verify workspace, licence and notices checks.
+- [x] 1.2 Write the shared package's test-map cases first. Use a hand-written atomic store, an injected clock, event barriers and a generous hang guard, never sleep or assert elapsed time. Exercise salvage by returning a synthetic exchange result through the vault, not by writing the desired token directly. Record the targeted test command and its pre-implementation failure.
+- [x] 1.3 Implement D1–D3 in pure Dart. Document the caller and refresh-exchange contracts (C1, C3, C6, C8) and verify the delta carries C2, C4 and C5. Run the package tests and scoped analysis; flip the shared test-map rows green.
 
 ## 2. Persist the server vault in Postgres
 

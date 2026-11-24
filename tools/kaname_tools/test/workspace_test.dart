@@ -87,6 +87,7 @@ void main() {
         'kaname_core at packages/kaname_core/',
         'kaname_esi at packages/kaname_esi/',
         'kaname_esi_scheduler at packages/kaname_esi_scheduler/',
+        'kaname_esi_vault at packages/kaname_esi_vault/',
         'kaname_static_data at packages/kaname_static_data/',
         'kaname_static_data_bundle at packages/kaname_static_data_bundle/',
         'kaname_tools at tools/kaname_tools/',
