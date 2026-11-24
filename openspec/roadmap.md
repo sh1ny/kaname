@@ -25,6 +25,8 @@ Status is derived: a change is done when archived on `main`; a milestone is done
 5. `esi-sso` - confidential server flow and native PKCE, JWT/JWKS verification, Serverpod identity, configured policy and recorded opt-in inputs for scopes, a scoped ESI call, and the static-data admin key cutover; prerequisites `esi-call-log`, `esi-token-vault`.
    `esi-sso` also exposes the call-log own-row and admin aggregate reads to the app once validated viewer identity is available. `esi-call-log` owns the scoped data-access interface, not client RPCs.
 
+The vault enforces one active holder per character in its authoritative store, not across independent stores. `esi-sso` owns server↔device handoff and wiring; the general solo store choice remains in M4.
+
 ## Next: M3 - Identity and access
 
 Build on the character identity established in M2: model mains and alts, handle ownership transfers using the SSO owner hash, and represent member states, groups and capabilities. Model the organisation tree through corporations, alliances and coalitions so access can follow membership and delegated roles.

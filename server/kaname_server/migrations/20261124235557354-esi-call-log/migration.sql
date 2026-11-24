@@ -25,9 +25,9 @@ CREATE INDEX "esi_call_log_owner_idx" ON "esi_call_log_entry" USING btree ("memb
 -- MIGRATION VERSION FOR kaname
 --
 INSERT INTO "serverpod_migrations" ("module", "version", "timestamp")
-    VALUES ('kaname', '20261124223821451-esi-call-log', now())
+    VALUES ('kaname', '20261124235557354-esi-call-log', now())
     ON CONFLICT ("module")
-    DO UPDATE SET "version" = '20261124223821451-esi-call-log', "timestamp" = now();
+    DO UPDATE SET "version" = '20261124235557354-esi-call-log', "timestamp" = now();
 
 --
 -- MIGRATION VERSION FOR serverpod

@@ -1,24 +1,22 @@
 BEGIN;
 
 --
--- Class EsiCallLogRow as table esi_call_log_entry
+-- Class EsiTokenVaultRow as table esi_token_vault
 --
-CREATE TABLE "esi_call_log_entry" (
+CREATE TABLE "esi_token_vault" (
     "id" bigserial PRIMARY KEY,
-    "recordedAt" timestamp without time zone NOT NULL,
-    "operation" text NOT NULL,
-    "outcome" text NOT NULL,
-    "status" bigint,
-    "cost" bigint,
-    "latencyMicros" bigint NOT NULL,
-    "bucket" text,
-    "memberId" bigint,
-    "characterId" bigint
+    "characterId" bigint NOT NULL,
+    "holderKind" text NOT NULL,
+    "holderId" text NOT NULL,
+    "generation" bigint NOT NULL,
+    "status" text NOT NULL,
+    "sealedCredential" text,
+    "fence" bigint NOT NULL,
+    "leaseUntil" timestamp without time zone
 );
 
 -- Indexes
-CREATE INDEX "esi_call_log_retention_idx" ON "esi_call_log_entry" USING btree ("recordedAt", "id");
-CREATE INDEX "esi_call_log_owner_idx" ON "esi_call_log_entry" USING btree ("memberId", "recordedAt", "id");
+CREATE UNIQUE INDEX "esi_token_vault__characterId__unique_idx" ON "esi_token_vault" USING btree ("characterId");
 
 --
 -- Class SdeAdminOperation as table sde_admin_operation
@@ -714,9 +712,9 @@ ALTER TABLE ONLY "serverpod_query_log"
 -- MIGRATION VERSION FOR kaname
 --
 INSERT INTO "serverpod_migrations" ("module", "version", "timestamp")
-    VALUES ('kaname', '20261124223821451-esi-call-log', now())
+    VALUES ('kaname', '20261124224437322-esi-token-vault', now())
     ON CONFLICT ("module")
-    DO UPDATE SET "version" = '20261124223821451-esi-call-log', "timestamp" = now();
+    DO UPDATE SET "version" = '20261124224437322-esi-token-vault', "timestamp" = now();
 
 --
 -- MIGRATION VERSION FOR serverpod

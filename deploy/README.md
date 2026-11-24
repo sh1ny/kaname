@@ -53,6 +53,19 @@ deployment until a TLS reverse proxy is in front of the stack. The app only
 offers key entry over HTTPS or loopback HTTP and keeps the key in memory until
 the app closes or reloads (ADR 0015).
 
+### ESI vault backups
+
+When the server uses the ESI token vault, **back up `esiVaultKey` separately
+from Postgres**. The key is 32 random bytes encoded as standard Base64, supplied
+as `SERVERPOD_PASSWORD_esiVaultKey` or as `esiVaultKey` in the Serverpod
+secrets file. Do not put it in the database, version control, or a database
+backup bundle. Restore the matching key before using a restored database.
+Without it, existing credentials cannot be recovered and members must sign in
+again. Do not substitute the service secret or generate a new key on restart.
+
+This change adds the vault but does not enable it at server startup; existing
+installs do not need to provision this key until the SSO wiring is enabled.
+
 ```sh
 mise run stack:down                     # stop and delete the data volumes
 (cd deploy && docker compose down)     # stop, keep the data

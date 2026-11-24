@@ -17,8 +17,8 @@ const _slow = Timeout(Duration(minutes: 3));
 const _unknownVersion = '20991231235959999';
 
 const _previousStaticDataMigration = '20261120083015689-sde-bundle';
-// These upgrade tests exercise a specific data migration, not whatever
-// migration happens to be latest when a new feature adds a table.
+// The static-data upgrade cases apply this specific data migration, not
+// whichever unrelated schema migration was added most recently.
 const _staticDataSettingsMigration = '20261123085740775-static-data-settings';
 
 Future<String> _migrationSql(String version, String file) =>
