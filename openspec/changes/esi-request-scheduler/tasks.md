@@ -4,27 +4,27 @@ Test paths below are relative to the workspace. `shared` = `packages/kaname_esi_
 
 | Requirement | Scenario | File | Named test | State |
 |---|---|---|---|---|
-| Shared atomic admission | Last tokens under contention | shared | admits exactly one last reservation (including isolated Redis callers) | red |
-| Shared atomic admission | State unavailable | redis | refuses when Redis cannot confirm | red |
-| Shared atomic admission | Redis was replaced or restarted | redis | quarantines stale state from a prior incarnation | red |
-| Shared atomic admission | Product transport bypass | `tools/kaname_tools/test/esi_boundary_test.dart` | reports direct production ESI access | red |
-| Shared atomic admission | Delivery is uncertain | shared | never replays an ambiguous send | red |
-| Response reconciliation | Response changes available capacity | shared | charges outstanding work against observed remaining | red |
-| Response reconciliation | Retry and reset | shared | distinguishes group cooldown from connection reset | red |
-| Response reconciliation | Older observation arrives late | shared | settles late response without replacing ceiling | red |
-| Governor tiers and priorities | Increasing pressure | shared | applies all four tiers at exact thresholds | red |
-| Governor tiers and priorities | Waiting requests contend | shared | chooses highest eligible live waiter before FIFO peers | red |
-| Governor tiers and priorities | Queue is full of backfill | shared | displaces newest lowest-priority waiter | red |
-| Governor tiers and priorities | Capacity stays occupied | shared | expires a lease and never sends an expired ticket | red |
-| Shared negative result suppression | Another isolate repeats a denied read | shared | shares suppressed 403 and 404 without sending | red |
-| Shared negative result suppression | Suppression does not cross identities | shared | isolates authorization and expires at logical deadline | red |
-| Conditional polling and downtime | Unchanged page | shared | forwards retained page validator and wire 304 | red |
-| Conditional polling and downtime | Tranquility is unreachable | shared | grants one shared status probe per retry opportunity | red |
-| Conditional polling and downtime | Fresh page and stale worker | shared | distinguishes not due from no local representation | red |
-| Conditional polling and downtime | Probe fails | shared | does not resume for failed or VIP probe | red |
-| Conditional polling and downtime | ESI reachable but every route answers 503 | shared | pauses only after distinct poll routes fail within window | red |
-| Equivalent corporation polls | Two qualified holders poll the same corporation page | shared | deduplicates corp representation across holders | red |
-| Equivalent corporation polls | Poller fails before releasing its claim | shared | reclaims expired corp lease | red |
+| Shared atomic admission | Last tokens under contention | shared; redis | admits exactly one last reservation; admits exactly one last reservation across server isolates | green |
+| Shared atomic admission | State unavailable | redis | refuses when Redis cannot confirm | green |
+| Shared atomic admission | Redis was replaced or restarted | redis | quarantines stale state from a prior incarnation | green |
+| Shared atomic admission | Product transport bypass | `tools/kaname_tools/test/esi_boundary_test.dart` | reports direct production ESI access | green |
+| Shared atomic admission | Delivery is uncertain | shared | never replays an ambiguous send | green |
+| Response reconciliation | Response changes available capacity | shared | charges outstanding work against observed remaining | green |
+| Response reconciliation | Retry and reset | shared | distinguishes group cooldown from connection reset | green |
+| Response reconciliation | Older observation arrives late | shared | settles late response without replacing ceiling | green |
+| Governor tiers and priorities | Increasing pressure | shared | applies all four tiers at exact thresholds | green |
+| Governor tiers and priorities | Waiting requests contend | shared | chooses highest eligible live waiter before FIFO peers | green |
+| Governor tiers and priorities | Queue is full of backfill | shared | displaces newest lowest-priority waiter | green |
+| Governor tiers and priorities | Capacity stays occupied | shared | expires a lease and never sends an expired ticket | green |
+| Shared negative result suppression | Another isolate repeats a denied read | shared; redis | shares suppressed 403 and 404 without sending; shares negative cache across server isolates | green |
+| Shared negative result suppression | Suppression does not cross identities | shared | isolates authorization and expires at logical deadline | green |
+| Conditional polling and downtime | Unchanged page | shared | forwards retained page validator and wire 304 | green |
+| Conditional polling and downtime | Tranquility is unreachable | shared | grants one shared status probe per retry opportunity | green |
+| Conditional polling and downtime | Fresh page and stale worker | shared | distinguishes not due from no local representation | green |
+| Conditional polling and downtime | Probe fails | shared | does not resume for failed or VIP probe | green |
+| Conditional polling and downtime | ESI reachable but every route answers 503 | shared | pauses only after distinct poll routes fail within window | green |
+| Equivalent corporation polls | Two qualified holders poll the same corporation page | shared | deduplicates corp representation across holders | green |
+| Equivalent corporation polls | Poller fails before releasing its claim | shared | reclaims expired corp lease | green |
 | Typed results, never thrown | Success | `packages/kaname_esi/test/result_test.dart` | Success: 200 with ETag, Expires, Last-Modified and X-Pages 3 | green |
 | Typed results, never thrown | No content | `packages/kaname_esi/test/result_test.dart` | No content: 204 is a success without a body | green |
 | Typed results, never thrown | Not modified | `packages/kaname_esi/test/result_test.dart` | Not modified: 304 carries ETag and Expires | green |
@@ -45,8 +45,8 @@ Test paths below are relative to the workspace. `shared` = `packages/kaname_esi_
 
 ## 3. Wire server and native transports
 
-- [ ] 3.1 Add real Redis conformance red first; implement atomic scripts, bounded isolate-owned connections and restart quarantine. Verify the suite with independent server isolates, readiness barriers and injected time, without a wall-clock timing assertion. Refresh notices when dependency resolution changes.
-- [ ] 3.2 Add the private native HTTP adapter and wire server and reusable solo factories; prove through generated calls with a loopback fixture that the scheduler alone sends (C1), with install User-Agent, pinned compatibility date, bounded response, no redirects or replay. Add architecture guard with an intentional bypass fixture and document composition.
+- [x] 3.1 Add real Redis conformance red first; implement atomic scripts, bounded isolate-owned connections and restart quarantine. Verify the suite with independent server isolates, readiness barriers and injected time, without a wall-clock timing assertion. Refresh notices when dependency resolution changes.
+- [x] 3.2 Add the private native HTTP adapter and wire server and reusable solo factories; prove through generated calls with a loopback fixture that the scheduler alone sends (C1), with install User-Agent, pinned compatibility date, bounded response, no redirects or replay. Add architecture guard with an intentional bypass fixture and document composition.
 
 ## 4. Verify integrated behavior
 

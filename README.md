@@ -29,6 +29,16 @@ The repository is one pub workspace:
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before contributing (no-copy rule, EULA boundary, DCO sign-off) and report vulnerabilities as [SECURITY.md](SECURITY.md) describes. Agent instructions are in [AGENTS.md](AGENTS.md); UI guidance is in [DESIGN.md](DESIGN.md).
 
+For ESI work, use the generated client from the server's `ServerEsiRuntime` or
+`NativeEsiRuntime.solo`; product modules do not open ESI connections directly.
+Bind the caller's priority and validated authorization, and pass an ETag only
+while retaining its matching representation. Scheduler refusals are not ESI
+responses. The scheduler does not replay application calls.
+
+`mise run test:esi_scheduler` covers solo policy and loopback HTTP;
+`mise run test:server` also exercises the scheduler with real development
+Redis and independent isolates. Neither needs EVE credentials.
+
 ## Licence and attribution
 
 Kaname is licensed under [AGPL-3.0](LICENSE). Vendored tooling skills retain their own licences, recorded in [.claude/skills/UPSTREAM.json](.claude/skills/UPSTREAM.json). In particular, the unmodified Serverpod skills are a separate SSPL-licensed aggregate, not AGPL; their package licence and repository copyright notice are included. Bundled fonts retain their [SIL OFL notices](brand/fonts/OFL-NOTICE.md). [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES) lists every bundled asset and pub dependency with its licence.

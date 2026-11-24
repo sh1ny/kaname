@@ -207,9 +207,16 @@ void schedulerConformance(SchedulerState Function() create) {
       request(scope: 'high', priority: EsiPriority.interactive),
       1002,
     ) as Waiting;
-    await state.complete(slots.first.id, 1003, const Observation(status: 200));
+    final peer = await state.admit(
+      request(scope: 'peer', priority: EsiPriority.interactive),
+      1003,
+    ) as Waiting;
+    await state.complete(slots.first.id, 1004, const Observation(status: 200));
     expect(await state.advance(low.id, 1251), isA<Waiting>());
-    expect(await state.advance(high.id, 1252), isA<Granted>());
+    expect(await state.advance(peer.id, 1253), isA<Waiting>());
+    expect(await state.advance(high.id, 1254), isA<Granted>());
+    await state.complete(slots[1].id, 1255, const Observation(status: 200));
+    expect(await state.advance(peer.id, 1503), isA<Granted>());
   });
 
   test('displaces newest lowest-priority waiter', () async {
@@ -248,6 +255,24 @@ void schedulerConformance(SchedulerState Function() create) {
     expect(expired.refusal.reason, EsiRefusalReason.waitExpired);
     await state.complete(active.first.id, 6002, const Observation(status: 200));
     expect(await state.advance(ticket.id, 6002), isA<Denied>());
+  });
+
+  test('skips a head whose worker stopped refreshing it', () async {
+    final slots = [
+      for (var i = 0; i < 8; i++)
+        await state.admit(request(scope: '$i'), 1000) as Granted,
+    ];
+    final dead = await state.admit(
+      request(scope: 'dead', priority: EsiPriority.interactive),
+      1001,
+    ) as Waiting;
+    final live = await state.admit(request(scope: 'live'), 1002) as Waiting;
+    expect(await state.advance(live.id, 1252), isA<Waiting>());
+    expect(await state.advance(live.id, 1502), isA<Waiting>());
+    expect(await state.advance(live.id, 1752), isA<Waiting>());
+    await state.complete(slots.first.id, 2001, const Observation(status: 200));
+    expect(await state.advance(live.id, 2002), isA<Granted>());
+    expect(await state.advance(dead.id, 2002), isA<Denied>());
   });
 
   test('shares suppressed 403 and 404 without sending', () async {
