@@ -7,6 +7,8 @@ import 'package:kaname_esi/kaname_esi.dart';
 
 import 'state.dart';
 
+part 'call_log_entry.dart';
+
 /// Binds one authorized character to an application and authorization version.
 ///
 /// [generation] must change on re-authorization, scope, or role changes.
@@ -17,6 +19,7 @@ final class EsiPrincipal {
     required this.application,
     required this.character,
     required this.generation,
+    this.member,
     required this.bearer,
   });
 
@@ -25,6 +28,9 @@ final class EsiPrincipal {
 
   /// The character that owns this authorization.
   final int character;
+
+  /// Trusted owning member, if resolved by the holder; never client input.
+  final int? member;
 
   /// A non-secret marker for this authorization and role generation.
   final String generation;
@@ -77,12 +83,22 @@ typedef EsiWireSend = Future<WireOutcome> Function(
   String? validator,
 );
 
+/// Appends one receipt independently of the caller (ADR 0007).
+///
+/// A database sink uses its own short transaction, not a caller or job
+/// transaction, so its release lock ends with the append (C8).
+/// Complete on commit or throw on failure; do not replay an uncertain write.
+typedef EsiCallLogSink = Future<void> Function(EsiCallLogEntry receipt);
+
 /// Binds generated clients to one shared scheduler and private wire sender.
 final class EsiScheduler {
   /// Creates a scheduling runtime; [key] is one private stable install key.
   ///
   /// [onStateFailure] observes a post-dispatch state failure without its raw
   /// exception. The caller still gets the original outcome, never a replay.
+  /// [callLog] receives bounded, detached diagnostic writes.
+  /// [onCallLogFailure] observes rejected writes without raw exceptions.
+  /// [elapsedMicroseconds] supplies a monotonic counter for call latency.
   EsiScheduler({
     required this._state,
     required List<int> key,
@@ -90,9 +106,16 @@ final class EsiScheduler {
     DateTime Function()? now,
     Future<void> Function(Duration)? wait,
     this._onStateFailure,
+    EsiCallLogSink? callLog,
+    this._onCallLogFailure,
+    int Function()? elapsedMicroseconds,
   }) : _key = Hmac(sha256, key),
        _now = now ?? DateTime.now,
-       _wait = wait ?? Future<void>.delayed;
+       _wait = wait ?? Future<void>.delayed,
+       _callLog = callLog,
+       _elapsedMicroseconds =
+           elapsedMicroseconds ??
+           (callLog == null ? null : _stopwatchCounter());
 
   final SchedulerState _state;
   final Hmac _key;
@@ -100,6 +123,64 @@ final class EsiScheduler {
   final DateTime Function() _now;
   final Future<void> Function(Duration) _wait;
   final void Function()? _onStateFailure;
+  final EsiCallLogSink? _callLog;
+  final void Function()? _onCallLogFailure;
+  final int Function()? _elapsedMicroseconds;
+  final _logWrites = <Future<void>>{};
+
+  /// Maximum concurrent diagnostic writes for this isolate-local runtime.
+  static const callLogCapacity = 8;
+
+  /// Waits for admitted writes; stop submitting calls before closing.
+  Future<void> drainCallLog() async {
+    await Future.wait(_logWrites);
+  }
+
+  static int Function() _stopwatchCounter() {
+    final clock = Stopwatch()..start();
+    return () => clock.elapsedMicroseconds;
+  }
+
+  void _logFailure() {
+    try {
+      _onCallLogFailure?.call();
+    } on Object {
+      // A diagnostic callback cannot change the caller's ESI result.
+    }
+  }
+
+  void _record(
+    EsiRoute route,
+    EsiPrincipal? owner,
+    int start,
+    EsiCallLogOutcome outcome, {
+    int? status,
+    int? cost,
+  }) {
+    final sink = _callLog;
+    if (sink == null) return;
+    if (_logWrites.length >= callLogCapacity) {
+      _logFailure();
+      return;
+    }
+    final row = EsiCallLogEntry._(
+      route: route,
+      recordedAt: _now().toUtc(),
+      outcome: outcome,
+      latency: Duration(microseconds: _elapsedMicroseconds!() - start),
+      status: status != null && status >= 100 && status <= 599 ? status : null,
+      cost: cost,
+      member: owner?.member,
+      character: owner?.character,
+    );
+    late final Future<void> pending;
+    pending = Future<void>.microtask(() => sink(row))
+        .then<void>((_) {}, onError: (Object _) => _logFailure())
+        .whenComplete(() {
+          _logWrites.remove(pending);
+        });
+    _logWrites.add(pending);
+  }
 
   int get _ms => _now().millisecondsSinceEpoch;
 
@@ -129,14 +210,18 @@ final class EsiScheduler {
     bool probe = false,
   }) async {
     final route = esiCatalogue[request.operationId];
-    if (route == null ||
-        route.method != request.method ||
-        (route.requiresAuthentication && principal == null) ||
-        (corporation != null &&
-            !_validCorp(route, request, corporation, poll))) {
+    if (route == null) {
       return const EsiTransportRefused(EsiRefusalReason.invalidContext);
     }
     final owner = route.requiresAuthentication ? principal : null;
+    final started = _elapsedMicroseconds?.call() ?? 0;
+    if (route.method != request.method ||
+        (route.requiresAuthentication && owner == null) ||
+        (corporation != null &&
+            !_validCorp(route, request, corporation, poll))) {
+      _record(route, owner, started, EsiCallLogOutcome.notSent, cost: 0);
+      return const EsiTransportRefused(EsiRefusalReason.invalidContext);
+    }
     final scope = owner == null
         ? 'public'
         : _digest([owner.application, owner.character]);
@@ -176,9 +261,11 @@ final class EsiScheduler {
       }
       admission = next;
     } on SchedulerStateUnavailable {
+      _record(route, owner, started, EsiCallLogOutcome.notSent, cost: 0);
       return const EsiTransportRefused(EsiRefusalReason.stateUnavailable);
     }
     if (admission case Denied(:final refusal)) {
+      _record(route, owner, started, EsiCallLogOutcome.notSent, cost: 0);
       if (isPoll &&
           refusal.reason == EsiRefusalReason.outage &&
           (refusal.retryAt?.millisecondsSinceEpoch ?? 0) <= _ms) {
@@ -196,14 +283,17 @@ final class EsiScheduler {
     } on Object {
       // Caller-provided credential code runs before any attempt to send.
       await _complete(id, const Observation(unsent: true));
+      _record(route, owner, started, EsiCallLogOutcome.notSent, cost: 0);
       return const EsiTransportRefused(EsiRefusalReason.invalidContext);
     }
     if (owner != null && (bearer == null || bearer.isEmpty)) {
       await _complete(id, const Observation(unsent: true));
+      _record(route, owner, started, EsiCallLogOutcome.notSent, cost: 0);
       return const EsiTransportRefused(EsiRefusalReason.invalidContext);
     }
     if (_ms > dispatchByMs) {
       await _complete(id, const Observation(unsent: true));
+      _record(route, owner, started, EsiCallLogOutcome.notSent, cost: 0);
       return const EsiTransportRefused(EsiRefusalReason.waitExpired);
     }
     final WireOutcome wire;
@@ -212,10 +302,12 @@ final class EsiScheduler {
     } on Object {
       // The wire port may have sent before throwing. Retain its debit.
       await _complete(id, const Observation());
+      _record(route, owner, started, EsiCallLogOutcome.error);
       return const EsiTransportFailure('ESI exchange failed');
     }
     if (wire case WireFailure(unsent: true)) {
       await _complete(id, const Observation(unsent: true));
+      _record(route, owner, started, EsiCallLogOutcome.error, cost: 0);
       return const EsiTransportFailure('ESI exchange failed');
     }
     final head = switch (wire) {
@@ -232,18 +324,40 @@ final class EsiScheduler {
           EsiSuccess<Status>(body: Status(vip: false)) => true,
           _ => false,
         };
-    if (wire case WireResponse(:final response) when input.pollKey != null) {
+    if (wire case WireResponse(:final response)) {
       if (response.status case >= 200 && < 300 || 304) {
-        return EsiResponse.withDecodeReceipt(
-          response,
-          (usable) => _complete(
-            id,
-            _observe(response, usable ? input.pollKey : null, wire, healthy),
-          ),
-        );
+        final key = input.pollKey;
+        final wireObservation = key == null
+            ? _observe(response, null, wire, healthy)
+            : null;
+        if (wireObservation != null) await _complete(id, wireObservation);
+        if (key == null && _callLog == null) return response;
+        return EsiResponse.withDecodeReceipt(response, (usable) async {
+          final observation =
+              wireObservation ??
+              _observe(response, usable ? key : null, wire, healthy);
+          if (key != null) await _complete(id, observation);
+          _record(
+            route,
+            owner,
+            started,
+            usable ? EsiCallLogOutcome.success : EsiCallLogOutcome.error,
+            status: observation.status,
+            cost: observation.cost,
+          );
+        });
       }
     }
-    await _complete(id, _observe(head, null, wire, healthy));
+    final observation = _observe(head, null, wire, healthy);
+    await _complete(id, observation);
+    _record(
+      route,
+      owner,
+      started,
+      EsiCallLogOutcome.error,
+      status: observation.status,
+      cost: observation.cost,
+    );
     return switch (wire) {
       WireResponse(:final response) => response,
       WireFailure() => const EsiTransportFailure('ESI exchange failed'),

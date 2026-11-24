@@ -4,12 +4,12 @@
 
 | Requirement | Scenario | Test file | Test name | State |
 |---|---|---|---|---|
-| Secret-free scheduler history | Upstream response | `packages/kaname_esi_scheduler/test/call_log_test.dart` | captures status cost and elapsed latency | red |
-| Secret-free scheduler history | Refusal and failure | `packages/kaname_esi_scheduler/test/call_log_test.dart` | refusals and failures retain distinct outcomes | red |
-| Secret-free scheduler history | Unknown operation | `packages/kaname_esi_scheduler/test/call_log_test.dart` | unknown route never reaches sink | red |
+| Secret-free scheduler history | Upstream response | `packages/kaname_esi_scheduler/test/call_log_test.dart` | captures status cost and elapsed latency | green |
+| Secret-free scheduler history | Refusal and failure | `packages/kaname_esi_scheduler/test/call_log_test.dart` | refusals and failures retain distinct outcomes | green |
+| Secret-free scheduler history | Unknown operation | `packages/kaname_esi_scheduler/test/call_log_test.dart` | unknown route never reaches sink | green |
 | Secret-free scheduler history | Secret-bearing inputs | `server/kaname_server/test/integration/esi_call_log_test.dart` | no supplied secret reaches any stored column | red |
-| Secret-free scheduler history | Unusable success response | `packages/kaname_esi_scheduler/test/call_log_test.dart` | poll and non-poll decode failures retain HTTP status | red |
-| Secret-free scheduler history | Log write cannot complete | `packages/kaname_esi_scheduler/test/call_log_test.dart` | write failure and capacity never change or replay the exchange | red |
+| Secret-free scheduler history | Unusable success response | `packages/kaname_esi_scheduler/test/call_log_test.dart` | poll and non-poll decode failures retain HTTP status | green |
+| Secret-free scheduler history | Log write cannot complete | `packages/kaname_esi_scheduler/test/call_log_test.dart` | write failure and capacity never change or replay the exchange | green |
 | Seven-day retention | Retention boundary | `server/kaname_server/test/integration/esi_call_log_test.dart` | exact cutoff filters and deletes only expired rows | red |
 | Seven-day retention | Pruning resumes after interruption | `server/kaname_server/test/integration/esi_call_log_test.dart` | next sweep catches up using its current clock | red |
 | Privacy-scoped call-log reads | Own rows only | `server/kaname_server/test/integration/esi_call_log_test.dart` | admins and members see only their own rows | red |
@@ -25,8 +25,8 @@
 
 ## 1. Scheduler receipts
 
-- [ ] 1.1 Write and run the failing scheduler tests in the test map; confirm each fails for missing behavior, using controlled send/decode and writer-completion events.
-- [ ] 1.2 Implement allowlisted terminal receipts, shared runtime sink composition and bounded failure reporting; run `call_log_test.dart` and turn its rows green. Verify C1 against the delta and carry C8 in the sink contract.
+- [x] 1.1 Write and run the failing scheduler tests in the test map; confirm each fails for missing behavior, using controlled send/decode and writer-completion events.
+- [x] 1.2 Implement allowlisted terminal receipts, shared runtime sink composition and bounded failure reporting; run `call_log_test.dart` and turn its rows green. Verify C1 against the delta and carry C8 in the sink contract.
 
 ## 2. Persistence and privacy
 
