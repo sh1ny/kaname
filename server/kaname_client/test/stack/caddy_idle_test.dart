@@ -222,8 +222,15 @@ Future<void> _probe({required bool disableIdle}) async {
       reason: 'upstream body was not cut short',
     );
     stage =
-        'waiting for Caddy to close the downstream socket with reads paused';
-    await running.until(_waitForCaddyClose(name, client.port));
+        'waiting for Caddy to release both sockets with client reads paused';
+    await running.until(
+      _waitForCaddyClose(
+        name,
+        client.port,
+        upstream.proxyPort!,
+        upstream.listener.port,
+      ),
+    );
     response.reads.resume();
     stage = 'observing the downstream socket end';
     await running.until(response.finished.future);
@@ -240,30 +247,78 @@ Future<void> _probe({required bool disableIdle}) async {
   passed = true;
 }
 
-Future<void> _waitForCaddyClose(String container, int clientPort) async {
-  final port = clientPort.toRadixString(16).padLeft(4, '0').toUpperCase();
-  while (true) {
-    // A FIN can be queued behind data in a zero receive window. Observe
-    // Caddy's TCP state without waiting for the FIN to reach the client.
-    final table = await _checkedDocker([
+Future<void> _waitForCaddyClose(
+  String container,
+  int clientPort,
+  int proxyPort,
+  int upstreamPort,
+) async {
+  String hex(int port) => port.toRadixString(16).padLeft(4, '0').toUpperCase();
+  // /proc reports inode zero once the TCP socket is orphaned, even if
+  // queued data keeps its FIN from reaching the peer. A half-close retains
+  // the inode, including in FIN_WAIT1/2. The two port pairs identify the
+  // established legs in this dedicated container's network namespace.
+  const script = r'''
+while read -r tick; do
+  state=$(awk -v client="$1" -v proxy="$2" -v upstream="$3" '
+    FNR > 1 && $10 != 0 &&
+      ((substr($2,length($2)-4)==":0050" && substr($3,length($3)-4)==client) ||
+       (substr($2,length($2)-4)==proxy && substr($3,length($3)-4)==upstream)) {
+      open=1
+    }
+    END { print open ? "open" : "closed" }
+  ' /proc/net/tcp /proc/net/tcp6) || exit 1
+  printf '%s\n' "$state"
+  [ "$state" != closed ] || exit 0
+done
+''';
+  Timer? sample;
+  Future<_Docker>? launch;
+  var stopping = false;
+  var closed = false;
+  addTearDown(() async {
+    stopping = true;
+    sample?.cancel();
+    final poll = await launch;
+    if (poll == null) return;
+    try {
+      await Future.wait<Object?>([poll.process.stdin.close(), poll.done])
+          .timeout(const Duration(seconds: 25));
+    } on TimeoutException {
+      await poll._forceStop();
+    }
+  });
+  final poll = await (launch = _Docker.start(
+    [
       'exec',
+      '-i',
       container,
-      'cat',
-      '/proc/net/tcp',
-      '/proc/net/tcp6',
-    ]);
-    final open = table.split('\n').any((line) {
-      final fields = line.trim().split(RegExp(r'\s+'));
-      if (fields case [_, final local, final peer, final state, ...]) {
-        return local.endsWith(':0050') &&
-            peer.endsWith(':$port') &&
-            (state == '01' || state == '08');
+      'sh',
+      '-c',
+      script,
+      'tcp-state',
+      ':${hex(clientPort)}',
+      ':${hex(proxyPort)}',
+      ':${hex(upstreamPort)}',
+    ],
+    (stderr, line) {
+      if (stopping) return;
+      if (stderr) fail('Caddy TCP state: $line');
+      switch (line) {
+        case 'closed':
+          closed = true;
+        case 'open':
+          sample = Timer(const Duration(milliseconds: 100), () async {
+            if (!stopping) (await launch)?.process.stdin.writeln('sample');
+          });
+        default:
+          fail('Unexpected Caddy TCP state: $line');
       }
-      return false;
-    });
-    if (!open) return;
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-  }
+    },
+  ));
+  if (!stopping) poll.process.stdin.writeln('sample');
+  expect(await poll.result, 0, reason: 'Caddy TCP poll failed');
+  expect(closed, isTrue, reason: 'Caddy TCP poll ended before socket release');
 }
 
 Map<String, Object?> _listener(Object? config) => switch (config) {
@@ -291,6 +346,7 @@ final class _Upstream {
   final _admitted = Completer<Socket>();
   final _chunk = Uint8List(_chunkSize);
   Socket? _socket;
+  int? proxyPort;
   int requests = 0;
   int attempted = 0;
   int completed = 0;
@@ -316,6 +372,7 @@ final class _Upstream {
       (_) async {
         if (_admitted.isCompleted) return;
         requests++;
+        proxyPort = socket.remotePort;
         _admitted.complete(socket);
         try {
           socket.write(
