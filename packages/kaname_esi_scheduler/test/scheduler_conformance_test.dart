@@ -438,6 +438,55 @@ void schedulerConformance(SchedulerState Function() create) {
     );
   });
 
+  for (final (status, reason) in [
+    (420, EsiRefusalReason.stopped),
+    (429, EsiRefusalReason.budget),
+    (403, EsiRefusalReason.negativeCached),
+    (404, EsiRefusalReason.negativeCached),
+  ]) {
+    test('reconciles $status at the exact caller lease boundary', () async {
+      final grant = await state.admit(request(), 1000) as Granted;
+      await state.complete(
+        grant.id,
+        31000,
+        Observation(status: status, retryMs: 60000),
+      );
+      final denied = await state.admit(
+        request(scope: status == 420 ? 'other' : 'public'),
+        31000,
+      ) as Denied;
+      expect(denied.refusal.reason, reason);
+      expect(denied.refusal.retryAt?.millisecondsSinceEpoch, 91000);
+      if (status == 403 || status == 404) {
+        expect(denied.refusal.suppressedStatus, status);
+      }
+    });
+  }
+
+  test(
+    'late completion does not occupy or release a renewed corp claim',
+    () async {
+      final input = request(corp: 'corp', poll: true);
+      final old = await state.admit(input, 1000) as Granted;
+      final renewed = await state.admit(input, 31000) as Granted;
+      await state.complete(old.id, 31001, const Observation(status: 200));
+      final held = await state.admit(input, 31001) as Denied;
+      expect(held.refusal.reason, EsiRefusalReason.corpBusy);
+      await state.complete(renewed.id, 31002, const Observation(status: 200));
+      expect(await state.admit(input, 31003), isA<Granted>());
+    },
+  );
+
+  test('ignores observations once the completion-only grace expires', () async {
+    final grant = await state.admit(request(), 1000) as Granted;
+    await state.complete(
+      grant.id,
+      36000,
+      const Observation(status: 420, retryMs: 60000),
+    );
+    expect(await state.admit(request(scope: 'other'), 36000), isA<Granted>());
+  });
+
   test('skips a head whose worker stopped refreshing it', () async {
     final slots = [
       for (var i = 0; i < 8; i++)

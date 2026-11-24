@@ -7,6 +7,7 @@ import 'state.dart';
 
 const _cost = 5;
 const _leaseMs = 30000;
+const _completionGraceMs = 5000;
 const _dispatchMs = 5000;
 const _errorWindow = 60000;
 
@@ -28,6 +29,7 @@ final class MemorySchedulerState implements SchedulerState {
   final _routeBlocks = _Expiring<String, bool>();
   final _metadata = _Expiring<(bool, String), _Metadata>();
   final _callers = <int, _Call>{};
+  final _awaitingCompletion = <int, _Call>{};
   final _waiting = <int, _Ticket>{};
   final _displaced = _Expiring<int, bool>();
   int _epoch = 0;
@@ -47,7 +49,12 @@ final class MemorySchedulerState implements SchedulerState {
   void _tick(int now) {
     _now = max(_now, now);
     _started ??= _now;
-    _callers.removeWhere((id, call) => call.until <= _now);
+    _awaitingCompletion.removeWhere((_, call) => call.completionBy <= _now);
+    _callers.removeWhere((id, call) {
+      if (call.until > _now) return false;
+      if (call.completionBy > _now) _awaitingCompletion[id] = call;
+      return true;
+    });
     if (_probe case final id? when !_callers.containsKey(id)) {
       _probeFailed();
     }
@@ -230,6 +237,7 @@ final class MemorySchedulerState implements SchedulerState {
     final r = ticket.request;
     final id = ++_serial;
     final until = _now + _leaseMs;
+    final completionBy = until + _completionGraceMs;
     (String, String)? key;
     if (_limit(r) case final limit?) {
       key = (limit.name, r.scope);
@@ -239,7 +247,7 @@ final class MemorySchedulerState implements SchedulerState {
       budget.debit(id, _cost, _now);
       _groups.put(key, budget, budget.deadline);
       if (r.group == null) {
-        _extendLearned(r.operation, limit, max(until, budget.deadline));
+        _extendLearned(r.operation, limit, max(completionBy, budget.deadline));
       }
     }
     for (final metadata in [(false, r.negativeKey), (true, r.pollKey)]) {
@@ -250,7 +258,7 @@ final class MemorySchedulerState implements SchedulerState {
       _metadata.put(
         k,
         old ?? const _Metadata(),
-        max(until, _metadata.deadline(k, _now) ?? 0),
+        max(completionBy, _metadata.deadline(k, _now) ?? 0),
       );
     }
     _callers[id] = _Call(r, key, until, _epoch);
@@ -263,7 +271,7 @@ final class MemorySchedulerState implements SchedulerState {
   @override
   void complete(int id, int nowMs, Observation o) {
     _tick(nowMs);
-    final call = _callers.remove(id);
+    final call = _callers.remove(id) ?? _awaitingCompletion.remove(id);
     if (call == null) return;
     final r = call.request;
     final status = o.status;
@@ -416,7 +424,7 @@ final class MemorySchedulerState implements SchedulerState {
         _paused = true;
       }
     }
-    if (r.probe) {
+    if (_probe == id) {
       _probe = null;
       if (o.probeHealthy) {
         _paused = false;
@@ -461,7 +469,7 @@ final class MemorySchedulerState implements SchedulerState {
       pending.bucket = bucket;
       target.debit(id, _cost, pending.until - _leaseMs);
       if (bucket != source) _groups.put(bucket, target, target.deadline);
-      until = max(until, max(pending.until, target.deadline));
+      until = max(until, max(pending.completionBy, target.deadline));
     }
     return until;
   }
@@ -514,6 +522,8 @@ final class _Call {
   (String, String)? bucket;
   final int until;
   final int errorEpoch;
+
+  int get completionBy => until + _completionGraceMs;
 }
 
 final class _Metadata {

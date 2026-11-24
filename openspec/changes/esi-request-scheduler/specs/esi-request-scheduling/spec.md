@@ -44,6 +44,10 @@ The scheduler SHALL reconcile reservations with valid ESI group and connection e
 - **WHEN** an earlier admission's response arrives after a newer admission has set the remaining ceiling
 - **THEN** it settles only its own debit without replacing the newer ceiling
 
+#### Scenario: Response arrives at the caller lease boundary
+- **WHEN** an admitted call reports 420, 429, 403, or 404 as its live lease expires or during the short completion grace period
+- **THEN** the scheduler records the corresponding cooldown or negative observation without occupying a live slot or releasing another call's claim
+
 ### Requirement: Governor tiers and priorities
 
 The scheduler SHALL select full, spaced, single or stopped based on bucket and error-budget pressure. When requests contend for an admission opportunity, interactive SHALL precede realtime, notifications, sync and backfill, in that order, with FIFO within a priority.

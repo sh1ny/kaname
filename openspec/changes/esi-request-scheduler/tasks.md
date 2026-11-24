@@ -12,6 +12,7 @@ Test paths below are relative to the workspace. `shared` = `packages/kaname_esi_
 | Response reconciliation | Response changes available capacity | shared | charges outstanding work against observed remaining | green |
 | Response reconciliation | Retry and reset | shared | distinguishes group cooldown from connection reset | green |
 | Response reconciliation | Older observation arrives late | shared | settles late response without replacing ceiling | green |
+| Response reconciliation | Response arrives at the caller lease boundary | shared | reconciles 420/429/403/404 at the exact caller lease boundary; late completion does not occupy or release a renewed corp claim; ignores observations once the completion-only grace expires | green |
 | Governor tiers and priorities | Increasing pressure | shared | applies all four tiers at exact thresholds | green |
 | Governor tiers and priorities | Waiting requests contend | shared | chooses highest eligible live waiter before FIFO peers | green |
 | Governor tiers and priorities | Queue is full of backfill | shared | displaces newest lowest-priority waiter | green |

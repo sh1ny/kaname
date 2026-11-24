@@ -9,6 +9,7 @@ if not requestedNow or not maxGroups or
    (action ~= 'admit' and action ~= 'advance' and action ~= 'complete') then
   return redis.error_reply('invalid scheduler transition')
 end
+local completionGrace = 5000
 local metaKey, bucketKey = KEYS[2], KEYS[4]
 local metaExpiry, bucketExpiry = KEYS[3], KEYS[5]
 local encoded = redis.call('GET', KEYS[1])
@@ -17,7 +18,7 @@ if not g or g.incarnation ~= incarnation then
   redis.call('UNLINK', metaKey, metaExpiry, bucketKey, bucketExpiry)
   g = {incarnation=incarnation, now=requestedNow, recovery=requestedNow+3600000,
        serial=g and g.serial or 0, epoch=0, epochEnd=0,
-       tickets={}, calls={}, gone={}, errors={}, learned={}, conflicts={}, routeBlocks={},
+       tickets={}, calls={}, lateCalls={}, gone={}, errors={}, learned={}, conflicts={}, routeBlocks={},
        errorBlocked=0, errorLast=-1000, probeAt=0, probeDelay=30000}
 end
 local now = math.max(requestedNow, g.now)
@@ -41,8 +42,14 @@ local function probeFailed(retry)
   g.probeDelay = math.min(300000, 2 * g.probeDelay)
 end
 local active = 0
+for id, call in pairs(g.lateCalls) do
+  if call.untilAt+completionGrace <= now then g.lateCalls[id] = nil end
+end
 for id, call in pairs(g.calls) do
-  if call.untilAt <= now then g.calls[id] = nil else active = active + 1 end
+  if call.untilAt <= now then
+    if call.untilAt+completionGrace > now then g.lateCalls[id] = call end
+    g.calls[id] = nil
+  else active = active + 1 end
 end
 if g.probe and not g.calls[g.probe] then probeFailed() end
 local queueSize = 0
@@ -207,6 +214,7 @@ local function grant(ticket)
   local r = ticket.r
   g.serial = g.serial+1
   local id, untilAt = g.serial, now+30000
+  local completionBy = untilAt+completionGrace
   local name, capacity, window = limit(r)
   local key = name and groupId(name,r)
   if key then
@@ -216,13 +224,13 @@ local function grant(ticket)
     b.debits[tostring(id)] = {now,5,true}
     persistBudget(key,b)
     if not r.group then
-      extendLearned(r, g.learned[r.operation], math.max(untilAt,b.untilAt))
+      extendLearned(r, g.learned[r.operation], math.max(completionBy,b.untilAt))
     end
   end
   local function reserveMetadata(key)
     local entry = load(metaKey, key, metadata) or {sequence=0,untilAt=0}
-    if entry.untilAt < untilAt then
-      entry.untilAt = untilAt
+    if entry.untilAt < completionBy then
+      entry.untilAt = completionBy
       save(metaKey, metaExpiry, key, entry, metadata)
     end
   end
@@ -267,9 +275,9 @@ end
 
 local id, observation = arg.id, arg.observation
 local index = tostring(id)
-local call = g.calls[index]
+local call = g.calls[index] or g.lateCalls[index]
 if not call then return answer({kind='complete'}) end
-g.calls[index] = nil
+g.calls[index],g.lateCalls[index] = nil,nil
 local r, status = call.r, observation.status
 local sent = call.untilAt-30000
 local actual = 5
@@ -335,7 +343,7 @@ if name then
               persistBudget(peer,target)
               retainUntil = math.max(retainUntil,target.untilAt)
             end
-            retainUntil = math.max(retainUntil,pending.untilAt)
+            retainUntil = math.max(retainUntil,pending.untilAt+completionGrace)
           end
         end
       end
@@ -385,7 +393,7 @@ if r.poll then
     g.paused=true
   end
 end
-if r.probe then
+if g.probe == index then
   g.probe=nil
   if observation.probeHealthy then
     g.paused,g.probeDelay,g.failedRoute=false,30000,nil
