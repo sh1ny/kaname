@@ -208,4 +208,6 @@ against a running stack (`mise run stack:up` first, in the background with
 
 The Caddy idle-download check starts its own container. It needs a native
 Linux Docker daemon, direct host access to the Docker bridge, and permission
-to set per-container TCP buffer limits. It does not need the Compose stack.
+to set per-container TCP buffer limits. Its drain control uses the kernel's
+`TCP_INFO` advertised-window fields (`tcpi_snd_wnd` and `tcpi_rcv_wnd`). It does
+not need the Compose stack.

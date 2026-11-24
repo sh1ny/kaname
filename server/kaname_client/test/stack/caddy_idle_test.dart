@@ -1,7 +1,7 @@
 /// The deploy proxy closes both sides of a stalled bundle download.
 ///
-/// Requires a directly reachable native Linux Docker bridge and namespaced
-/// TCP sysctls; it does not need the Compose stack.
+/// Requires a directly reachable native Linux Docker bridge, with bounded
+/// TCP buffers on the Dart sockets and in Caddy's network namespace.
 ///
 /// The probe checks the explicit production idle limit, the duration of
 /// Caddy's failing write, its immediate upstream release, and both socket
@@ -9,9 +9,10 @@
 /// end arrive, regardless of their delivery order. The watchdog is not an
 /// expected outcome.
 ///
-/// The drain control verifies effective timer disablement. It waits for an
-/// open upstream with a zero receive window and unsent bytes, then requires
-/// full delivery once the client starts reading.
+/// The drain control verifies effective timer disablement. It waits for zero
+/// receive windows on both legs, an unfinished Caddy write, and an open
+/// upstream with unsent bytes. It then requires full delivery once the
+/// client starts reading.
 @Tags(['stack'])
 library;
 
@@ -194,9 +195,9 @@ Future<void> _probe({required bool disableIdle}) async {
   await client.flush();
 
   if (disableIdle) {
-    stage = 'waiting for an open upstream with a zero peer window';
+    stage = 'waiting for zero receive windows and a pending Caddy write';
     await running.until(trace.writing.future);
-    await running.until(upstream.waitForBackpressure());
+    await running.until(upstream.waitForBackpressure(client, trace));
     response.reads.resume();
     stage = 'draining the disabled-timeout response';
     await running.until(response.finished.future);
@@ -306,7 +307,7 @@ final class _Upstream {
     );
   }
 
-  Future<void> waitForBackpressure() async {
+  Future<void> waitForBackpressure(Socket client, _Trace trace) async {
     final socket = await _admitted.future;
     // Linux tcp_info: tcpi_notsent_bytes at 144, tcpi_snd_wnd at 228.
     // A zero window alone can precede data; require queued unsent bytes.
@@ -323,9 +324,13 @@ final class _Upstream {
         isNot(0xffffffff),
         reason: 'Linux TCP_INFO must expose snd_wnd',
       );
-      if (data.getUint8(0) == 1 && // TCP_ESTABLISHED.
+      final upstreamBlocked =
+          data.getUint8(0) == 1 && // TCP_ESTABLISHED.
           window == 0 &&
-          data.getUint32(144, Endian.host) > 0) {
+          data.getUint32(144, Endian.host) > 0;
+      if (upstreamBlocked &&
+          trace.writePending &&
+          _receiveWindowClosed(client)) {
         return;
       }
       // There is no socket event for the advertised window changing.
@@ -333,6 +338,27 @@ final class _Upstream {
     }
     fail('upstream did not remain open under backpressure: $progress');
   }
+
+  bool _receiveWindowClosed(Socket client) {
+    // Linux tcp_info: tcpi_rcv_wnd is the local advertised receive window.
+    final info = _receiveInfo;
+    final data = ByteData.sublistView(info.value)
+      ..setUint32(232, 0xffffffff, Endian.host);
+    client.getRawOption(info);
+    final window = data.getUint32(232, Endian.host);
+    expect(
+      window,
+      isNot(0xffffffff),
+      reason: 'Linux TCP_INFO must expose rcv_wnd',
+    );
+    return data.getUint8(0) == 1 && window == 0;
+  }
+
+  late final _receiveInfo = RawSocketOption(
+    RawSocketOption.levelTcp,
+    11,
+    Uint8List(236),
+  );
 
   Future<void> stop() async {
     _stopping = true;
@@ -399,6 +425,8 @@ final class _Trace {
   bool _accepted = false;
   bool _progress = false;
   bool _released = false;
+
+  bool get writePending => _writeStarted != null;
 
   void accept(String line) {
     if (tail.length == 32) tail.removeFirst();
