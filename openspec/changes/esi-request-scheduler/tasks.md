@@ -25,18 +25,18 @@ Test paths below are relative to the workspace. `shared` = `packages/kaname_esi_
 | Conditional polling and downtime | ESI reachable but every route answers 503 | shared | pauses only after distinct poll routes fail within window | red |
 | Equivalent corporation polls | Two qualified holders poll the same corporation page | shared | deduplicates corp representation across holders | red |
 | Equivalent corporation polls | Poller fails before releasing its claim | shared | reclaims expired corp lease | red |
-| Typed results, never thrown | Success | client | conforming generated success with headers | green |
-| Typed results, never thrown | No content | client | generated 204 exchange | green |
-| Typed results, never thrown | Not modified | client | generated 304 exchange | green |
-| Typed results, never thrown | ESI error with body | client | generated 404 exchange | green |
-| Typed results, never thrown | ESI error without a readable body | client | generated 502 exchange | green |
-| Typed results, never thrown | Scheduler refuses before dispatch | client | decodes scheduler refusal without wire status | red |
-| Typed results, never thrown | Negative suppression is not a wire result | client | preserves suppressed status separately | red |
+| Typed results, never thrown | Success | `packages/kaname_esi/test/result_test.dart` | Success: 200 with ETag, Expires, Last-Modified and X-Pages 3 | green |
+| Typed results, never thrown | No content | `packages/kaname_esi/test/result_test.dart` | No content: 204 is a success without a body | green |
+| Typed results, never thrown | Not modified | `packages/kaname_esi/test/result_test.dart` | Not modified: 304 carries ETag and Expires | green |
+| Typed results, never thrown | ESI error with body | `packages/kaname_esi/test/result_test.dart` | ESI error with body: 404 with an error message | green |
+| Typed results, never thrown | ESI error without a readable body | `packages/kaname_esi/test/result_test.dart` | ESI error without a readable body: 502 with a non-JSON body | green |
+| Typed results, never thrown | Scheduler refuses before dispatch | client | decodes scheduler refusal without wire status | green |
+| Typed results, never thrown | Negative suppression is not a wire result | client | preserves suppressed status separately | green |
 
 ## 1. Record the boundary and extend the typed client
 
-- [ ] 1.1 Check A1 against Compose and SSO ownership in the ADRs; write ADR 0016 (C4, C8) and update the architecture index and scheduler ownership row. Verify cited deployment has one ESI egress assumption, with no new process.
-- [ ] 1.2 Add refusal contract tests red first; add stable reasons, typed transport/result cases and exhaustive decoding (C7). Verify new and unchanged client cases; no change to the pinned catalogue or generated operations.
+- [x] 1.1 Check A1 against Compose and SSO ownership in the ADRs; write ADR 0016 (C4, C8) and update the architecture index and scheduler ownership row. Verify cited deployment has one ESI egress assumption, with no new process.
+- [x] 1.2 Add refusal contract tests red first; add stable reasons, typed transport/result cases and exhaustive decoding (C7). Verify new and unchanged client cases; no change to the pinned catalogue or generated operations.
 
 ## 2. Implement scheduling and solo state
 

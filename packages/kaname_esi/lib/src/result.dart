@@ -2,6 +2,8 @@
 /// `esi-client-generator`).
 library;
 
+import 'transport.dart';
+
 /// What one ESI call produced. Calls never throw for an HTTP outcome or a
 /// response body; every case is one of these.
 sealed class EsiResult<T> {
@@ -103,4 +105,13 @@ final class EsiTransportFailed<T> extends EsiResult<T> {
 
   /// The transport's report.
   final String reason;
+}
+
+/// The scheduler declined this call without sending it to ESI.
+final class EsiNotSent<T> extends EsiResult<T> {
+  /// Creates a not-sent result from the transport's refusal.
+  const EsiNotSent(this.refusal);
+
+  /// The reason and optional retry deadline, not a wire response.
+  final EsiTransportRefused refusal;
 }

@@ -156,6 +156,7 @@ abstract final class EsiCall {
     }
     return switch (outcome) {
       EsiTransportFailure(:final reason) => EsiTransportFailed(reason),
+      EsiTransportRefused() => EsiNotSent(outcome),
       EsiResponse() => read(outcome, decode: decode, noContent: noContent),
     };
   }
