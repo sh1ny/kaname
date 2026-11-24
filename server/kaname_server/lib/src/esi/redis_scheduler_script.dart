@@ -195,6 +195,10 @@ local function persistBudget(key, b)
   b.untilAt = math.max(b.block or 0, b.ceilingEnd or 0, b.last+b.window)
   save(bucketKey, bucketExpiry, key, b, budgets)
 end
+local function extendLearned(r, learned, untilAt)
+  learned.untilAt = math.max(learned.untilAt or 0, untilAt)
+  g.learned[r.operation] = learned
+end
 local function grant(ticket)
   local r = ticket.r
   g.serial = g.serial+1
@@ -207,6 +211,9 @@ local function grant(ticket)
     b.last = now
     b.debits[tostring(id)] = {now,5,true}
     persistBudget(key,b)
+    if not r.group then
+      extendLearned(r, g.learned[r.operation], math.max(untilAt,b.untilAt))
+    end
   end
   local function reserveMetadata(key)
     local entry = load(metaKey, key, metadata) or {sequence=0,untilAt=0}
@@ -265,28 +272,32 @@ if observation.unsent then actual=0
 elseif status and status >= 200 and status < 300 then actual=2
 elseif status and status >= 300 and status < 400 then actual=1
 elseif status and (status==429 or status>=500) then actual=0 end
-local name = call.group
-if observation.group then
-  local learned = g.learned[r.operation]
-  if name and name ~= observation.group then
-    g.conflicts[r.operation] = now + math.max(call.window or 0, observation.window)
-  elseif not name then
-    if learned and learned.untilAt > now and learned.group ~= observation.group then
-      g.conflicts[r.operation] = now + math.max(learned.window, observation.window)
-      name = learned.group
-    else
-      name = observation.group
-      g.learned[r.operation] = {group=name,capacity=observation.capacity,
-          window=observation.window,untilAt=now+observation.window}
-    end
-  end
+local learned = not r.group and g.learned[r.operation] or nil
+if learned and learned.untilAt <= now then learned = nil end
+local originalGroup = call.group or (learned and learned.group)
+local name = originalGroup or observation.group
+if observation.group and originalGroup and observation.group ~= originalGroup then
+  g.conflicts[r.operation] = math.max(g.conflicts[r.operation] or 0,
+      now + math.max((learned and learned.window) or call.window or 0, observation.window))
 end
 if name then
   local key = groupId(name,r)
   local matched = observation.group == name
+  local retainUntil = 0
+  if not r.group and matched then
+    learned = {
+      group=name,capacity=math.min((learned and learned.capacity) or observation.capacity,observation.capacity),
+      window=math.max((learned and learned.window) or 0,observation.window),
+      untilAt=learned and learned.untilAt or 0,
+    }
+    retainUntil = now+learned.window
+  end
+  local capacity = (learned and learned.capacity) or (matched and observation.capacity) or r.capacity
+  local window = (learned and learned.window) or (matched and observation.window) or r.window
   local b = budgetFor(key)
-  if not b and matched and count(bucketExpiry) < maxGroups then
-    b = makeBudget(observation.capacity,observation.window)
+  local reserve = b and 0 or 1
+  if not b and (matched or status == 429) and count(bucketExpiry) < maxGroups then
+    b = makeBudget(capacity,window)
   end
   if b then
     groupRemaining(b)
@@ -294,15 +305,40 @@ if name then
     if cost == 0 then b.debits[index] = nil
     else b.debits[index] = {sent,cost,false}; b.last=math.max(b.last,sent) end
     if matched then
-      b.capacity = math.min(b.capacity, observation.capacity)
-      b.window = math.max(b.window, observation.window)
+      b.capacity = math.min(b.capacity,capacity)
+      b.window = math.max(b.window,window)
       if id > (b.sequence or 0) then
         b.sequence,b.ceiling,b.ceilingEnd = id,observation.remaining,sent+b.window
       end
     end
     if status == 429 then b.block = math.max(b.block or 0,now+(observation.retry or b.window)) end
+    -- At most seven peers; charge pending work against each peer's own scope.
+    if matched and learned and not call.bucket then
+      for token, pending in pairs(g.calls) do
+        if not pending.bucket and pending.r.operation == r.operation then
+          local peer = groupId(name,pending.r)
+          local target = peer == key and b or budgetFor(peer)
+          if not target and count(bucketExpiry)+reserve < maxGroups then
+            target = makeBudget(capacity,window)
+          end
+          if target then
+            pending.bucket, pending.group, pending.window = peer, name, window
+            local peerSent = pending.untilAt-30000
+            target.debits[token] = {peerSent,5,true}
+            target.last = math.max(target.last,peerSent)
+            if peer ~= key then
+              persistBudget(peer,target)
+              retainUntil = math.max(retainUntil,target.untilAt)
+            end
+            retainUntil = math.max(retainUntil,pending.untilAt)
+          end
+        end
+      end
+    end
     persistBudget(key,b)
+    retainUntil = math.max(retainUntil,b.untilAt)
   end
+  if learned then extendLearned(r,learned,retainUntil) end
 elseif status == 429 then
   g.routeBlocks[r.operation] = math.max(g.routeBlocks[r.operation] or 0,now+(observation.retry or 60000))
 end
@@ -335,9 +371,9 @@ if r.poll then
   end
   local failed=observation.connectivityFailure
   if not failed and (status==502 or status==503 or status==504) then
-    if not g.failedRoute or g.failedAt+30000 < now then
-      g.failedRoute,g.failedAt=r.operation,now
-    else failed=g.failedRoute~=r.operation end
+    local previousRoute = g.failedRoute
+    failed = previousRoute and previousRoute ~= r.operation and g.failedAt+30000 >= now
+    g.failedRoute,g.failedAt=r.operation,now
   end
   if failed then
     if not g.paused then g.probeAt=now end

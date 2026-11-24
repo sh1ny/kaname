@@ -12,10 +12,11 @@ SchedulerRequest request({
   bool poll = false,
   bool retained = false,
   String? corp,
+  String? group = 'group',
 }) => SchedulerRequest(
   operation: operation,
   scope: scope,
-  group: 'group',
+  group: group,
   capacity: capacity,
   windowMs: 900000,
   priority: priority,
@@ -102,6 +103,68 @@ void schedulerConformance(SchedulerState Function() create) {
       ),
     );
     expect(await state.admit(request(), 1002), isA<Denied>());
+  });
+
+  test('retains the learned group for live windows and cooldowns', () async {
+    final input = request(group: null);
+    final first = await state.admit(input, 1000) as Granted;
+    await state.complete(
+      first.id,
+      1001,
+      const Observation(
+        status: 200,
+        group: 'group',
+        capacity: 100,
+        windowMs: 10000,
+        remaining: 90,
+      ),
+    );
+    final later = await state.admit(input, 9000) as Granted;
+    await state.complete(
+      later.id,
+      9001,
+      const Observation(
+        status: 200,
+        group: 'group',
+        capacity: 100,
+        windowMs: 1000,
+        remaining: 10,
+      ),
+    );
+    final stopped = await state.admit(input, 12000) as Denied;
+    expect(stopped.refusal.reason, EsiRefusalReason.stopped);
+
+    final afterWindow = await state.admit(input, 19001) as Granted;
+    await state.complete(
+      afterWindow.id,
+      30002,
+      const Observation(status: 429, retryMs: 100000),
+    );
+    final cooldown = await state.admit(input, 100000) as Denied;
+    expect(cooldown.refusal.reason, EsiRefusalReason.budget);
+    expect(await state.admit(input, 130002), isA<Granted>());
+  });
+
+  test('accounts for outstanding calls on group discovery', () async {
+    final input = request(group: null);
+    final first = await state.admit(input, 1000) as Granted;
+    final pending = await state.admit(input, 1001) as Granted;
+    await state.admit(request(group: null, scope: 'other'), 1001) as Granted;
+    await state.complete(
+      first.id,
+      1002,
+      const Observation(
+        status: 200,
+        group: 'group',
+        capacity: 25,
+        windowMs: 900000,
+        remaining: 8,
+      ),
+    );
+    final blocked = await state.admit(input, 1003) as Denied;
+    expect(blocked.refusal.reason, EsiRefusalReason.budget);
+    await state.complete(pending.id, 1004, const Observation(status: 503));
+    expect(await state.admit(input, 2001), isA<Granted>());
   });
 
   test('distinguishes group cooldown from connection reset', () async {
@@ -386,19 +449,24 @@ void schedulerConformance(SchedulerState Function() create) {
     expect(await state.admit(request(probe: true), 31003), isA<Granted>());
   });
 
-  test('pauses only after distinct poll routes fail within window', () async {
-    Future<void> failPoll(String op, int now) async {
-      final grant =
-          await state.admit(request(operation: op, poll: true), now) as Granted;
-      await state.complete(grant.id, now, const Observation(status: 503));
-    }
+  test(
+    'repeated failures refresh the outage window for distinct routes',
+    () async {
+      Future<void> failPoll(String op, int now) async {
+        final grant = await state.admit(
+          request(operation: op, poll: true),
+          now,
+        ) as Granted;
+        await state.complete(grant.id, now, const Observation(status: 503));
+      }
 
-    await failPoll('RouteA', 1000);
-    await failPoll('RouteA', 1001);
-    await failPoll('RouteB', 1002);
-    final probe = await state.admit(request(probe: true), 1003) as Granted;
-    await state.complete(probe.id, 1004, const Observation(status: 503));
-    final result = await state.admit(request(poll: true), 1005) as Denied;
-    expect(result.refusal.reason, EsiRefusalReason.outage);
-  });
+      await failPoll('RouteA', 1000);
+      await failPoll('RouteA', 30000);
+      await failPoll('RouteB', 32000);
+      final probe = await state.admit(request(probe: true), 32001) as Granted;
+      await state.complete(probe.id, 32002, const Observation(status: 503));
+      final result = await state.admit(request(poll: true), 32003) as Denied;
+      expect(result.refusal.reason, EsiRefusalReason.outage);
+    },
+  );
 }

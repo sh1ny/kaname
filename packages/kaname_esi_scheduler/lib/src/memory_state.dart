@@ -237,6 +237,9 @@ final class MemorySchedulerState implements SchedulerState {
           _Budget(limit.maxTokens, limit.window.inMilliseconds);
       budget.debit(id, _cost, _now);
       _groups.put(key, budget, budget.deadline);
+      if (r.group == null) {
+        _extendLearned(r.operation, limit, max(until, budget.deadline));
+      }
     }
     for (final metadata in [(false, r.negativeKey), (true, r.pollKey)]) {
       final (poll, value) = metadata;
@@ -272,48 +275,58 @@ final class MemorySchedulerState implements SchedulerState {
             429 || >= 500 => 0,
             _ => _cost,
           };
-    final originalGroup = call.bucket?.$1;
-    var bucket = call.bucket;
-    if (o.group case final group?) {
-      if (originalGroup != null && group != originalGroup) {
-        _conflicts.put(r.operation, true, _now + max(r.windowMs, o.windowMs!));
-      } else if (originalGroup == null) {
-        final previous = _learned.get(r.operation, _now);
-        if (previous != null && previous.name != group) {
-          _conflicts.put(
-            r.operation,
-            true,
-            _now + max(previous.window.inMilliseconds, o.windowMs!),
-          );
-          bucket = (previous.name, r.scope);
-        } else {
-          _learned.put(
-            r.operation,
-            EsiRateLimited(
-              name: group,
-              maxTokens: o.capacity!,
-              window: Duration(milliseconds: o.windowMs!),
-            ),
-            _now + o.windowMs!,
-          );
-          bucket = (group, r.scope);
-        }
-      }
+    var learned = r.group == null ? _learned.get(r.operation, _now) : null;
+    final originalGroup = call.bucket?.$1 ?? learned?.name;
+    final observedGroup = o.group;
+    final group = originalGroup ?? observedGroup;
+    if (observedGroup != null &&
+        originalGroup != null &&
+        observedGroup != originalGroup) {
+      _conflicts.put(
+        r.operation,
+        true,
+        max(
+          _conflicts.deadline(r.operation, _now) ?? 0,
+          _now + max(learned?.window.inMilliseconds ?? r.windowMs, o.windowMs!),
+        ),
+      );
     }
+    final bucket = group == null ? null : (group, r.scope);
     if (bucket != null) {
       final matches = o.group == bucket.$1;
+      var retainUntil = 0;
+      if (r.group == null && matches) {
+        learned = EsiRateLimited(
+          name: bucket.$1,
+          maxTokens: min(learned?.maxTokens ?? o.capacity!, o.capacity!),
+          window: Duration(
+            milliseconds: max(learned?.window.inMilliseconds ?? 0, o.windowMs!),
+          ),
+        );
+        retainUntil = _now + learned.window.inMilliseconds;
+      }
       final existing = _groups.get(bucket, _now);
       final budget =
           existing ??
-          (matches && _groups.length < _maxGroups
-              ? _Budget(o.capacity!, o.windowMs!)
+          ((matches || status == 429) && _groups.length < _maxGroups
+              ? _Budget(
+                  learned?.maxTokens ?? (matches ? o.capacity! : r.capacity),
+                  learned?.window.inMilliseconds ??
+                      (matches ? o.windowMs! : r.windowMs),
+                )
               : null);
       if (budget != null) {
         final sent = call.until - _leaseMs;
         budget.settle(id, matches ? o.cost ?? actual : actual, sent);
         if (matches) {
-          budget.capacity = min(budget.capacity, o.capacity!);
-          budget.window = max(budget.window, o.windowMs!);
+          budget.capacity = min(
+            budget.capacity,
+            learned?.maxTokens ?? o.capacity!,
+          );
+          budget.window = max(
+            budget.window,
+            learned?.window.inMilliseconds ?? o.windowMs!,
+          );
           budget.observe(id, o.remaining!, sent + budget.window);
         }
         if (status == 429) {
@@ -322,7 +335,23 @@ final class MemorySchedulerState implements SchedulerState {
             _now + (o.retryMs ?? budget.window),
           );
         }
+        if (matches && learned != null && call.bucket == null) {
+          retainUntil = max(
+            retainUntil,
+            _adoptPending(
+              r.operation,
+              bucket,
+              budget,
+              learned,
+              reserve: existing == null ? 1 : 0,
+            ),
+          );
+        }
         _groups.put(bucket, budget, budget.deadline);
+        retainUntil = max(retainUntil, budget.deadline);
+      }
+      if (learned != null) {
+        _extendLearned(r.operation, learned, retainUntil);
       }
     } else if (status == 429) {
       final key = r.operation;
@@ -398,15 +427,53 @@ final class MemorySchedulerState implements SchedulerState {
     }
   }
 
+  void _extendLearned(String operation, EsiRateLimited limit, int until) {
+    _learned.put(
+      operation,
+      limit,
+      max(until, _learned.deadline(operation, _now) ?? 0),
+    );
+  }
+
+  // At most seven peer leases. Keep scopes separate even though the route
+  // metadata is shared; bind pending debits before the mapping is visible.
+  int _adoptPending(
+    String operation,
+    (String, String) source,
+    _Budget budget,
+    EsiRateLimited limit, {
+    required int reserve,
+  }) {
+    var until = 0;
+    for (final MapEntry(key: id, value: pending) in _callers.entries) {
+      if (pending.request.operation != operation || pending.bucket != null) {
+        continue;
+      }
+      final bucket = (source.$1, pending.request.scope);
+      final target = bucket == source
+          ? budget
+          : _groups.get(bucket, _now) ??
+                (_groups.length + reserve < _maxGroups
+                    ? _Budget(limit.maxTokens, limit.window.inMilliseconds)
+                    : null);
+      if (target == null) continue;
+      pending.bucket = bucket;
+      target.debit(id, _cost, pending.until - _leaseMs);
+      if (bucket != source) _groups.put(bucket, target, target.deadline);
+      until = max(until, max(pending.until, target.deadline));
+    }
+    return until;
+  }
+
   bool _outageSignal(String route, int? status) {
     if (status != 502 && status != 503 && status != 504) return false;
-    final first = _failedRoute;
-    if (first == null || _failedAt + 30000 < _now) {
-      _failedRoute = route;
-      _failedAt = _now;
-      return false;
-    }
-    return first != route;
+    final previousRoute = _failedRoute;
+    final previousAt = _failedAt;
+    _failedRoute = route;
+    _failedAt = _now;
+    return previousRoute != null &&
+        previousRoute != route &&
+        previousAt + 30000 >= _now;
   }
 
   void _probeFailed({int? retryMs}) {
@@ -441,9 +508,9 @@ final class _Ticket {
 }
 
 final class _Call {
-  const _Call(this.request, this.bucket, this.until, this.errorEpoch);
+  _Call(this.request, this.bucket, this.until, this.errorEpoch);
   final SchedulerRequest request;
-  final (String, String)? bucket;
+  (String, String)? bucket;
   final int until;
   final int errorEpoch;
 }
@@ -479,7 +546,7 @@ final class _Budget {
 
   void debit(int id, int cost, int now) {
     _debits[id] = (now, cost, true);
-    lastSend = now;
+    lastSend = max(lastSend, now);
     _spent += cost;
   }
 
