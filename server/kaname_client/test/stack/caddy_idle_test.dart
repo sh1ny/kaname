@@ -2,6 +2,7 @@
 ///
 /// Requires a directly reachable native Linux Docker bridge, with bounded
 /// TCP buffers on the Dart sockets and in Caddy's network namespace.
+/// Docker must permit setting namespaced TCP sysctls.
 ///
 /// The probe checks the explicit production idle limit, the duration of
 /// Caddy's failing write, its immediate upstream release, and both socket
@@ -80,25 +81,22 @@ Future<void> _probe({required bool disableIdle}) async {
     }
     try {
       if (launch != null) {
+        // Process.start cannot be cancelled. Join it before checking the
+        // container name so a late Docker CLI cannot outlive cleanup.
+        final running = await launch;
+        await running.stop();
         try {
-          final running = await launch.timeout(const Duration(seconds: 5));
-          await running.stop();
+          await _docker(['rm', '--force', name], cleanup: true);
         } finally {
-          // Removal was registered before starting Docker, even if the CLI
-          // did not return the result of creating the container.
-          try {
-            await _docker(['rm', '--force', name], cleanup: true);
-          } finally {
-            final remaining = await _checkedDocker([
-              'ps',
-              '--all',
-              '--filter',
-              'name=^/$name\$',
-              '--format',
-              '{{.Names}}',
-            ], cleanup: true);
-            expect(remaining.trim(), isEmpty, reason: 'container still exists');
-          }
+          final remaining = await _checkedDocker([
+            'ps',
+            '--all',
+            '--filter',
+            'name=^/$name\$',
+            '--format',
+            '{{.Names}}',
+          ], cleanup: true);
+          expect(remaining.trim(), isEmpty, reason: 'container still exists');
         }
       }
       await scratch.delete(recursive: true);
