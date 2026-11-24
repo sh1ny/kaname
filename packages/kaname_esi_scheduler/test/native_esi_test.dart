@@ -92,4 +92,33 @@ void main() {
     );
     expect(requests, 1);
   });
+
+  test('closed runtime does not spend the shared error budget', () async {
+    final state = MemorySchedulerState();
+    const input = SchedulerRequest(
+      operation: 'Fixture',
+      scope: 'public',
+      capacity: 0,
+      windowMs: 0,
+      group: null,
+      priority: EsiPriority.sync,
+    );
+    final first = state.admit(input, 1000) as Granted;
+    state.complete(
+      first.id,
+      1000,
+      const Observation(status: 200, errorsRemaining: 11, errorResetMs: 60000),
+    );
+    final runtime = NativeEsiRuntime.shared(
+      state: state,
+      key: const [1],
+      userAgent: 'Kaname test (contact@example.invalid)',
+      now: () => DateTime.fromMillisecondsSinceEpoch(1000),
+    )..close();
+    expect(
+      await runtime.scheduler.client(EsiPriority.sync).getAlliances(),
+      isA<EsiTransportFailed<List<int>>>(),
+    );
+    expect(state.admit(input, 1000), isA<Granted>());
+  });
 }

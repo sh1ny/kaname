@@ -105,7 +105,7 @@ final class _NativeHttp {
         path.hasAuthority ||
         path.hasFragment ||
         !path.path.startsWith('/')) {
-      return const WireFailure();
+      return const WireFailure.unsent();
     }
     // A failed client's socket must be abortable without cancelling other
     // reservations. No pooled stale connection can trigger a resend.

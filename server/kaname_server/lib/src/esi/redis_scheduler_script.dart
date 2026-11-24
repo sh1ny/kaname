@@ -29,7 +29,11 @@ end
 local function refused(reason, untilAt, status)
   return {kind='denied', reason=reason, untilAt=untilAt, status=status}
 end
-if now < g.recovery then return answer(refused('stateRecovering', g.recovery)) end
+if now < g.recovery then
+  -- Old-incarnation completions have no reservation to reconcile.
+  if action == 'complete' then return answer({kind='complete'}) end
+  return answer(refused('stateRecovering', g.recovery))
+end
 
 local function probeFailed(retry)
   g.probe = nil

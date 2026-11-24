@@ -8,7 +8,7 @@ Test paths below are relative to the workspace. `shared` = `packages/kaname_esi_
 | Shared atomic admission | State unavailable | redis | refuses when Redis cannot confirm | green |
 | Shared atomic admission | Redis was replaced or restarted | redis | quarantines stale state from a prior incarnation | green |
 | Shared atomic admission | Product transport bypass | `tools/kaname_tools/test/esi_boundary_test.dart` | reports direct production ESI access | green |
-| Shared atomic admission | Delivery is uncertain | shared | never replays an ambiguous send | green |
+| Shared atomic admission | Delivery is uncertain | shared | never replays an ambiguous send; sender boundary failures settle without replay | green |
 | Response reconciliation | Response changes available capacity | shared | charges outstanding work against observed remaining | green |
 | Response reconciliation | Retry and reset | shared | distinguishes group cooldown from connection reset | green |
 | Response reconciliation | Older observation arrives late | shared | settles late response without replacing ceiling | green |
@@ -21,8 +21,8 @@ Test paths below are relative to the workspace. `shared` = `packages/kaname_esi_
 | Conditional polling and downtime | Unchanged page | shared | forwards retained page validator and wire 304 | green |
 | Conditional polling and downtime | Tranquility is unreachable | shared | grants one shared status probe per retry opportunity | green |
 | Conditional polling and downtime | Fresh page and stale worker | shared | distinguishes not due from no local representation | green |
-| Conditional polling and downtime | Probe fails | shared | does not resume for failed or VIP probe | green |
-| Conditional polling and downtime | ESI reachable but every route answers 503 | shared | pauses only after distinct poll routes fail within window | green |
+| Conditional polling and downtime | Probe fails or reports VIP mode | shared | does not resume for a failed probe; decoded VIP status does not resume polling | green |
+| Conditional polling and downtime | ESI reachable but every route answers 503 | shared | repeated failures refresh the outage window for distinct routes | green |
 | Equivalent corporation polls | Two qualified holders poll the same corporation page | shared | deduplicates corp representation across holders | green |
 | Equivalent corporation polls | Poller fails before releasing its claim | shared | reclaims expired corp lease | green |
 | Typed results, never thrown | Success | `packages/kaname_esi/test/result_test.dart` | Success: 200 with ETag, Expires, Last-Modified and X-Pages 3 | green |

@@ -50,13 +50,23 @@ final class WireResponse extends WireOutcome {
 /// A send failed, possibly after receiving upstream status and headers.
 final class WireFailure extends WireOutcome {
   /// Creates a secret-free failure; no original exception is retained.
-  const WireFailure({this.head, this.connectivityFailure = false});
+  const WireFailure({this.head, this.connectivityFailure = false})
+    : unsent = false;
+
+  /// No web exchange was attempted, so the reservation can be refunded.
+  const WireFailure.unsent()
+    : head = null,
+      connectivityFailure = false,
+      unsent = true;
 
   /// The received status and headers, if a body read failed.
   final EsiResponse? head;
 
   /// Whether connection setup failed before any HTTP response.
   final bool connectivityFailure;
+
+  /// Whether the adapter can prove the request never reached the wire.
+  final bool unsent;
 }
 
 /// Sends only after permission; implementations must abort an unfinished wire
@@ -183,7 +193,8 @@ final class EsiScheduler {
           ? null
           : await Future<String?>.sync(owner.bearer)
                 .timeout(const Duration(seconds: 2));
-    } on Exception {
+    } on Object {
+      // Caller-provided credential code runs before any attempt to send.
       await _complete(id, const Observation(unsent: true));
       return const EsiTransportRefused(EsiRefusalReason.invalidContext);
     }
@@ -198,8 +209,13 @@ final class EsiScheduler {
     final WireOutcome wire;
     try {
       wire = await _send(request, bearer, validator);
-    } on Exception {
+    } on Object {
+      // The wire port may have sent before throwing. Retain its debit.
       await _complete(id, const Observation());
+      return const EsiTransportFailure('ESI exchange failed');
+    }
+    if (wire case WireFailure(unsent: true)) {
+      await _complete(id, const Observation(unsent: true));
       return const EsiTransportFailure('ESI exchange failed');
     }
     final head = switch (wire) {

@@ -201,6 +201,9 @@ void main() {
       await command.set(key, jsonEncode({'incarnation': 'old', 'serial': 21})),
       'OK',
     );
+    // A response from the old incarnation must not mutate the new budgets or
+    // report a state failure while the admission quarantine is in effect.
+    await redis.complete(21, 0, const Observation(status: 420));
     final result = await redis.admit(contract.request(), 0) as Denied;
     expect(result.refusal.reason, EsiRefusalReason.stateRecovering);
     expect(await redis.admit(contract.request(), _start - 1), isA<Denied>());

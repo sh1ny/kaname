@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:test/test.dart';
@@ -43,6 +45,105 @@ void main() {
     final result = await scheduler.client(EsiPriority.sync).getAlliances();
     expect(result, isA<EsiTransportFailed<List<int>>>());
     expect(sends, 1);
+  });
+
+  test('bearer boundary failures release the unsent reservation', () async {
+    var failBearer = true;
+    var sends = 0;
+    final scheduler = EsiScheduler(
+      state: MemorySchedulerState(),
+      key: const [1],
+      now: () => DateTime.fromMillisecondsSinceEpoch(1000),
+      wait: (_) => fail('an unsent reservation remained active'),
+      send: (request, credential, validator) async {
+        sends++;
+        return WireResponse(EsiResponse(status: 200, body: utf8.encode('[]')));
+      },
+    );
+    final client = scheduler.client(
+      EsiPriority.sync,
+      principal: EsiPrincipal(
+        application: 'test',
+        character: 99000001,
+        generation: 'one',
+        bearer: () {
+          if (failBearer) throw StateError('unavailable');
+          return 'synthetic';
+        },
+      ),
+    );
+    for (var i = 0; i < 9; i++) {
+      final result = await client.getCharactersCharacterIdAssets(
+        characterId: 99000001,
+      );
+      expect(
+        result,
+        isA<EsiNotSent<List<CharactersCharacterIdAssetsGetItem>>>().having(
+          (r) => r.refusal.reason,
+          'reason',
+          EsiRefusalReason.invalidContext,
+        ),
+      );
+    }
+    failBearer = false;
+    expect(
+      await client.getCharactersCharacterIdAssets(characterId: 99000001),
+      isA<EsiSuccess<List<CharactersCharacterIdAssetsGetItem>>>(),
+    );
+    expect(sends, 1);
+  });
+
+  test('sender boundary failures settle without replay', () async {
+    var sends = 0;
+    final scheduler = EsiScheduler(
+      state: MemorySchedulerState(),
+      key: const [1],
+      now: () => DateTime.fromMillisecondsSinceEpoch(1000),
+      wait: (_) => fail('an ambiguous reservation remained active'),
+      send: (request, credential, validator) async {
+        sends++;
+        throw StateError('failed exchange');
+      },
+    );
+    final client = scheduler.client(EsiPriority.sync);
+    for (var i = 0; i < 9; i++) {
+      expect(await client.getAlliances(), isA<EsiTransportFailed<List<int>>>());
+    }
+    expect(sends, 9);
+  });
+
+  test('decoded VIP status does not resume polling', () async {
+    final seen = <String>[];
+    final scheduler = EsiScheduler(
+      state: MemorySchedulerState(),
+      key: const [1],
+      now: () => DateTime.fromMillisecondsSinceEpoch(1000),
+      send: (request, credential, validator) async {
+        seen.add(request.operationId);
+        if (seen.length == 1) {
+          return const WireFailure(connectivityFailure: true);
+        }
+        return WireResponse(
+          EsiResponse(
+            status: 200,
+            body: utf8.encode(
+              '{"players":1,"server_version":"1",'
+              '"start_time":"2026-11-01T00:00:00Z","vip":true}',
+            ),
+          ),
+        );
+      },
+    );
+    final poll = scheduler.client(EsiPriority.sync, poll: true);
+    expect(await poll.getAlliances(), isA<EsiTransportFailed<List<int>>>());
+    final paused = isA<EsiNotSent<List<int>>>().having(
+      (r) => r.refusal.reason,
+      'reason',
+      EsiRefusalReason.outage,
+    );
+    expect(await poll.getAlliances(), paused);
+    expect(await poll.getAlliances(), paused);
+    expect(seen, ['GetAlliances', 'GetStatus']);
   });
 
   test('forwards retained page validator and wire 304', () async {
@@ -435,7 +536,7 @@ void schedulerConformance(SchedulerState Function() create) {
     expect(await state.admit(request(poll: true), 1004), isA<Granted>());
   });
 
-  test('does not resume for failed or VIP probe', () async {
+  test('does not resume for a failed probe', () async {
     final initial = await state.admit(request(poll: true), 1000) as Granted;
     await state.complete(
       initial.id,
@@ -460,12 +561,18 @@ void schedulerConformance(SchedulerState Function() create) {
         await state.complete(grant.id, now, const Observation(status: 503));
       }
 
-      await failPoll('RouteA', 1000);
-      await failPoll('RouteA', 30000);
-      await failPoll('RouteB', 32000);
-      final probe = await state.admit(request(probe: true), 32001) as Granted;
-      await state.complete(probe.id, 32002, const Observation(status: 503));
-      final result = await state.admit(request(poll: true), 32003) as Denied;
+      await failPoll('RouteOutside', 1000);
+      await failPoll('RouteA', 32000);
+      await failPoll('RouteA', 61000);
+      final allowed = await state.admit(
+        request(operation: 'Control', poll: true),
+        61001,
+      ) as Granted;
+      await state.complete(allowed.id, 61001, const Observation(status: 200));
+      await failPoll('RouteB', 63000);
+      final probe = await state.admit(request(probe: true), 63001) as Granted;
+      await state.complete(probe.id, 63002, const Observation(status: 503));
+      final result = await state.admit(request(poll: true), 63003) as Denied;
       expect(result.refusal.reason, EsiRefusalReason.outage);
     },
   );
