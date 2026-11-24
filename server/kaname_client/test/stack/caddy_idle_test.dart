@@ -84,19 +84,22 @@ Future<void> _probe({required bool disableIdle}) async {
         // Process.start cannot be cancelled. Join it before checking the
         // container name so a late Docker CLI cannot outlive cleanup.
         final running = await launch;
-        await running.stop();
         try {
-          await _docker(['rm', '--force', name], cleanup: true);
+          await running.stop();
         } finally {
-          final remaining = await _checkedDocker([
-            'ps',
-            '--all',
-            '--filter',
-            'name=^/$name\$',
-            '--format',
-            '{{.Names}}',
-          ], cleanup: true);
-          expect(remaining.trim(), isEmpty, reason: 'container still exists');
+          try {
+            await _docker(['rm', '--force', name], cleanup: true);
+          } finally {
+            final remaining = await _checkedDocker([
+              'ps',
+              '--all',
+              '--filter',
+              'name=^/$name\$',
+              '--format',
+              '{{.Names}}',
+            ], cleanup: true);
+            expect(remaining.trim(), isEmpty, reason: 'container still exists');
+          }
         }
       }
       await scratch.delete(recursive: true);
@@ -218,6 +221,9 @@ Future<void> _probe({required bool disableIdle}) async {
       lessThan(_bodySize),
       reason: 'upstream body was not cut short',
     );
+    stage =
+        'waiting for Caddy to close the downstream socket with reads paused';
+    await running.until(_waitForCaddyClose(name, client.port));
     response.reads.resume();
     stage = 'observing the downstream socket end';
     await running.until(response.finished.future);
@@ -232,6 +238,32 @@ Future<void> _probe({required bool disableIdle}) async {
   }
   expect(upstream.requests, 1);
   passed = true;
+}
+
+Future<void> _waitForCaddyClose(String container, int clientPort) async {
+  final port = clientPort.toRadixString(16).padLeft(4, '0').toUpperCase();
+  while (true) {
+    // A FIN can be queued behind data in a zero receive window. Observe
+    // Caddy's TCP state without waiting for the FIN to reach the client.
+    final table = await _checkedDocker([
+      'exec',
+      container,
+      'cat',
+      '/proc/net/tcp',
+      '/proc/net/tcp6',
+    ]);
+    final open = table.split('\n').any((line) {
+      final fields = line.trim().split(RegExp(r'\s+'));
+      if (fields case [_, final local, final peer, final state, ...]) {
+        return local.endsWith(':0050') &&
+            peer.endsWith(':$port') &&
+            (state == '01' || state == '08');
+      }
+      return false;
+    });
+    if (!open) return;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
 }
 
 Map<String, Object?> _listener(Object? config) => switch (config) {
