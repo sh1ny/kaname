@@ -154,11 +154,21 @@ abstract final class EsiCall {
     } on Exception catch (error) {
       return EsiTransportFailed('transport threw: $error');
     }
-    return switch (outcome) {
-      EsiTransportFailure(:final reason) => EsiTransportFailed(reason),
-      EsiTransportRefused() => EsiNotSent(outcome),
-      EsiResponse() => read(outcome, decode: decode, noContent: noContent),
-    };
+    switch (outcome) {
+      case EsiTransportFailure(:final reason):
+        return EsiTransportFailed(reason);
+      case EsiTransportRefused():
+        return EsiNotSent(outcome);
+      case EsiResponse(:final decodeReceipt):
+        var usable = false;
+        try {
+          final result = read(outcome, decode: decode, noContent: noContent);
+          usable = result is EsiSuccess<T> || result is EsiNotModified<T>;
+          return result;
+        } finally {
+          if (decodeReceipt != null) await decodeReceipt(usable);
+        }
+    }
   }
 
   /// Turns one [response] into a result, as [run] does.

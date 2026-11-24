@@ -163,6 +163,50 @@ void main() {
     expect(seen, '"representation"');
   });
 
+  for (final truncated in [true, false]) {
+    final failure = truncated ? 'incomplete' : 'malformed';
+    test('$failure body does not mark a retained poll fresh', () async {
+      final validators = <String?>[];
+      const headers = {'expires': 'Thu, 01 Jan 1970 01:00:00 GMT'};
+      final scheduler = EsiScheduler(
+        state: MemorySchedulerState(),
+        key: const [1],
+        now: () => DateTime.fromMillisecondsSinceEpoch(1000),
+        send: (request, bearer, validator) async {
+          validators.add(validator);
+          if (validators.length > 1) {
+            return WireResponse(EsiResponse(status: 304, headers: headers));
+          }
+          final head = EsiResponse(
+            status: 200,
+            headers: headers,
+            body: truncated ? null : utf8.encode('{}'),
+          );
+          return truncated ? WireFailure(head: head) : WireResponse(head);
+        },
+      );
+      final poll = scheduler.client(EsiPriority.sync, poll: true);
+      Future<EsiResult<List<int>>> fetch() =>
+          poll.getAlliances(ifNoneMatch: '"older"');
+      expect(
+        await fetch(),
+        truncated
+            ? isA<EsiTransportFailed<List<int>>>()
+            : isA<EsiMalformed<List<int>>>(),
+      );
+      expect(await fetch(), isA<EsiNotModified<List<int>>>());
+      expect(
+        await fetch(),
+        isA<EsiNotSent<List<int>>>().having(
+          (result) => result.refusal.reason,
+          'reason',
+          EsiRefusalReason.notDue,
+        ),
+      );
+      expect(validators, ['"older"', '"older"']);
+    });
+  }
+
   test('keeps live metadata when no safe slot can be allocated', () async {
     final state = MemorySchedulerState(maxMetadata: 1);
     final first = state.admit(request(), 1000) as Granted;
@@ -543,7 +587,16 @@ void schedulerConformance(SchedulerState Function() create) {
       ),
       isA<Granted>(),
     );
-    expect(await state.admit(request(poll: true), 3999), isA<Granted>());
+    final unconditional =
+        await state.admit(request(poll: true), 3999) as Granted;
+    await state.complete(
+      unconditional.id,
+      3999,
+      const Observation(status: 200),
+    );
+    final unchanged =
+        await state.admit(request(poll: true, retained: true), 3999) as Denied;
+    expect(unchanged.refusal.reason, EsiRefusalReason.notDue);
     expect(
       await state.admit(request(poll: true, retained: true), 4000),
       isA<Granted>(),

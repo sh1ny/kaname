@@ -179,7 +179,8 @@ final class Observation {
   /// Upstream retry delay in milliseconds.
   final int? retryMs;
 
-  /// Absolute deadline after taking bounded expiry and jitter into account.
+  /// Jittered expiry after a usable response; zero clears freshness, and
+  /// null means no freshness observation.
   final int? freshUntilMs;
 
   /// Whether the wire adapter observed a connectivity failure.

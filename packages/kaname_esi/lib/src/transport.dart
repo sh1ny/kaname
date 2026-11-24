@@ -99,7 +99,15 @@ final class EsiResponse extends EsiTransportOutcome {
          for (final MapEntry(:key, :value) in headers.entries)
            key.toLowerCase(): value,
        }),
-       body = body ?? Uint8List(0);
+       body = body ?? Uint8List(0),
+       decodeReceipt = null;
+
+  /// Reuses a wire response without copying its headers or body. The
+  /// generated call awaits [decodeReceipt] once after attempting to decode.
+  EsiResponse.withDecodeReceipt(EsiResponse wire, this.decodeReceipt)
+    : status = wire.status,
+      headers = wire.headers,
+      body = wire.body;
 
   /// The HTTP status code.
   final int status;
@@ -109,6 +117,9 @@ final class EsiResponse extends EsiTransportOutcome {
 
   /// The response body bytes; empty when there is none.
   final Uint8List body;
+
+  /// Reports whether the generated call produced a usable representation.
+  final Future<void> Function(bool usable)? decodeReceipt;
 }
 
 /// The request could not be sent or no answer came back.

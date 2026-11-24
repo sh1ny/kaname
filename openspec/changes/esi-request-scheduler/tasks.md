@@ -20,6 +20,7 @@ Test paths below are relative to the workspace. `shared` = `packages/kaname_esi_
 | Shared negative result suppression | Another isolate repeats a denied read | shared; redis | shares suppressed 403 and 404 without sending; shares negative cache across server isolates | green |
 | Shared negative result suppression | Suppression does not cross identities | shared | isolates authorization and expires at logical deadline | green |
 | Conditional polling and downtime | Unchanged page | shared | forwards retained page validator and wire 304 | green |
+| Conditional polling and downtime | Response body is incomplete or malformed | shared | incomplete/malformed body does not mark a retained poll fresh | green |
 | Conditional polling and downtime | Tranquility is unreachable | shared | grants one shared status probe per retry opportunity | green |
 | Conditional polling and downtime | Fresh page and stale worker | shared | distinguishes not due from no local representation | green |
 | Conditional polling and downtime | Probe fails or reports VIP mode | shared | does not resume for a failed probe; decoded VIP status does not resume polling | green |

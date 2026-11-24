@@ -378,8 +378,8 @@ if r.negative then
   elseif status and status >= 200 and status < 400 then update('n:'..r.negative,{},call.untilAt) end
 end
 if r.poll then
-  if status and ((status>=200 and status<300) or status==304) then
-    local expiry=observation.freshUntil or 0
+  if observation.freshUntil then
+    local expiry=observation.freshUntil
     update('p:'..r.poll,{freshUntil=expiry},math.max(expiry,call.untilAt))
   end
   local failed=observation.connectivityFailure

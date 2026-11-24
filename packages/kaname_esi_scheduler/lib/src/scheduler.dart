@@ -232,7 +232,18 @@ final class EsiScheduler {
           EsiSuccess<Status>(body: Status(vip: false)) => true,
           _ => false,
         };
-    await _complete(id, _observe(head, input.pollKey, wire, healthy));
+    if (wire case WireResponse(:final response) when input.pollKey != null) {
+      if (response.status case >= 200 && < 300 || 304) {
+        return EsiResponse.withDecodeReceipt(
+          response,
+          (usable) => _complete(
+            id,
+            _observe(response, usable ? input.pollKey : null, wire, healthy),
+          ),
+        );
+      }
+    }
+    await _complete(id, _observe(head, null, wire, healthy));
     return switch (wire) {
       WireResponse(:final response) => response,
       WireFailure() => const EsiTransportFailure('ESI exchange failed'),
@@ -317,10 +328,12 @@ final class EsiScheduler {
           : retryDate == null
           ? null
           : max(0, retryDate - now),
-      freshUntilMs: expires == null || expires <= now
+      freshUntilMs: pollKey == null
           ? null
+          : expires == null || expires <= now
+          ? 0
           : min(expires, now + 86400000) +
-                int.parse(pollKey!.substring(0, 4), radix: 16) % 5001,
+                int.parse(pollKey.substring(0, 4), radix: 16) % 5001,
       connectivityFailure: wire is WireFailure && wire.connectivityFailure,
       probeHealthy: healthy,
     );

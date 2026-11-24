@@ -410,8 +410,7 @@ final class MemorySchedulerState implements SchedulerState {
       );
     }
     if (r.pollKey case final key?) {
-      if (status != null && (status >= 200 && status < 300 || status == 304)) {
-        final expiry = o.freshUntilMs ?? 0;
+      if (o.freshUntilMs case final expiry?) {
         _updateMetadata(
           (true, key),
           id,
