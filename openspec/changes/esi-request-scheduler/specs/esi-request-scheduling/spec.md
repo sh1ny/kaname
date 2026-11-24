@@ -90,6 +90,10 @@ Each page or cursor SHALL be scheduled independently. Callers own traversal and 
 - **WHEN** a page becomes due and the caller has that page's ETag and representation
 - **THEN** the sender includes If-None-Match and returns an upstream 304 as not modified
 
+#### Scenario: Response body is incomplete or malformed
+- **WHEN** a poll receives a 2xx response with Expires but cannot read or decode a usable representation
+- **THEN** the previously retained representation keeps its original expiry, and valid rate and error headers still reconcile the reservation
+
 #### Scenario: Tranquility is unreachable
 - **WHEN** the scheduler observes an outage and subsequent eligible poll requests arrive
 - **THEN** ordinary polls are not sent; one shared recovery probe is admitted at each retry opportunity until recovery
