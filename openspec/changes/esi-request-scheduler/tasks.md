@@ -50,4 +50,4 @@ Test paths below are relative to the workspace. `shared` = `packages/kaname_esi_
 
 ## 4. Verify integrated behavior
 
-- [ ] 4.1 Run strict OpenSpec validation, package contract checks and the server Redis integration check. Run the gaming guard before heavy work; when gaming, obtain the heavy suite results from CI instead of running locally.
+- [x] 4.1 Run strict OpenSpec validation, package contract checks and the server Redis integration check. Run the gaming guard before heavy work; when gaming, obtain the heavy suite results from CI instead of running locally.
