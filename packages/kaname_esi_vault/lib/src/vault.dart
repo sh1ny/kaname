@@ -49,8 +49,9 @@ final class EsiTokenVault {
   /// Reads non-secret authority metadata; null means no record has been created.
   Future<VaultResult<({VaultAuthorization authorization, VaultStatus status})?>>
   inspect(int character) => _safe(() async {
-    if (character <= 0)
+    if (character <= 0) {
       return const VaultFailure(VaultFailureReason.invalidInput);
+    }
     final row = await _store.read(character);
     return VaultSuccess(
       row == null
@@ -90,12 +91,14 @@ final class EsiTokenVault {
                 const VaultFailure(VaultFailureReason.notHolder),
               );
             }
-            if (_live(row))
+            if (_live(row)) {
               return _unchanged(const VaultFailure(VaultFailureReason.busy));
-            if (generation == _maxCounter)
+            }
+            if (generation == _maxCounter) {
               return _unchanged(
                 const VaultFailure(VaultFailureReason.unavailable),
               );
+            }
             final auth = (
               character: character,
               holder: holder,
@@ -122,8 +125,9 @@ final class EsiTokenVault {
   /// Removes the credential and invalidates the old handle before handoff.
   Future<VaultResult<VaultAuthorization>> park(VaultAuthorization auth) =>
       _safe(() async {
-        if (!_validAuth(auth))
+        if (!_validAuth(auth)) {
           return const VaultFailure(VaultFailureReason.invalidInput);
+        }
         return await _store.withCharacter<VaultResult<VaultAuthorization>>(
               auth.character,
               wait: false,
@@ -135,14 +139,16 @@ final class EsiTokenVault {
                     const VaultFailure(VaultFailureReason.notHolder),
                   );
                 }
-                if (_live(row))
+                if (_live(row)) {
                   return _unchanged(
                     const VaultFailure(VaultFailureReason.busy),
                   );
-                if (auth.generation == _maxCounter)
+                }
+                if (auth.generation == _maxCounter) {
                   return _unchanged(
                     const VaultFailure(VaultFailureReason.unavailable),
                   );
+                }
                 final parked = (
                   character: auth.character,
                   holder: auth.holder,
@@ -184,8 +190,9 @@ final class EsiTokenVault {
         existing.reason != VaultFailureReason.refreshRequired) {
       return existing;
     }
-    if (_inFlight >= _maxInFlight)
+    if (_inFlight >= _maxInFlight) {
       return const VaultFailure(VaultFailureReason.busy);
+    }
     _inFlight++;
     try {
       final prepared = await _store.withCharacter<_Step>(
@@ -196,8 +203,9 @@ final class EsiTokenVault {
           if (denied != null) return _stop(denied);
           final credential = await _cipher.open(row!);
           final usable = _usable(credential.bearer, _admissionMargin);
-          if (usable != null)
+          if (usable != null) {
             return _unchanged((outcome: VaultSuccess(usable), attempt: null));
+          }
           if (_live(row)) return _stop(VaultFailureReason.busy);
           return _claim(row, credential.refresh);
         },
@@ -213,8 +221,9 @@ final class EsiTokenVault {
           update: (row) =>
               _complete(auth, row, attempt, reply, mayRetry: round == 0),
         );
-        if (completed == null)
+        if (completed == null) {
           return const VaultFailure(VaultFailureReason.unavailable);
+        }
         if (completed.outcome case final result?) {
           if (result case VaultSuccess(:final value)) {
             return _usable(value, _admissionMargin) == null
@@ -234,8 +243,9 @@ final class EsiTokenVault {
     VaultAuthorization auth,
     Duration margin,
   ) async {
-    if (!_validAuth(auth))
+    if (!_validAuth(auth)) {
       return const VaultFailure(VaultFailureReason.invalidInput);
+    }
     final row = await _store.read(auth.character);
     final denied = _check(row, auth);
     if (denied != null) return VaultFailure(denied);
@@ -295,8 +305,9 @@ final class EsiTokenVault {
           return _stop(unavailable, next: ownsLease ? _release(row) : null);
         }
         if (!ownsLease) {
-          if (replacement == null || replacement == current.refresh)
+          if (replacement == null || replacement == current.refresh) {
             return _stop(unavailable);
+          }
           final sealed = await _cipher.seal(auth, (
             refresh: replacement,
             bearer: current.bearer,

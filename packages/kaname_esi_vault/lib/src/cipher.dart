@@ -59,8 +59,9 @@ final class VaultCipher {
       ..setUint16(0, refresh.length)
       ..setInt64(2, bearer?.expiresAt.microsecondsSinceEpoch ?? 0);
     bytes.setRange(_header, _header + refresh.length, refresh.codeUnits);
-    if (access != null)
+    if (access != null) {
       bytes.setRange(_header + refresh.length, bytes.length, access.codeUnits);
+    }
     final box = await _cipher.encrypt(bytes, secretKey: _key, aad: _aad(auth));
     final cipherStart = 1 + box.nonce.length;
     final macStart = cipherStart + box.cipherText.length;
@@ -106,8 +107,9 @@ final class VaultCipher {
       _header,
     );
     final split = _header + header.getUint16(0);
-    if (split <= _header || split > clear.length)
+    if (split <= _header || split > clear.length) {
       throw const FormatException('Invalid vault payload');
+    }
     final refresh = String.fromCharCodes(clear, _header, split);
     final access = split == clear.length
         ? null

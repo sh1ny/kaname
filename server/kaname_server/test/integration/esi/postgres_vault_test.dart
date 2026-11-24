@@ -82,8 +82,9 @@ void main() {
           final arrived = Completer<String>();
           final release = Completer<VaultRefreshReply>();
           addTearDown(() {
-            if (!release.isCompleted)
+            if (!release.isCompleted) {
               release.complete(const VaultRefreshTemporaryFailure());
+            }
           });
           final a = make((token) {
             arrived.complete(token);

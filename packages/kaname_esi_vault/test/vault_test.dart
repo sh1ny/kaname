@@ -477,8 +477,9 @@ final class _Exchange {
 
   Future<void> close() async {
     for (final request in _pending) {
-      if (!request.reply.isCompleted)
+      if (!request.reply.isCompleted) {
         request.reply.complete(const VaultRefreshTemporaryFailure());
+      }
     }
     await _iterator.cancel();
     unawaited(_requests.close());

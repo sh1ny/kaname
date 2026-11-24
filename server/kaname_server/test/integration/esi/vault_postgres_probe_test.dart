@@ -50,26 +50,30 @@ void main() {
         }
       }, timeout: const Timeout(Duration(minutes: 3)));
 
-      test('vault advisory namespace does not conflict with bigint locks', () async {
-        final session = sessions.build();
-        addTearDown(session.close);
-        await session.db.transaction((holder) async {
-          final both = await session.db.unsafeQuery('''
+      test(
+        'vault advisory namespace does not conflict with bigint locks',
+        () async {
+          final session = sessions.build();
+          addTearDown(session.close);
+          await session.db.transaction((holder) async {
+            final both = await session.db.unsafeQuery('''
 SELECT pg_try_advisory_xact_lock(-9223372036854775766::bigint),
        pg_try_advisory_xact_lock($staticDataAdvisoryLockKey::bigint)
 ''', transaction: holder);
-          expect(both.single.toList(), [true, true]);
-          await session.serverpod.withSession((competitor) async {
-            await competitor.db.transaction((vault) async {
-              final vaultLock = await competitor.db.unsafeQuery(
-                "SELECT pg_try_advisory_xact_lock('-2147483648'::int4, 42::int4)",
-                transaction: vault,
-              );
-              expect(vaultLock.single.single, isTrue);
-            });
-          }, enableLogging: false);
-        });
-      }, timeout: const Timeout(Duration(minutes: 3)));
+            expect(both.single.toList(), [true, true]);
+            await session.serverpod.withSession((competitor) async {
+              await competitor.db.transaction((vault) async {
+                final vaultLock = await competitor.db.unsafeQuery(
+                  "SELECT pg_try_advisory_xact_lock('-2147483648'::int4, 42::int4)",
+                  transaction: vault,
+                );
+                expect(vaultLock.single.single, isTrue);
+              });
+            }, enableLogging: false);
+          });
+        },
+        timeout: const Timeout(Duration(minutes: 3)),
+      );
     },
     rollbackDatabase: RollbackDatabase.disabled,
     configOverride: (config) => config.copyWith(
