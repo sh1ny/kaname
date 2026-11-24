@@ -232,7 +232,8 @@ local function grant(ticket)
   g.calls[token] = {r=r, epoch=g.epoch, untilAt=untilAt, bucket=key, group=name, window=window}
   g.errorLast = now
   if r.probe then g.probe = token end
-  return {kind='granted', id=id, by=untilAt-20000}
+  -- A 5 s dispatch window leaves 5 s to reconcile after the 20 s wire limit.
+  return {kind='granted', id=id, by=now+5000}
 end
 if action == 'admit' then
   g.serial = g.serial+1

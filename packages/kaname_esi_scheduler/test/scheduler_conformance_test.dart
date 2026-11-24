@@ -421,6 +421,23 @@ void schedulerConformance(SchedulerState Function() create) {
     expect(await state.advance(ticket.id, 6002), isA<Denied>());
   });
 
+  test('late wire completion still blocks the connection', () async {
+    final grant = await state.admit(request(), 1000) as Granted;
+    final completedAt = grant.dispatchByMs + 20000 + 4999;
+    await state.complete(
+      grant.id,
+      completedAt,
+      const Observation(status: 420, retryMs: 60000),
+    );
+    final blocked =
+        await state.admit(request(scope: 'other'), completedAt) as Denied;
+    expect(blocked.refusal.reason, EsiRefusalReason.stopped);
+    expect(
+      blocked.refusal.retryAt?.millisecondsSinceEpoch,
+      completedAt + 60000,
+    );
+  });
+
   test('skips a head whose worker stopped refreshing it', () async {
     final slots = [
       for (var i = 0; i < 8; i++)

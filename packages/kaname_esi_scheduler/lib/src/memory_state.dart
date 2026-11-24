@@ -7,6 +7,7 @@ import 'state.dart';
 
 const _cost = 5;
 const _leaseMs = 30000;
+const _dispatchMs = 5000;
 const _errorWindow = 60000;
 
 /// Owns one runtime's scheduler state; transitions never yield to another call.
@@ -256,7 +257,7 @@ final class MemorySchedulerState implements SchedulerState {
     _lastSend = _now;
     _errors.lastSend = _now;
     if (r.probe) _probe = id;
-    return Granted(id, until - 20000);
+    return Granted(id, _now + _dispatchMs);
   }
 
   @override
