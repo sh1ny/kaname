@@ -185,6 +185,8 @@ class _InternalTestEndpoints extends TestEndpoints
 }
 
 class _FutureCalls {
+  late final esiCallLogPruneCall = _EsiCallLogPruneCallFutureCall();
+
   late final staticDataCheckCall = _StaticDataCheckCallFutureCall();
 }
 
@@ -457,6 +459,21 @@ class _StaticDataEndpoint {
       );
     }, _localTestStreamManager.outputStreamController);
     return _localTestStreamManager.outputStreamController.stream;
+  }
+}
+
+class _EsiCallLogPruneCallFutureCall {
+  Future<void> run(_ist.TestSessionBuilder sessionBuilder) async {
+    var _localUniqueSession =
+        (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild();
+    try {
+      await _ibdqg5o2.EsiCallLogPruneCallRunFutureCall().invoke(
+        _localUniqueSession,
+        null,
+      );
+    } finally {
+      await _localUniqueSession.close();
+    }
   }
 }
 

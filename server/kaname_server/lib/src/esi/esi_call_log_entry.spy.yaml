@@ -1,0 +1,19 @@
+### Private scheduler receipt storage; reads go through the scoped store.
+class: EsiCallLogRow
+table: esi_call_log_entry
+serverOnly: true
+fields:
+  recordedAt: DateTime
+  operation: String
+  outcome: String
+  status: int?
+  cost: int?
+  latencyMicros: int
+  bucket: String?
+  memberId: int?
+  characterId: int?
+indexes:
+  esi_call_log_retention_idx:
+    fields: recordedAt, id
+  esi_call_log_owner_idx:
+    fields: memberId, recordedAt, id
