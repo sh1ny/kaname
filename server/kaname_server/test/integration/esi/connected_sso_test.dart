@@ -14,6 +14,7 @@ import 'package:kaname_server/src/esi/sso_handoff.dart';
 import 'package:kaname_server/src/esi/sso_route.dart';
 import 'package:kaname_server/src/esi/sso_sessions.dart';
 import 'package:kaname_server/src/esi/sso_skills.dart';
+import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/network/trusted_proxies.dart';
 import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
@@ -385,12 +386,19 @@ void main() {
     final proof = newOAuthProof();
     final started = await intent('start', session, epoch, proof);
     expect(started.statusCode, 200);
+    expect(
+      (await post('take-intent', {
+        'action': 'prepare',
+      }, bearer: session)).statusCode,
+      403,
+    );
     final refused = await intent('reconcile', 'a' * 43, epoch, proof);
     expect(refused.statusCode, 403);
     expectClosed(
       await intent('reconcile', session, epoch, newOAuthProof()),
       epoch,
     );
+    expectClosed(await intent('start', session, epoch, newOAuthProof()), epoch);
     final recovered = await intent('reconcile', session, epoch, proof);
     expect(recovered.statusCode, 200);
     expect(recovered.body == started.body, isTrue);
@@ -399,6 +407,28 @@ void main() {
     expect(reservation['generation'], isA<String>());
     expect((await post('skills', {}, bearer: session)).statusCode, 403);
   });
+
+  test(
+    'A definitive rejection closes the epoch before a later start',
+    () async {
+      final session = (await signIn())['session'] as String;
+      await authorize(session);
+      final epoch = await prepare(session);
+      final proof = newOAuthProof();
+      await pod.pod.withSession((db) async {
+        final row = (await ServerSsoGrants.assignment(db, 410))!;
+        await SsoHolderRow.db.updateRow(
+          db,
+          row.copyWith(vaultGeneration: null),
+        );
+      }, enableLogging: false);
+
+      expectClosed(await intent('start', session, epoch, proof), epoch);
+      await authorize(session);
+      expectClosed(await intent('start', session, epoch, proof), epoch);
+      expect((await post('skills', {}, bearer: session)).statusCode, 200);
+    },
+  );
 
   for (final join in [false, true]) {
     test(

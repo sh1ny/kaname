@@ -517,6 +517,20 @@ void main() {
     expect(server.legacyTakes, 2);
   });
 
+  test('A failed preparation leaves no journal or proof', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer()
+      ..epoch = '3'
+      ..prepareReply = (() => http.Response('{"sourceEpoch":"03"}', 200));
+    final session = await server.signIn();
+    expect(await device.account.take(session), AccountNotice.unavailable);
+    await device.reopen();
+    expect(device.store.character(123), isNull);
+    expect(device.account.pilot, isNull);
+    expect(device.secrets.values.length, 1);
+    expect(server.takes, 0);
+  });
+
   for (final (label, firstReply, notice)
       in <(String, http.Response Function(), AccountNotice)>[
         (
@@ -605,6 +619,7 @@ final class _TakeServer {
   late http.Response Function() reply;
   http.Response Function()? startReply;
   http.Response Function()? recoveryReply;
+  http.Response Function()? prepareReply;
   String? epoch;
   String? _proof;
   var sameProof = true;
@@ -656,7 +671,8 @@ final class _TakeServer {
         if (epoch == null) return _unsupportedTake();
         final body = jsonDecode(request.body) as Map<String, Object?>;
         if (body['action'] == 'prepare') {
-          return http.Response(jsonEncode({'sourceEpoch': epoch}), 200);
+          return prepareReply?.call() ??
+              http.Response(jsonEncode({'sourceEpoch': epoch}), 200);
         }
         expect(body['sourceEpoch'], epoch);
         _observeProof(body['proof']);
