@@ -1371,6 +1371,222 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{kind} keys ({count})'**
   String sdReportKeys(String kind, int count);
+
+  /// No description provided for @esiAccountTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'EVE account'**
+  String get esiAccountTitle;
+
+  /// No description provided for @esiSignIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to server'**
+  String get esiSignIn;
+
+  /// No description provided for @esiSignOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out of server'**
+  String get esiSignOut;
+
+  /// No description provided for @esiSecureConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Server sign-in needs a secure connection.'**
+  String get esiSecureConnection;
+
+  /// No description provided for @esiOpenBrowser.
+  ///
+  /// In en, this message translates to:
+  /// **'Open EVE sign-in'**
+  String get esiOpenBrowser;
+
+  /// No description provided for @esiFinishSignIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish sign-in'**
+  String get esiFinishSignIn;
+
+  /// No description provided for @esiFinishAuthorization.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish authorization'**
+  String get esiFinishAuthorization;
+
+  /// No description provided for @esiCompletionCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Code shown in your browser'**
+  String get esiCompletionCode;
+
+  /// No description provided for @esiBrowserInstruction.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve in your browser, then return here.'**
+  String get esiBrowserInstruction;
+
+  /// No description provided for @esiCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get esiCancel;
+
+  /// No description provided for @esiAuthorizeServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Authorize server skills access'**
+  String get esiAuthorizeServer;
+
+  /// No description provided for @esiAllowOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow optional skills access'**
+  String get esiAllowOptional;
+
+  /// No description provided for @esiRemoveOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove optional skills access'**
+  String get esiRemoveOptional;
+
+  /// No description provided for @esiReadServerSkills.
+  ///
+  /// In en, this message translates to:
+  /// **'Read skills on server'**
+  String get esiReadServerSkills;
+
+  /// No description provided for @esiReadNativeSkills.
+  ///
+  /// In en, this message translates to:
+  /// **'Read skills in solo mode'**
+  String get esiReadNativeSkills;
+
+  /// No description provided for @esiTakeHolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Take holder to this device'**
+  String get esiTakeHolder;
+
+  /// No description provided for @esiReturnHolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Park device and return holder'**
+  String get esiReturnHolder;
+
+  /// No description provided for @esiNativeRegistration.
+  ///
+  /// In en, this message translates to:
+  /// **'Native SSO client ID'**
+  String get esiNativeRegistration;
+
+  /// No description provided for @esiSaveRegistration.
+  ///
+  /// In en, this message translates to:
+  /// **'Save client ID'**
+  String get esiSaveRegistration;
+
+  /// No description provided for @esiNativeIdentify.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in on this device'**
+  String get esiNativeIdentify;
+
+  /// No description provided for @esiNativeAuthorize.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow and authorize solo skills'**
+  String get esiNativeAuthorize;
+
+  /// No description provided for @esiNativeDisable.
+  ///
+  /// In en, this message translates to:
+  /// **'Disable solo skills'**
+  String get esiNativeDisable;
+
+  /// No description provided for @esiNativeUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Desktop credential storage is unavailable. Unlock the system keyring and reopen Kaname.'**
+  String get esiNativeUnavailable;
+
+  /// No description provided for @esiServerPilot.
+  ///
+  /// In en, this message translates to:
+  /// **'Server: {name}'**
+  String esiServerPilot(String name);
+
+  /// No description provided for @esiNativePilot.
+  ///
+  /// In en, this message translates to:
+  /// **'Device: {name}'**
+  String esiNativePilot(String name);
+
+  /// No description provided for @esiServerHolder.
+  ///
+  /// In en, this message translates to:
+  /// **'The server holds skills access.'**
+  String get esiServerHolder;
+
+  /// No description provided for @esiDeviceHolder.
+  ///
+  /// In en, this message translates to:
+  /// **'This device holds solo skills access.'**
+  String get esiDeviceHolder;
+
+  /// No description provided for @esiOriginalHolder.
+  ///
+  /// In en, this message translates to:
+  /// **'The original device must park before the server can take over.'**
+  String get esiOriginalHolder;
+
+  /// No description provided for @esiHolderPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Handoff is pending. Resume on the original device.'**
+  String get esiHolderPending;
+
+  /// No description provided for @esiHolderReserved.
+  ///
+  /// In en, this message translates to:
+  /// **'The holder is reserved. Complete fresh authorization to read skills.'**
+  String get esiHolderReserved;
+
+  /// No description provided for @esiUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Kaname could not complete the EVE request.'**
+  String get esiUnavailable;
+
+  /// No description provided for @esiCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'The EVE request was cancelled.'**
+  String get esiCancelled;
+
+  /// No description provided for @esiBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'This account, device, or scope cannot perform the request.'**
+  String get esiBlocked;
+
+  /// No description provided for @esiSignedOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in again to continue.'**
+  String get esiSignedOut;
+
+  /// No description provided for @esiReauthorize.
+  ///
+  /// In en, this message translates to:
+  /// **'Authorize skills access again before reading skills.'**
+  String get esiReauthorize;
+
+  /// No description provided for @esiSkillsResult.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} skills, {totalSp} skill points'**
+  String esiSkillsResult(int count, int totalSp);
 }
 
 class _AppLocalizationsDelegate

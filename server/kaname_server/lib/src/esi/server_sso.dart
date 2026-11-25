@@ -1,13 +1,18 @@
+import 'dart:io' show stderr;
+
 import 'package:http/http.dart' as http;
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
 import 'package:kaname_esi_vault/kaname_esi_vault.dart';
 import 'package:serverpod/serverpod.dart';
 
 import '../network/trusted_proxies.dart';
+import 'server_esi_runtime.dart';
 import 'server_esi_vault.dart';
 import 'server_sso_grants.dart';
+import 'sso_handoff.dart';
 import 'sso_route.dart';
 import 'sso_sessions.dart';
+import 'sso_skills.dart';
 
 /// Production SSO for one main-isolate Serverpod instance (ADR 0017).
 final class ServerSso {
@@ -89,6 +94,16 @@ final class ServerSso {
       verifier: verifier,
       registration: registration,
     );
+    final esi =
+        pod.config.redis?.enabled == true &&
+            (pod.getPassword('serviceSecret')?.isNotEmpty ?? false)
+        ? ServerEsiRuntime.forPod(
+            pod,
+            userAgent: 'Kaname/0.0.1 (+https://github.com/sh1ny/kaname)',
+            onStateFailure: () =>
+                stderr.writeln('esi-sso: scheduler state unavailable'),
+          )
+        : null;
     final route = SsoRoute(
       registration: registration,
       allowLocalHttp: localhost,
@@ -98,6 +113,14 @@ final class ServerSso {
       sessions: sessions,
       now: now,
       grants: grants,
+      handoff: SsoHandoff(gate: sessions.gate, vault: vault),
+      skills: ServerSsoSkills(
+        sessions: sessions,
+        grants: grants,
+        vault: vault,
+        clientId: id,
+        runtime: esi,
+      ),
       withSession: <T>(Future<T> Function(Session) action) =>
           pod.withSession<T>(action, enableLogging: false),
     );

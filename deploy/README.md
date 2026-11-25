@@ -110,6 +110,24 @@ The browser callback and completion replies use `no-store` and `no-referrer`.
 Do not log callbacks, their query strings, or authentication request bodies
 and headers at any reverse proxy.
 
+### Desktop holder and recovery
+
+Native solo uses a separate credential database and the system keyring.
+Linux builds need `libsecret-1-dev`; the running app needs an unlocked
+Secret Service session. The database and its matching keyring are not an
+export or a general-purpose solo store. Do not copy either to another device.
+
+After taking a server-held character to a desktop, the original device must
+park before the server can take the holder back. Use the same device to
+resume an interrupted transfer or park and return it. A timeout, an empty
+replacement keyring or a lost device does not release the assignment.
+Kaname has no lost-device reclaim in M2.
+
+Before restoring a server backup, stop dispatch on linked devices and resolve
+their holder assignments. A restored database cannot prove that another
+holder stopped. Restore the matching vault key separately. Leave ESI off
+if you cannot confirm that the old holders stopped.
+
 ## Clients and proxies
 
 The server holds at most 16 open announcement streams per client, and 2,000

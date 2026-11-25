@@ -695,4 +695,125 @@ class AppLocalizationsEn extends AppLocalizations {
   String sdReportKeys(String kind, int count) {
     return '$kind keys ($count)';
   }
+
+  @override
+  String get esiAccountTitle => 'EVE account';
+
+  @override
+  String get esiSignIn => 'Sign in to server';
+
+  @override
+  String get esiSignOut => 'Sign out of server';
+
+  @override
+  String get esiSecureConnection => 'Server sign-in needs a secure connection.';
+
+  @override
+  String get esiOpenBrowser => 'Open EVE sign-in';
+
+  @override
+  String get esiFinishSignIn => 'Finish sign-in';
+
+  @override
+  String get esiFinishAuthorization => 'Finish authorization';
+
+  @override
+  String get esiCompletionCode => 'Code shown in your browser';
+
+  @override
+  String get esiBrowserInstruction =>
+      'Approve in your browser, then return here.';
+
+  @override
+  String get esiCancel => 'Cancel';
+
+  @override
+  String get esiAuthorizeServer => 'Authorize server skills access';
+
+  @override
+  String get esiAllowOptional => 'Allow optional skills access';
+
+  @override
+  String get esiRemoveOptional => 'Remove optional skills access';
+
+  @override
+  String get esiReadServerSkills => 'Read skills on server';
+
+  @override
+  String get esiReadNativeSkills => 'Read skills in solo mode';
+
+  @override
+  String get esiTakeHolder => 'Take holder to this device';
+
+  @override
+  String get esiReturnHolder => 'Park device and return holder';
+
+  @override
+  String get esiNativeRegistration => 'Native SSO client ID';
+
+  @override
+  String get esiSaveRegistration => 'Save client ID';
+
+  @override
+  String get esiNativeIdentify => 'Sign in on this device';
+
+  @override
+  String get esiNativeAuthorize => 'Allow and authorize solo skills';
+
+  @override
+  String get esiNativeDisable => 'Disable solo skills';
+
+  @override
+  String get esiNativeUnavailable =>
+      'Desktop credential storage is unavailable. Unlock the system keyring and reopen Kaname.';
+
+  @override
+  String esiServerPilot(String name) {
+    return 'Server: $name';
+  }
+
+  @override
+  String esiNativePilot(String name) {
+    return 'Device: $name';
+  }
+
+  @override
+  String get esiServerHolder => 'The server holds skills access.';
+
+  @override
+  String get esiDeviceHolder => 'This device holds solo skills access.';
+
+  @override
+  String get esiOriginalHolder =>
+      'The original device must park before the server can take over.';
+
+  @override
+  String get esiHolderPending =>
+      'Handoff is pending. Resume on the original device.';
+
+  @override
+  String get esiHolderReserved =>
+      'The holder is reserved. Complete fresh authorization to read skills.';
+
+  @override
+  String get esiUnavailable => 'Kaname could not complete the EVE request.';
+
+  @override
+  String get esiCancelled => 'The EVE request was cancelled.';
+
+  @override
+  String get esiBlocked =>
+      'This account, device, or scope cannot perform the request.';
+
+  @override
+  String get esiSignedOut => 'Sign in again to continue.';
+
+  @override
+  String get esiReauthorize =>
+      'Authorize skills access again before reading skills.';
+
+  @override
+  String esiSkillsResult(int count, int totalSp) {
+    return '$count skills, $totalSp skill points';
+  }
 }

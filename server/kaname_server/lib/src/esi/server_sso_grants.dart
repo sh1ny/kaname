@@ -52,6 +52,8 @@ final class ServerSsoGrants implements SsoGrantAuthority {
     if (permitted == null) return null;
     return (
       sessionId: viewer.sessionId,
+      assignmentGeneration: row?.generation,
+      assignmentPhase: row?.phase,
       characterId: identity.characterId,
       owner: identity.owner,
       fingerprint: permitted.fingerprint,
@@ -161,6 +163,8 @@ final class ServerSsoGrants implements SsoGrantAuthority {
         final permitted = await request(session, current);
         if (permitted == null ||
             expected.fingerprint != permitted.fingerprint ||
+            expected.assignmentGeneration != permitted.assignmentGeneration ||
+            expected.assignmentPhase != permitted.assignmentPhase ||
             !matchesGrantedScopes(permitted.scopes, identity.scopes) ||
             !matchesGrantedScopes(permitted.scopes, expected.scopes)) {
           return false;
@@ -223,7 +227,9 @@ final class ServerSsoGrants implements SsoGrantAuthority {
     final policy = _policy;
     if (identity.blocked || policy == null) return null;
     final row = await assignment(session, identity.characterId);
-    if (row == null || row.phase != 'serverHeld' || row.vaultGeneration == null) {
+    if (row == null ||
+        row.phase != 'serverHeld' ||
+        row.vaultGeneration == null) {
       return null;
     }
     final permitted = await _permitted(session, identity, policy);

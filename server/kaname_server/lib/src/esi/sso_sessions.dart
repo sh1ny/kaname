@@ -11,17 +11,44 @@ typedef SsoViewer = ({SsoIdentityRow identity, bool admin, int sessionId});
 
 /// One admitted activity per character in the server main isolate (ADR 0017).
 final class SsoCharacterGate {
-  final _busy = <int>{};
+  final _busy = <int, bool>{};
+  final _paused = <int>{};
 
-  /// Refuses competing work rather than leaving an unbounded waiter queue.
-  Future<T?> run<T>(int character, Future<T> Function() action) async {
-    if (!_busy.add(character)) return null;
+  /// Runs an identity or holder mutation; competing work gets no waiter.
+  Future<T?> run<T>(int character, Future<T> Function() action) =>
+      _run(character, false, action);
+
+  /// Admits one complete scoped call through refresh and wire completion.
+  Future<T?> runDispatch<T>(int character, Future<T> Function() action) =>
+      _run(character, true, action);
+
+  Future<T?> _run<T>(
+    int character,
+    bool dispatch,
+    Future<T> Function() action,
+  ) async {
+    if (_paused.contains(character) || _busy.containsKey(character)) {
+      return null;
+    }
+    _busy[character] = dispatch;
     try {
       return await action();
     } finally {
       _busy.remove(character);
     }
   }
+
+  /// Stops new admission during the short durable intent write.
+  void pause(int character) => _paused.add(character);
+
+  /// Releases the in-memory stop. The assignment still fences dispatch.
+  void resume(int character) => _paused.remove(character);
+
+  /// Whether previously admitted work has not completed.
+  bool isBusy(int character) => _busy.containsKey(character);
+
+  /// Holder mutation must wait for another mutation, not overtake it.
+  bool isMutating(int character) => _busy[character] == false;
 }
 
 /// Session and identity storage. Only a bearer digest reaches Postgres.

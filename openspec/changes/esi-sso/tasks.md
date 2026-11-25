@@ -5,9 +5,9 @@
 | Requirement | Scenario | Test file | Test name | State |
 |---|---|---|---|---|
 | esi-sso → Each mode signs in through its own CCP registration | Confidential browser sign-in | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Confidential browser sign-in | green |
-| esi-sso → Each mode signs in through its own CCP registration | Native desktop sign-in | `app/test/esi_sso/native_sso_test.dart` | Native desktop sign-in | red |
+| esi-sso → Each mode signs in through its own CCP registration | Native desktop sign-in | `app/test/esi_sso/native_sso_test.dart` | Native desktop sign-in | green |
 | esi-sso → Each mode signs in through its own CCP registration | Replayed, misrouted or abandoned callback | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Replayed, misrouted or abandoned callback | green |
-| esi-sso → Each mode signs in through its own CCP registration | User cancels or callback cannot listen | `app/test/esi_sso/native_sso_test.dart` | User cancels or callback cannot listen | red |
+| esi-sso → Each mode signs in through its own CCP registration | User cancels or callback cannot listen | `app/test/esi_sso/native_sso_test.dart` | User cancels or callback cannot listen | green |
 | esi-sso → Connected sign-in verifies the consenting browser | Web and native connected completion | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Web and native connected completion | green |
 | esi-sso → Connected sign-in verifies the consenting browser | A forwarded authorization link cannot yield a session | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | A forwarded authorization link cannot yield a session | green |
 | esi-sso → Connected sign-in verifies the consenting browser | One client cannot fill the global attempt capacity | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | One client cannot fill the global attempt capacity | green |
@@ -18,16 +18,16 @@
 | esi-sso → Accept only validated CCP character identity | Definitive refresh verification rejection | `server/kaname_server/test/integration/esi/vault_refresh_verification_test.dart` | Definitive refresh verification rejection | green |
 | esi-sso → Configured scope policy fails closed | Enabled module and permitted classes | `packages/kaname_esi_sso/test/scope_policy_test.dart` | Enabled module and permitted classes | green |
 | esi-sso → Configured scope policy fails closed | Missing policy or optional opt-in | `packages/kaname_esi_sso/test/scope_policy_test.dart` | Missing policy or optional opt-in | green |
-| esi-sso → Configured scope policy fails closed | Unconfigured solo signs in without skills access | `app/test/esi_sso/native_sso_test.dart` | Unconfigured solo signs in without skills access | red |
+| esi-sso → Configured scope policy fails closed | Unconfigured solo signs in without skills access | `app/test/esi_sso/native_sso_test.dart` | Unconfigured solo signs in without skills access | green |
 | esi-sso → Configured scope policy fails closed | Grant differs from the permitted request | `packages/kaname_esi_sso/test/scope_policy_test.dart` | Grant differs from the permitted request | green |
-| esi-sso → An active holder can read character skills | Scoped read in both modes | `server/kaname_server/test/integration/esi/scoped_skills_test.dart` | Scoped read in both modes | red |
-| esi-sso → An active holder can read character skills | No authority or no scope | `server/kaname_server/test/integration/esi/scoped_skills_test.dart` | No authority or no scope | red |
-| esi-sso → Handoff parks the source before activating the destination | Take a server-held character solo | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | Take a server-held character solo | red |
-| esi-sso → Handoff parks the source before activating the destination | Return a device-held character to the server | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | Return a device-held character to the server | red |
-| esi-sso → Handoff parks the source before activating the destination | Mismatch, replay or competing destination | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | Mismatch, replay or competing destination | red |
-| esi-sso → Handoff parks the source before activating the destination | Interruption at handoff | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | Interruption at handoff | red |
-| esi-sso → Handoff parks the source before activating the destination | Original device cannot prove it parked | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | Original device cannot prove it parked | red |
-| esi-sso → Handoff parks the source before activating the destination | A standalone device joins the server | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | A standalone device joins the server | red |
+| esi-sso → An active holder can read character skills | Scoped read in both modes | `server/kaname_server/test/integration/esi/scoped_skills_test.dart`; `app/test/esi_sso/native_sso_test.dart` | Scoped read in both modes; Unconfigured solo signs in without skills access | green |
+| esi-sso → An active holder can read character skills | No authority or no scope | `server/kaname_server/test/integration/esi/scoped_skills_test.dart`; `app/test/esi_sso/native_sso_test.dart` | No authority or no scope; Unconfigured solo signs in without skills access | green |
+| esi-sso → Handoff parks the source before activating the destination | Take a server-held character solo | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | Take a server-held character solo | green |
+| esi-sso → Handoff parks the source before activating the destination | Return a device-held character to the server | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | Return a device-held character to the server | green |
+| esi-sso → Handoff parks the source before activating the destination | Mismatch, replay or competing destination | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | Mismatch, replay or competing destination | green |
+| esi-sso → Handoff parks the source before activating the destination | Interruption at handoff | `server/kaname_server/test/integration/esi/holder_handoff_test.dart`; `app/test/esi_sso/native_sso_test.dart` | Interruption at handoff; Unconfigured solo signs in without skills access | green |
+| esi-sso → Handoff parks the source before activating the destination | Original device cannot prove it parked | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | Original device cannot prove it parked | green |
+| esi-sso → Handoff parks the source before activating the destination | A standalone device joins the server | `server/kaname_server/test/integration/esi/holder_handoff_test.dart`; `app/test/esi_sso/native_sso_test.dart` | A standalone device joins the server; Unconfigured solo signs in without skills access | green |
 | esi-sso → Sign-in and handoff keep credentials out of diagnostics | Successful login and later refresh | `server/kaname_server/test/integration/esi/vault_refresh_verification_test.dart` | Successful login and later refresh | red |
 | esi-sso → Sign-in and handoff keep credentials out of diagnostics | Secret-bearing upstream or malformed input | `server/kaname_server/test/integration/esi/sso_secret_sentinel_test.dart` | Secret-bearing upstream or malformed input | red |
 | esi-call-log → The connected app reads the viewer's ESI call log | A member pages through their own calls | `server/kaname_server/test/integration/esi/call_log_endpoint_test.dart` | A member pages through their own calls | red |
@@ -121,8 +121,8 @@
 
 ## 4. Native sign-in, holder handoff and scoped skills
 
-- [ ] 4.1 Add and run failing native sign-in, scoped skills and handoff tests. Use event barriers for dispatch and park, an injected clock, and reconstructed stores to cover restart, cancellation, non-holder dispatch, wrong destination, standalone join and lost-device refusal.
-- [ ] 4.2 Implement desktop PKCE, the credential-only store and Settings account controls. Wire both holder gates and the generated skills operation through the existing scheduler and vault. Carry C1 and C2. Run the native and combined handoff/call tests, including the browser and desktop launch paths using fakes. Document return, device loss and safe backup restore in deploy/README.md.
+- [x] 4.1 Add and run failing native sign-in, scoped skills and handoff tests. Use event barriers for dispatch and park, an injected clock, and reconstructed stores to cover restart, cancellation, non-holder dispatch, wrong destination, standalone join and lost-device refusal.
+- [x] 4.2 Implement desktop PKCE, the credential-only store and Settings account controls. Wire both holder gates and the generated skills operation through the existing scheduler and vault. Carry C1 and C2. Run the native and combined handoff/call tests, including the browser and desktop launch paths using fakes. Document return, device loss and safe backup restore in deploy/README.md.
 
 ## 5. Call-log reads and static-data admin cutover
 

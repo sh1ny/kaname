@@ -6,7 +6,10 @@ import 'package:serverpod/serverpod.dart';
 
 import '../network/client_identity.dart';
 import '../network/trusted_proxies.dart';
+import 'server_sso_grants.dart';
+import 'sso_handoff.dart';
 import 'sso_sessions.dart';
+import 'sso_skills.dart';
 
 /// A runtime-local attempt bound to the app and, on web, to its browser.
 final class _Attempt {
@@ -34,6 +37,8 @@ final class _Attempt {
 /// Scoped attempt bound to the current session, owner and scope policy.
 typedef SsoRequestedGrant = ({
   int sessionId,
+  int? assignmentGeneration,
+  String? assignmentPhase,
   int characterId,
   String owner,
   String fingerprint,
@@ -71,6 +76,8 @@ final class SsoRoute {
     required this._now,
     required this._withSession,
     this._grants,
+    this._handoff,
+    this._skills,
   });
 
   final CcpConfidential _registration;
@@ -82,6 +89,8 @@ final class SsoRoute {
   final DateTime Function() _now;
   final Future<T> Function<T>(Future<T> Function(Session)) _withSession;
   final SsoGrantAuthority? _grants;
+  final SsoHandoff? _handoff;
+  final ServerSsoSkills? _skills;
   final _attempts = <String, _Attempt>{};
   final _states = <String, _Attempt>{};
   final _perClient = <ClientKey, int>{};
@@ -144,6 +153,10 @@ final class SsoRoute {
         'viewer' => await _viewer(request),
         'sign-out' => await _signOut(request),
         'opt-in' => await _optIn(request, decoded),
+        'skills' => await _readSkills(request),
+        'take' ||
+        'release' ||
+        'join' => await _handoffRequest(request, action, decoded),
         _ => _failure(404),
       };
     } on Object {
@@ -343,13 +356,20 @@ final class SsoRoute {
   Future<Response> _viewer(Request request) async {
     final bearer = _bearer(request);
     if (bearer == null) return _failure(401);
-    final viewer = await _withSession((s) => _sessions.viewer(s, bearer));
+    final (viewer, holder) = await _withSession((s) async {
+      final viewer = await _sessions.viewer(s, bearer);
+      final row = viewer == null
+          ? null
+          : await ServerSsoGrants.assignment(s, viewer.identity.characterId);
+      return (viewer, row?.phase);
+    });
     if (viewer == null) return _failure(401);
     return _json(200, {
       'memberId': viewer.identity.id!.toString(),
       'characterId': viewer.identity.characterId.toString(),
       'characterName': viewer.identity.characterName,
       'admin': viewer.admin,
+      'holder': ?holder,
     });
   }
 
@@ -370,6 +390,56 @@ final class SsoRoute {
         return viewer != null && await authority.optIn(s, viewer, enabled);
       });
       return written ? _json(200, {'status': 'recorded'}) : _failure(403);
+    }
+    return _failure(400);
+  }
+
+  Future<Response> _readSkills(Request request) async {
+    final bearer = _bearer(request);
+    if (bearer == null) return _failure(401);
+    final skills = _skills;
+    if (skills == null) return _failure(503);
+    final reply = await _withSession((session) => skills.read(session, bearer));
+    return _json(reply.status, reply.body);
+  }
+
+  Future<Response> _handoffRequest(
+    Request request,
+    String action,
+    Object? input,
+  ) async {
+    final handoff = _handoff;
+    final bearer = _bearer(request);
+    if (bearer == null) return _failure(401);
+    if (handoff == null) return _failure(503);
+    if (input case {'proof': final String proof} when _proof.hasMatch(proof)) {
+      final result = await _withSession<SsoHandoffResult>((session) async {
+        final viewer = await _sessions.viewer(session, bearer);
+        if (viewer == null) return SsoHandoffStatus.blocked;
+        return switch ((action, input)) {
+          ('take', _) => handoff.take(session, viewer.identity, proof),
+          ('release', {'generation': final String value}) => handoff.release(
+            session,
+            viewer.identity,
+            proof,
+            int.tryParse(value) ?? -1,
+          ),
+          ('join', {'ownerFingerprint': final String hash})
+              when _digest.hasMatch(hash) =>
+            handoff.joinStandalone(session, viewer.identity, proof, hash),
+          _ => SsoHandoffStatus.blocked,
+        };
+      });
+      return switch (result) {
+        SsoDeviceReservation(:final generation, :final ownerFingerprint) =>
+          _json(200, {
+            'generation': generation.toString(),
+            'ownerFingerprint': ownerFingerprint,
+          }),
+        SsoHandoffStatus.released => _json(200, {'status': 'released'}),
+        SsoHandoffStatus.pending => _json(202, {'status': 'pending'}),
+        SsoHandoffStatus.blocked => _failure(403),
+      };
     }
     return _failure(400);
   }
