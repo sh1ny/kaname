@@ -68,6 +68,11 @@ description = "Run deterministic ESI token vault tests"
 dir = "packages/kaname_esi_vault"
 run = "dart test"
 
+[tasks."test:esi_sso"]
+description = "Run shared ESI SSO verification and policy tests"
+dir = "packages/kaname_esi_sso"
+run = "dart test"
+
 [tasks."test:tools"]
 description = "Run the kaname_tools tests"
 dir = "tools/kaname_tools"
@@ -110,6 +115,7 @@ run = [
   { task = "test:esi" },
   { task = "test:esi_scheduler" },
   { task = "test:esi_vault" },
+  { task = "test:esi_sso" },
   { task = "test:static_data" },
   { task = "test:static_data_bundle" },
   { task = "test:tools" },

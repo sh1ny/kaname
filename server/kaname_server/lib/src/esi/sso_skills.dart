@@ -3,7 +3,6 @@ import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_esi_vault/kaname_esi_vault.dart';
 import 'package:serverpod/serverpod.dart';
 
-import 'server_esi_runtime.dart';
 import 'server_sso_grants.dart';
 import 'sso_sessions.dart';
 
@@ -15,14 +14,14 @@ final class ServerSsoSkills {
     required this._grants,
     required this._vault,
     required this._clientId,
-    required this._runtime,
+    required this._client,
   });
 
   final SsoSessions _sessions;
   final ServerSsoGrants _grants;
   final EsiTokenVault _vault;
   final String _clientId;
-  final ServerEsiRuntime? _runtime;
+  final EsiClient Function(EsiPrincipal)? _client;
   int _running = 0;
 
   /// Resolves the same live viewer and generation inside the whole-call gate.
@@ -30,8 +29,8 @@ final class ServerSsoSkills {
     Session session,
     String bearer,
   ) async {
-    final runtime = _runtime;
-    if (runtime == null) return (status: 503, body: {'status': 'unavailable'});
+    final client = _client;
+    if (client == null) return (status: 503, body: {'status': 'unavailable'});
     if (_running >= 16) return (status: 429, body: {'status': 'busy'});
     _running++;
     try {
@@ -64,10 +63,7 @@ final class ServerSsoSkills {
                 authorization: authorization,
                 application: _clientId,
                 member: current.identity.id!,
-                client: (principal) => runtime.client(
-                  EsiPriority.interactive,
-                  principal: principal,
-                ),
+                client: client,
               );
               if (vaultFailure == VaultFailureReason.reLoginRequired) {
                 return (

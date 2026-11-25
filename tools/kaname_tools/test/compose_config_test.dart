@@ -18,6 +18,19 @@ const _secrets = {
   'SERVERPOD_SERVICE_SECRET',
 };
 
+const _optionalSso = {
+  'KANAME_ESI_SSO_CLIENT_ID': '',
+  'KANAME_ESI_SSO_CLIENT_SECRET': '',
+  'KANAME_ESI_SSO_REDIRECT_URI': '',
+  'KANAME_ESI_SSO_ALLOW_LOCAL_HTTP': 'false',
+  'KANAME_ESI_SSO_ADMIN_CHARACTERS': '',
+  'KANAME_ESI_SCOPE_POLICY': '',
+  'KANAME_ESI_VAULT_KEY': '',
+};
+
+String _optionalReference(String name, String fallback) =>
+    '\${$name:-$fallback}';
+
 /// One entry of a service's `depends_on`.
 typedef _Dependency = ({String service, String condition});
 
@@ -270,7 +283,11 @@ void main() {
       final used = <String>{};
       for (final reference in references) {
         final variable = reference.group(0)!;
-        if (variable == r'${KANAME_ADMIN_KEY:-}') continue;
+        if (_optionalSso.entries.any(
+          (item) => variable == _optionalReference(item.key, item.value),
+        )) {
+          continue;
+        }
         final match = required.firstMatch(variable);
         expect(
           match,
@@ -284,24 +301,22 @@ void main() {
       expect(used, containsAll(_secrets));
     });
 
-    test(
-      'the server receives KANAME_ADMIN_KEY as SERVERPOD_PASSWORD_adminKey',
-      () {
-        final services = _compose()['services'] as YamlMap;
-        for (final MapEntry(key: name, value: raw) in services.entries) {
-          final service = raw as YamlMap;
-          final environment = service['environment'] as YamlMap?;
+    test('Opt-in SSO settings reach only the running server', () {
+      final services = _compose()['services'] as YamlMap;
+      for (final MapEntry(key: name, value: raw) in services.entries) {
+        final service = raw as YamlMap;
+        final environment = service['environment'] as YamlMap?;
+        expect(environment?['SERVERPOD_PASSWORD_adminKey'], isNull);
+        for (final MapEntry(:key, :value) in _optionalSso.entries) {
           expect(
-            environment?['SERVERPOD_PASSWORD_adminKey'],
-            name == 'server' ? r'${KANAME_ADMIN_KEY:-}' : null,
+            environment?[key],
+            name == 'server' ? _optionalReference(key, value) : null,
             reason: '$name environment',
           );
         }
-        // No build arg, migration environment or second interpolation can
-        // send the key anywhere else.
-        expect('KANAME_ADMIN_KEY'.allMatches(_composeText()), hasLength(1));
-      },
-    );
+      }
+      expect(_composeText(), isNot(contains('KANAME_ADMIN_KEY')));
+    });
 
     test('the secrets reach the server through SERVERPOD_PASSWORD_*', () {
       final text = _composeText();

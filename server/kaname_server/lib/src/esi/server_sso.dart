@@ -1,6 +1,7 @@
 import 'dart:io' show stderr;
 
 import 'package:http/http.dart' as http;
+import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
 import 'package:kaname_esi_vault/kaname_esi_vault.dart';
 import 'package:serverpod/serverpod.dart';
@@ -58,6 +59,7 @@ final class ServerSso {
         (redirect.scheme != 'https' &&
             !(localhost &&
                 redirect.toString() == 'http://localhost/auth/esi/callback'))) {
+      pod.server.addMiddleware(SsoRoute.disabledMiddleware);
       return null;
     }
     final now = DateTime.now;
@@ -83,6 +85,7 @@ final class ServerSso {
       );
     } on VaultKeyConfigurationException {
       client.close();
+      pod.server.addMiddleware(SsoRoute.disabledMiddleware);
       return null;
     }
     grants = ServerSsoGrants(
@@ -119,7 +122,10 @@ final class ServerSso {
         grants: grants,
         vault: vault,
         clientId: id,
-        runtime: esi,
+        client: esi == null
+            ? null
+            : (principal) =>
+                  esi.client(EsiPriority.interactive, principal: principal),
       ),
       withSession: <T>(Future<T> Function(Session) action) =>
           pod.withSession<T>(action, enableLogging: false),

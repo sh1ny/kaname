@@ -105,6 +105,33 @@ void main() {
     expect(fetches, 2);
   });
 
+  test('Rejects an embedded JWK before looking up a CCP key', () async {
+    final verifier = CcpJwtVerifier(
+      now: () => _now,
+      loadKeys: () async =>
+          fail('a token-supplied JWK must fail header validation'),
+    );
+    final parts = known.token().split('.');
+    final header = base64Url
+        .encode(
+          utf8.encode(
+            jsonEncode({
+              'alg': 'ES256',
+              'kid': known.kid,
+              'jwk': rotated.publicJwk,
+            }),
+          ),
+        )
+        .replaceAll('=', '');
+    expect(
+      await verifier.verify(
+        '$header.${parts[1]}.${parts[2]}',
+        clientId: _client,
+      ),
+      CcpJwtFailure.invalid,
+    );
+  });
+
   test('CCP rotates its signing key', () async {
     var now = _now;
     var fetches = 0;

@@ -28,8 +28,8 @@
 | esi-sso → Handoff parks the source before activating the destination | Interruption at handoff | `server/kaname_server/test/integration/esi/holder_handoff_test.dart`; `app/test/esi_sso/native_sso_test.dart` | Interruption at handoff; Unconfigured solo signs in without skills access | green |
 | esi-sso → Handoff parks the source before activating the destination | Original device cannot prove it parked | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | Original device cannot prove it parked | green |
 | esi-sso → Handoff parks the source before activating the destination | A standalone device joins the server | `server/kaname_server/test/integration/esi/holder_handoff_test.dart`; `app/test/esi_sso/native_sso_test.dart` | A standalone device joins the server; Unconfigured solo signs in without skills access | green |
-| esi-sso → Sign-in and handoff keep credentials out of diagnostics | Successful login and later refresh | `server/kaname_server/test/integration/esi/vault_refresh_verification_test.dart` | Successful login and later refresh | red |
-| esi-sso → Sign-in and handoff keep credentials out of diagnostics | Secret-bearing upstream or malformed input | `server/kaname_server/test/integration/esi/sso_secret_sentinel_test.dart` | Secret-bearing upstream or malformed input | red |
+| esi-sso → Sign-in and handoff keep credentials out of diagnostics | Successful login and later refresh | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Successful login and later refresh | green |
+| esi-sso → Sign-in and handoff keep credentials out of diagnostics | Secret-bearing upstream or malformed input | `server/kaname_server/test/integration/esi/sso_secret_sentinel_test.dart` | Secret-bearing upstream or malformed input | green |
 | esi-call-log → The connected app reads the viewer's ESI call log | A member pages through their own calls | `server/kaname_server/test/integration/esi/call_log_endpoint_test.dart` | A member pages through their own calls | green |
 | esi-call-log → The connected app reads the viewer's ESI call log | An admin reads both views | `server/kaname_server/test/integration/esi/call_log_endpoint_test.dart` | An admin reads both views | green |
 | esi-call-log → The connected app reads the viewer's ESI call log | An anonymous or forged viewer requests data | `server/kaname_server/test/integration/esi/call_log_endpoint_test.dart` | An anonymous or forged viewer requests data | green |
@@ -95,12 +95,12 @@
 | static-data-settings → An admin can act from the section | Toggle refused as busy | `app/test/static_data/admin_session_notifier_test.dart` | admin busy on a first toggle restores the switch | green |
 | static-data-settings → An admin can act from the section | Resend refused while following | `app/test/static_data/admin_session_notifier_test.dart` | a refused resend shows the refusal beside waiting and does not release X | green |
 | static-data-settings → An admin can act from the section | Toggle answer lost | `app/test/static_data/admin_session_notifier_test.dart` | a lost or not-confirmed toggle shows Not confirmed with Retry resending the same write | green |
-| self-host-stack → Caddy routes the confidential SSO callback to Kaname | Browser returns to a configured self-host | `server/kaname_server/test/integration/esi/self_host_sso_test.dart` | Browser returns to a configured self-host | red |
-| self-host-stack → Caddy routes the confidential SSO callback to Kaname | Callback cannot be processed | `server/kaname_server/test/integration/esi/self_host_sso_test.dart` | Callback cannot be processed | red |
-| self-host-stack → Caddy routes the confidential SSO callback to Kaname | Owner uses the loopback stack without TLS | `server/kaname_server/test/integration/esi/self_host_sso_test.dart` | Owner uses the loopback stack without TLS | red |
-| self-host-stack → Caddy routes the confidential SSO callback to Kaname | Plain HTTP is configured for a non-local host | `server/kaname_server/test/integration/esi/self_host_sso_test.dart` | Plain HTTP is configured for a non-local host | red |
-| self-host-stack → Confidential SSO credentials reach only the running server | Fully configured opt-in | `server/kaname_server/test/integration/esi/self_host_sso_test.dart` | Fully configured opt-in | red |
-| self-host-stack → Confidential SSO credentials reach only the running server | Missing registration or vault key | `server/kaname_server/test/integration/esi/self_host_sso_test.dart` | Missing registration or vault key | red |
+| self-host-stack → Caddy routes the confidential SSO callback to Kaname | Browser returns to a configured self-host | `server/kaname_client/test/stack/self_host_sso_test.dart` | Browser returns to a configured self-host | green |
+| self-host-stack → Caddy routes the confidential SSO callback to Kaname | Callback cannot be processed | `server/kaname_client/test/stack/self_host_sso_test.dart` | Callback cannot be processed | green |
+| self-host-stack → Caddy routes the confidential SSO callback to Kaname | Owner uses the loopback stack without TLS | `server/kaname_client/test/stack/self_host_sso_test.dart` | Owner uses the loopback stack without TLS | green |
+| self-host-stack → Caddy routes the confidential SSO callback to Kaname | Plain HTTP is configured for a non-local host | `server/kaname_client/test/stack/self_host_sso_test.dart` | Plain HTTP is configured for a non-local host | green |
+| self-host-stack → Confidential SSO credentials reach only the running server | Fully configured opt-in | `server/kaname_client/test/stack/self_host_sso_test.dart` | Fully configured opt-in | green |
+| self-host-stack → Confidential SSO credentials reach only the running server | Missing registration or vault key | `server/kaname_client/test/stack/self_host_sso_test.dart` | Missing registration or vault key | green |
 
 ## 1. Architecture and prerequisites
 
@@ -131,9 +131,9 @@
 
 ## 6. Deployment and acceptance
 
-- [ ] 6.1 Add and run failing stack tests for callback routing, local opt-in, disabled remote HTTP and server-only credential injection. Verify the tests exercise the real Compose/proxy routing and named failures.
-- [ ] 6.2 Wire Caddy and the deployment settings, including the scope policy in the server container only; verify the stack tests and strict OpenSpec validation. Publish the local setup guide with both exact redirects and the skills-read steps, using only example values.
-- [ ] 6.3 Run the repository's required CI-equivalent checks or verify the same checks run on the PR head. Verify generated Serverpod artefacts, locale output, notices and all enabled platform targets. Before any heavy local run, check the owner's gaming guard.
+- [x] 6.1 Add and run failing stack tests for callback routing, local opt-in, disabled remote HTTP and server-only credential injection. Verify the tests exercise the real Compose/proxy routing and named failures.
+- [x] 6.2 Wire Caddy and the deployment settings, including the scope policy in the server container only; verify the stack tests and strict OpenSpec validation. Publish the local setup guide with both exact redirects and the skills-read steps, using only example values.
+- [x] 6.3 Run the repository's required CI-equivalent checks or verify the same checks run on the PR head. Verify generated Serverpod artefacts, locale output, notices and all enabled platform targets. Before any heavy local run, check the owner's gaming guard.
 - [ ] 6.4 [user] Register the stack at `http://localhost/auth/esi/callback` and native solo at `http://localhost:48175/auth/esi/callback`. Follow the local acceptance guide: sign in on the loopback stack, read skills and see the own call-log entry; take the same character to the native device and read skills through PKCE. Confirm matching identity and that connected mode cannot dispatch while the device holds the character. Enter secrets only on the test machine.
 
 ## Workflow follow-up

@@ -3,9 +3,9 @@
 One Docker Compose file runs the whole Kaname stack: `postgres` (16), `redis`
 (8), the `server`, and `caddy`, plus a one-shot `migrate` step that applies the
 database migrations before the server starts. Caddy serves the web app at `/`,
-routes `/api/` to the server with the prefix removed, and passes `/livez`,
-`/readyz` and `/v1/websocket` through unchanged. The generated client always
-opens its WebSocket at `/v1/websocket` on the origin, whatever path the app's
+routes `/api/` to the server with the prefix removed, and forwards
+`/auth/esi/*`, `/livez`, `/readyz` and `/v1/websocket` unchanged. The generated
+client always opens its WebSocket at `/v1/websocket` on the origin, whatever path the app's
 API is configured under, and the static-data announcements arrive over it; a
 proxy in front of the server must forward that path unchanged, or apps never
 learn of a new bundle while every HTTP route still works. Locally the stack serves plain HTTP at `http://localhost/`,
@@ -39,32 +39,26 @@ missing build gives a 404 at `/`. Then open `http://localhost/`. The first run
 builds the server image from scratch (the Flutter toolchain and a Dart AOT
 compile), which takes several minutes.
 
-`deploy/.env` holds the three secrets: `POSTGRES_PASSWORD`, `REDIS_PASSWORD`
+`deploy/.env` holds three required secrets: `POSTGRES_PASSWORD`, `REDIS_PASSWORD`
 and `SERVERPOD_SERVICE_SECRET`. Compose stops before starting any service and
 names the variable when one is missing or empty. The file is ignored by git;
 only `deploy/.env.example`, with placeholders, is committed.
 
-To enable static-data admin actions, set the optional `KANAME_ADMIN_KEY` to
-a random value of at least 32 characters. With no key, or with a shorter key,
-admin actions stay disabled and the public status remains readable. Compose
-passes the key to the server only as `SERVERPOD_PASSWORD_adminKey`; the image
-and migration service do not receive it. Do not enable it on a non-loopback
-deployment until a TLS reverse proxy is in front of the stack. The app only
-offers key entry over HTTPS or loopback HTTP and keeps the key in memory until
-the app closes or reloads (ADR 0015).
+Remove `KANAME_ADMIN_KEY` from old installs. The server ignores the former key
+and has no key-check endpoint. To enable static-data actions, configure EVE
+sign-in and add verified character IDs to `KANAME_ESI_SSO_ADMIN_CHARACTERS`.
+Update the server and app together. Public status and job reads still work
+without signing in (ADR 0018).
 
 ### ESI vault backups
 
-When the server uses the ESI token vault, **back up `esiVaultKey` separately
-from Postgres**. The key is 32 random bytes encoded as standard Base64, supplied
-as `SERVERPOD_PASSWORD_esiVaultKey` or as `esiVaultKey` in the Serverpod
-secrets file. Do not put it in the database, version control, or a database
-backup bundle. Restore the matching key before using a restored database.
-Without it, existing credentials cannot be recovered and members must sign in
-again. Do not substitute the service secret or generate a new key on restart.
-
-The vault is not enabled at server startup; existing installs do not need to
-provision this key until the SSO wiring is enabled.
+Back up `KANAME_ESI_VAULT_KEY` separately from Postgres. The key is 32 random
+bytes encoded as standard Base64. If the previous vault setup used
+`SERVERPOD_PASSWORD_esiVaultKey` or the Serverpod `esiVaultKey` password, supply
+the same key in `KANAME_ESI_VAULT_KEY`. Do not put it in the database, version
+control or the database backup. Restore the matching key before starting a
+restored server. Without it, members must authorize credentials again. Do not
+reuse the service secret or generate a new key on restart.
 
 ### Stop the stack
 
@@ -83,7 +77,7 @@ on the existing database and applies no migration twice.
 Postgres and Redis data volumes, including any stored vault credentials.
 Use it only when you intend to discard the data, not as a backup step.
 Keep a restorable database backup and its separately stored, matching
-`esiVaultKey` if the vault is in use.
+`KANAME_ESI_VAULT_KEY` if the vault is in use.
 
 ```sh
 mise run stack:down
@@ -109,6 +103,56 @@ invalid policy permits identity sign-in but does not grant a skills scope.
 The browser callback and completion replies use `no-store` and `no-referrer`.
 Do not log callbacks, their query strings, or authentication request bodies
 and headers at any reverse proxy.
+
+### Test both sign-in modes locally
+
+1. In the [EVE developers portal](https://developers.eveonline.com/), register
+   two applications with ESI access. Select only `esi-skills.read_skills.v1`
+   for each. Register the stack app at `http://localhost/auth/esi/callback`.
+   Register the native app at `http://localhost:48175/auth/esi/callback`.
+   Neither URL has a trailing slash. Kaname does not use the native app's
+   secret if CCP issues one.
+2. Copy `deploy/.env.example` to `deploy/.env` if the file does not exist.
+   Fill the three required stack secrets with separate random values. In
+   that ignored file, set the confidential app's client ID and enter its
+   secret yourself. Generate a separate key with `openssl rand -base64 32`.
+   Leave `KANAME_ESI_SSO_ADMIN_CHARACTERS` unset unless you also want to test
+   the static-data admin controls. Never share the client secret or vault key.
+
+   ```dotenv
+   KANAME_ESI_SSO_CLIENT_ID=your-stack-client-id
+   KANAME_ESI_SSO_CLIENT_SECRET=your-stack-client-secret
+   KANAME_ESI_SSO_REDIRECT_URI=http://localhost/auth/esi/callback
+   KANAME_ESI_SSO_ALLOW_LOCAL_HTTP=true
+   KANAME_ESI_VAULT_KEY=your-base64-vault-key
+   KANAME_ESI_SCOPE_POLICY='{"revision":1,"enabledModules":["personalSkills"],"classes":{"characterSkills":"required"}}'
+   ```
+
+3. Run `mise run stack:up` and open `http://localhost/`, not `127.0.0.1`.
+   In **Settings → EVE account**, choose **Sign in to server**. Approve in
+   the browser and choose **Finish sign-in** back in Kaname. Choose
+   **Authorize server skills access**, approve the skills scope and finish
+   authorization. **Read skills on server** shows a skill count and total
+   skill points. In **Settings → ESI call log → My calls**, check for a
+   successful `GetCharactersCharacterIdSkills` entry.
+4. In a Linux desktop session with an unlocked keyring, start the native app:
+
+   ```sh
+   mise exec -C app -- flutter run -d linux --dart-define=KANAME_SERVER_URL=http://localhost/api/
+   ```
+
+   On Windows, run the corresponding `-d windows` command from the Windows
+   checkout of the PR branch. In **Settings → EVE account**, enter the
+   native app's public ID in **Native SSO client ID** and save it. Sign in
+   to the connected server as the same character. Return to Kaname and enter
+   the confirmation code shown in the browser, then finish sign-in.
+5. Choose **Take holder to this device**. If asked, sign in on this device as
+   the same character. Choose **Allow and authorize solo skills** and approve
+   in the browser. **Read skills in solo mode** should show the skill count
+   and total skill points for the same character. Confirm **Read skills on
+   server** cannot dispatch while this device holds access. To restore
+   connected access, choose **Park device and return holder**, then authorize
+   server skills again.
 
 ### Desktop holder and recovery
 
@@ -196,6 +240,11 @@ of 16 streams, unless you configure both trust lists:
    `KANAME_TRUSTED_PROXIES`, beside Caddy's address. The server then reads
    the chain `client, front proxy` and counts the client.
 
+For HTTPS SSO behind an external TLS proxy, preserve the registered host and
+the HTTPS scheme in the forwarded headers. Forward `/auth/esi/*` unchanged.
+Keep callback queries and authentication headers out of both access logs and
+error logs. Never enable the local HTTP exception on the public origin.
+
 Check the route twice, in this order, and again after any change to the
 network or the addresses:
 
@@ -230,8 +279,8 @@ builds on the server and the latest check, import and switch. **View change
 report** compares the active and previous builds. Record counts cover the
 whole comparison; a cut-off mark means some record keys are not shown.
 
-With a session admin key, **Update now** asks the server to check for a newer
-build. Turn **Auto-update** off to stage a newer build without switching.
+With a signed-in server admin account, **Update now** asks the server to check
+for a newer build. Turn **Auto-update** off to stage a newer build without switching.
 **Roll back** switches to the previous build after confirmation and holds the
 build it replaced so it is not immediately reactivated.
 

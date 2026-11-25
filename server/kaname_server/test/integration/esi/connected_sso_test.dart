@@ -1,12 +1,18 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:jose/jose.dart';
+import 'package:kaname_esi/kaname_esi.dart';
+import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
+import 'package:kaname_server/src/esi/server_esi_vault.dart';
+import 'package:kaname_server/src/esi/server_sso_grants.dart';
 import 'package:kaname_server/src/esi/sso_route.dart';
 import 'package:kaname_server/src/esi/sso_sessions.dart';
+import 'package:kaname_server/src/esi/sso_skills.dart';
 import 'package:kaname_server/src/network/trusted_proxies.dart';
 import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
@@ -17,6 +23,12 @@ const _serverId = 'fake-server';
 const _serverSecret = 'fake-confidential-sentinel';
 const _origin = 'https://kaname.test';
 const _ccp = 'https://login.eveonline.com';
+const _skills = 'esi-skills.read_skills.v1';
+const _identityCode = 'fixture-identity-code';
+const _scopedCode = 'fixture-skills-code';
+const _refresh = 'fixture-refresh-secret';
+const _rotated = 'fixture-rotated-refresh-secret';
+final _key = base64Encode(List.filled(32, 123));
 final _redirect = Uri.parse('$_origin/auth/esi/callback');
 
 typedef _Started = ({String id, String state, String? cookie, String proof});
@@ -26,6 +38,10 @@ void main() {
   late DateTime clock;
   late http.Client browser;
   late int exchanges;
+  late int refreshes;
+  late List<String> issued;
+  late List<EsiCallLogEntry> receipts;
+  late EsiScheduler scheduler;
   late String owner;
   late JsonWebKey signing;
 
@@ -34,6 +50,9 @@ void main() {
   setUp(() async {
     clock = DateTime.utc(2026, 11, 25, 10);
     exchanges = 0;
+    refreshes = 0;
+    issued = [];
+    receipts = [];
     owner = 'VEVTVCBPTkxZ';
     final upstream = MockClient((request) async {
       if (request.url.path.startsWith('/.well-known/')) {
@@ -70,8 +89,16 @@ void main() {
         request.headers['authorization'],
         'Basic ${base64.encode(utf8.encode('$_serverId:$_serverSecret'))}',
       );
-      expect(request.bodyFields['grant_type'], 'authorization_code');
-      exchanges++;
+      final form = request.bodyFields;
+      final rotating = form['grant_type'] == 'refresh_token';
+      if (rotating) {
+        expect(form['refresh_token'], _refresh);
+        refreshes++;
+      } else {
+        expect(form['grant_type'], 'authorization_code');
+        exchanges++;
+      }
+      final scoped = rotating || form['code'] == _scopedCode;
       final key = JsonWebKey.fromJson({...signing.toJson(), 'kid': 'fixture'});
       final signer = JsonWebSignatureBuilder()
         ..stringContent = jsonEncode({
@@ -81,13 +108,16 @@ void main() {
           'name': 'Synthetic <Pilot>',
           'owner': owner,
           'exp': clock.millisecondsSinceEpoch ~/ 1000 + 1200,
+          if (scoped) 'scp': [_skills],
         })
         ..addRecipient(key, algorithm: 'RS256');
+      final token = signer.build().toCompactSerialization();
+      issued.add(token);
       return http.Response(
         jsonEncode({
           'token_type': 'Bearer',
-          'refresh_token': 'fixture-refresh-secret',
-          'access_token': signer.build().toCompactSerialization(),
+          'refresh_token': rotating ? _rotated : _refresh,
+          'access_token': token,
         }),
         200,
       );
@@ -97,22 +127,17 @@ void main() {
     addTearDown(upstream.close);
     final oauth = CcpOAuth(upstream, now: () => clock);
     final sessions = SsoSessions(now: () => clock);
-    final route = SsoRoute(
-      registration: CcpConfidential(_serverId, _redirect, _serverSecret),
-      allowLocalHttp: false,
-      trustedProxies: TrustedProxies.parse('127.0.0.1,::1'),
-      oauth: oauth,
-      verifier: CcpJwtVerifier(
-        now: () => clock,
-        loadKeys: oauth.loadSigningKeys,
-      ),
-      sessions: sessions,
+    final registration = CcpConfidential(_serverId, _redirect, _serverSecret);
+    final verifier = CcpJwtVerifier(
       now: () => clock,
-      withSession: <T>(Future<T> Function(Session) action) =>
-          pod.pod.withSession<T>(action, enableLogging: false),
+      loadKeys: oauth.loadSigningKeys,
     );
+    late final SsoRoute route;
     pod = await InProcessPod.start(
-      middleware: [route.middleware],
+      middleware: [
+        (next) =>
+            (request) => route.middleware(next)(request),
+      ],
       authenticationHandler: (session, bearer) async {
         final request = session.request;
         if (request == null || !route.acceptsOrigin(request)) return null;
@@ -120,6 +145,67 @@ void main() {
       },
     );
     addTearDown(pod.stop);
+    Future<T> withSession<T>(Future<T> Function(Session) action) =>
+        pod.pod.withSession<T>(action, enableLogging: false);
+    late final ServerSsoGrants grants;
+    final vault = createServerEsiVault(
+      pod.pod,
+      now: () => clock,
+      readKey: () => _key,
+      refresh: (authorization, token) => withSession(
+        (session) => grants.refresh(session, authorization, token),
+      ),
+    );
+    grants = ServerSsoGrants(
+      sessions: sessions,
+      gate: sessions.gate,
+      policy: ScopePolicy.parse(
+        '{"revision":1,"enabledModules":["personalSkills"],"classes":{"characterSkills":"optional"}}',
+      ),
+      vault: vault,
+      oauth: oauth,
+      verifier: verifier,
+      registration: registration,
+    );
+    scheduler = EsiScheduler(
+      state: MemorySchedulerState(),
+      key: List.filled(32, 11),
+      now: () => clock,
+      callLog: (receipt) async {
+        receipts.add(receipt);
+      },
+      send: (request, token, _) async {
+        expect(request.target.path, '/characters/410/skills');
+        expect(token, issued.last);
+        return WireResponse(
+          EsiResponse(
+            status: 200,
+            body: Uint8List.fromList(
+              utf8.encode('{"skills":[],"total_sp":1200}'),
+            ),
+          ),
+        );
+      },
+    );
+    route = SsoRoute(
+      registration: registration,
+      allowLocalHttp: false,
+      trustedProxies: TrustedProxies.parse('127.0.0.1,::1'),
+      oauth: oauth,
+      verifier: verifier,
+      sessions: sessions,
+      now: () => clock,
+      grants: grants,
+      skills: ServerSsoSkills(
+        sessions: sessions,
+        grants: grants,
+        vault: vault,
+        clientId: _serverId,
+        client: (principal) =>
+            scheduler.client(EsiPriority.interactive, principal: principal),
+      ),
+      withSession: withSession,
+    );
   });
 
   Map<String, String> headers({String? cookie, String ip = '192.0.2.1'}) => {
@@ -136,18 +222,23 @@ void main() {
     Object body, {
     String? cookie,
     String ip = '192.0.2.1',
+    String? bearer,
   }) => browser.post(
     Uri.parse('${pod.baseUrl}auth/esi/$path'),
-    headers: headers(cookie: cookie, ip: ip),
+    headers: {
+      ...headers(cookie: cookie, ip: ip),
+      if (bearer != null) 'authorization': 'Bearer $bearer',
+    },
     body: jsonEncode(body),
   );
 
-  Future<_Started> begin({bool native = false}) async {
+  Future<_Started> begin({bool native = false, String? bearer}) async {
     final proof = newOAuthProof();
     final response = await post('begin', {
       'proofDigest': sha256.convert(utf8.encode(proof)).toString(),
       'native': native,
-    });
+      if (bearer != null) 'scoped': true,
+    }, bearer: bearer);
     expect(response.statusCode, 200);
     final data = jsonDecode(response.body) as Map<String, Object?>;
     final url = Uri.parse(data['authorizationUrl'] as String);
@@ -176,7 +267,7 @@ void main() {
   }) {
     return browser.get(
       Uri.parse(
-        '${pod.baseUrl}auth/esi/callback?${query ?? 'code=fixture&state=${start.state}'}',
+        '${pod.baseUrl}auth/esi/callback?${query ?? 'code=$_identityCode&state=${start.state}'}',
       ),
       headers: {
         ...headers(cookie: withCookie ? start.cookie : null),
@@ -189,11 +280,13 @@ void main() {
     _Started start, {
     String? code,
     bool withCookie = true,
-  }) => post('complete', {
-    'attemptId': start.id,
-    'proof': start.proof,
-    'code': ?code,
-  }, cookie: withCookie ? start.cookie : null);
+    String? bearer,
+  }) => post(
+    'complete',
+    {'attemptId': start.id, 'proof': start.proof, 'code': ?code},
+    cookie: withCookie ? start.cookie : null,
+    bearer: bearer,
+  );
 
   Future<Map<String, Object?>> signIn() async {
     final start = await begin();
@@ -209,6 +302,72 @@ void main() {
     expect(data['session'], isNotEmpty);
     expect(jsonEncode(data), isNot(contains(_serverSecret)));
     expect(jsonEncode(data), isNot(contains('fixture-refresh-secret')));
+  });
+
+  test('Successful login and later refresh', () async {
+    final viewer = await signIn();
+    final session = viewer['session']! as String;
+    expect((await post('skills', {}, bearer: session)).statusCode, 403);
+    expect(receipts, isEmpty);
+    final optIn = await post('opt-in', {'enabled': true}, bearer: session);
+    expect(optIn.statusCode, 200);
+    expect(jsonDecode(optIn.body), {'status': 'recorded'});
+    final attempt = await begin(bearer: session);
+    final callbackReply = await callback(
+      attempt,
+      query: 'code=$_scopedCode&state=${attempt.state}',
+    );
+    expect(callbackReply.statusCode, 200);
+    final granted = await complete(attempt, bearer: session);
+    expect(granted.statusCode, 200);
+    expect(jsonDecode(granted.body), {'status': 'authorized'});
+    clock = clock.add(const Duration(minutes: 21));
+    final read = await post('skills', {}, bearer: session);
+    expect(read.statusCode, 200);
+    expect(jsonDecode(read.body), {'skillCount': 0, 'totalSp': 1200});
+    expect(refreshes, 1);
+    await scheduler.drainCallLog();
+    final receipt = receipts.single;
+    expect(receipt.character, 410);
+    expect(receipt.member.toString(), viewer['memberId'].toString());
+    expect(receipt.route.operationId, 'GetCharactersCharacterIdSkills');
+    expect(
+      (await post('opt-in', {'enabled': false}, bearer: session)).statusCode,
+      200,
+    );
+    expect((await post('skills', {}, bearer: session)).statusCode, 403);
+    expect(receipts, hasLength(1));
+    final rows = await pod.pod.withSession(
+      (s) => s.db.unsafeQuery('''
+      SELECT to_jsonb(v)::text FROM esi_token_vault AS v
+      UNION ALL SELECT to_jsonb(s)::text FROM esi_session AS s
+      UNION ALL SELECT to_jsonb(l)::text FROM serverpod_log AS l
+      UNION ALL SELECT to_jsonb(q)::text FROM serverpod_query_log AS q
+      UNION ALL SELECT to_jsonb(o)::text FROM serverpod_session_log AS o
+    '''),
+      enableLogging: false,
+    );
+    final persisted = rows.map((row) => row.single as String).join();
+    for (final sentinel in [
+      _serverSecret,
+      _key,
+      _identityCode,
+      _scopedCode,
+      _refresh,
+      _rotated,
+      ...issued,
+    ]) {
+      expect(persisted.contains(sentinel), isFalse);
+      expect(jsonEncode(viewer).contains(sentinel), isFalse);
+      expect(
+        granted.body.contains(sentinel) ||
+            read.body.contains(sentinel) ||
+            callbackReply.body.contains(sentinel),
+        isFalse,
+      );
+    }
+    expect(persisted.contains(session), isFalse);
+    expect(persisted.contains(attempt.proof), isFalse);
   });
 
   test('Replayed, misrouted or abandoned callback', () async {

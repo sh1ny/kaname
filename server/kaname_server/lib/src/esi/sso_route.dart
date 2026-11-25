@@ -103,14 +103,21 @@ final class SsoRoute {
   static const _lifetime = Duration(minutes: 5);
   static const _esc = HtmlEscape(HtmlEscapeMode.element);
 
+  static bool _matches(List<String> path) =>
+      path.length >= 2 && path[0] == 'auth' && path[1] == 'esi';
+
+  /// Refuses SSO paths before logging even when the install has no registration.
+  static Middleware get disabledMiddleware =>
+      (next) =>
+          (request) => _matches(request.url.pathSegments)
+          ? _failure(404)
+          : next(request);
+
   /// Installs exact routes before Serverpod's body, error and request logging.
   Middleware get middleware =>
       (next) => (request) {
         final path = request.url.pathSegments;
-        if (path.length >= 2 && path[0] == 'auth' && path[1] == 'esi') {
-          return _dispatch(request, path);
-        }
-        return next(request);
+        return _matches(path) ? _dispatch(request, path) : next(request);
       };
 
   Future<Response> _dispatch(Request request, List<String> path) async {

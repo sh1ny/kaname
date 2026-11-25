@@ -48,6 +48,7 @@ COPY app_packages/kaname_ember_ui/pubspec.yaml app_packages/kaname_ember_ui/
 COPY packages/kaname_core/pubspec.yaml packages/kaname_core/
 COPY packages/kaname_esi/pubspec.yaml packages/kaname_esi/
 COPY packages/kaname_esi_scheduler/pubspec.yaml packages/kaname_esi_scheduler/
+COPY packages/kaname_esi_sso/pubspec.yaml packages/kaname_esi_sso/
 COPY packages/kaname_esi_vault/pubspec.yaml packages/kaname_esi_vault/
 COPY packages/kaname_static_data/pubspec.yaml packages/kaname_static_data/
 COPY packages/kaname_static_data_bundle/pubspec.yaml packages/kaname_static_data_bundle/
@@ -60,6 +61,7 @@ RUN mise exec -- flutter pub get --enforce-lockfile
 COPY packages/kaname_core/lib packages/kaname_core/lib
 COPY packages/kaname_esi/lib packages/kaname_esi/lib
 COPY packages/kaname_esi_scheduler/lib packages/kaname_esi_scheduler/lib
+COPY packages/kaname_esi_sso/lib packages/kaname_esi_sso/lib
 COPY packages/kaname_esi_vault/lib packages/kaname_esi_vault/lib
 COPY packages/kaname_static_data/lib packages/kaname_static_data/lib
 COPY packages/kaname_static_data_bundle/lib packages/kaname_static_data_bundle/lib

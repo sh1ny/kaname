@@ -24,6 +24,17 @@
 	auto_https off
 	admin off
 
+	# A proxy failure can reach the runtime error log even when access
+	# logging is disabled. Never include a browser's callback query.
+	log {
+		format filter {
+			wrap json
+			fields {
+				request>uri delete
+			}
+		}
+	}
+
 	servers {
 		timeouts {
 			# Closes a connection whose client has stopped reading: a write
@@ -40,6 +51,13 @@
 }
 
 :80 {
+	@sso path /auth/esi /auth/esi/*
+	@private path /auth/esi /auth/esi/* /api/esiCallLog/* /api/staticDataAdmin/*
+	log_skip @private
+	handle @sso {
+		reverse_proxy server:8080
+	}
+
 	# The API lives under /api/ on the web app's origin, with the prefix
 	# removed before the server sees it. It never falls back to index.html:
 	# an unknown path is the server's own not-found.

@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:kaname_esi/kaname_esi.dart';
+import 'package:kaname_esi/kaname_esi.dart' show esiCatalogue;
 
 /// A compiled group of ESI permissions exposed by Kaname.
 enum ScopeClass {

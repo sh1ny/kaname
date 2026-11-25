@@ -2,9 +2,10 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
-import 'package:kaname_esi/kaname_esi.dart';
-import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
-import 'package:kaname_esi_scheduler/native.dart';
+import 'package:kaname_esi/kaname_esi.dart' show EsiSuccess, SkillsCalls;
+import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart'
+    show EsiPrincipal, EsiPriority;
+import 'package:kaname_esi_scheduler/native.dart' show NativeEsiRuntime;
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
 import 'package:kaname_esi_vault/kaname_esi_vault.dart';
 
