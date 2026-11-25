@@ -10,16 +10,23 @@ if not requestedNow or not maxGroups or
   return redis.error_reply('invalid scheduler transition')
 end
 local completionGrace = 5000
-local metaKey, bucketKey = KEYS[2], KEYS[4]
-local metaExpiry, bucketExpiry = KEYS[3], KEYS[5]
+local metaKey, legacyBucket = KEYS[2], KEYS[4]
+local metaExpiry, legacyExpiry = KEYS[3], KEYS[5]
+local bucketKey, bucketExpiry, cooldown = KEYS[6], KEYS[7], KEYS[8]
+if action ~= 'admit' and ARGV[6] ~= incarnation then
+  return cjson.encode(action == 'complete' and {kind='complete'}
+      or {kind='denied',reason='waitExpired'})
+end
 local encoded = redis.call('GET', KEYS[1])
 local g = encoded and cjson.decode(encoded) or nil
-if not g or g.incarnation ~= incarnation then
+if not g or g.incarnation ~= incarnation or g.schema ~= 2 then
   redis.call('UNLINK', metaKey, metaExpiry, bucketKey, bucketExpiry)
-  g = {incarnation=incarnation, now=requestedNow, recovery=requestedNow+3600000,
-       serial=g and g.serial or 0, epoch=0, epochEnd=0,
-       tickets={}, calls={}, lateCalls={}, gone={}, errors={}, learned={}, conflicts={}, routeBlocks={},
-       errorBlocked=0, errorLast=-1000, probeAt=0, probeDelay=30000}
+  local old = g
+  g = {schema=2,incarnation=incarnation,now=requestedNow,
+       serial=0,epoch=0,epochEnd=0,
+       tickets={},calls={},lateCalls={},gone={},errors={},learned={},
+       conflicts=old and old.conflicts or {},routeBlocks=old and old.routeBlocks or {},
+       errorBlocked=old and old.errorBlocked or 0,errorLast=-1000,probeAt=0,probeDelay=30000}
 end
 local now = math.max(requestedNow, g.now)
 g.now = now
@@ -29,11 +36,6 @@ local function answer(result)
 end
 local function refused(reason, untilAt, status)
   return {kind='denied', reason=reason, untilAt=untilAt, status=status}
-end
-if now < g.recovery then
-  -- Old-incarnation completions have no reservation to reconcile.
-  if action == 'complete' then return answer({kind='complete'}) end
-  return answer(refused('stateRecovering', g.recovery))
 end
 
 local function probeFailed(retry)
@@ -71,8 +73,25 @@ local function expire(hash, expiry)
   end
 end
 expire(metaKey, metaExpiry)
-expire(bucketKey, bucketExpiry)
+expire(legacyBucket, legacyExpiry)
+local expiredBlocks = redis.call('ZRANGEBYSCORE', cooldown, '-inf', now, 'LIMIT', 0, 32)
+if #expiredBlocks > 0 then redis.call('ZREM', cooldown, unpack(expiredBlocks)) end
 local metadata, budgets = {}, {}
+local function reclaim()
+  local oldest = redis.call('ZRANGEBYSCORE', bucketExpiry, '-inf', now, 'LIMIT', 0, 1)[1]
+  if not oldest then return false end
+  redis.call('HDEL', bucketKey, oldest)
+  redis.call('ZREM', bucketExpiry, oldest)
+  budgets[oldest] = false
+  return true
+end
+local function hasBucketSpace()
+  return redis.call('ZCARD', bucketExpiry) < maxGroups
+      or #redis.call('ZRANGEBYSCORE', bucketExpiry, '-inf', now, 'LIMIT', 0, 1) > 0
+end
+local function reserveBucket()
+  return redis.call('ZCARD', bucketExpiry) < maxGroups or reclaim()
+end
 local function load(hash, key, cache)
   local entry = cache[key]
   if entry == nil then
@@ -112,7 +131,18 @@ local function errorsRemaining()
   return math.min(localRemain, observed)
 end
 local function budgetFor(id)
-  return load(bucketKey, id, budgets)
+  if budgets[id] == nil then
+    local data = redis.call('HGET', bucketKey, id)
+    budgets[id] = data and cjson.decode(data) or false
+  end
+  return budgets[id] or nil
+end
+local function blockedUntil(id)
+  local untilAt = tonumber(redis.call('ZSCORE', cooldown, id)) or 0
+  if untilAt > now then return untilAt end
+  local old = redis.call('HGET', legacyBucket, id)
+  if old then return cjson.decode(old).block or 0 end
+  return 0
 end
 local function groupRemaining(b)
   if b.available then return b.available, b.nextRecovery end
@@ -162,10 +192,17 @@ local function denial(r)
   if tier(errorsRemaining(), 100) == 4 then return refused('stopped', g.epochEnd) end
   local name, capacity = limit(r)
   if name then
-    local b = budgetFor(groupId(name, r))
-    if not b and count(bucketExpiry) >= maxGroups then return refused('scopeCapacity') end
+    local key = groupId(name, r)
+    local block = blockedUntil(key)
+    if block > now then return refused('budget', block) end
+    local b = budgetFor(key)
+    if not b and not hasBucketSpace() then return refused('scopeCapacity') end
+    if not b or not b.warm then
+      for _, call in pairs(g.calls) do
+        if call.bucket == key then return refused('stateRecovering', call.untilAt) end
+      end
+    end
     if b then
-      if (b.block or 0) > now then return refused('budget', b.block) end
       local available, recover = groupRemaining(b)
       if available < 5 then return refused('budget', recover) end
       if tier(available, b.capacity) == 4 then return refused('stopped', recover) end
@@ -218,7 +255,11 @@ local function grant(ticket)
   local name, capacity, window = limit(r)
   local key = name and groupId(name,r)
   if key then
-    local b = budgetFor(key) or makeBudget(capacity,window)
+    local b = budgetFor(key)
+    if not b then
+      reserveBucket()
+      b = makeBudget(capacity,window)
+    end
     groupRemaining(b)
     b.last = now
     b.debits[tostring(id)] = {now,5,true}
@@ -308,9 +349,18 @@ if name then
   local capacity = (learned and learned.capacity) or (matched and observation.capacity) or r.capacity
   local window = (learned and learned.window) or (matched and observation.window) or r.window
   local b = budgetFor(key)
-  local reserve = b and 0 or 1
-  if not b and (matched or status == 429) and count(bucketExpiry) < maxGroups then
+  if not b and (matched or status == 429) and reserveBucket() then
     b = makeBudget(capacity,window)
+  end
+  if status == 429 then
+    local wait = now+(observation.retry or (b and b.window or window))
+    local block = math.max(blockedUntil(key),wait)
+    if redis.call('ZSCORE', cooldown, key) or count(cooldown) < maxGroups then
+      redis.call('ZADD', cooldown, block, key)
+    else
+      g.routeBlocks[r.operation] = math.max(g.routeBlocks[r.operation] or 0,block)
+    end
+    if b then b.block = math.max(b.block or 0,block) end
   end
   if b then
     groupRemaining(b)
@@ -318,20 +368,21 @@ if name then
     if cost == 0 then b.debits[index] = nil
     else b.debits[index] = {sent,cost,false}; b.last=math.max(b.last,sent) end
     if matched then
+      b.warm = true
       b.capacity = math.min(b.capacity,capacity)
       b.window = math.max(b.window,window)
       if id > (b.sequence or 0) then
         b.sequence,b.ceiling,b.ceilingEnd = id,observation.remaining,sent+b.window
       end
     end
-    if status == 429 then b.block = math.max(b.block or 0,now+(observation.retry or b.window)) end
     -- At most seven peers; charge pending work against each peer's own scope.
     if matched and learned and not call.bucket then
+      persistBudget(key,b)
       for token, pending in pairs(g.calls) do
         if not pending.bucket and pending.r.operation == r.operation then
           local peer = groupId(name,pending.r)
           local target = peer == key and b or budgetFor(peer)
-          if not target and count(bucketExpiry)+reserve < maxGroups then
+          if not target and reserveBucket() then
             target = makeBudget(capacity,window)
           end
           if target then

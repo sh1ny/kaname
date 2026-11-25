@@ -25,6 +25,7 @@ final class AccountIdle extends AccountState {
     ConnectedSession? connected,
     this.notice = AccountNotice.none,
     this.skills,
+    this.refusal,
     this.solo = false,
   }) : super(connected);
 
@@ -33,6 +34,9 @@ final class AccountIdle extends AccountState {
 
   /// Last skills result for the same viewer only.
   final SkillStats? skills;
+
+  /// Last refusal for the same viewer and mode, if a scheduler declined.
+  final SkillsRefusal? refusal;
 
   /// Whether that result came from the desktop holder.
   final bool solo;
@@ -222,17 +226,18 @@ final class AccountNotifier extends Notifier<AccountState> {
     final connected = state.connected;
     final epoch = ++_epoch;
     state = AccountWorking(connected);
-    final (notice, stats) = solo
+    final (notice, stats, refusal) = solo
         ? await ref.read(desktopAccountProvider).value?.skills() ??
-              (AccountNotice.unavailable, null)
-        : await connected?.skills() ?? (AccountNotice.signedOut, null);
+              (AccountNotice.unavailable, null, null)
+        : await connected?.skills() ?? (AccountNotice.signedOut, null, null);
     if (!_current(epoch)) return;
     state = AccountIdle(
       connected: notice == AccountNotice.signedOut ? null : connected,
-      notice: stats == null && notice == AccountNotice.none
+      notice: stats == null && refusal == null && notice == AccountNotice.none
           ? AccountNotice.unavailable
           : notice,
       skills: stats,
+      refusal: refusal,
       solo: solo,
     );
   }

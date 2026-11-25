@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
+import 'package:kaname_esi/kaname_esi.dart';
 
 import 'account_types.dart';
 
@@ -55,19 +56,23 @@ final class ConnectedSession implements HolderRemote {
   );
 
   /// Requests the viewer's scheduled skills read, with no caller-chosen ID.
-  Future<(AccountNotice, SkillStats?)> skills() async {
+  Future<SkillsRead> skills() async {
     final result = await _api._request('skills', const {}, bearer: _bearer);
     if ((result.code, result.body) case (403, {'status': 'esiReauthorize'})) {
-      return (AccountNotice.reauthorize, null);
+      return (AccountNotice.reauthorize, null, null);
+    }
+    if ((result.code, result.body) case (429, {'status': 'busy'})) {
+      return (AccountNotice.busy, null, null);
     }
     if ((result.code, result.body) case (
       200,
       {'skillCount': final int count, 'totalSp': final int sp},
     )) {
-      return (AccountNotice.none, (count: count, totalSp: sp));
+      return (AccountNotice.none, (count: count, totalSp: sp), null);
     }
     return (
       result.code == 200 ? AccountNotice.unavailable : _notice(result),
+      null,
       null,
     );
   }

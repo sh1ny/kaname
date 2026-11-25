@@ -6,6 +6,7 @@ import 'dart:math';
 
 import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
+import 'package:kaname_server/src/esi/redis_scheduler_script.dart';
 import 'package:kaname_server/src/esi/redis_scheduler_state.dart';
 import 'package:kaname_server/src/esi/server_esi_runtime.dart';
 import 'package:redis/redis.dart';
@@ -43,10 +44,7 @@ RedisSchedulerState _connect(String namespace) => RedisSchedulerState(
 void main() {
   group('Redis conformance', () {
     late RedisSchedulerState redis;
-    setUp(() async {
-      redis = _connect(_namespace());
-      expect(await redis.admit(contract.request(), -_start), isA<Denied>());
-    });
+    setUp(() => redis = _connect(_namespace()));
     tearDown(() => redis.close());
     contract.schedulerConformance(() => redis);
   });
@@ -55,9 +53,6 @@ void main() {
     'server runtime sends generated calls through Redis and native HTTP',
     () async {
       final namespace = _namespace();
-      final primer = _connect(namespace);
-      addTearDown(primer.close);
-      expect(await primer.admit(contract.request(), -_start), isA<Denied>());
       final upstream = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(() => upstream.close(force: true));
       final seen = <String?>[];
@@ -110,7 +105,6 @@ void main() {
     final namespace = _namespace();
     final connection = _connect(namespace);
     addTearDown(connection.close);
-    expect(await connection.admit(contract.request(), 0), isA<Denied>());
     final results = ReceivePort();
     addTearDown(results.close);
     final worker = await Isolate.spawn(_contender, (
@@ -136,7 +130,6 @@ void main() {
     final namespace = _namespace();
     final connection = _connect(namespace);
     addTearDown(connection.close);
-    expect(await connection.admit(contract.request(), 0), isA<Denied>());
     final input = contract.request();
     final first = await connection.admit(input, _start) as Granted;
     await connection.complete(first.id, _start, const Observation(status: 404));

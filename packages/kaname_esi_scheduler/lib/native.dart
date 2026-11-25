@@ -23,6 +23,7 @@ final class NativeEsiRuntime {
     required List<int> key,
     required String userAgent,
     Uri? testOrigin,
+    DateTime Function()? now,
     EsiCallLogSink? callLog,
     void Function()? onCallLogFailure,
   }) => NativeEsiRuntime.shared(
@@ -30,6 +31,7 @@ final class NativeEsiRuntime {
     key: key,
     userAgent: userAgent,
     testOrigin: testOrigin,
+    now: now,
     callLog: callLog,
     onCallLogFailure: onCallLogFailure,
   );

@@ -9,6 +9,7 @@ import 'package:kaname_app/esi_sso/data/account_types.dart';
 import 'package:kaname_app/esi_sso/data/device_store.dart';
 import 'package:kaname_app/esi_sso/data/native_account.dart';
 import 'package:kaname_app/esi_sso/data/native_pkce.dart';
+import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
 import 'package:kaname_esi_vault/kaname_esi_vault.dart';
 import 'package:path/path.dart' as p;
@@ -162,6 +163,7 @@ void main() {
   });
 
   test('Unconfigured solo signs in without skills access', () async {
+    var clock = _now;
     final directory = await Directory.systemTemp.createTemp('kaname-native-');
     addTearDown(() => directory.delete(recursive: true));
     final keyring = _MemoryKeyring();
@@ -173,6 +175,10 @@ void main() {
     final sent = <(String, String?)>[];
     esi.listen((request) async {
       sent.add((request.uri.path, request.headers.value('authorization')));
+      if (sent.length == 2) {
+        request.response.statusCode = 429;
+        request.response.headers.set('retry-after', '45');
+      }
       request.response.headers.contentType = ContentType.json;
       request.response.write(
         jsonEncode({'skills': <Object?>[], 'total_sp': 1200}),
@@ -183,7 +189,7 @@ void main() {
       store: store,
       httpClient: upstream,
       testPort: 0,
-      now: () => _now,
+      now: () => clock,
       launch: approve,
       testEsiOrigin: Uri(scheme: 'http', host: '127.0.0.1', port: esi.port),
     );
@@ -199,9 +205,17 @@ void main() {
     expect(await runtime.skills(), (
       AccountNotice.none,
       (count: 0, totalSp: 1200),
+      null,
     ));
     expect(sent.single.$1, '/characters/123/skills');
     final bearer = sent.single.$2!.substring('Bearer '.length);
+    clock = clock.add(const Duration(seconds: 1));
+    expect((await runtime.skills()).$1, AccountNotice.unavailable);
+    expect((await runtime.skills()).$3, (
+      reason: EsiRefusalReason.budget,
+      retryAt: clock.add(const Duration(seconds: 45)),
+    ));
+    expect(sent, hasLength(2));
     await runtime.close();
     final ciphertextDump = latin1.decode(
       await File(p.join(directory.path, 'esi-credentials.sqlite'))
@@ -223,7 +237,7 @@ void main() {
     expect(await runtime.returnTo(remote), AccountNotice.none);
     expect(remote.proofs.toSet(), hasLength(1));
     expect((await runtime.skills()).$2, isNull);
-    expect(sent, hasLength(1));
+    expect(sent, hasLength(2));
     await runtime.close();
     keyring.values.clear();
     await expectLater(DeviceStore.open(directory, keyring), throwsStateError);

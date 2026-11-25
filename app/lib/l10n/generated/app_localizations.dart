@@ -1528,6 +1528,102 @@ abstract class AppLocalizations {
   /// **'Authorize skills access again before reading skills.'**
   String get esiReauthorize;
 
+  /// No description provided for @esiSkillsBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Kaname is busy. Try the skills read again shortly.'**
+  String get esiSkillsBusy;
+
+  /// No description provided for @esiRefusedBudget.
+  ///
+  /// In en, this message translates to:
+  /// **'EVE’s rate limit does not allow this request yet.'**
+  String get esiRefusedBudget;
+
+  /// No description provided for @esiRefusedStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'EVE calls are paused because a request limit was reached.'**
+  String get esiRefusedStopped;
+
+  /// No description provided for @esiRefusedQueueFull.
+  ///
+  /// In en, this message translates to:
+  /// **'The EVE request queue is full.'**
+  String get esiRefusedQueueFull;
+
+  /// No description provided for @esiRefusedWaitExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'This request expired while waiting to be sent.'**
+  String get esiRefusedWaitExpired;
+
+  /// No description provided for @esiRefusedNegativeCached.
+  ///
+  /// In en, this message translates to:
+  /// **'EVE recently refused this read or reported it missing.'**
+  String get esiRefusedNegativeCached;
+
+  /// No description provided for @esiRefusedNotDue.
+  ///
+  /// In en, this message translates to:
+  /// **'The current EVE data is not due to be refreshed.'**
+  String get esiRefusedNotDue;
+
+  /// No description provided for @esiRefusedOutage.
+  ///
+  /// In en, this message translates to:
+  /// **'EVE requests are paused while Tranquility is unavailable.'**
+  String get esiRefusedOutage;
+
+  /// No description provided for @esiRefusedStateUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Kaname could not confirm a safe slot for this EVE request.'**
+  String get esiRefusedStateUnavailable;
+
+  /// No description provided for @esiRefusedCorpBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Another caller is already checking this corporation data.'**
+  String get esiRefusedCorpBusy;
+
+  /// No description provided for @esiRefusedScopeCapacity.
+  ///
+  /// In en, this message translates to:
+  /// **'Kaname is tracking too many EVE request limits.'**
+  String get esiRefusedScopeCapacity;
+
+  /// No description provided for @esiRefusedRouteConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'EVE reported conflicting limits for this request.'**
+  String get esiRefusedRouteConflict;
+
+  /// No description provided for @esiRefusedInvalidContext.
+  ///
+  /// In en, this message translates to:
+  /// **'The current request or account could not be used safely.'**
+  String get esiRefusedInvalidContext;
+
+  /// No description provided for @esiRefusedStateRecovering.
+  ///
+  /// In en, this message translates to:
+  /// **'One request is already checking this EVE rate limit.'**
+  String get esiRefusedStateRecovering;
+
+  /// No description provided for @esiRetryAfter.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry after {date} at {time}.'**
+  String esiRetryAfter(String date, String time);
+
+  /// No description provided for @esiRetryNow.
+  ///
+  /// In en, this message translates to:
+  /// **'You can try again now.'**
+  String get esiRetryNow;
+
   /// No description provided for @esiSkillsResult.
   ///
   /// In en, this message translates to:

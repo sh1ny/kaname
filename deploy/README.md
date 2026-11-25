@@ -156,6 +156,10 @@ the same host do not affect the sign-in check.
    connected access, choose **Park device and return holder**, then authorize
    server skills again.
 
+After Redis starts or loses its scheduler state, the first eligible skills
+read can go through immediately. If another request is already checking the
+same EVE rate limit, Settings shows the refusal and the time you can retry.
+
 ### Desktop holder and recovery
 
 Native solo uses a separate credential database and the system keyring.

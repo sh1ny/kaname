@@ -56,7 +56,7 @@ void main() {
       client: (principal) =>
           scheduler.client(EsiPriority.interactive, principal: principal),
     );
-    expect(reply?.totalSp, 1200);
+    expect((reply as EsiSuccess<CharactersSkills>).body.totalSp, 1200);
     expect(failure, isNull);
     expect(wire.last?.target.path, '/characters/415/skills');
     expect(wire.bearer, 'synthetic-access');

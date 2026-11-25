@@ -1,3 +1,5 @@
+import 'package:kaname_esi/kaname_esi.dart';
+
 /// A viewer from a verified Kaname or native authorization. No CCP secret.
 final class AccountPilot {
   /// Public projection used by app state.
@@ -48,10 +50,19 @@ final class AccountPilot {
 /// The two values shown by the skills read in Settings.
 typedef SkillStats = ({int count, int totalSp});
 
+/// A scheduler refusal with a known retry time when one was supplied.
+typedef SkillsRefusal = ({EsiRefusalReason reason, DateTime? retryAt});
+
+/// The result of one connected or solo skills request.
+typedef SkillsRead = (AccountNotice, SkillStats?, SkillsRefusal?);
+
 /// A stable failure or next step, suitable for app state and localization.
 enum AccountNotice {
   /// A definitive grant rejection requires fresh scoped authorization.
   reauthorize,
+
+  /// Kaname's own work limit prevented the skills request.
+  busy,
 
   /// Completed or nothing pending.
   none,
@@ -126,7 +137,7 @@ abstract interface class DesktopAccount {
   Future<AccountNotice> returnTo(HolderRemote remote);
 
   /// Reads skills only with a current local holder and scope.
-  Future<(AccountNotice, SkillStats?)> skills();
+  Future<SkillsRead> skills();
 
   /// Cancels an open browser attempt.
   void cancel();

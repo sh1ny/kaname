@@ -42,6 +42,7 @@ void main() {
   late List<String> issued;
   late List<EsiCallLogEntry> receipts;
   late EsiScheduler scheduler;
+  late bool rateLimited;
   late String owner;
   late JsonWebKey signing;
 
@@ -51,6 +52,7 @@ void main() {
     clock = DateTime.utc(2026, 11, 25, 10);
     exchanges = 0;
     refreshes = 0;
+    rateLimited = false;
     issued = [];
     receipts = [];
     owner = 'VEVTVCBPTkxZ';
@@ -312,6 +314,36 @@ void main() {
     expect(data['session'], isNotEmpty);
     expect(jsonEncode(data), isNot(contains(_serverSecret)));
     expect(jsonEncode(data), isNot(contains('fixture-refresh-secret')));
+  });
+
+  test('Skills refusals preserve their reasons and retry times', () async {
+    final viewer = await signIn();
+    final session = viewer['session']! as String;
+    expect(
+      (await post('opt-in', {'enabled': true}, bearer: session)).statusCode,
+      200,
+    );
+    final attempt = await begin(bearer: session);
+    expect(
+      (await callback(
+        attempt,
+        query: 'code=$_scopedCode&state=${attempt.state}',
+      )).statusCode,
+      200,
+    );
+    expect((await complete(attempt, bearer: session)).statusCode, 200);
+    rateLimited = true;
+    final upstream = await post('skills', {}, bearer: session);
+    expect(jsonDecode(upstream.body), {'status': 'unavailable'});
+    final refused = await post('skills', {}, bearer: session);
+    expect(refused.statusCode, 503);
+    expect(jsonDecode(refused.body), {
+      'status': 'refused',
+      'reason': 'budget',
+      'retryAt': clock.add(const Duration(seconds: 45)).millisecondsSinceEpoch,
+    });
+    await scheduler.drainCallLog();
+    expect(receipts.map((entry) => entry.status), [429, null]);
   });
 
   test('Successful login and later refresh', () async {

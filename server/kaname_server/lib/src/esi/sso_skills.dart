@@ -58,7 +58,7 @@ final class ServerSsoSkills {
                   body: <String, Object?>{'status': 'holderOrScopeRequired'},
                 );
               }
-              final (stats, vaultFailure) = await readScheduledSkills(
+              final (result, vaultFailure) = await readScheduledSkills(
                 vault: _vault,
                 authorization: authorization,
                 application: _clientId,
@@ -71,18 +71,28 @@ final class ServerSsoSkills {
                   body: <String, Object?>{'status': 'esiReauthorize'},
                 );
               }
-              return stats == null
-                  ? (
-                      status: 503,
-                      body: <String, Object?>{'status': 'unavailable'},
-                    )
-                  : (
-                      status: 200,
-                      body: <String, Object?>{
-                        'skillCount': stats.skills.length,
-                        'totalSp': stats.totalSp,
-                      },
-                    );
+              return switch (result) {
+                EsiNotSent(:final refusal) => (
+                  status: 503,
+                  body: <String, Object?>{
+                    'status': 'refused',
+                    'reason': refusal.reason.name,
+                    if (refusal.retryAt case final retry?)
+                      'retryAt': retry.millisecondsSinceEpoch,
+                  },
+                ),
+                EsiSuccess(:final body) => (
+                  status: 200,
+                  body: <String, Object?>{
+                    'skillCount': body.skills.length,
+                    'totalSp': body.totalSp,
+                  },
+                ),
+                _ => (
+                  status: 503,
+                  body: <String, Object?>{'status': 'unavailable'},
+                ),
+              };
             },
           ) ??
           (status: 429, body: {'status': 'busy'});
@@ -115,8 +125,5 @@ Future<(CharactersSkills?, VaultFailureReason?)> readScheduledSkills({
   );
   final reply = await client(principal)
       .getCharactersCharacterIdSkills(characterId: authorization.character);
-  return switch (reply) {
-    EsiSuccess(:final body) => (body, null),
-    _ => (null, null),
-  };
+  return (reply, null);
 }

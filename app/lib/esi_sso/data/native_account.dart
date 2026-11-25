@@ -40,6 +40,7 @@ final class NativeAccount implements DesktopAccount {
       key: base64Decode(store.installKey),
       userAgent: 'Kaname/0.0.1 (+https://github.com/sh1ny/kaname)',
       testOrigin: testEsiOrigin,
+      now: clock,
     );
   }
 

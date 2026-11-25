@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import 'package:kaname_esi/kaname_esi.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../l10n/generated/app_localizations.dart';
@@ -12,7 +14,10 @@ import '../logic/account.dart';
 /// Connected and solo account actions, with separate dispatch buttons.
 final class EsiAccountSection extends ConsumerStatefulWidget {
   /// Adds EVE sign-in and holder controls to Settings.
-  const EsiAccountSection({super.key});
+  const EsiAccountSection({super.key, this.now = DateTime.now});
+
+  /// Supplies the current time when formatting a scheduler deadline.
+  final DateTime Function() now;
 
   @override
   ConsumerState<EsiAccountSection> createState() => _EsiAccountSectionState();
@@ -223,6 +228,7 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
             child: Text(switch (notice) {
               AccountNotice.none => '',
               AccountNotice.unavailable => l10n.esiUnavailable,
+              AccountNotice.busy => l10n.esiSkillsBusy,
               AccountNotice.cancelled => l10n.esiCancelled,
               AccountNotice.pending =>
                 state is AccountBrowser
@@ -239,6 +245,23 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
             child: Text(l10n.esiSkillsResult(count, totalSp)),
           ),
       ],
+    );
+  }
+
+  String _retryText(
+    BuildContext context,
+    AppLocalizations l10n,
+    DateTime retry,
+  ) {
+    if (!retry.isAfter(widget.now())) return l10n.esiRetryNow;
+    final local = retry.toLocal();
+    final format = MaterialLocalizations.of(context);
+    return l10n.esiRetryAfter(
+      format.formatShortDate(local),
+      (MediaQuery.alwaysUse24HourFormatOf(context)
+              ? DateFormat.Hms(l10n.localeName)
+              : DateFormat.jms(l10n.localeName))
+          .format(local),
     );
   }
 

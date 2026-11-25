@@ -786,6 +786,69 @@ class AppLocalizationsEn extends AppLocalizations {
       'Authorize skills access again before reading skills.';
 
   @override
+  String get esiSkillsBusy =>
+      'Kaname is busy. Try the skills read again shortly.';
+
+  @override
+  String get esiRefusedBudget =>
+      'EVE’s rate limit does not allow this request yet.';
+
+  @override
+  String get esiRefusedStopped =>
+      'EVE calls are paused because a request limit was reached.';
+
+  @override
+  String get esiRefusedQueueFull => 'The EVE request queue is full.';
+
+  @override
+  String get esiRefusedWaitExpired =>
+      'This request expired while waiting to be sent.';
+
+  @override
+  String get esiRefusedNegativeCached =>
+      'EVE recently refused this read or reported it missing.';
+
+  @override
+  String get esiRefusedNotDue =>
+      'The current EVE data is not due to be refreshed.';
+
+  @override
+  String get esiRefusedOutage =>
+      'EVE requests are paused while Tranquility is unavailable.';
+
+  @override
+  String get esiRefusedStateUnavailable =>
+      'Kaname could not confirm a safe slot for this EVE request.';
+
+  @override
+  String get esiRefusedCorpBusy =>
+      'Another caller is already checking this corporation data.';
+
+  @override
+  String get esiRefusedScopeCapacity =>
+      'Kaname is tracking too many EVE request limits.';
+
+  @override
+  String get esiRefusedRouteConflict =>
+      'EVE reported conflicting limits for this request.';
+
+  @override
+  String get esiRefusedInvalidContext =>
+      'The current request or account could not be used safely.';
+
+  @override
+  String get esiRefusedStateRecovering =>
+      'One request is already checking this EVE rate limit.';
+
+  @override
+  String esiRetryAfter(String date, String time) {
+    return 'Retry after $date at $time.';
+  }
+
+  @override
+  String get esiRetryNow => 'You can try again now.';
+
+  @override
   String esiSkillsResult(int count, int totalSp) {
     return '$count skills, $totalSp skill points';
   }
