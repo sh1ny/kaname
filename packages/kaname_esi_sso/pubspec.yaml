@@ -1,0 +1,17 @@
+name: kaname_esi_sso
+description: CCP OAuth grant verification and ESI scope policy shared by server and desktop.
+publish_to: none
+version: 0.1.0
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  crypto: ^3.0.7
+  http: ^1.6.0
+  jose: ^0.3.5+2
+  kaname_esi: any
+
+dev_dependencies:
+  test: ^1.26.0

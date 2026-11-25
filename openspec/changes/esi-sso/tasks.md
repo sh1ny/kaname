@@ -12,14 +12,14 @@
 | esi-sso → Connected sign-in verifies the consenting browser | A forwarded authorization link cannot yield a session | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | A forwarded authorization link cannot yield a session | red |
 | esi-sso → Connected sign-in verifies the consenting browser | One client cannot fill the global attempt capacity | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | One client cannot fill the global attempt capacity | red |
 | esi-sso → Accept only validated CCP character identity | Valid identity signs in again | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Valid identity signs in again | red |
-| esi-sso → Accept only validated CCP character identity | Invalid signature, key or claims | `packages/kaname_esi_sso/test/ccp_jwt_test.dart` | Invalid signature, key or claims | red |
-| esi-sso → Accept only validated CCP character identity | CCP rotates its signing key | `packages/kaname_esi_sso/test/ccp_jwt_test.dart` | CCP rotates its signing key | red |
+| esi-sso → Accept only validated CCP character identity | Invalid signature, key or claims | `packages/kaname_esi_sso/test/ccp_jwt_test.dart` | Invalid signature, key or claims | green |
+| esi-sso → Accept only validated CCP character identity | CCP rotates its signing key | `packages/kaname_esi_sso/test/ccp_jwt_test.dart` | CCP rotates its signing key | green |
 | esi-sso → Accept only validated CCP character identity | Known character presents another owner | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Known character presents another owner | red |
 | esi-sso → Accept only validated CCP character identity | Definitive refresh verification rejection | `server/kaname_server/test/integration/esi/vault_refresh_verification_test.dart` | Definitive refresh verification rejection | red |
-| esi-sso → Configured scope policy fails closed | Enabled module and permitted classes | `packages/kaname_esi_sso/test/scope_policy_test.dart` | Enabled module and permitted classes | red |
-| esi-sso → Configured scope policy fails closed | Missing policy or optional opt-in | `packages/kaname_esi_sso/test/scope_policy_test.dart` | Missing policy or optional opt-in | red |
+| esi-sso → Configured scope policy fails closed | Enabled module and permitted classes | `packages/kaname_esi_sso/test/scope_policy_test.dart` | Enabled module and permitted classes | green |
+| esi-sso → Configured scope policy fails closed | Missing policy or optional opt-in | `packages/kaname_esi_sso/test/scope_policy_test.dart` | Missing policy or optional opt-in | green |
 | esi-sso → Configured scope policy fails closed | Unconfigured solo signs in without skills access | `app/test/esi_sso/native_sso_test.dart` | Unconfigured solo signs in without skills access | red |
-| esi-sso → Configured scope policy fails closed | Grant differs from the permitted request | `packages/kaname_esi_sso/test/scope_policy_test.dart` | Grant differs from the permitted request | red |
+| esi-sso → Configured scope policy fails closed | Grant differs from the permitted request | `packages/kaname_esi_sso/test/scope_policy_test.dart` | Grant differs from the permitted request | green |
 | esi-sso → An active holder can read character skills | Scoped read in both modes | `server/kaname_server/test/integration/esi/scoped_skills_test.dart` | Scoped read in both modes | red |
 | esi-sso → An active holder can read character skills | No authority or no scope | `server/kaname_server/test/integration/esi/scoped_skills_test.dart` | No authority or no scope | red |
 | esi-sso → Handoff parks the source before activating the destination | Take a server-held character solo | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | Take a server-held character solo | red |
@@ -111,8 +111,8 @@
 
 ## 2. Shared CCP verification and scope policy
 
-- [ ] 2.1 Add and run failing JWT and scope-policy tests using synthetic signed grants and an injected clock. Verify the failures from the corresponding test-map rows.
-- [ ] 2.2 Implement the shared CCP transport, signature and claim checks, JWKS cache and typed policy. Carry C6. Run the shared package tests and the workspace purity check; update the package configuration and dependency notices.
+- [x] 2.1 Add and run failing JWT and scope-policy tests using synthetic signed grants and an injected clock. Verify the failures from the corresponding test-map rows.
+- [x] 2.2 Implement the shared CCP transport, signature and claim checks, JWKS cache and typed policy. Carry C6. Run the shared package tests and the workspace purity check; update the package configuration and dependency notices.
 
 ## 3. Connected identity and credential handling
 
