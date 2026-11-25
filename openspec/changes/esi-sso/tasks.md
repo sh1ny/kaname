@@ -137,7 +137,8 @@
 - [x] 6.1 Add and run failing stack tests for callback routing, local opt-in, disabled remote HTTP and server-only credential injection. Verify the tests exercise the real Compose/proxy routing and named failures.
 - [x] 6.2 Wire Caddy and the deployment settings, including the scope policy in the server container only; verify the stack tests and strict OpenSpec validation. Publish the local setup guide with both exact redirects and the skills-read steps, using only example values.
 - [x] 6.3 Run the repository's required CI-equivalent checks or verify the same checks run on the PR head. Verify generated Serverpod artefacts, locale output, notices and all enabled platform targets. Before any heavy local run, check the owner's gaming guard.
-- [ ] 6.4 [user] Register the stack at `http://localhost/auth/esi/callback` and native solo at `http://localhost:48175/auth/esi/callback`. Follow the local acceptance guide: sign in on the loopback stack, read skills and see the own call-log entry; take the same character to the native device and read skills through PKCE. Confirm matching identity and that connected mode cannot dispatch while the device holds the character. Enter secrets only on the test machine.
+- [x] 6.4 [user] Register the stack at `http://localhost/auth/esi/callback` and native solo at `http://localhost:48175/auth/esi/callback`. Follow the local acceptance guide: sign in on the loopback stack, read skills and see the own call-log entry; take the same character to the native device and read skills through PKCE. Confirm matching identity and that connected mode cannot dispatch while the device holds the character. Enter secrets only on the test machine.
+  - Owner result on `a3018900de` (Ormy item 67): server sign-in and skills read passed. On desktop, take, solo skills read, server refusal while device-held, and park/return passed.
 
 ## 7. Redis recovery and skills call refusals
 
