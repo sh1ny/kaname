@@ -179,6 +179,11 @@ void main() {
       send: (request, token, _) async {
         expect(request.target.path, '/characters/410/skills');
         expect(token, issued.last);
+        if (rateLimited) {
+          return WireResponse(
+            EsiResponse(status: 429, headers: const {'retry-after': '45'}),
+          );
+        }
         return WireResponse(
           EsiResponse(
             status: 200,

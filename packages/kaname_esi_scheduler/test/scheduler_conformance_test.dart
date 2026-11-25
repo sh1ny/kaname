@@ -224,6 +224,22 @@ void schedulerConformance(SchedulerState Function() create) {
   late SchedulerState state;
   setUp(() => state = create());
 
+  Future<void> learnBudget() async {
+    final first = await state.admit(request(), 0) as Granted;
+    await state.complete(
+      first.id,
+      0,
+      const Observation(
+        status: 200,
+        cost: 0,
+        group: 'group',
+        capacity: 25,
+        windowMs: 900000,
+        remaining: 25,
+      ),
+    );
+  }
+
   test('admits exactly one last reservation', () async {
     final calls = await Future.wait([
       for (var i = 0; i < 8; i++)

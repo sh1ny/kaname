@@ -103,7 +103,8 @@ final class ServerSsoSkills {
 }
 
 /// Reads the generated operation after confirming a refresh-capable bearer.
-Future<(CharactersSkills?, VaultFailureReason?)> readScheduledSkills({
+Future<(EsiResult<CharactersSkills>?, VaultFailureReason?)>
+readScheduledSkills({
   required EsiTokenVault vault,
   required VaultAuthorization authorization,
   required String application,

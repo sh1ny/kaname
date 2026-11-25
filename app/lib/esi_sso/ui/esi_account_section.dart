@@ -239,6 +239,38 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
               AccountNotice.reauthorize => l10n.esiReauthorize,
             }),
           ),
+        if (state case AccountIdle(refusal: final refusal?))
+          Semantics(
+            liveRegion: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(switch (refusal.reason) {
+                  EsiRefusalReason.budget => l10n.esiRefusedBudget,
+                  EsiRefusalReason.stopped => l10n.esiRefusedStopped,
+                  EsiRefusalReason.queueFull => l10n.esiRefusedQueueFull,
+                  EsiRefusalReason.waitExpired => l10n.esiRefusedWaitExpired,
+                  EsiRefusalReason.negativeCached =>
+                    l10n.esiRefusedNegativeCached,
+                  EsiRefusalReason.notDue => l10n.esiRefusedNotDue,
+                  EsiRefusalReason.outage => l10n.esiRefusedOutage,
+                  EsiRefusalReason.stateUnavailable =>
+                    l10n.esiRefusedStateUnavailable,
+                  EsiRefusalReason.corpBusy => l10n.esiRefusedCorpBusy,
+                  EsiRefusalReason.scopeCapacity =>
+                    l10n.esiRefusedScopeCapacity,
+                  EsiRefusalReason.routeConflict =>
+                    l10n.esiRefusedRouteConflict,
+                  EsiRefusalReason.invalidContext =>
+                    l10n.esiRefusedInvalidContext,
+                  EsiRefusalReason.stateRecovering =>
+                    l10n.esiRefusedStateRecovering,
+                }),
+                if (refusal.retryAt case final retry?)
+                  Text(_retryText(context, l10n, retry)),
+              ],
+            ),
+          ),
         if (state case AccountIdle(skills: (:final count, :final totalSp)))
           Semantics(
             liveRegion: true,

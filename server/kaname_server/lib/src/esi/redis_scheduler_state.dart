@@ -92,10 +92,12 @@ final class RedisSchedulerState implements SchedulerState {
 
   @override
   Future<void> complete(int id, int nowMs, Observation observation) async {
-    final result = await _transition('complete', nowMs, <String, Object>{
-      'id': id,
+    final handle = _handles.remove(id);
+    if (handle == null || handle.waiting || handle.expires < nowMs) return;
+    final (result, _) = await _transition('complete', nowMs, <String, Object>{
+      'id': handle.remoteId,
       'observation': _observation(observation),
-    });
+    }, issuedBy: handle.incarnation);
     if (result['kind'] != 'complete') throw const SchedulerStateUnavailable();
   }
 

@@ -2,7 +2,8 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
-import 'package:kaname_esi/kaname_esi.dart' show EsiSuccess, SkillsCalls;
+import 'package:kaname_esi/kaname_esi.dart'
+    show EsiNotSent, EsiSuccess, SkillsCalls;
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart'
     show EsiPrincipal, EsiPriority;
 import 'package:kaname_esi_scheduler/native.dart' show NativeEsiRuntime;
@@ -375,45 +376,49 @@ final class NativeAccount implements DesktopAccount {
   });
 
   @override
-  Future<(AccountNotice, SkillStats?)> skills() =>
-      _one<(AccountNotice, SkillStats?)>(
-        (AccountNotice.unavailable, null),
-        () async {
-          final row = _selected;
-          if (row == null) return (AccountNotice.blocked, null);
-          final auth = await _live(row);
-          if (auth == null) return (AccountNotice.blocked, null);
-          if (await _vault.bearer(auth) case VaultFailure(:final reason)) {
-            return (
-              reason == VaultFailureReason.reLoginRequired
-                  ? AccountNotice.reauthorize
-                  : AccountNotice.unavailable,
-              null,
-            );
-          }
-          final result = await _esi.scheduler
-              .client(
-                EsiPriority.interactive,
-                principal: EsiPrincipal(
-                  application: row.registration,
-                  character: row.characterId,
-                  generation: auth.generation.toString(),
-                  bearer: () async => switch (await _vault.readBearer(auth)) {
-                    VaultSuccess(:final value) => value.token,
-                    _ => null,
-                  },
-                ),
-              )
-              .getCharactersCharacterIdSkills(characterId: row.characterId);
-          return switch (result) {
-            EsiSuccess(:final body) => (
-              AccountNotice.none,
-              (count: body.skills.length, totalSp: body.totalSp),
-            ),
-            _ => (AccountNotice.unavailable, null),
-          };
-        },
-      );
+  Future<SkillsRead> skills() =>
+      _one<SkillsRead>((AccountNotice.unavailable, null, null), () async {
+        final row = _selected;
+        if (row == null) return (AccountNotice.blocked, null, null);
+        final auth = await _live(row);
+        if (auth == null) return (AccountNotice.blocked, null, null);
+        if (await _vault.bearer(auth) case VaultFailure(:final reason)) {
+          return (
+            reason == VaultFailureReason.reLoginRequired
+                ? AccountNotice.reauthorize
+                : AccountNotice.unavailable,
+            null,
+            null,
+          );
+        }
+        final result = await _esi.scheduler
+            .client(
+              EsiPriority.interactive,
+              principal: EsiPrincipal(
+                application: row.registration,
+                character: row.characterId,
+                generation: auth.generation.toString(),
+                bearer: () async => switch (await _vault.readBearer(auth)) {
+                  VaultSuccess(:final value) => value.token,
+                  _ => null,
+                },
+              ),
+            )
+            .getCharactersCharacterIdSkills(characterId: row.characterId);
+        return switch (result) {
+          EsiSuccess(:final body) => (
+            AccountNotice.none,
+            (count: body.skills.length, totalSp: body.totalSp),
+            null,
+          ),
+          EsiNotSent(:final refusal) => (
+            AccountNotice.none,
+            null,
+            (reason: refusal.reason, retryAt: refusal.retryAt),
+          ),
+          _ => (AccountNotice.unavailable, null, null),
+        };
+      });
 
   Future<VaultAuthorization?> _live(DeviceCharacter row) async {
     if (row.phase != DevicePhase.solo ||

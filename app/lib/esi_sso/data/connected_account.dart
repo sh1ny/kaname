@@ -70,6 +70,30 @@ final class ConnectedSession implements HolderRemote {
     )) {
       return (AccountNotice.none, (count: count, totalSp: sp), null);
     }
+    if ((result.code, result.body) case (
+      503,
+      final Map<String, Object?> fields,
+    )) {
+      if (fields case {'status': 'refused', 'reason': final String code}) {
+        final reason = EsiRefusalReason.values.asNameMap()[code];
+        if (reason != null) {
+          final deadline = fields['retryAt'];
+          return (
+            AccountNotice.none,
+            null,
+            (
+              reason: reason,
+              retryAt:
+                  deadline is int &&
+                      deadline >= 0 &&
+                      deadline <= 8640000000000000
+                  ? DateTime.fromMillisecondsSinceEpoch(deadline, isUtc: true)
+                  : null,
+            ),
+          );
+        }
+      }
+    }
     return (
       result.code == 200 ? AccountNotice.unavailable : _notice(result),
       null,
