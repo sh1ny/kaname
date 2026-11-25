@@ -86,6 +86,43 @@ void main() {
     );
   });
 
+  test(
+    'A newer vault generation leaves server reauthorization possible',
+    () async {
+      final original = await holdOnServer();
+      // Vault commit succeeded, but the server stopped before updating the assignment.
+      final renewed = await vault.activate(
+        character: _character,
+        holder: ServerSsoGrants.holder,
+        expectedGeneration: original.generation,
+        refreshToken: 'fresh-synthetic-grant',
+      ) as VaultSuccess<VaultAuthorization>;
+      expect(
+        await handoff.take(session, pilot, _one),
+        SsoHandoffStatus.blocked,
+      );
+      final stale = (await assigned())!;
+      expect(
+        (
+          stale.phase,
+          stale.generation,
+          stale.vaultGeneration,
+          stale.proofDigest,
+        ),
+        ('serverHeld', 1, original.generation, null),
+      );
+      // A fresh server authorization can replace the stale generation.
+      await SsoHolderRow.db.updateRow(
+        session,
+        stale.copyWith(vaultGeneration: renewed.value.generation),
+      );
+      expect(
+        await handoff.take(session, pilot, _one),
+        isA<SsoDeviceReservation>(),
+      );
+    },
+  );
+
   test('Return a device-held character to the server', () async {
     await holdOnServer();
     final reservation =

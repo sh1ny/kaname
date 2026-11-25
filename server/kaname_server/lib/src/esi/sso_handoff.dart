@@ -62,6 +62,7 @@ final class SsoHandoff {
       var row = await ServerSsoGrants.assignment(session, character);
       if (row == null) return SsoHandoffStatus.blocked;
       final digest = ssoDigest(proof);
+      ({VaultAuthorization authorization, VaultStatus status})? current;
       switch (row.phase) {
         case 'deviceReserved':
           return _matches(row, digest)
@@ -69,6 +70,14 @@ final class SsoHandoff {
               : SsoHandoffStatus.blocked;
         case 'serverHeld':
           if (row.generation >= _maxGeneration || row.vaultGeneration == null) {
+            return SsoHandoffStatus.blocked;
+          }
+          current = await _inspectHolder(character);
+          if (current == null) return SsoHandoffStatus.pending;
+          // Leave serverHeld intact so confidential reauthorization can
+          // repair an interrupted vault/assignment write.
+          if (current.authorization.holder != ServerSsoGrants.holder ||
+              current.authorization.generation != row.vaultGeneration) {
             return SsoHandoffStatus.blocked;
           }
           if (!await _cas(
@@ -91,15 +100,8 @@ final class SsoHandoff {
           return SsoHandoffStatus.blocked;
       }
       if (_gate.isBusy(character)) return SsoHandoffStatus.pending;
-      final status = await _vault.inspect(character);
-      if (status
-              is! VaultSuccess<
-                ({VaultAuthorization authorization, VaultStatus status})?
-              > ||
-          status.value == null) {
-        return SsoHandoffStatus.pending;
-      }
-      final current = status.value!;
+      current ??= await _inspectHolder(character);
+      if (current == null) return SsoHandoffStatus.pending;
       final observedGeneration = row.vaultGeneration!;
       if (current.authorization.holder != ServerSsoGrants.holder ||
           current.authorization.generation !=
@@ -129,6 +131,13 @@ final class SsoHandoff {
       _changing.remove(character);
     }
   }
+
+  Future<({VaultAuthorization authorization, VaultStatus status})?>
+  _inspectHolder(int character) async =>
+      switch (await _vault.inspect(character)) {
+        VaultSuccess(:final value) => value,
+        VaultFailure() => null,
+      };
 
   /// Returns only the exact generation and proof previously reserved.
   Future<SsoHandoffStatus> release(
