@@ -1,14 +1,19 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:jose/jose.dart';
 import 'package:kaname_app/esi_sso/data/account_types.dart';
+import 'package:kaname_app/esi_sso/data/connected_account.dart';
 import 'package:kaname_app/esi_sso/data/device_store.dart';
 import 'package:kaname_app/esi_sso/data/native_account.dart';
 import 'package:kaname_app/esi_sso/data/native_pkce.dart';
+import 'package:kaname_app/esi_sso/logic/account.dart';
+import 'package:kaname_app/server/data/server_address.dart';
+import 'package:kaname_app/server/logic/server_status.dart';
 import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
 import 'package:kaname_esi_vault/kaname_esi_vault.dart';
@@ -242,6 +247,251 @@ void main() {
     keyring.values.clear();
     await expectLater(DeviceStore.open(directory, keyring), throwsStateError);
   });
+
+  test('A definitive refusal restores the desktop state', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer();
+    final session = await server.signIn();
+    final originalDigest = await device.store.newProof(123);
+    final original = _character(
+      123,
+      phase: DevicePhase.returned,
+      origin: server.origin.origin,
+      proofDigest: originalDigest,
+    );
+    device.store.save(original);
+    device.store.setSetting('selected-character', '123');
+    final originalProof = await device.store.proof(original);
+    expect(originalProof != null, isTrue);
+    server.reply = _refusedTake;
+
+    expect(await device.account.take(session), AccountNotice.blocked);
+    await device.reopen();
+
+    expect(device.account.pilot?.holder, DevicePhase.returned.name);
+    expect(device.store.character(123) == original, isTrue);
+    expect((await device.store.proof(original)) == originalProof, isTrue);
+    expect(device.secrets.values.length, 2);
+    expect(await device.account.returnTo(session), AccountNotice.blocked);
+    expect(server.takes, 1);
+  });
+
+  test('A definitive refusal removes only the temporary character', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer();
+    final session = await server.signIn();
+    final selected = _character(456);
+    device.store.save(selected);
+    device.store.setSetting('selected-character', '456');
+    server.reply = _refusedTake;
+
+    expect(await device.account.take(session), AccountNotice.blocked);
+
+    expect(device.account.pilot?.characterId, '456');
+    expect(device.store.character(456) == selected, isTrue);
+    expect(device.store.character(123) == null, isTrue);
+    expect(await device.account.returnTo(session), AccountNotice.blocked);
+    expect(server.takes, 1);
+  });
+
+  test('A refused take leaves the connected holder gate in place', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer()..reply = _refusedTake;
+    final selected = _character(123);
+    device.store.save(selected);
+    device.store.setSetting('selected-character', '123');
+    final container = ProviderContainer(
+      overrides: [
+        serverTargetProvider.overrideWithValue(ConfiguredServer(server.origin)),
+        desktopAccountProvider.overrideWith((_) => device.account),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await http.runWithClient(() async {
+      await container.read(desktopAccountProvider.future);
+      final account = container.read(accountProvider.notifier);
+      await account.start();
+      await account.complete();
+      expect(
+        container.read(accountProvider).connected?.pilot.holder,
+        'serverHeld',
+      );
+
+      await account.takeDesktop();
+      expect(device.account.pilot?.holder, DevicePhase.identified.name);
+      await account.authorizeDesktop();
+
+      expect(
+        (container.read(accountProvider) as AccountIdle).notice,
+        AccountNotice.blocked,
+      );
+      expect(device.nativeRequests, 0);
+    }, () => server.client);
+  });
+
+  for (final (label, firstReply, notice)
+      in <(String, http.Response Function(), AccountNotice)>[
+        (
+          'lost response',
+          () => throw http.ClientException('offline fixture'),
+          AccountNotice.unavailable,
+        ),
+        (
+          'unreadable success',
+          () => http.Response('not JSON', 200),
+          AccountNotice.unavailable,
+        ),
+        (
+          '403 without confirmation',
+          () => http.Response('{"status":"gatewayDenied"}', 403),
+          AccountNotice.blocked,
+        ),
+      ]) {
+    test('An uncertain take keeps the original proof: $label', () async {
+      final device = await _TakeDevice.open();
+      final server = _TakeServer()..reply = firstReply;
+      final session = await server.signIn();
+      device.store.save(_character(123));
+      device.store.setSetting('selected-character', '123');
+
+      expect(await device.account.take(session), notice);
+      expect(device.account.pilot?.holder, DevicePhase.taking.name);
+      await device.reopen();
+
+      server.reply = _refusedTake;
+      expect(await device.account.returnTo(session), AccountNotice.blocked);
+      expect(device.account.pilot?.holder, DevicePhase.taking.name);
+      expect(await device.account.identify(), AccountNotice.blocked);
+      expect(await device.account.authorizeSkills(), AccountNotice.blocked);
+      expect(device.nativeRequests, 0);
+
+      server.reply = () => http.Response(
+        jsonEncode({'generation': '1', 'ownerFingerprint': 'a' * 64}),
+        200,
+      );
+      expect(await device.account.take(session), AccountNotice.none);
+      expect(device.account.ownsReservationFor(session.origin, '123'), isTrue);
+      expect(server.takes, 3);
+      expect(server.sameProof, isTrue);
+    });
+  }
+}
+
+http.Response _refusedTake() =>
+    http.Response('{"status":"notAuthorized"}', 403);
+
+DeviceCharacter _character(
+  int id, {
+  DevicePhase phase = DevicePhase.identified,
+  String? origin,
+  String? proofDigest,
+}) => (
+  characterId: id,
+  owner: 'fixture-owner',
+  name: 'Local Pilot',
+  registration: _clientId,
+  optInRevision: 1,
+  grantRevision: null,
+  phase: phase,
+  serverOrigin: origin,
+  assignment: null,
+  proofDigest: proofDigest,
+  vaultGeneration: null,
+  ownerFingerprint: null,
+);
+
+final class _TakeServer {
+  _TakeServer() {
+    client = MockClient(_respond);
+    addTearDown(client.close);
+  }
+
+  final origin = Uri.parse('https://fixture.test');
+  late final http.Client client;
+  late http.Response Function() reply;
+  String? _proof;
+  var sameProof = true;
+  var takes = 0;
+
+  Future<ConnectedSession> signIn() async {
+    final api = ConnectedAccount(origin, client, native: true);
+    final (_, attempt) = await api.start();
+    final (_, session) = await api.complete(attempt!);
+    return session!;
+  }
+
+  Future<http.Response> _respond(http.Request request) async {
+    const pilot = {
+      'characterId': '123',
+      'characterName': 'Server Pilot',
+      'memberId': 'fixture-member',
+      'admin': false,
+      'holder': 'serverHeld',
+    };
+    switch (request.url.pathSegments.last) {
+      case 'begin':
+        return http.Response(
+          jsonEncode({
+            'attemptId': 'a' * 43,
+            'authorizationUrl': '$_ccp/authorize',
+          }),
+          200,
+        );
+      case 'complete':
+        return http.Response(jsonEncode({...pilot, 'session': 'b' * 43}), 200);
+      case 'viewer':
+        return http.Response(jsonEncode(pilot), 200);
+      case 'take':
+        final body = jsonDecode(request.body) as Map<String, Object?>;
+        final proof = body['proof'] as String;
+        _proof ??= proof;
+        sameProof = sameProof && _proof == proof;
+        takes++;
+        return reply();
+      default:
+        fail('unexpected connected request');
+    }
+  }
+}
+
+final class _TakeDevice {
+  _TakeDevice(this._directory);
+
+  final Directory _directory;
+  final secrets = _MemoryKeyring();
+  late DeviceStore store;
+  late NativeAccount account;
+  var nativeRequests = 0;
+
+  static Future<_TakeDevice> open() async {
+    final directory = await Directory.systemTemp.createTemp('kaname-take-');
+    addTearDown(() => directory.delete(recursive: true));
+    final device = _TakeDevice(directory);
+    await device._open();
+    addTearDown(() => device.account.close());
+    expect(device.account.configure(_clientId), AccountNotice.none);
+    return device;
+  }
+
+  Future<void> reopen() async {
+    await account.close();
+    await _open();
+  }
+
+  Future<void> _open() async {
+    store = await DeviceStore.open(_directory, secrets);
+    account = NativeAccount(
+      store: store,
+      httpClient: MockClient((_) async {
+        nativeRequests++;
+        fail('native authorization must not start');
+      }),
+      launch: (_) => fail('native browser must not open'),
+      testPort: 0,
+      now: () => _now,
+    );
+  }
 }
 
 final class _MemoryKeyring implements DeviceSecrets {
@@ -252,6 +502,9 @@ final class _MemoryKeyring implements DeviceSecrets {
 
   @override
   Future<void> write(String name, String secret) async => values[name] = secret;
+
+  @override
+  Future<void> delete(String name) async => values.remove(name);
 }
 
 final class _JoiningServer implements HolderRemote {
@@ -278,6 +531,6 @@ final class _JoiningServer implements HolderRemote {
       fail('standalone cannot release a reservation');
 
   @override
-  Future<(AccountNotice, DeviceReservation?)> take(String proof) async =>
+  Future<DeviceTakeResult> take(String proof) async =>
       fail('standalone join does not take a reservation');
 }
