@@ -46,6 +46,12 @@ final class SsoHandoff {
   static final _proof = RegExp(r'^[A-Za-z0-9_-]{43}$');
 
   /// Requests or resumes transfer to the exact device holding [proof].
+  ///
+  /// A fresh caller can discard its proof on `blocked`. Do not return it
+  /// after writing an assignment for this proof. A park or commit that may
+  /// have happened needs `pending` or a reservation; an exception maps to
+  /// 503 at the HTTP route, not 403. A different proof cannot claim an
+  /// existing assignment.
   Future<SsoHandoffResult> take(
     Session session,
     SsoIdentityRow viewer,

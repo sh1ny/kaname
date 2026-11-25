@@ -233,6 +233,39 @@ void main() {
     );
   });
 
+  test(
+    'A recorded take stays pending if its source generation changed',
+    () async {
+      final original = await holdOnServer();
+      final source = (await assigned())!;
+      // Reconstruct the durable state after the take wrote its proof but before
+      // parking completed. Then simulate a vault generation that no longer matches.
+      await SsoHolderRow.db.updateRow(
+        session,
+        source.copyWith(
+          phase: 'toDevice',
+          generation: source.generation + 1,
+          proofDigest: ssoDigest(_one),
+        ),
+      );
+      final newer = await vault.activate(
+        character: _character,
+        holder: ServerSsoGrants.holder,
+        expectedGeneration: original.generation,
+        refreshToken: 'fresh-synthetic-grant',
+      );
+      expect(newer, isA<VaultSuccess<VaultAuthorization>>());
+
+      expect(
+        await handoff.take(session, pilot, _one),
+        SsoHandoffStatus.pending,
+      );
+      final pending = (await assigned())!;
+      expect(pending.phase, 'toDevice');
+      expect(pending.proofDigest == ssoDigest(_one), isTrue);
+    },
+  );
+
   test('Original device cannot prove it parked', () async {
     await holdOnServer();
     final reservation =

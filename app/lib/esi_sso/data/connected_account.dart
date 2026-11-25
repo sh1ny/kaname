@@ -102,26 +102,29 @@ final class ConnectedSession implements HolderRemote {
   }
 
   @override
-  Future<(AccountNotice, DeviceReservation?)> take(String proof) async {
+  Future<DeviceTakeResult> take(String proof) async {
     final reply = await _api._request('take', {
       'proof': proof,
     }, bearer: _bearer);
-    if ((reply.code, reply.body) case (
-      200,
-      {
-        'generation': final String generation,
-        'ownerFingerprint': final String fingerprint,
-      },
-    )) {
-      return (
-        AccountNotice.none,
-        (generation: generation, ownerFingerprint: fingerprint),
-      );
-    }
-    return (
-      reply.code == 200 ? AccountNotice.unavailable : _notice(reply),
-      null,
-    );
+    return switch ((reply.code, reply.body)) {
+      (
+        200,
+        {
+          'generation': final String generation,
+          'ownerFingerprint': final String fingerprint,
+        },
+      ) =>
+        DeviceReservation(
+          generation: generation,
+          ownerFingerprint: fingerprint,
+        ),
+      (403, final Map<String, Object?> body)
+          when body.length == 1 && body['status'] == 'notAuthorized' =>
+        const DeviceTakeRefused(),
+      _ => DeviceTakeIncomplete(
+        reply.code == 200 ? AccountNotice.unavailable : _notice(reply),
+      ),
+    };
   }
 
   @override

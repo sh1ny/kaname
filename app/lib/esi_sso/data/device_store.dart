@@ -15,6 +15,9 @@ abstract interface class DeviceSecrets {
 
   /// Saves a new secret. Callers require read-back before relying on it.
   Future<void> write(String name, String secret);
+
+  /// Removes a secret after the journal no longer references it.
+  Future<void> delete(String name);
 }
 
 /// Durable phase of a desktop authorization or transition (ADR 0017).
@@ -69,6 +72,9 @@ final class DeviceStore implements VaultStore {
     this._secrets,
     this.installKey,
   );
+
+  /// The setting that names the selected native character.
+  static const selectedCharacterSetting = 'selected-character';
 
   static final _opened = <String>{};
   static final _random = Random.secure();
@@ -225,11 +231,49 @@ INSERT INTO character VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(character) DO 
     ],
   );
 
+  /// Restores the state saved before a fresh take that the server refused.
+  ///
+  /// The caller must not use this on a resumed journal. Commit the row and
+  /// selection together before touching the keyring, so an interrupted
+  /// rollback cannot destroy the proof of a still-pending journal.
+  Future<void> restoreRefusedTake(
+    int character,
+    String digest, {
+    required DeviceCharacter? previous,
+    required String? selection,
+  }) async {
+    _db.execute('BEGIN IMMEDIATE');
+    try {
+      if (previous == null) {
+        _db.execute('DELETE FROM character WHERE character=?', [character]);
+      } else {
+        save(previous);
+      }
+      if (selection == null) {
+        _db.execute('DELETE FROM setting WHERE name=?', [
+          selectedCharacterSetting,
+        ]);
+      } else {
+        setSetting(selectedCharacterSetting, selection);
+      }
+      _db.execute('COMMIT');
+    } on Object {
+      _db.execute('ROLLBACK');
+      rethrow;
+    }
+
+    try {
+      await _secrets.delete(_proofKey(character, digest));
+    } on Object {
+      // The rollback committed. A keyring failure can only leave an unused proof.
+    }
+  }
+
   /// Stores a new random transition proof in the keyring and returns its digest.
   Future<String> newProof(int character) async {
     final proof = newOAuthProof();
     final digest = sha256.convert(utf8.encode(proof)).toString();
-    final key = 'kaname/esi-proof/$character/$digest';
+    final key = _proofKey(character, digest);
     await _secrets.write(key, proof);
     if (await _secrets.read(key) != proof) {
       throw StateError('Cannot verify device proof');
@@ -241,14 +285,15 @@ INSERT INTO character VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(character) DO 
   Future<String?> proof(DeviceCharacter row) async {
     final expected = row.proofDigest;
     if (expected == null) return null;
-    final value = await _secrets.read(
-      'kaname/esi-proof/${row.characterId}/$expected',
-    );
+    final value = await _secrets.read(_proofKey(row.characterId, expected));
     return value != null &&
             sha256.convert(utf8.encode(value)).toString() == expected
         ? value
         : null;
   }
+
+  static String _proofKey(int character, String digest) =>
+      'kaname/esi-proof/$character/$digest';
 
   @override
   Future<VaultRecord?> read(int character) async => _read(character);

@@ -83,8 +83,40 @@ enum AccountNotice {
   signedOut,
 }
 
-/// Server handoff reports confirmed source park, not a CCP credential.
-typedef DeviceReservation = ({String generation, String ownerFingerprint});
+/// The server's answer to a desktop take request.
+sealed class DeviceTakeResult {
+  const DeviceTakeResult();
+}
+
+/// A confirmed source park, with no CCP credential.
+final class DeviceReservation extends DeviceTakeResult {
+  /// Identifies the reserved assignment and its owner.
+  const DeviceReservation({
+    required this.generation,
+    required this.ownerFingerprint,
+  });
+
+  /// The assignment generation the original device must return.
+  final String generation;
+
+  /// The digest of the character ID and verified owner claim.
+  final String ownerFingerprint;
+}
+
+/// The server refused this request without reserving a holder for it.
+final class DeviceTakeRefused extends DeviceTakeResult {
+  /// Creates a confirmed refusal.
+  const DeviceTakeRefused();
+}
+
+/// The reply proves neither a reservation nor a definitive refusal.
+final class DeviceTakeIncomplete extends DeviceTakeResult {
+  /// Wraps the fixed notice for the incomplete request.
+  const DeviceTakeIncomplete(this.notice);
+
+  /// The notice to show without discarding the pending intent.
+  final AccountNotice notice;
+}
 
 /// The parts of a connected session needed by the original desktop device.
 abstract interface class HolderRemote {
@@ -95,7 +127,10 @@ abstract interface class HolderRemote {
   AccountPilot get pilot;
 
   /// Requests or resumes parking on the server.
-  Future<(AccountNotice, DeviceReservation?)> take(String proof);
+  ///
+  /// A refusal applies only to this request. A retry can be refused after an
+  /// earlier request committed, so it must not discard the existing journal.
+  Future<DeviceTakeResult> take(String proof);
 
   /// Returns a parked reservation to the server.
   Future<AccountNotice> release(String proof, String generation);

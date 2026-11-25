@@ -48,4 +48,7 @@ final class _Keyring implements DeviceSecrets {
   @override
   Future<void> write(String name, String secret) =>
       _storage.write(key: name, value: secret);
+
+  @override
+  Future<void> delete(String name) => _storage.delete(key: name);
 }

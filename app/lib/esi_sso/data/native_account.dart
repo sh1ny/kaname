@@ -67,7 +67,7 @@ final class NativeAccount implements DesktopAccount {
 
   DeviceCharacter? get _selected {
     final id = int.tryParse(
-      _store.setting('selected-character') ?? '',
+      _store.setting(DeviceStore.selectedCharacterSetting) ?? '',
       radix: 10,
     );
     return id == null ? null : _store.character(id);
@@ -269,6 +269,7 @@ final class NativeAccount implements DesktopAccount {
       return AccountNotice.unavailable;
     }
     var row = _store.character(id);
+    ({DeviceCharacter? row, String? selection, String digest})? rollback;
     if (row?.phase == DevicePhase.deviceReserved ||
         row?.phase == DevicePhase.solo) {
       if (row!.serverOrigin != remote.origin) return AccountNotice.blocked;
@@ -278,8 +279,10 @@ final class NativeAccount implements DesktopAccount {
     if (row == null ||
         row.phase == DevicePhase.returned ||
         row.phase == DevicePhase.identified && row.serverOrigin == null) {
+      final selection = _store.setting(DeviceStore.selectedCharacterSetting);
       // Commit a source-bound intent while the new proof is still local.
       final digest = await _store.newProof(id);
+      rollback = (row: row, selection: selection, digest: digest);
       row = _change(
         _newRow(id, '', remote.pilot.name, registration),
         phase: DevicePhase.taking,
@@ -295,23 +298,36 @@ final class NativeAccount implements DesktopAccount {
     }
     final proof = await _store.proof(row);
     if (proof == null) return AccountNotice.blocked;
-    final (notice, reservation) = await remote.take(proof);
-    if (reservation == null) return notice;
-    final generation = int.tryParse(reservation.generation, radix: 10);
-    if (generation == null ||
-        generation <= 0 ||
-        !_hash.hasMatch(reservation.ownerFingerprint)) {
-      return AccountNotice.unavailable;
+    switch (await remote.take(proof)) {
+      case DeviceTakeRefused():
+        if (rollback case final previous?) {
+          await _store.restoreRefusedTake(
+            id,
+            previous.digest,
+            previous: previous.row,
+            selection: previous.selection,
+          );
+        }
+        return AccountNotice.blocked;
+      case DeviceTakeIncomplete(:final notice):
+        return notice;
+      case DeviceReservation(:final generation, :final ownerFingerprint):
+        final assignment = int.tryParse(generation, radix: 10);
+        if (assignment == null ||
+            assignment <= 0 ||
+            !_hash.hasMatch(ownerFingerprint)) {
+          return AccountNotice.unavailable;
+        }
+        _select(
+          _change(
+            row,
+            phase: DevicePhase.deviceReserved,
+            assignment: assignment,
+            ownerFingerprint: ownerFingerprint,
+          ),
+        );
+        return AccountNotice.none;
     }
-    _select(
-      _change(
-        row,
-        phase: DevicePhase.deviceReserved,
-        assignment: generation,
-        ownerFingerprint: reservation.ownerFingerprint,
-      ),
-    );
-    return AccountNotice.none;
   }
 
   @override
@@ -503,7 +519,10 @@ final class NativeAccount implements DesktopAccount {
 
   void _select(DeviceCharacter row) {
     _store.save(row);
-    _store.setSetting('selected-character', row.characterId.toString());
+    _store.setSetting(
+      DeviceStore.selectedCharacterSetting,
+      row.characterId.toString(),
+    );
   }
 
   Future<AccountNotice> _act(Future<AccountNotice> Function() action) =>
