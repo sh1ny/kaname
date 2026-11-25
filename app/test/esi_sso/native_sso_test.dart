@@ -18,6 +18,7 @@ import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
 import 'package:kaname_esi_vault/kaname_esi_vault.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart';
 
 const _ccp = 'https://login.eveonline.com';
 const _clientId = 'fixture-native';
@@ -294,6 +295,43 @@ void main() {
     expect(server.takes, 1);
   });
 
+  test('Failed selection restore keeps the pending proof', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer()..reply = _refusedTake;
+    final session = await server.signIn();
+    device.store.save(_character(456));
+    device.store.setSetting('selected-character', '456');
+    device.failSelectionRestore();
+
+    expect(await device.account.take(session), AccountNotice.unavailable);
+    await device.reopen();
+
+    expect(device.account.pilot?.characterId, '123');
+    expect(device.account.pilot?.holder, DevicePhase.taking.name);
+    final pending = device.store.character(123)!;
+    expect(await device.store.proof(pending) != null, isTrue);
+    expect(await device.account.returnTo(session), AccountNotice.blocked);
+    expect(server.takes, 2);
+    expect(server.sameProof, isTrue);
+  });
+
+  test('Failed proof cleanup does not undo the restored selection', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer()..reply = _refusedTake;
+    final session = await server.signIn();
+    device.store.save(_character(456));
+    device.store.setSetting('selected-character', '456');
+    device.secrets.failDelete = true;
+
+    expect(await device.account.take(session), AccountNotice.blocked);
+    await device.reopen();
+
+    expect(device.account.pilot?.characterId, '456');
+    expect(device.store.character(123) == null, isTrue);
+    expect(await device.account.returnTo(session), AccountNotice.blocked);
+    expect(server.takes, 1);
+  });
+
   test('A refused take leaves the connected holder gate in place', () async {
     final device = await _TakeDevice.open();
     final server = _TakeServer()..reply = _refusedTake;
@@ -479,6 +517,21 @@ final class _TakeDevice {
     await _open();
   }
 
+  void failSelectionRestore() {
+    final db = sqlite3.open(p.join(_directory.path, 'esi-credentials.sqlite'));
+    try {
+      db.execute('''
+CREATE TRIGGER reject_selection_restore BEFORE UPDATE ON setting
+WHEN OLD.name = 'selected-character' AND OLD.value = '123' AND NEW.value = '456'
+BEGIN
+  SELECT RAISE(ABORT, 'synthetic selection write failure');
+END
+''');
+    } finally {
+      db.close();
+    }
+  }
+
   Future<void> _open() async {
     store = await DeviceStore.open(_directory, secrets);
     account = NativeAccount(
@@ -496,6 +549,7 @@ final class _TakeDevice {
 
 final class _MemoryKeyring implements DeviceSecrets {
   final values = <String, String>{};
+  var failDelete = false;
 
   @override
   Future<String?> read(String name) async => values[name];
@@ -504,7 +558,10 @@ final class _MemoryKeyring implements DeviceSecrets {
   Future<void> write(String name, String secret) async => values[name] = secret;
 
   @override
-  Future<void> delete(String name) async => values.remove(name);
+  Future<void> delete(String name) async {
+    if (failDelete) throw StateError('synthetic keyring delete failure');
+    values.remove(name);
+  }
 }
 
 final class _JoiningServer implements HolderRemote {
