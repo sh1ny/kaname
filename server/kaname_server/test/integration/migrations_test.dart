@@ -17,7 +17,6 @@ const _slow = Timeout(Duration(minutes: 3));
 const _unknownVersion = '20991231235959999';
 
 const _previousStaticDataMigration = '20261120083015689-sde-bundle';
-
 // The static-data upgrade cases apply this specific data migration, not
 // whichever unrelated schema migration was added most recently.
 const _staticDataSettingsMigration = '20261123085740775-static-data-settings';

@@ -1,0 +1,318 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:kaname_esi/kaname_esi.dart';
+import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
+import 'package:kaname_server/src/esi/esi_call_log_store.dart';
+import 'package:serverpod/serverpod.dart';
+import 'package:test/test.dart';
+
+import 'test_tools/serverpod_test_tools.dart';
+
+const assets = 'GetCharactersCharacterIdAssets';
+const other = 'GetCharactersCharacterIdBlueprints';
+const probe = 'GetStatus';
+final day = DateTime.utc(2000, 11, 25);
+const member = EsiCallLogViewer(member: 1, characters: {10});
+const admin = EsiCallLogViewer(member: 1, characters: {10}, admin: true);
+
+Future<void> seed(
+  Session session,
+  DateTime at, {
+  String route = assets,
+  int? owner = 1,
+  int? character = 10,
+  String outcome = 'success',
+  Transaction? transaction,
+}) async {
+  await session.db.unsafeExecute(
+    '''
+    INSERT INTO esi_call_log_entry
+      ("recordedAt", operation, outcome, "latencyMicros", "memberId", "characterId")
+    VALUES (@at::timestamp, @route::text, @outcome::text, 0,
+            @owner::bigint, @character::bigint)
+  ''',
+    parameters: QueryParameters.named({
+      'at': at,
+      'route': route,
+      'outcome': outcome,
+      'owner': owner,
+      'character': character,
+    }),
+    transaction: transaction,
+  );
+}
+
+void main() {
+  withServerpod('ESI call log', rollbackDatabase: RollbackDatabase.disabled, (
+    builder,
+    _,
+  ) {
+    late Session session;
+    late EsiCallLogStore store;
+    late DateTime now;
+    final recent = day.subtract(const Duration(hours: 1));
+
+    setUp(() async {
+      session = builder.build();
+      addTearDown(session.close);
+      await session.db.unsafeExecute('DELETE FROM esi_call_log_entry');
+      now = day.add(const Duration(minutes: 2));
+      store = EsiCallLogStore(now: () => now);
+    });
+
+    test('no supplied secret reaches any stored column', () async {
+      const secret = 'synthetic_do_not_store';
+      final scheduler = EsiScheduler(
+        state: MemorySchedulerState(),
+        key: const [1],
+        callLog: (row) => store.append(session, row),
+        now: () => DateTime.utc(2090),
+        onCallLogFailure: () => fail('append rejected'),
+        send: (request, bearer, _) async {
+          expect(bearer, '${secret}_bearer');
+          if (request.target.query.endsWith('throw')) {
+            throw StateError('${secret}_exception');
+          }
+          return WireResponse(
+            EsiResponse(
+              status: 200,
+              headers: {
+                'x-ratelimit-group': '${secret}_group',
+                'x-ratelimit-limit': '1800/15m',
+                'x-ratelimit-used': '1',
+                'x-ratelimit-remaining': '1799',
+                'etag': '${secret}_etag',
+              },
+              body: utf8.encode('"${secret}_response"'),
+            ),
+          );
+        },
+      );
+      final client = scheduler.client(
+        EsiPriority.interactive,
+        principal: EsiPrincipal(
+          application: '${secret}_application',
+          character: 10,
+          member: 1,
+          generation: '${secret}_generation',
+          bearer: () => '${secret}_bearer',
+        ),
+      );
+      for (final suffix in ['ok', 'throw']) {
+        await EsiCall.run(
+          client.transport,
+          EsiRequest(
+            method: EsiMethod.get,
+            operationId: assets,
+            target: Uri.parse('/characters/10/assets?q=${secret}_$suffix'),
+            headers: {'If-None-Match': '${secret}_request_header'},
+            body: utf8.encode('${secret}_request_body'),
+          ),
+          decode: (value) => value as String,
+        );
+      }
+      await scheduler.drainCallLog();
+      final rows = await session.db.unsafeQuery(
+        'SELECT to_jsonb(e)::text FROM esi_call_log_entry e ORDER BY id',
+      );
+      expect(rows, hasLength(2));
+      for (final row in rows) {
+        final Map<String, Object?> values =
+            (jsonDecode(row.single! as String) as Map<String, Object?>);
+        expect(
+          values.keys,
+          unorderedEquals([
+            'id',
+            'recordedAt',
+            'operation',
+            'outcome',
+            'status',
+            'cost',
+            'latencyMicros',
+            'bucket',
+            'memberId',
+            'characterId',
+          ]),
+        );
+        expect(row.single, isNot(contains(secret)));
+        expect(values['operation'], assets);
+        expect(values['bucket'], 'char-asset');
+      }
+    });
+
+    test('exact cutoff filters and deletes only expired rows', () async {
+      final cutoff = now.subtract(const Duration(days: 7));
+      await seed(session, cutoff);
+      await seed(session, cutoff.add(const Duration(microseconds: 1)));
+      expect(
+        (await store.ownRows(session, member)).single.recordedAt,
+        cutoff.add(const Duration(microseconds: 1)),
+      );
+      expect(await store.prune(session), 1);
+      expect(
+        (await session.db.unsafeQuery('SELECT id FROM esi_call_log_entry')),
+        hasLength(1),
+      );
+    });
+
+    test('next sweep catches up using its current clock', () async {
+      await seed(session, recent);
+      expect(await store.prune(session), 0);
+      now = now.add(const Duration(days: 8));
+      expect(await store.prune(session), 1);
+    });
+
+    test('admins and members see only their own rows', () async {
+      await seed(session, recent);
+      await seed(session, recent, owner: 2);
+      await seed(session, recent, character: 11);
+      await seed(session, recent, owner: null);
+      for (final viewer in [admin, member]) {
+        expect((await store.ownRows(session, viewer)).single.character, 10);
+      }
+    });
+
+    test('missing viewer and member aggregate access denied', () async {
+      await expectLater(
+        store.ownRows(session, null),
+        throwsA(isA<EsiCallLogDenied>()),
+      );
+      await expectLater(
+        store.routeCounts(session, member),
+        throwsA(isA<EsiCallLogDenied>()),
+      );
+      await expectLater(
+        store.routeCounts(session, null),
+        throwsA(isA<EsiCallLogDenied>()),
+      );
+    });
+
+    test(
+      'private counts require enough members and exclude refusals from errors',
+      () async {
+        for (var owner = 1; owner <= 5; owner++) {
+          await seed(session, recent, owner: owner, character: owner * 10);
+          if (owner != 5) {
+            await seed(session, recent, route: other, owner: owner);
+          }
+        }
+        await seed(session, recent, outcome: 'notSent');
+        await seed(session, recent, outcome: 'error');
+        expect(await store.routeCounts(session, admin), [
+          (operation: assets, total: 7, errors: 1),
+        ]);
+        expect(
+          await EsiCallLogStore(
+            now: () => now,
+            minimumMembers: 6,
+          ).routeCounts(session, admin),
+          isEmpty,
+        );
+      },
+    );
+
+    test('transfer does not expose prior member rows', () async {
+      await seed(session, recent);
+      await seed(session, recent, owner: 2, outcome: 'error');
+      const newOwner = EsiCallLogViewer(member: 2, characters: {10});
+      expect(
+        (await store.ownRows(session, newOwner)).single.outcome,
+        EsiCallLogOutcome.error,
+      );
+    });
+
+    test('alts contribute one member', () async {
+      for (var character = 10; character < 15; character++) {
+        await seed(session, recent, character: character);
+      }
+      expect(await store.routeCounts(session, admin), isEmpty);
+    });
+
+    test('late write cannot change released totals during grace', () async {
+      now = day;
+      final old = recent.subtract(const Duration(days: 1));
+      await seed(session, old, route: probe, owner: null, character: null);
+      final previous = await store.routeCounts(session, admin);
+      expect(previous.single.total, 1);
+      await seed(session, recent, route: probe, owner: null, character: null);
+      expect(await store.routeCounts(session, admin), previous);
+      now = day.add(const Duration(minutes: 1));
+      expect((await store.routeCounts(session, admin)).single.total, 2);
+    });
+
+    test(
+      'public probe aggregate does not require member attribution',
+      () async {
+        await seed(session, recent, route: probe, owner: null, character: null);
+        expect(await store.routeCounts(session, admin), [
+          (operation: probe, total: 1, errors: 0),
+        ]);
+      },
+    );
+
+    test('no trusted member excludes a private row', () async {
+      for (var owner = 1; owner <= 4; owner++) {
+        await seed(session, recent, owner: owner);
+      }
+      await seed(session, recent, owner: null);
+      expect((await store.ownRows(session, member)).single.character, 10);
+      expect(await store.routeCounts(session, admin), isEmpty);
+    });
+
+    test('expired append cannot alter released counts', () async {
+      var failures = 0;
+      final runtime = EsiScheduler(
+        state: MemorySchedulerState(),
+        key: const [1],
+        now: () => recent,
+        callLog: (row) => store.append(session, row),
+        onCallLogFailure: () => failures++,
+        send: (_, _, _) async => WireResponse(EsiResponse(status: 304)),
+      );
+      final result = await runtime.client(EsiPriority.interactive).getStatus();
+      expect(result, isA<EsiNotModified<Status>>());
+      await runtime.drainCallLog();
+      expect(failures, 1);
+      expect(
+        await session.db.unsafeQuery('SELECT id FROM esi_call_log_entry'),
+        isEmpty,
+      );
+      expect(await store.routeCounts(session, admin), isEmpty);
+    });
+
+    test('uncommitted admitted append blocks or joins release', () async {
+      final locked = Completer<void>();
+      final finish = Completer<void>();
+      final held = session.db.transaction((transaction) async {
+        await session.db.unsafeQuery(
+          'SELECT pg_advisory_xact_lock_shared(682997614)',
+          transaction: transaction,
+        );
+        await seed(
+          session,
+          recent,
+          route: probe,
+          owner: null,
+          character: null,
+          transaction: transaction,
+        );
+        locked.complete();
+        await finish.future;
+      });
+      try {
+        await Future.any([locked.future, held]);
+        await expectLater(
+          store.routeCounts(session, admin),
+          throwsA(isA<EsiCallLogUnavailable>()),
+        );
+      } finally {
+        finish.complete();
+        await held;
+      }
+      final released = await store.routeCounts(session, admin);
+      expect(released.single.total, 1);
+      expect(await store.routeCounts(session, admin), released);
+    }, timeout: const Timeout(Duration(minutes: 3)));
+  });
+}

@@ -58,4 +58,22 @@ Future<void> serve(Serverpod pod) async {
   StaticDataAccess.forPod(pod);
   startBundleAnnouncer(pod, announcer);
   startStaticData(pod);
+  await scheduleEsiCallLogPrune(pod);
+}
+
+const _esiCallLogPruneId = 'kaname-esi-call-log-prune';
+
+/// Registers the bounded recurring sweep on the monolith outside test mode.
+Future<void> scheduleEsiCallLogPrune(Serverpod pod) async {
+  if (pod.runMode == 'test' || pod.config.role.name != 'monolith') return;
+  try {
+    await pod.futureCalls.cancel(_esiCallLogPruneId);
+    await pod.futureCalls
+        .callRecurring(identifier: _esiCallLogPruneId)
+        .cron('* * * * *')
+        .esiCallLogPruneCall
+        .run();
+  } on Exception {
+    stderr.writeln('esi-call-log: could not schedule pruning');
+  }
 }

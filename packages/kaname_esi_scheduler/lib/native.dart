@@ -23,11 +23,15 @@ final class NativeEsiRuntime {
     required List<int> key,
     required String userAgent,
     Uri? testOrigin,
+    EsiCallLogSink? callLog,
+    void Function()? onCallLogFailure,
   }) => NativeEsiRuntime.shared(
     state: MemorySchedulerState(paceStartup: true),
     key: key,
     userAgent: userAgent,
     testOrigin: testOrigin,
+    callLog: callLog,
+    onCallLogFailure: onCallLogFailure,
   );
 
   /// Creates an isolate-local scheduler front end for a shared state adapter.
@@ -41,6 +45,8 @@ final class NativeEsiRuntime {
     Uri? testOrigin,
     void Function()? onStateFailure,
     DateTime Function()? now,
+    EsiCallLogSink? callLog,
+    void Function()? onCallLogFailure,
   }) {
     if (key.isEmpty ||
         userAgent.trim().isEmpty ||
@@ -63,6 +69,8 @@ final class NativeEsiRuntime {
         send: http.send,
         now: now,
         onStateFailure: onStateFailure,
+        callLog: callLog,
+        onCallLogFailure: onCallLogFailure,
       ),
       http,
     );

@@ -921,6 +921,10 @@ final class _RouteRig {
             name: database.name,
             maxConnectionCount: database.maxConnectionCount,
           ),
+          // This rig measures all pool traffic, not just bundle queries.
+          // Keep unrelated Serverpod background queries off the proxy.
+          healthCheckInterval: Duration.zero,
+          futureCallExecutionEnabled: false,
         );
       },
     );

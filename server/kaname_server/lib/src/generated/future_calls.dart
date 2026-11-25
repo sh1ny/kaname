@@ -16,6 +16,7 @@ import 'dart:async' as _ida;
 import 'package:clock/clock.dart' as _io0w16m8;
 import 'package:serverpod/serverpod.dart' as _is;
 
+import '../esi/esi_call_log_prune_call.dart' as _iowjp61k;
 import '../static_data/static_data_check_call.dart' as _i66h21ix;
 
 /// Invokes a future call.
@@ -59,6 +60,7 @@ class FutureCalls extends _is.FutureCallDispatch<_FutureCallRef> {
   @override
   void initialize(_is.FutureCallManager futureCallManager, String serverId) {
     var registeredFutureCalls = <String, _is.InvokableFutureCall>{
+      'EsiCallLogPruneCallRunFutureCall': EsiCallLogPruneCallRunFutureCall(),
       'StaticDataCheckCallRunFutureCall': StaticDataCheckCallRunFutureCall(),
     };
     _futureCallManager = futureCallManager;
@@ -163,9 +165,23 @@ class _FutureCallRef {
 
   final _InvokeFutureCall _invokeFutureCall;
 
+  late final esiCallLogPruneCall = _EsiCallLogPruneCallFutureCallDispatcher(
+    _invokeFutureCall,
+  );
+
   late final staticDataCheckCall = _StaticDataCheckCallFutureCallDispatcher(
     _invokeFutureCall,
   );
+}
+
+class _EsiCallLogPruneCallFutureCallDispatcher {
+  _EsiCallLogPruneCallFutureCallDispatcher(this._invokeFutureCall);
+
+  final _InvokeFutureCall _invokeFutureCall;
+
+  Future<void> run() {
+    return _invokeFutureCall('EsiCallLogPruneCallRunFutureCall', null);
+  }
 }
 
 class _StaticDataCheckCallFutureCallDispatcher {
@@ -175,6 +191,18 @@ class _StaticDataCheckCallFutureCallDispatcher {
 
   Future<void> run() {
     return _invokeFutureCall('StaticDataCheckCallRunFutureCall', null);
+  }
+}
+
+/// Sweeps old rows without overlapping another local sweep.
+class EsiCallLogPruneCallRunFutureCall extends _is.FutureCall
+    implements _is.InvokableFutureCall {
+  @override
+  _ida.Future<void> invoke(
+    _is.Session session,
+    _is.SerializableModel? object,
+  ) async {
+    await _iowjp61k.EsiCallLogPruneCall().run(session);
   }
 }
 

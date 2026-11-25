@@ -15,6 +15,7 @@ import 'package:kaname_core/kaname_core.dart' as _idp9h2tz;
 import 'package:serverpod/protocol.dart' as _isp;
 import 'package:serverpod/serverpod.dart' as _is;
 
+import 'esi/esi_call_log_entry.dart' as _ifsmg7bk;
 import 'esi/esi_token_vault_row.dart' as _iynhzf32;
 import 'health/dependency_status.dart' as _iztepymd;
 import 'health/health_report.dart' as _if75m2mz;
@@ -75,6 +76,7 @@ import 'static_data/tables/sde_region.dart' as _ioiqjh1t;
 import 'static_data/tables/sde_solar_system.dart' as _iataywh8;
 import 'static_data/tables/sde_type.dart' as _i19vm38w;
 import 'static_data/tables/sde_type_dogma.dart' as _ib14m8bx;
+export 'esi/esi_call_log_entry.dart';
 export 'esi/esi_token_vault_row.dart';
 export 'health/dependency_status.dart';
 export 'health/health_report.dart';
@@ -149,6 +151,7 @@ class Protocol extends _is.DatabaseSerializationManager
       _is.ProtocolDeserialization.cached(
         this,
         types: const [
+          _is.getType<_ifsmg7bk.EsiCallLogRow>,
           _is.getType<_iynhzf32.EsiTokenVaultRow>,
           _is.getType<_iztepymd.DependencyStatus>,
           _is.getType<_if75m2mz.HealthReport>,
@@ -211,6 +214,7 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_iataywh8.SdeSolarSystem>,
           _is.getType<_i19vm38w.SdeType>,
           _is.getType<_ib14m8bx.SdeTypeDogma>,
+          _is.getType<_ifsmg7bk.EsiCallLogRow?>,
           _is.getType<_iynhzf32.EsiTokenVaultRow?>,
           _is.getType<_iztepymd.DependencyStatus?>,
           _is.getType<_if75m2mz.HealthReport?>,
@@ -285,6 +289,7 @@ class Protocol extends _is.DatabaseSerializationManager
         modules: const [_isp.Protocol.new],
         classNames: const [
           'SdeJson',
+          'EsiCallLogRow',
           'EsiTokenVaultRow',
           'DependencyStatus',
           'HealthReport',
@@ -356,6 +361,117 @@ class Protocol extends _is.DatabaseSerializationManager
   ];
 
   static List<_isp.TableDefinition> get _ownTableDefinitions => [
+    _isp.TableDefinition(
+      name: 'esi_call_log_entry',
+      dartName: 'EsiCallLogRow',
+      schema: 'public',
+      module: 'kaname',
+      columns: [
+        _isp.ColumnDefinition(
+          name: 'id',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'serial',
+        ),
+        _isp.ColumnDefinition(
+          name: 'recordedAt',
+          columnType: _isp.ColumnType.timestampWithoutTimeZone,
+          isNullable: false,
+          dartType: 'DateTime',
+        ),
+        _isp.ColumnDefinition(
+          name: 'operation',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'String',
+        ),
+        _isp.ColumnDefinition(
+          name: 'outcome',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'String',
+        ),
+        _isp.ColumnDefinition(
+          name: 'status',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: true,
+          dartType: 'int?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'cost',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: true,
+          dartType: 'int?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'latencyMicros',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'bucket',
+          columnType: _isp.ColumnType.text,
+          isNullable: true,
+          dartType: 'String?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'memberId',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: true,
+          dartType: 'int?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'characterId',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: true,
+          dartType: 'int?',
+        ),
+      ],
+      foreignKeys: [],
+      indexes: [
+        _isp.IndexDefinition(
+          indexName: 'esi_call_log_retention_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'recordedAt',
+            ),
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'id',
+            ),
+          ],
+          type: 'btree',
+          isUnique: false,
+          isPrimary: false,
+        ),
+        _isp.IndexDefinition(
+          indexName: 'esi_call_log_owner_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'memberId',
+            ),
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'recordedAt',
+            ),
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'id',
+            ),
+          ],
+          type: 'btree',
+          isUnique: false,
+          isPrimary: false,
+        ),
+      ],
+      managed: true,
+    ),
     _isp.TableDefinition(
       name: 'esi_token_vault',
       dartName: 'EsiTokenVaultRow',
@@ -2242,6 +2358,9 @@ class Protocol extends _is.DatabaseSerializationManager
       }
     }
 
+    if (t == _ifsmg7bk.EsiCallLogRow) {
+      return _ifsmg7bk.EsiCallLogRow.fromJson(data) as T;
+    }
     if (t == _iynhzf32.EsiTokenVaultRow) {
       return _iynhzf32.EsiTokenVaultRow.fromJson(data) as T;
     }
@@ -2427,6 +2546,10 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (t == _ib14m8bx.SdeTypeDogma) {
       return _ib14m8bx.SdeTypeDogma.fromJson(data) as T;
+    }
+    if (t == _is.getType<_ifsmg7bk.EsiCallLogRow?>()) {
+      return (data != null ? _ifsmg7bk.EsiCallLogRow.fromJson(data) : null)
+          as T;
     }
     if (t == _is.getType<_iynhzf32.EsiTokenVaultRow?>()) {
       return (data != null ? _iynhzf32.EsiTokenVaultRow.fromJson(data) : null)
@@ -2754,6 +2877,7 @@ class Protocol extends _is.DatabaseSerializationManager
   static String? getClassNameForType(Type type) {
     return switch (type) {
       _idp9h2tz.SdeJson => 'SdeJson',
+      _ifsmg7bk.EsiCallLogRow => 'EsiCallLogRow',
       _iynhzf32.EsiTokenVaultRow => 'EsiTokenVaultRow',
       _iztepymd.DependencyStatus => 'DependencyStatus',
       _if75m2mz.HealthReport => 'HealthReport',
@@ -2832,6 +2956,8 @@ class Protocol extends _is.DatabaseSerializationManager
     switch (data) {
       case _idp9h2tz.SdeJson():
         return 'SdeJson';
+      case _ifsmg7bk.EsiCallLogRow():
+        return 'EsiCallLogRow';
       case _iynhzf32.EsiTokenVaultRow():
         return 'EsiTokenVaultRow';
       case _iztepymd.DependencyStatus():
@@ -2972,6 +3098,9 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (dataClassName == 'SdeJson') {
       return deserialize<_idp9h2tz.SdeJson>(data['data']);
+    }
+    if (dataClassName == 'EsiCallLogRow') {
+      return deserialize<_ifsmg7bk.EsiCallLogRow>(data['data']);
     }
     if (dataClassName == 'EsiTokenVaultRow') {
       return deserialize<_iynhzf32.EsiTokenVaultRow>(data['data']);
@@ -3177,6 +3306,8 @@ class Protocol extends _is.DatabaseSerializationManager
       }
     }
     switch (t) {
+      case _ifsmg7bk.EsiCallLogRow:
+        return _ifsmg7bk.EsiCallLogRow.t;
       case _iynhzf32.EsiTokenVaultRow:
         return _iynhzf32.EsiTokenVaultRow.t;
       case _i3kpj3vw.SdeAdminOperation:

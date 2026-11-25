@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_esi_scheduler/native.dart';
 import 'package:serverpod/serverpod.dart';
 
+import 'esi_call_log_store.dart';
 import 'redis_scheduler_state.dart';
 
 /// Owns an isolate's production ESI scheduler and Redis connection (ADR 0016).
@@ -25,11 +27,14 @@ final class ServerEsiRuntime {
     if (config == null || !config.enabled || secret == null || secret.isEmpty) {
       throw StateError('ESI requires enabled Redis and the service secret');
     }
+    final log = EsiCallLogStore();
     return ServerEsiRuntime.open(
       redis: config,
       installKey: utf8.encode(secret),
       userAgent: userAgent,
       onStateFailure: onStateFailure,
+      callLog: (row) => pod.withSession((session) => log.append(session, row)),
+      onCallLogFailure: () => stderr.writeln('esi-call-log: append failed'),
     );
   }
 
@@ -38,11 +43,16 @@ final class ServerEsiRuntime {
   /// [redis] and [installKey] must match those used on the main isolate, not
   /// be generated independently by each worker. [testOrigin] accepts only a
   /// numeric loopback HTTP origin for integration tests.
+  ///
+  /// This factory does not open a database connection or create a Serverpod
+  /// session (C7). The worker passes its job-scoped sink under ADR 0012.
   factory ServerEsiRuntime.open({
     required RedisConfig redis,
     required List<int> installKey,
     required String userAgent,
     required void Function() onStateFailure,
+    EsiCallLogSink? callLog,
+    void Function()? onCallLogFailure,
     Uri? testOrigin,
     DateTime Function()? now,
     String namespace = 'install',
@@ -65,6 +75,8 @@ final class ServerEsiRuntime {
         onStateFailure: onStateFailure,
         testOrigin: testOrigin,
         now: now,
+        callLog: callLog,
+        onCallLogFailure: onCallLogFailure,
       ),
     );
   }
@@ -89,5 +101,6 @@ final class ServerEsiRuntime {
   Future<void> close() async {
     _native.close();
     await _redis.close();
+    await _native.scheduler.drainCallLog();
   }
 }
