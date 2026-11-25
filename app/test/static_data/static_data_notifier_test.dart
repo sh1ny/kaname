@@ -537,19 +537,51 @@ void main() {
 
     tearDown(() => root.deleteSync(recursive: true));
 
-    Future<void> waitFor(bool Function() condition) async {
-      for (var i = 0; i < 400 && !condition(); i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 5));
+    Future<StaticDataState> waitForState(
+      Harness h,
+      String stage,
+      bool Function(StaticDataState) matches,
+    ) async {
+      printOnFailure('Waiting for $stage.');
+      final matched = Completer<StaticDataState>();
+      final subscription = h.container.listen(staticDataProvider, (_, next) {
+        if (!matched.isCompleted && matches(next)) matched.complete(next);
+      }, fireImmediately: true);
+      try {
+        return await matched.future;
+      } finally {
+        subscription.close();
       }
-      expect(condition(), isTrue, reason: 'condition never became true');
     }
+
+    Future<void> expectSaved(Harness h, BundleCopy copy) async {
+      final settled = await waitForState(
+        h,
+        'the save of build ${copy.identity.build} to settle',
+        (state) => switch (state.lastDownload) {
+          DownloadSucceeded() || DownloadNotSaved() || DownloadFailed() => true,
+          NoDownloadYet() || DownloadSaving() => false,
+        },
+      );
+      expect(
+        settled.lastDownload,
+        isA<DownloadSucceeded>().having(
+          (result) => result.build,
+          'saved build',
+          copy.identity.build,
+        ),
+      );
+      expect(settled, readyOn(copy, updating: false));
+    }
+
+    const hangGuard = Timeout(Duration(minutes: 3));
 
     test('truncated kept file is rejected and kept, the announced bundle is '
         'downloaded, and its save replaces the file', () async {
       final opener = FakeBundleOpener();
       FileBundleStore newStore() =>
           FileBundleStore(directory: directory, opener: opener);
-      await newStore().save(copyN);
+      expect(await newStore().save(copyN), isA<BundleSaved>());
       final kept = File(
         '${directory.path}${Platform.pathSeparator}'
         '${FileBundleStore.keptFileName}',
@@ -561,73 +593,62 @@ void main() {
       kept.writeAsBytesSync(truncated);
 
       final h = Harness(store: newStore(), opener: opener);
-      await h.start();
-      await waitFor(() => h.source.subscribes == 1);
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-      expect(h.state, isA<NoBundle>());
-      expect(kept.readAsBytesSync(), truncated);
-
-      await h.send(announce(copyN1));
+      final downloading = waitForState(
+        h,
+        'the replacement download to start without a kept bundle',
+        (state) => state is NoBundle && state.reason is Downloading,
+      );
+      h.source.current.emit(announce(copyN1));
+      await downloading;
       expect(h.downloader.builds, [buildN + 1]);
       expect(kept.readAsBytesSync(), truncated);
 
       h.downloader.last.complete(copyN1.bytes);
-      await waitFor(() => h.state is BundleReady);
-      expect(h.state, readyOn(copyN1));
-      // On Windows a read during the save's rename can find the file in use;
-      // that read only means the save has not finished yet.
-      bool replaced() {
-        try {
-          return kept.readAsBytesSync().length != truncated.length;
-        } on FileSystemException {
-          return false;
-        }
-      }
-
-      await waitFor(replaced);
+      await expectSaved(h, copyN1);
       final load = await newStore().load();
       expect(load, isA<KeptBundleLoaded>());
       expect((load as KeptBundleLoaded).identity, copyN1.identity);
-    });
+    }, timeout: hangGuard);
 
     test('a rollback announced at a higher revision downloads N, keeps it, '
         'and an offline restart loads N from the same file', () async {
       final opener = FakeBundleOpener();
       FileBundleStore newStore() =>
           FileBundleStore(directory: directory, opener: opener);
-      await newStore().save(copyN1);
+      expect(await newStore().save(copyN1), isA<BundleSaved>());
 
       final h = Harness(store: newStore(), opener: opener);
-      await h.start();
-      await waitFor(() => h.state is BundleReady);
-      expect(h.state, readyOn(copyN1));
+      expect(
+        await waitForState(
+          h,
+          'the initial kept bundle',
+          (s) => s is BundleReady,
+        ),
+        readyOn(copyN1),
+      );
 
-      await h.send(announce(copyN, revision: 2));
+      h.source.current.emit(announce(copyN1));
+      expect(h.downloader.started, isEmpty);
+
+      h.source.current.emit(announce(copyN, revision: 2));
       expect(h.downloader.builds, [buildN]);
       h.downloader.last.complete(copyN.bytes);
-      await waitFor(
-        () => h.state is BundleReady && !(h.state as BundleReady).updating,
-      );
-      expect(h.state, readyOn(copyN));
-      // The save of N replaces the kept file.
-      for (var i = 0; i < 400; i++) {
-        final load = await newStore().load();
-        if (load case KeptBundleLoaded(:final identity)
-            when identity == copyN.identity) {
-          break;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-      }
+      await expectSaved(h, copyN);
 
       final offline = Harness(
         store: newStore(),
         opener: opener,
         target: const NoServer(),
       );
-      await offline.start();
-      await waitFor(() => offline.state is BundleReady);
-      expect(offline.state, readyOn(copyN));
-    });
+      expect(
+        await waitForState(
+          offline,
+          'the kept bundle after offline restart',
+          (state) => state is BundleReady,
+        ),
+        readyOn(copyN),
+      );
+    }, timeout: hangGuard);
   });
 
   test('results returned before a swap keep their names and ids, and the next '
