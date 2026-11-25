@@ -364,7 +364,7 @@ final class SsoRoute {
     final bearer = _bearer(request);
     if (bearer == null) return _failure(401);
     final (viewer, holder) = await _withSession((s) async {
-      final viewer = await _sessions.viewer(s, bearer);
+      final viewer = await _sessions.viewerForRefresh(s, bearer);
       final row = viewer == null
           ? null
           : await ServerSsoGrants.assignment(s, viewer.identity.characterId);

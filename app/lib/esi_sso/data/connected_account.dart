@@ -23,6 +23,30 @@ final class ConnectedAttempt {
   final bool scoped;
 }
 
+/// Whether a viewer check can replace or end the connected session.
+sealed class ViewerRefresh {
+  const ViewerRefresh();
+}
+
+/// A verified viewer for the same session.
+final class ViewerRefreshUpdated extends ViewerRefresh {
+  /// Carries the session with the new viewer and holder state.
+  const ViewerRefreshUpdated(this.session);
+
+  /// The same bearer and origin with an updated viewer.
+  final ConnectedSession session;
+}
+
+/// The viewer route confirmed that the session is invalid.
+final class ViewerRefreshInvalid extends ViewerRefresh {
+  const ViewerRefreshInvalid._();
+}
+
+/// The reply establishes neither a new viewer nor an invalid session.
+final class ViewerRefreshUnavailable extends ViewerRefresh {
+  const ViewerRefreshUnavailable._();
+}
+
 /// A Kaname bearer held only in memory and used only at its original server.
 final class ConnectedSession implements HolderRemote {
   const ConnectedSession._(this._api, this.pilot, this._bearer);
@@ -38,12 +62,31 @@ final class ConnectedSession implements HolderRemote {
   String? bearerFor(Uri base) => base.origin == origin ? _bearer : null;
 
   /// Rechecks viewer and holder state for this exact session.
-  Future<ConnectedSession?> refresh() async {
+  ///
+  /// Only the viewer route's fixed invalid-session reply confirms sign-out.
+  /// A valid viewer can omit its holder, but an invalid holder field does not
+  /// establish that there is no holder.
+  Future<ViewerRefresh> refresh() async {
     final reply = await _api._request('viewer', const {}, bearer: _bearer);
-    final current = AccountPilot.parse(reply.body);
-    return reply.code == 200 && current != null
-        ? ConnectedSession._(_api, current, _bearer)
-        : null;
+    switch (reply) {
+      case (code: 401, body: final Map<String, Object?> body)
+          when body.length == 1 && body['status'] == 'signInRequired':
+        return const ViewerRefreshInvalid._();
+      case (code: 200, body: final Map<String, Object?> body):
+        final current = AccountPilot.parse(body);
+        if (current != null &&
+            current.characterId == pilot.characterId &&
+            current.memberId == pilot.memberId &&
+            (!body.containsKey('holder') ||
+                current.holder?.isNotEmpty == true)) {
+          return ViewerRefreshUpdated(
+            ConnectedSession._(_api, current, _bearer),
+          );
+        }
+      default:
+        break;
+    }
+    return const ViewerRefreshUnavailable._();
   }
 
   /// Revokes this token at the server without retry or local persistence.
@@ -218,20 +261,23 @@ final class ConnectedAccount {
     }, bearer: session?.bearerFor(_base));
     if (reply.code != 200) return (_notice(reply), null);
     if (attempt.scoped) {
-      final updated = await session?.refresh();
-      return updated == null
-          ? (AccountNotice.signedOut, null)
-          : (AccountNotice.none, updated);
+      return switch (await session?.refresh()) {
+        ViewerRefreshUpdated(session: final updated) => (
+          AccountNotice.none,
+          updated,
+        ),
+        ViewerRefreshInvalid() || null => (AccountNotice.signedOut, null),
+        ViewerRefreshUnavailable() => (AccountNotice.unavailable, null),
+      };
     }
     final pilot = AccountPilot.parse(reply.body);
     if ((pilot, reply.body)
         case (final AccountPilot current, {'session': final String bearer})
         when _shape.hasMatch(bearer)) {
       final issued = ConnectedSession._(this, current, bearer);
-      final viewer = await issued.refresh();
-      return viewer == null
-          ? (AccountNotice.unavailable, null)
-          : (AccountNotice.none, viewer);
+      if (await issued.refresh() case ViewerRefreshUpdated(:final session)) {
+        return (AccountNotice.none, session);
+      }
     }
     return (AccountNotice.unavailable, null);
   }
