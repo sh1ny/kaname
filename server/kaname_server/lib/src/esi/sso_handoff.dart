@@ -149,11 +149,7 @@ final class SsoHandoff {
               !_matches(row, digest)) {
             return SsoHandoffStatus.blocked;
           }
-          // The original device can retry after a lost response, even if
-          // the matching server reservation has already activated.
-          if (row.phase == 'serverReserved' || row.phase == 'serverHeld') {
-            return SsoHandoffStatus.released;
-          }
+          if (_releaseRecorded(row)) return SsoHandoffStatus.released;
           if (row.phase != 'deviceReserved') return SsoHandoffStatus.blocked;
           return await _cas(
                 session,
@@ -185,9 +181,9 @@ final class SsoHandoff {
           final digest = ssoDigest(proof);
           final row = await ServerSsoGrants.assignment(session, character);
           if (row != null) {
-            return row.phase == 'serverReserved' &&
-                    row.generation == 1 &&
-                    _matches(row, digest)
+            return row.generation == 1 &&
+                    _matches(row, digest) &&
+                    _releaseRecorded(row)
                 ? SsoHandoffStatus.released
                 : SsoHandoffStatus.blocked;
           }
@@ -204,6 +200,11 @@ final class SsoHandoff {
         }) ??
         SsoHandoffStatus.pending;
   }
+
+  // The matching device can retry after a lost response. Activating the
+  // reservation does not undo the source park or authorize a new transfer.
+  static bool _releaseRecorded(SsoHolderRow row) =>
+      row.phase == 'serverReserved' || row.phase == 'serverHeld';
 
   static bool _matches(SsoHolderRow row, String digest) {
     final stored = row.proofDigest;

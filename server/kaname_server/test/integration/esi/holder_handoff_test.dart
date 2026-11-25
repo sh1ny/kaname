@@ -233,4 +233,26 @@ void main() {
       SsoHandoffStatus.blocked,
     );
   });
+
+  test('A joining device can retry after the server activates', () async {
+    final owner = ssoDigest('$_character:$_owner');
+    expect(
+      await handoff.joinStandalone(session, pilot, _one, owner),
+      SsoHandoffStatus.released,
+    );
+    final row = (await assigned())!;
+    await SsoHolderRow.db.updateRow(
+      session,
+      row.copyWith(phase: 'serverHeld', vaultGeneration: 1),
+    );
+    expect(
+      await handoff.joinStandalone(session, pilot, _one, owner),
+      SsoHandoffStatus.released,
+    );
+    expect(
+      await handoff.joinStandalone(session, pilot, _two, owner),
+      SsoHandoffStatus.blocked,
+    );
+    expect((await assigned())?.phase, 'serverHeld');
+  });
 }
