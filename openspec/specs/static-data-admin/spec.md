@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the server's static-data status and admin surface: what anyone can read about the stored builds, checks and imports, and how an install admin, holding the install admin key, starts an update, rolls back and turns auto-update on or off.
+Defines public static-data status and how a signed-in user with server admin scope starts updates, rolls back builds, and changes auto-update.
 
 ## Requirements
 
@@ -138,7 +138,7 @@ All rows one status, change-report or operation call returns SHALL come from one
 - **THEN** the status may name build N active beside the import of N+1, and the call succeeds
 
 ### Requirement: Public answers carry only public reasons
-No status, change-report or admin answer SHALL hold the admin key, a password, a file path, a URL, a host name, a port, a connection string or exception text. Every failure reason SHALL be one of a fixed public set. A stored reason outside that set SHALL be shown as "failed, see the server log", and its text SHALL stay in the database and the server log.
+No status, change-report or admin answer SHALL hold a credential, a password, a file path, a URL, a host name, a port, a connection string or exception text. Every failure reason SHALL be one of a fixed public set. A stored reason outside that set SHALL be shown as "failed, see the server log", and its text SHALL stay in the database and the server log.
 
 #### Scenario: Stored reason with a URL
 - **WHEN** the newest check's stored reason contains a CCP URL and a socket address
@@ -149,8 +149,8 @@ No status, change-report or admin answer SHALL hold the admin key, a password, a
 - **THEN** the status shows the import as `failed` with a public reason, and no part of the answer contains the scratch directory's path
 
 #### Scenario: Admin key set
-- **WHEN** the admin key is configured and the status is read
-- **THEN** the answer says admin actions are configured and holds no part of the key
+- **WHEN** the old admin key variable remains set after upgrade and the configured server's public status is read
+- **THEN** the answer's admin capability reflects the sign-in and admin configuration alone, without revealing the unused key, any credentials or the admin allowlist
 
 ### Requirement: Anyone can read the change report of the stored builds
 The server SHALL answer a change-report request on `GET /static-data/report` without sign-in with the stored report between the active and the previous build, whichever was switched to: per file, the added, removed and changed counts, its keys with a cut-off mark, each changed field with its record count, and new or removed files. When none is stored it SHALL say why: no previous build, comparison failed with its public reason, report missing, or report too large.
@@ -264,66 +264,6 @@ The server SHALL serve the change report on the web route `GET /static-data/repo
 #### Scenario: Report served over the web route
 - **WHEN** the deployed web app sends `GET /api/static-data/report`, or a native app configured with base `https://host/kaname/` sends `GET /kaname/static-data/report`, while a report is stored for the active and previous builds
 - **THEN** the answer is 200 with `Cache-Control: no-store` and a body holding the typed report answer, and "report busy" is also a 200 body
-
-### Requirement: Admin calls need the install admin key
-Admin calls SHALL carry a key and SHALL act only when it equals the install admin key from the server's passwords file, entry `adminKey`, compared in constant time. A missing entry, or one shorter than 32 characters, SHALL leave admin actions not configured: every admin call SHALL be refused with "admin actions not configured", and the server SHALL log once at start why.
-
-#### Scenario: Right key
-- **WHEN** `adminKey` holds a 40-character key and a check-key call carries that key
-- **THEN** the gate accepts the call and it answers "accepted"
-
-#### Scenario: Wrong key
-- **WHEN** an admin call carries a key that differs from `adminKey`
-- **THEN** the call is refused with "admin key rejected", nothing changes, and a warning is logged without either key
-
-#### Scenario: No key configured
-- **WHEN** the passwords file has no `adminKey` entry and an admin call arrives
-- **THEN** the call is refused with "admin actions not configured", and the status says admin actions are not configured
-
-#### Scenario: Key too short
-- **WHEN** `adminKey` holds a 12-character key
-- **THEN** the server logs at start that the admin key is shorter than 32 characters and admin actions stay not configured, and an admin call carrying that key is refused with "admin actions not configured"
-
-### Requirement: The admin key is never logged
-No server log line, session log entry, stored record or error answer SHALL contain the admin key or a key an admin call carried, whether the call is accepted, rejected or malformed.
-
-#### Scenario: Successful call
-- **WHEN** an admin turns auto-update off with the right key, sent over HTTP to a server that logs sessions to its database and to the console
-- **THEN** no log line, session log row, stored record or answer contains the key
-
-#### Scenario: Sentinel keys
-- **WHEN** over HTTP, one admin call carries sentinel A as the accepted key, one carries a rejected sentinel B, and one malformed request carries sentinel C
-- **THEN** none of the server's console output, its session log rows, its stored records or the error answers contains A, B or C
-
-#### Scenario: Pause logged
-- **WHEN** wrong keys start a pause
-- **THEN** the log line that records the pause names no key
-
-### Requirement: An admin can check the key
-An admin "check key" call SHALL change nothing and SHALL answer "accepted" when the key is accepted, or be refused as any admin call is. It counts toward the wrong-key pause like every admin call.
-
-#### Scenario: Key accepted
-- **WHEN** a check-key call carries the right key
-- **THEN** it answers "accepted" and nothing is stored or changed
-
-#### Scenario: Key wrong
-- **WHEN** a check-key call carries a wrong key
-- **THEN** it is refused with "admin key rejected" and counts as one rejected key
-
-### Requirement: Repeated wrong keys pause admin calls
-When 10 admin calls with a rejected key arrive within any 60-second span, from any caller, the server SHALL refuse every admin call with "too many attempts" for the next minute, the right key included, and SHALL log the pause once. The status read SHALL stay available.
-
-#### Scenario: Tenth wrong key
-- **WHEN** 10 admin calls with wrong keys arrive within 50 seconds
-- **THEN** an admin call with the right key 5 seconds later is refused with "too many attempts", and the status call still answers
-
-#### Scenario: Pause ends
-- **WHEN** admin calls were paused at 12:00:00 UTC
-- **THEN** an admin call with the right key at 12:01:01 UTC acts
-
-#### Scenario: Wrong keys spread out
-- **WHEN** 9 wrong keys arrive between 12:00:00 and 12:00:10 UTC and 9 more between 12:01:20 and 12:01:30 UTC
-- **THEN** no pause starts and a call with the right key acts
 
 ### Requirement: Each admin job carries an operation id
 Update now and roll back calls SHALL carry an operation id, an app-made UUID, else be refused as malformed. The server SHALL store each job under its id before the worker gets it, and run one at a time. A stored id SHALL start no job; once past the gate, admission and token checks it SHALL answer from its row, or be refused as malformed for another kind or revision; one whose id is being stored SHALL answer as a stored waiting job would. Ended jobs SHALL be kept 30 days, open ones always.
@@ -504,8 +444,8 @@ An operation call SHALL answer without sign-in with the job stored under that id
 - **THEN** the fifth fails at once with "operation read busy", not "unknown operation"
 
 #### Scenario: Unconfigured during start-up recovery
-- **WHEN** no admin key is configured and an update now arrives while start-up recovery has not finished
-- **THEN** the call is refused with "admin actions not configured"
+- **WHEN** confidential sign-in is not configured and an anonymous update now arrives before start-up recovery finishes
+- **THEN** authentication refuses the call before it reaches job admission, and nothing starts
 
 #### Scenario: Unknown id
 - **WHEN** the operation call carries an id never stored, or one whose job ended more than 30 days ago
@@ -671,3 +611,15 @@ An admin call SHALL set the auto-update setting on or off, carrying the setting 
 #### Scenario: Write acknowledgement lost
 - **WHEN** an admin turns auto-update off, the write commits, and the database's acknowledgement is lost before the server answers
 - **THEN** the call answers "setting not confirmed", never "setting not saved", and the next check reads auto-update off
+
+### Requirement: Static-data mutations require an authenticated admin
+
+Update now, roll back and set auto-update SHALL require a live Kaname session with Serverpod admin scope. No key parameter, key check or shared-key configuration SHALL authorize a call. The public status SHALL report whether the server is configured to grant admin access, without identifying its admins.
+
+#### Scenario: Scoped admin action
+- **WHEN** a signed-in caller with admin scope sends a valid admin mutation
+- **THEN** the server admits it subject to the existing operation, revision and worker checks
+
+#### Scenario: Anonymous, non-admin or former key holder
+- **WHEN** an anonymous caller, expired session, signed-in caller without admin scope or caller supplying only the old install key attempts any admin mutation
+- **THEN** the server denies the mutation before admission and nothing changes; public status, operation status and the report remain readable

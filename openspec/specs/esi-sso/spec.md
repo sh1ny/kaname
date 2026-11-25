@@ -1,0 +1,170 @@
+# esi-sso Specification
+
+## Purpose
+Connect an EVE character to Kaname through CCP sign-in. Use one active ESI holder and limit access to the scopes allowed for that character and mode.
+
+## Requirements
+
+### Requirement: Each mode signs in through its own CCP registration
+
+The server SHALL use a confidential authorization code exchange and keep its client secret server-side. Native desktop solo SHALL use authorization code with S256 PKCE and an owner-provided client ID, without a client secret or server connection for standalone sign-in. Each callback SHALL match the registered redirect and a live, unconsumed attempt bound to the initiator.
+
+#### Scenario: Confidential browser sign-in
+
+- **WHEN** CCP returns a valid code and state to the self-host's registered HTTPS callback
+- **THEN** only the server exchanges the code using its registration and secret, and only the initiating app can complete the Kaname sign-in
+
+#### Scenario: Native desktop sign-in
+
+- **WHEN** CCP sends a valid code and state to `http://localhost:48175/auth/esi/callback` for a solo attempt
+- **THEN** the app exchanges the code with its own client ID and verifier, sends no client secret, and does not need a Kaname server
+
+#### Scenario: Replayed, misrouted or abandoned callback
+
+- **WHEN** a callback has missing, duplicated, invalid, expired or spent state, a different destination, or no matching live attempt
+- **THEN** it creates no identity or authorization, and it does not exchange a code
+
+#### Scenario: User cancels or callback cannot listen
+
+- **WHEN** the user cancels at CCP or the native loopback listener cannot bind
+- **THEN** the app shows a fixed cancellation or callback failure and does not activate a new holder
+
+### Requirement: Connected sign-in verifies the consenting browser
+
+The server SHALL bind a connected authorization to the browser that approved it and to its initiating app. A consenting browser that is separate from the app SHALL receive a single-use completion code that the user must provide to that app. The server SHALL NOT commit identity, session or vault changes until it verifies both proofs.
+
+#### Scenario: Web and native connected completion
+
+- **WHEN** the initiating web browser presents its matching browser binding, or a native app presents the completion code the user obtained in the callback browser, together with the matching attempt proof
+- **THEN** the server can complete that attempt once; it does not put a session credential in the redirect URL or callback page
+
+#### Scenario: A forwarded authorization link cannot yield a session
+
+- **WHEN** a user approves a forwarded CCP authorization link in another browser and the initiating app lacks the matched browser binding or the code issued to the consenting browser
+- **THEN** the initiating app cannot redeem a session or activate a grant for the user, even if it can prove that it started the attempt
+
+#### Scenario: One client cannot fill the global attempt capacity
+
+- **WHEN** one client reaches its limit for live connected sign-in attempts and tries again
+- **THEN** it receives a fixed busy result while a second client can still start a sign-in
+
+### Requirement: Accept only validated CCP character identity
+
+Both modes SHALL accept only a correctly signed CCP access JWT verified against CCP's JWKS. They SHALL check the allowed signing algorithm, issuer, EVE Online audience, exact registration client ID, expiry and character subject. The server SHALL map validated character and ownership identity to a stable Serverpod user; it SHALL NOT use a CCP access token as a Kaname session credential.
+
+#### Scenario: Valid identity signs in again
+
+- **WHEN** separate valid authorizations identify the same character and owner in the connected flow
+- **THEN** they resolve to the same Serverpod user, and privileges come only from server policy
+
+#### Scenario: Invalid signature, key or claims
+
+- **WHEN** a token has an invalid signature, an unsupported algorithm, an unknown key after a bounded JWKS update, an invalid issuer, wrong or missing audience, expired validity, malformed subject or missing owner identity
+- **THEN** neither mode establishes identity, activates a credential or sends ESI work using it
+
+#### Scenario: CCP rotates its signing key
+
+- **WHEN** a valid token uses a new key that CCP publishes in its JWKS
+- **THEN** verification can accept the token after refreshing known keys without accepting an unverified token
+
+#### Scenario: Known character presents another owner
+
+- **WHEN** a validated token identifies a stored character with a different owner hash
+- **THEN** the sign-in cannot claim the existing user, vault holder or private call history
+
+#### Scenario: Definitive refresh verification rejection
+
+- **WHEN** CCP returns a refreshed grant that definitively fails verification for the current authorization
+- **THEN** the old authorization cannot supply a bearer or refresh again, re-login is required, and a signed owner conflict blocks the mismatched identity
+
+### Requirement: Configured scope policy fails closed
+
+Each authorization SHALL request only scopes declared by enabled modules and permitted by the configured policy for the character and mode. Optional classes SHALL require an applicable recorded opt-in. Missing policy or opt-in SHALL grant no scope for that class. A callback or refresh SHALL NOT extend the allowed grant, and a policy or opt-in change SHALL require reauthorization before affected access resumes.
+
+#### Scenario: Enabled module and permitted classes
+
+- **WHEN** an enabled module declares scopes for a required class and for an optional class with a recorded opt-in for the same character and policy revision
+- **THEN** the request contains those scopes exactly once and excludes disabled-module and never-requested scopes
+
+#### Scenario: Missing policy or optional opt-in
+
+- **WHEN** policy has no rule for a declared class, or marks it optional without a matching recorded opt-in
+- **THEN** neither mode requests or exercises its scope
+
+#### Scenario: Unconfigured solo signs in without skills access
+
+- **WHEN** a desktop user signs in before enabling local skills access, then explicitly enables it for their validated character and authorizes again
+- **THEN** the first request contains no skills scope, and only the second request after recording the local policy and opt-in may ask for `esi-skills.read_skills.v1`
+
+#### Scenario: Grant differs from the permitted request
+
+- **WHEN** a signed access token contains an unrequested scope, or a granted scope becomes forbidden before use
+- **THEN** the server or native runtime refuses to use that authorization and does not dispatch the scoped call
+
+### Requirement: An active holder can read character skills
+
+The connected and desktop solo modes SHALL allow a signed-in viewer to request their own skills using the generated `GET /characters/{character_id}/skills` operation through the existing scheduler and the active vault credential. The operation SHALL use only the viewer's validated character and the applicable skills scope. A connected app SHALL NOT attempt ESI itself, even if the server is unavailable.
+
+#### Scenario: Scoped read in both modes
+
+- **WHEN** a viewer asks to read skills in connected mode or desktop solo mode and that mode holds a current grant for `esi-skills.read_skills.v1`
+- **THEN** the appropriate scheduler admits the generated request for that character and the app can show the typed result
+
+#### Scenario: No authority or no scope
+
+- **WHEN** the requester is signed out, scope is missing, the grant is stale, the other mode holds the character, or the connected server cannot be reached
+- **THEN** no ESI request leaves the wrong mode and the app shows a fixed reason without secrets
+
+#### Scenario: The scheduler refuses a skills read
+
+- **WHEN** the connected or solo scheduler refuses to send a skills request
+- **THEN** the app explains the refusal using its stable reason and shows the retry time when one is known
+- **AND** if the deadline is unknown, the app does not invent one or retry automatically
+
+### Requirement: Handoff parks the source before activating the destination
+
+Kaname SHALL identify the active holder and require an explicit handoff for a character moving between the server and a desktop device. Only the matching destination SHALL activate after confirmed source parking and fresh CCP authorization of the same character and owner. Handoff SHALL NOT transfer CCP credentials or allow ordinary sign-in to bypass a known holder assignment.
+
+#### Scenario: Take a server-held character solo
+
+- **WHEN** the signed-in character takes the token holder from the server to a desktop device and completes native PKCE on that character
+- **THEN** the server stops dispatching and parks its credential before the device can dispatch; later connected requests do not use a server bearer for that character
+
+#### Scenario: Return a device-held character to the server
+
+- **WHEN** the selected desktop device parks its credential and the same character completes confidential sign-in to take the holder back
+- **THEN** only the server can dispatch once activated and the device cannot continue as a solo holder
+
+#### Scenario: Mismatch, replay or competing destination
+
+- **WHEN** a stale handoff, another device, a different character or a different owner attempts activation
+- **THEN** that attempt cannot activate and cannot consume another destination's authorization
+
+#### Scenario: Interruption at handoff
+
+- **WHEN** parking cannot be confirmed, or the app restarts or the network fails after source parking and before destination activation is confirmed
+- **THEN** the destination does not dispatch without confirmed authority, the source does not reactivate on timeout, and resuming cannot create two active holders
+
+#### Scenario: Original device cannot prove it parked
+
+- **WHEN** the server still has a device assignment and the original device or its durable release proof is lost
+- **THEN** no login or admin action can reclaim the holder in M2, and the connected app reports that the original device must park before the server can take over
+
+#### Scenario: A standalone device joins the server
+
+- **WHEN** a desktop holds a character solo, the server has no holder assignment for it, the device records its join intent and parks its credential, and the same character and owner complete confidential authorization
+- **THEN** the server activates only after that sequence, and refuses this path for a character with any existing assignment
+
+### Requirement: Sign-in and handoff keep credentials out of diagnostics
+
+Kaname SHALL keep bearer and refresh tokens, session credentials, authorization codes, PKCE verifiers, client secrets and vault keys out of logs and error responses. Persisted credentials SHALL be encrypted or stored only as non-reversible verifiers. Public responses SHALL use fixed failure classes; the only credential returned to the app SHALL be its own Kaname session credential over the sign-in completion channel.
+
+#### Scenario: Successful login and later refresh
+
+- **WHEN** the app completes sign-in, rotates a refresh token and performs a scoped call
+- **THEN** inspecting persisted records and logs reveals no plaintext credential or key, and the connected app receives no CCP token
+
+#### Scenario: Secret-bearing upstream or malformed input
+
+- **WHEN** a malformed callback or upstream failure contains a secret sentinel in a URL, body, error or header
+- **THEN** no sentinel appears in a stored record, log line or public error response

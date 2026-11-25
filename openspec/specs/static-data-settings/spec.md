@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the app's Static data section in Settings and its change-report page: this app's own bundle state, the server's build status, and the admin controls an install admin reaches with the install admin key.
+Defines the Static data section and change report in Settings: the app's bundle, server build status, and controls for a signed-in user with server admin scope.
 
 ## Requirements
 
@@ -200,51 +200,8 @@ From an update now or roll back press, before its call is sent, the section SHAL
 - **WHEN** the section follows X and X has not ended after 10 minutes
 - **THEN** following stops and the section shows "Outcome unknown, check the builds"
 
-### Requirement: The admin key is entered for the session only
-When the server says admin actions are configured, and its address is https or http to this machine (127.0.0.1, ::1, localhost), the section SHALL offer to enter the admin key; over other http it SHALL say "Admin actions need a secure connection". The app SHALL keep the key in memory only, never in storage, a log or on screen, and forget it on close or reload.
-
-#### Scenario: Key entered
-- **WHEN** the user enters the admin key and the server's check-key call answers "accepted"
-- **THEN** the admin controls are shown, and the key field shows no characters of the key
-
-#### Scenario: Key rejected
-- **WHEN** a check-key or other admin call answers "admin key rejected"
-- **THEN** the app forgets the key, hides the admin controls and shows "Admin key rejected"
-
-#### Scenario: Late refusal for a replaced key
-- **WHEN** an update now and an auto-update write were sent with key A, a refusal of one prompts the admin to enter key B, key B is accepted, and then the other call answers "admin key rejected"
-- **THEN** the app keeps key B and its admin controls, and the late answer only settles its own job or write
-
-#### Scenario: Too many attempts
-- **WHEN** an admin call answers "too many attempts"
-- **THEN** the app keeps the key and shows "Too many attempts, try again in a minute", with no admin control
-
-#### Scenario: Check again after a pause
-- **WHEN** the section shows "Too many attempts" and a minute has passed
-- **THEN** it offers "Check again", which sends a check-key call with the key it holds and, on "accepted", shows the admin controls
-
-#### Scenario: Restart
-- **WHEN** the user entered the key, closes the app and starts it again
-- **THEN** no key is held and the admin controls are hidden until it is entered again
-
-#### Scenario: Not configured
-- **WHEN** the status says admin actions are not configured
-- **THEN** the section shows "Admin actions are not configured on this server" and no key field
-
-#### Scenario: Key dropped from the server
-- **WHEN** the app holds a key and its last status said admin actions are configured, the server restarts without the key, and the next check-key or admin call answers "admin actions not configured"
-- **THEN** the app forgets the key, hides the admin controls and shows "Admin actions are not configured on this server", and a followed job is still followed
-
-#### Scenario: Plain http to another host
-- **WHEN** the server address is `http://sde.example.org/` and admin actions are configured
-- **THEN** the section shows "Admin actions need a secure connection", offers no key field, and still shows the server status
-
-#### Scenario: Local development
-- **WHEN** the server address is `http://localhost:8080/` and admin actions are configured
-- **THEN** the section offers the key field
-
 ### Requirement: An admin can act from the section
-With the key entered, the section SHALL offer "Update now", "Roll back" when a previous build exists, and the auto-update switch. "Roll back" SHALL ask for confirmation naming both builds and SHALL send the revision shown. Update now and roll back SHALL each carry a new operation id. Each action SHALL show while it runs and its answer in text. "Update now" and "Roll back" SHALL NOT be offered while busy or following a job.
+For a signed-in viewer with static-data admin scope, the section SHALL offer "Update now", "Roll back" when a previous build exists, and the auto-update switch. "Roll back" SHALL ask for confirmation naming both builds and SHALL send the revision shown. Update now and roll back SHALL each carry a new operation id. Each action SHALL show while it runs and its answer in text. "Update now" and "Roll back" SHALL NOT be offered while busy or following a job.
 
 #### Scenario: Update now
 - **WHEN** the admin presses "Update now" and the server answers "started"
@@ -303,8 +260,8 @@ With the key entered, the section SHALL offer "Update now", "Roll back" when a p
 - **THEN** W2's pending value, "Not confirmed" state, Retry and message are unchanged, and only W1's revision may raise the kept revision
 
 #### Scenario: Key check unanswered
-- **WHEN** the admin enters a key, or presses "Check again" after a pause, and the key check times out
-- **THEN** the section shows "Could not check the key" with "Try again" and "Forget key", keeps admin controls hidden, and does not show the key as rejected
+- **WHEN** the app opens the section without an authenticated admin session on a server whose legacy key check no longer exists
+- **THEN** it sends no key check, offers no key input or retry for it, hides mutation controls and still shows public status
 
 #### Scenario: Late resend answer after a new press
 - **WHEN** a resend of X is still out, X is shown ended by the operation read, the admin presses update now Y, and the resend of X then answers "ended" or "no answer yet"
@@ -372,3 +329,31 @@ The section SHALL open a change-report page showing the server's report between 
 #### Scenario: Opened by its address
 - **WHEN** the report page was opened directly at `/settings/static-data/report` and the user presses its back control
 - **THEN** the Settings screen is shown, and the browser's back button still behaves as the browser does
+
+### Requirement: Static-data controls follow the current admin session
+
+The Static data section SHALL show mutation controls for the current authenticated viewer with admin scope only over HTTPS or over HTTP to this machine (`127.0.0.1`, `::1`, `localhost`). It SHALL NOT ask for an install key. Sign-out, revocation or a different connection SHALL remove stale authority without hiding the public status. Losing authority SHALL NOT cancel an already submitted job on the same server.
+
+#### Scenario: Signed-in admin sees controls
+- **WHEN** the current server confirms admin scope on a secure connection
+- **THEN** the app shows the available admin controls and no key prompt
+
+#### Scenario: Sign-out or revoked scope
+- **WHEN** the viewer signs out or the server rejects the current session's admin authority
+- **THEN** the app hides mutation controls, keeps public status readable and can still follow a submitted job on that server
+
+#### Scenario: Insecure remote connection
+- **WHEN** the app is connected to a remote server over plain HTTP
+- **THEN** it offers no sign-in or admin mutation there, transmits no credentials, shows "Admin actions need a secure connection", and still displays public status
+
+#### Scenario: Delayed denial from an older session
+- **WHEN** an earlier session's mutation returns unauthorized after a new session has signed in
+- **THEN** the old response cannot remove the new session's admin authority
+
+#### Scenario: Server cannot grant admin access
+- **WHEN** the public status says the server is not configured to grant admin access
+- **THEN** the section shows that admin actions are not configured, offers no mutation controls, and still displays the public status
+
+#### Scenario: Local stack
+- **WHEN** the server address is `http://localhost/api/` and the current session has admin scope
+- **THEN** the section shows the admin controls
