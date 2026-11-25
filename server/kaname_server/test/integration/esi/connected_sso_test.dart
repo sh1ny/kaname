@@ -43,6 +43,7 @@ void main() {
   late List<EsiCallLogEntry> receipts;
   late EsiScheduler scheduler;
   late bool rateLimited;
+  late bool failViewerLookup;
   late String owner;
   late JsonWebKey signing;
 
@@ -53,6 +54,7 @@ void main() {
     exchanges = 0;
     refreshes = 0;
     rateLimited = false;
+    failViewerLookup = false;
     issued = [];
     receipts = [];
     owner = 'VEVTVCBPTkxZ';
@@ -128,7 +130,14 @@ void main() {
     addTearDown(browser.close);
     addTearDown(upstream.close);
     final oauth = CcpOAuth(upstream, now: () => clock);
-    final sessions = SsoSessions(now: () => clock);
+    final sessions = SsoSessions(
+      now: () {
+        if (failViewerLookup) {
+          throw const FormatException('synthetic lookup failure');
+        }
+        return clock;
+      },
+    );
     final registration = CcpConfidential(_serverId, _redirect, _serverSecret);
     final verifier = CcpJwtVerifier(
       now: () => clock,
@@ -302,6 +311,28 @@ void main() {
     expect(response.statusCode, 200);
     return jsonDecode(response.body) as Map<String, Object?>;
   }
+
+  test('A viewer lookup failure is unavailable, not sign-out', () async {
+    final signedIn = await signIn();
+    final bearer = signedIn['session']! as String;
+
+    failViewerLookup = true;
+    final unavailable = await post('viewer', const {}, bearer: bearer);
+    expect(unavailable.statusCode, 503);
+    expect(unavailable.body == '{"status":"unavailable"}', isTrue);
+
+    failViewerLookup = false;
+    final recovered = await post('viewer', const {}, bearer: bearer);
+    expect(recovered.statusCode, 200);
+    final viewer = jsonDecode(recovered.body) as Map<String, Object?>;
+    expect(viewer['characterId'] == signedIn['characterId'], isTrue);
+    expect(viewer['memberId'] == signedIn['memberId'], isTrue);
+
+    expect((await post('sign-out', const {}, bearer: bearer)).statusCode, 200);
+    final invalid = await post('viewer', const {}, bearer: bearer);
+    expect(invalid.statusCode, 401);
+    expect(invalid.body == '{"status":"signInRequired"}', isTrue);
+  });
 
   test('Confidential browser sign-in with other cookies on the host', () async {
     final start = await begin();

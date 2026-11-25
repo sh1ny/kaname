@@ -306,9 +306,28 @@ final class AccountNotifier extends Notifier<AccountState> {
     state = AccountWorking(connected, native: true);
     final notice = await action(desktop, connected);
     if (!_current(epoch)) return;
-    final updated = refresh ? await connected?.refresh() : connected;
+    if (!refresh || connected == null) {
+      state = AccountIdle(connected: connected, notice: notice);
+      return;
+    }
+    final updated = await connected.refresh();
     if (!_current(epoch)) return;
-    state = AccountIdle(connected: updated, notice: notice);
+    final handoffNotice = notice == AccountNotice.signedOut
+        ? AccountNotice.unavailable
+        : notice;
+    state = switch (updated) {
+      ViewerRefreshUpdated(:final session) => AccountIdle(
+        connected: session,
+        notice: handoffNotice,
+      ),
+      ViewerRefreshInvalid() => const AccountIdle(
+        notice: AccountNotice.signedOut,
+      ),
+      ViewerRefreshUnavailable() => AccountIdle(
+        connected: connected,
+        notice: handoffNotice,
+      ),
+    };
   }
 
   bool _current(int epoch) => ref.mounted && epoch == _epoch;
