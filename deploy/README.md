@@ -63,17 +63,31 @@ backup bundle. Restore the matching key before using a restored database.
 Without it, existing credentials cannot be recovered and members must sign in
 again. Do not substitute the service secret or generate a new key on restart.
 
-This change adds the vault but does not enable it at server startup; existing
-installs do not need to provision this key until the SSO wiring is enabled.
+The vault is not enabled at server startup; existing installs do not need to
+provision this key until the SSO wiring is enabled.
+
+### Stop the stack
+
+To stop services while keeping the database and Redis data:
 
 ```sh
-mise run stack:down                     # stop and delete the data volumes
-(cd deploy && docker compose down)     # stop, keep the data
+(cd deploy && docker compose down)
 ```
 
-`docker compose down` keeps the named volumes `pgdata` and `redisdata`, so the
-next `up` starts on the existing database and applies no migration twice.
-`mise run stack:down` removes them as well.
+This keeps the named volumes `pgdata` and `redisdata`, so the next `up` starts
+on the existing database and applies no migration twice.
+
+### Delete the stack data
+
+**Destructive reset:** `mise run stack:down` stops the stack and deletes its
+Postgres and Redis data volumes, including any stored vault credentials.
+Use it only when you intend to discard the data, not as a backup step.
+Keep a restorable database backup and its separately stored, matching
+`esiVaultKey` if the vault is in use.
+
+```sh
+mise run stack:down
+```
 
 ## Clients and proxies
 

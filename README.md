@@ -2,7 +2,13 @@
 
 Kaname ("linchpin") is an open-source EVE Online corporation and alliance suite: one Flutter app for web, desktop and mobile, backed by Serverpod, with a personal console for every pilot.
 
-**Status:** M0, walking skeleton. The pub workspace, a placeholder app and the repository checks exist; there are no product features yet.
+**Status:** M0 (walking skeleton) and M1 (static data pipeline) are complete;
+M2 (ESI platform and SSO) is in progress. The app has a responsive shell,
+static-data settings and offline type/system search, backed by the
+[self-host stack](deploy/README.md). The generated ESI client, shared request
+scheduler, privacy-scoped server call history and encrypted token vault are
+implemented; product sign-in and server/device token handoff remain in
+`esi-sso`. See the [roadmap](openspec/roadmap.md) for milestone scope.
 
 ## Development
 
@@ -22,8 +28,9 @@ The repository is one pub workspace:
 |---|---|---|
 | `app/` | `kaname_app` | Flutter app for web, Windows, Linux, macOS, Android and iOS |
 | `packages/kaname_<name>/` | `kaname_core`, … | Pure-Dart shared packages: no Flutter or Serverpod |
-| `app_packages/kaname_<name>/` | (none yet) | Shared Flutter packages |
-| `server/` | (none yet) | Serverpod server and client |
+| `app_packages/kaname_<name>/` | `kaname_ember_ui` | Shared Flutter UI and Ember themes |
+| `server/kaname_server/` | `kaname_server` | Serverpod server, ESI runtime and static-data workers |
+| `server/kaname_client/` | `kaname_client` | Generated Serverpod client and client-side stack tests |
 | `tools/kaname_<name>/` | `kaname_tools` | Repository checks and the notices generator |
 | `spikes/kaname_<name>/` | `kaname_grid_spike` | Disposable harnesses outside the product (not purity-checked) |
 
