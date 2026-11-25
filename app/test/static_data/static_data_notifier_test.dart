@@ -539,8 +539,10 @@ void main() {
 
     Future<StaticDataState> waitForState(
       Harness h,
+      String stage,
       bool Function(StaticDataState) matches,
     ) async {
+      printOnFailure('Waiting for $stage.');
       final matched = Completer<StaticDataState>();
       final subscription = h.container.listen(staticDataProvider, (_, next) {
         if (!matched.isCompleted && matches(next)) matched.complete(next);
@@ -555,6 +557,7 @@ void main() {
     Future<void> expectSaved(Harness h, BundleCopy copy) async {
       final settled = await waitForState(
         h,
+        'the save of build ${copy.identity.build} to settle',
         (state) => switch (state.lastDownload) {
           DownloadSucceeded() || DownloadNotSaved() || DownloadFailed() => true,
           NoDownloadYet() || DownloadSaving() => false,
@@ -592,6 +595,7 @@ void main() {
       final h = Harness(store: newStore(), opener: opener);
       final downloading = waitForState(
         h,
+        'the replacement download to start without a kept bundle',
         (state) => state is NoBundle && state.reason is Downloading,
       );
       h.source.current.emit(announce(copyN1));
@@ -615,7 +619,11 @@ void main() {
 
       final h = Harness(store: newStore(), opener: opener);
       expect(
-        await waitForState(h, (state) => state is BundleReady),
+        await waitForState(
+          h,
+          'the initial kept bundle',
+          (s) => s is BundleReady,
+        ),
         readyOn(copyN1),
       );
 
@@ -633,7 +641,11 @@ void main() {
         target: const NoServer(),
       );
       expect(
-        await waitForState(offline, (state) => state is BundleReady),
+        await waitForState(
+          offline,
+          'the kept bundle after offline restart',
+          (state) => state is BundleReady,
+        ),
         readyOn(copyN),
       );
     }, timeout: hangGuard);
