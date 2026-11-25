@@ -419,23 +419,30 @@ void main() {
     },
   );
 
-  test(
-    'A handoff 401 does not report sign-out without viewer confirmation',
-    () async {
+  for (final verified in [false, true]) {
+    final name = verified
+        ? 'A verified viewer overrides a handoff 401'
+        : 'A handoff 401 does not report sign-out without viewer confirmation';
+    test(name, () async {
       await _withConnectedDesktop((container, server, _) async {
         final account = container.read(accountProvider.notifier);
         server.reply = () => http.Response('{"status":"proxyAuth"}', 401);
-        server.viewerReply = () =>
-            http.Response('{"status":"unavailable"}', 503);
+        server.viewerReply = verified
+            ? () =>
+                  _viewerResponse({..._viewerPilot, 'holder': 'serverReserved'})
+            : () => http.Response('{"status":"unavailable"}', 503);
 
         await account.takeDesktop();
 
         final state = container.read(accountProvider) as AccountIdle;
-        expect(state.connected?.pilot.holder, 'serverHeld');
+        expect(
+          state.connected?.pilot.holder,
+          verified ? 'serverReserved' : 'serverHeld',
+        );
         expect(state.notice, AccountNotice.unavailable);
       });
-    },
-  );
+    });
+  }
 
   test('A verified refresh replaces the retained holder view', () async {
     await _withConnectedDesktop((container, server, device) async {
@@ -469,19 +476,26 @@ void main() {
     }, allowNativeRequest: true);
   });
 
-  test('A confirmed invalid viewer session signs out', () async {
-    await _withConnectedDesktop((container, server, _) async {
-      final account = container.read(accountProvider.notifier);
-      server.viewerReply = () =>
-          http.Response('{"status":"signInRequired"}', 401);
+  for (final take in [true, false]) {
+    test(
+      take
+          ? 'A confirmed invalid viewer session signs out'
+          : 'A confirmed invalid viewer session after Return signs out',
+      () async {
+        await _withConnectedDesktop((container, server, _) async {
+          final account = container.read(accountProvider.notifier);
+          server.viewerReply = () =>
+              http.Response('{"status":"signInRequired"}', 401);
 
-      await account.takeDesktop();
+          await (take ? account.takeDesktop() : account.returnDesktop());
 
-      final state = container.read(accountProvider) as AccountIdle;
-      expect(state.connected, isNull);
-      expect(state.notice, AccountNotice.signedOut);
-    });
-  });
+          final state = container.read(accountProvider) as AccountIdle;
+          expect(state.connected, isNull);
+          expect(state.notice, AccountNotice.signedOut);
+        });
+      },
+    );
+  }
 
   test('A late viewer reply cannot restore a signed-out session', () async {
     await _withConnectedDesktop((container, server, _) async {
