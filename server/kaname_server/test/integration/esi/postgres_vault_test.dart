@@ -37,7 +37,10 @@ void main() {
 
       test('first activations contend across Postgres sessions', () async {
         final calls = <String>[];
-        Future<VaultRefreshReply> exchange(String token) async {
+        Future<VaultRefreshReply> exchange(
+          VaultAuthorization _,
+          String token,
+        ) async {
           calls.add(token);
           return const VaultRefreshTemporaryFailure();
         }
@@ -86,11 +89,11 @@ void main() {
               release.complete(const VaultRefreshTemporaryFailure());
             }
           });
-          final a = make((token) {
+          final a = make((_, token) {
             arrived.complete(token);
             return release.future;
           });
-          final b = make((_) async => fail('competitor sent a refresh'));
+          final b = make((_, _) async => fail('competitor sent a refresh'));
           const character = 43;
           final auth = _success(
             await a.activate(
@@ -124,7 +127,7 @@ void main() {
           }
           expect(_success(await b.bearer(auth)).token, _access);
           now = now.add(const Duration(minutes: 1));
-          final restarted = make((token) async {
+          final restarted = make((_, token) async {
             expect(token, _rotated);
             return const VaultRefreshInvalidGrant();
           });
@@ -142,7 +145,7 @@ void main() {
 
       test('database completion failure withholds bearer and does not expose raw diagnostics', () async {
         const character = 44;
-        final a = make((_) async {
+        final a = make((_, _) async {
           await session.db.unsafeExecute('''
 ALTER TABLE esi_token_vault ADD CONSTRAINT vault_fixture_fail_completion
 CHECK ("characterId" <> 44 OR "leaseUntil" IS NOT NULL) NOT VALID
@@ -171,7 +174,7 @@ CHECK ("characterId" <> 44 OR "leaseUntil" IS NOT NULL) NOT VALID
         expect('$result', isNot(contains(_access)));
         expect('$result', isNot(contains(_rotated)));
         expect('$result', isNot(contains(key)));
-        final b = make((_) async => fail('unexpected exchange'));
+        final b = make((_, _) async => fail('unexpected exchange'));
         expect(
           await b.readBearer(auth),
           _failure(VaultFailureReason.refreshRequired),

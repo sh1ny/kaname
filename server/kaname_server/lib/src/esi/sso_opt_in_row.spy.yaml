@@ -1,0 +1,13 @@
+### Explicit optional scoped ESI access under one policy fingerprint.
+class: SsoOptInRow
+table: esi_scope_opt_in
+serverOnly: true
+fields:
+  memberId: int
+  owner: String
+  scopeClass: String
+  policyFingerprint: String
+indexes:
+  esi_opt_in_identity_class_idx:
+    fields: memberId, scopeClass
+    unique: true

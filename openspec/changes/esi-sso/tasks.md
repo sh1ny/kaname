@@ -4,18 +4,18 @@
 
 | Requirement | Scenario | Test file | Test name | State |
 |---|---|---|---|---|
-| esi-sso → Each mode signs in through its own CCP registration | Confidential browser sign-in | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Confidential browser sign-in | red |
+| esi-sso → Each mode signs in through its own CCP registration | Confidential browser sign-in | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Confidential browser sign-in | green |
 | esi-sso → Each mode signs in through its own CCP registration | Native desktop sign-in | `app/test/esi_sso/native_sso_test.dart` | Native desktop sign-in | red |
-| esi-sso → Each mode signs in through its own CCP registration | Replayed, misrouted or abandoned callback | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Replayed, misrouted or abandoned callback | red |
+| esi-sso → Each mode signs in through its own CCP registration | Replayed, misrouted or abandoned callback | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Replayed, misrouted or abandoned callback | green |
 | esi-sso → Each mode signs in through its own CCP registration | User cancels or callback cannot listen | `app/test/esi_sso/native_sso_test.dart` | User cancels or callback cannot listen | red |
-| esi-sso → Connected sign-in verifies the consenting browser | Web and native connected completion | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Web and native connected completion | red |
-| esi-sso → Connected sign-in verifies the consenting browser | A forwarded authorization link cannot yield a session | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | A forwarded authorization link cannot yield a session | red |
-| esi-sso → Connected sign-in verifies the consenting browser | One client cannot fill the global attempt capacity | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | One client cannot fill the global attempt capacity | red |
-| esi-sso → Accept only validated CCP character identity | Valid identity signs in again | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Valid identity signs in again | red |
+| esi-sso → Connected sign-in verifies the consenting browser | Web and native connected completion | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Web and native connected completion | green |
+| esi-sso → Connected sign-in verifies the consenting browser | A forwarded authorization link cannot yield a session | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | A forwarded authorization link cannot yield a session | green |
+| esi-sso → Connected sign-in verifies the consenting browser | One client cannot fill the global attempt capacity | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | One client cannot fill the global attempt capacity | green |
+| esi-sso → Accept only validated CCP character identity | Valid identity signs in again | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Valid identity signs in again | green |
 | esi-sso → Accept only validated CCP character identity | Invalid signature, key or claims | `packages/kaname_esi_sso/test/ccp_jwt_test.dart` | Invalid signature, key or claims | green |
 | esi-sso → Accept only validated CCP character identity | CCP rotates its signing key | `packages/kaname_esi_sso/test/ccp_jwt_test.dart` | CCP rotates its signing key | green |
-| esi-sso → Accept only validated CCP character identity | Known character presents another owner | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Known character presents another owner | red |
-| esi-sso → Accept only validated CCP character identity | Definitive refresh verification rejection | `server/kaname_server/test/integration/esi/vault_refresh_verification_test.dart` | Definitive refresh verification rejection | red |
+| esi-sso → Accept only validated CCP character identity | Known character presents another owner | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | Known character presents another owner | green |
+| esi-sso → Accept only validated CCP character identity | Definitive refresh verification rejection | `server/kaname_server/test/integration/esi/vault_refresh_verification_test.dart` | Definitive refresh verification rejection | green |
 | esi-sso → Configured scope policy fails closed | Enabled module and permitted classes | `packages/kaname_esi_sso/test/scope_policy_test.dart` | Enabled module and permitted classes | green |
 | esi-sso → Configured scope policy fails closed | Missing policy or optional opt-in | `packages/kaname_esi_sso/test/scope_policy_test.dart` | Missing policy or optional opt-in | green |
 | esi-sso → Configured scope policy fails closed | Unconfigured solo signs in without skills access | `app/test/esi_sso/native_sso_test.dart` | Unconfigured solo signs in without skills access | red |
@@ -116,8 +116,8 @@
 
 ## 3. Connected identity and credential handling
 
-- [ ] 3.1 Add and run failing connected SSO, vault refresh and secret-sentinel tests. Cover consent in a different browser, cookie and native code proof, rate caps, callback replay, identity mapping and rotated grant rejection. Verify each fails on the expected missing behavior.
-- [ ] 3.2 Implement confidential exchange, callback and redemption, identity and scoped Kaname sessions, opt-in records, vault refresh verification and secret-free boundaries. Carry C8, C9 and C11. Generate protocol and migrations; run the mapped HTTP and vault tests against faked CCP with no live credentials. Document the configuration and public failures.
+- [x] 3.1 Add and run failing connected SSO, vault refresh and secret-sentinel tests. Cover consent in a different browser, cookie and native code proof, rate caps, callback replay, identity mapping and rotated grant rejection. Verify each fails on the expected missing behavior.
+- [x] 3.2 Implement confidential exchange, callback and redemption, identity and scoped Kaname sessions, opt-in records, vault refresh verification and secret-free boundaries. Carry C8, C9 and C11. Generate protocol and migrations; run the mapped HTTP and vault tests against faked CCP with no live credentials. Document the configuration and public failures.
 
 ## 4. Native sign-in, holder handoff and scoped skills
 

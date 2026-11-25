@@ -1,0 +1,9 @@
+### Stable Kaname identity bound to CCP's signed owner.
+class: SsoIdentityRow
+table: esi_identity
+serverOnly: true
+fields:
+  characterId: int, unique
+  owner: String
+  characterName: String
+  blocked: bool

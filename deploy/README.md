@@ -89,6 +89,27 @@ Keep a restorable database backup and its separately stored, matching
 mise run stack:down
 ```
 
+## Confidential EVE sign-in
+
+The server reads `KANAME_ESI_SSO_CLIENT_ID`, `KANAME_ESI_SSO_CLIENT_SECRET`,
+`KANAME_ESI_SSO_REDIRECT_URI` and `KANAME_ESI_VAULT_KEY` from its environment.
+Use a separate canonical Base64 key encoding 32 random bytes. An absent or
+invalid registration or key disables sign-in and leaves public reads open.
+Keep the client secret and vault key out of app configuration and logs. The
+callback is `/auth/esi/callback` on the configured HTTPS origin. The
+loopback stack can opt into exactly `http://localhost/auth/esi/callback`
+with `KANAME_ESI_SSO_ALLOW_LOCAL_HTTP=true`.
+
+`KANAME_ESI_SSO_ADMIN_CHARACTERS` is a comma-separated list of positive CCP
+character IDs. Missing or invalid input grants no admin scope. The server
+checks the current Kaname session and verified owner before granting that
+scope. ESI permissions come from `KANAME_ESI_SCOPE_POLICY`; a missing or
+invalid policy permits identity sign-in but does not grant a skills scope.
+
+The browser callback and completion replies use `no-store` and `no-referrer`.
+Do not log callbacks, their query strings, or authentication request bodies
+and headers at any reverse proxy.
+
 ## Clients and proxies
 
 The server holds at most 16 open announcement streams per client, and 2,000

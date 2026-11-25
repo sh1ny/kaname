@@ -17,6 +17,10 @@ import 'package:serverpod/serverpod.dart' as _is;
 
 import 'esi/esi_call_log_entry.dart' as _ifsmg7bk;
 import 'esi/esi_token_vault_row.dart' as _iynhzf32;
+import 'esi/sso_holder_row.dart' as _idzz7lja;
+import 'esi/sso_identity_row.dart' as _i5h09tn7;
+import 'esi/sso_opt_in_row.dart' as _iach3bls;
+import 'esi/sso_session_row.dart' as _iuhy3ot8;
 import 'health/dependency_status.dart' as _iztepymd;
 import 'health/health_report.dart' as _if75m2mz;
 import 'static_data/admin_answer.dart' as _iyccfpu2;
@@ -78,6 +82,10 @@ import 'static_data/tables/sde_type.dart' as _i19vm38w;
 import 'static_data/tables/sde_type_dogma.dart' as _ib14m8bx;
 export 'esi/esi_call_log_entry.dart';
 export 'esi/esi_token_vault_row.dart';
+export 'esi/sso_holder_row.dart';
+export 'esi/sso_identity_row.dart';
+export 'esi/sso_opt_in_row.dart';
+export 'esi/sso_session_row.dart';
 export 'health/dependency_status.dart';
 export 'health/health_report.dart';
 export 'static_data/admin_answer.dart';
@@ -153,6 +161,10 @@ class Protocol extends _is.DatabaseSerializationManager
         types: const [
           _is.getType<_ifsmg7bk.EsiCallLogRow>,
           _is.getType<_iynhzf32.EsiTokenVaultRow>,
+          _is.getType<_idzz7lja.SsoHolderRow>,
+          _is.getType<_i5h09tn7.SsoIdentityRow>,
+          _is.getType<_iach3bls.SsoOptInRow>,
+          _is.getType<_iuhy3ot8.SsoSessionRow>,
           _is.getType<_iztepymd.DependencyStatus>,
           _is.getType<_if75m2mz.HealthReport>,
           _is.getType<_iyccfpu2.AdminAnswer>,
@@ -216,6 +228,10 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_ib14m8bx.SdeTypeDogma>,
           _is.getType<_ifsmg7bk.EsiCallLogRow?>,
           _is.getType<_iynhzf32.EsiTokenVaultRow?>,
+          _is.getType<_idzz7lja.SsoHolderRow?>,
+          _is.getType<_i5h09tn7.SsoIdentityRow?>,
+          _is.getType<_iach3bls.SsoOptInRow?>,
+          _is.getType<_iuhy3ot8.SsoSessionRow?>,
           _is.getType<_iztepymd.DependencyStatus?>,
           _is.getType<_if75m2mz.HealthReport?>,
           _is.getType<_iyccfpu2.AdminAnswer?>,
@@ -277,13 +293,14 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_iataywh8.SdeSolarSystem?>,
           _is.getType<_i19vm38w.SdeType?>,
           _is.getType<_ib14m8bx.SdeTypeDogma?>,
+          _is.getType<List<String>>,
+          _is.getType<List<String>?>,
           _is.getType<_idp9h2tz.SdeJson?>,
           _is.getType<_idp9h2tz.SdeJson>,
           _is.getType<List<_iacxd2dw.StaticDataReportFile>>,
           _is.getType<List<_iacxd2dw.StaticDataReportFile>?>,
           _is.getType<Map<String, int>>,
           _is.getType<Map<String, int>?>,
-          _is.getType<List<String>>,
           _is.getType<_idp9h2tz.SdeJson?>,
         ],
         modules: const [_isp.Protocol.new],
@@ -291,6 +308,10 @@ class Protocol extends _is.DatabaseSerializationManager
           'SdeJson',
           'EsiCallLogRow',
           'EsiTokenVaultRow',
+          'SsoHolderRow',
+          'SsoIdentityRow',
+          'SsoOptInRow',
+          'SsoSessionRow',
           'DependencyStatus',
           'HealthReport',
           'AdminAnswer',
@@ -459,6 +480,284 @@ class Protocol extends _is.DatabaseSerializationManager
             _isp.IndexElementDefinition(
               type: _isp.IndexElementDefinitionType.column,
               definition: 'recordedAt',
+            ),
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'id',
+            ),
+          ],
+          type: 'btree',
+          isUnique: false,
+          isPrimary: false,
+        ),
+      ],
+      managed: true,
+    ),
+    _isp.TableDefinition(
+      name: 'esi_holder_assignment',
+      dartName: 'SsoHolderRow',
+      schema: 'public',
+      module: 'kaname',
+      columns: [
+        _isp.ColumnDefinition(
+          name: 'id',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'serial',
+        ),
+        _isp.ColumnDefinition(
+          name: 'characterId',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'phase',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'String',
+        ),
+        _isp.ColumnDefinition(
+          name: 'generation',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'vaultGeneration',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: true,
+          dartType: 'int?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'proofDigest',
+          columnType: _isp.ColumnType.text,
+          isNullable: true,
+          dartType: 'String?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'grantFingerprint',
+          columnType: _isp.ColumnType.text,
+          isNullable: true,
+          dartType: 'String?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'requestedScopes',
+          columnType: _isp.ColumnType.json,
+          isNullable: true,
+          dartType: 'List<String>?',
+        ),
+      ],
+      foreignKeys: [],
+      indexes: [
+        _isp.IndexDefinition(
+          indexName: 'esi_holder_assignment__characterId__unique_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'characterId',
+            ),
+          ],
+          type: 'btree',
+          isUnique: true,
+          isPrimary: false,
+        ),
+      ],
+      managed: true,
+    ),
+    _isp.TableDefinition(
+      name: 'esi_identity',
+      dartName: 'SsoIdentityRow',
+      schema: 'public',
+      module: 'kaname',
+      columns: [
+        _isp.ColumnDefinition(
+          name: 'id',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'serial',
+        ),
+        _isp.ColumnDefinition(
+          name: 'characterId',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'owner',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'String',
+        ),
+        _isp.ColumnDefinition(
+          name: 'characterName',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'String',
+        ),
+        _isp.ColumnDefinition(
+          name: 'blocked',
+          columnType: _isp.ColumnType.boolean,
+          isNullable: false,
+          dartType: 'bool',
+        ),
+      ],
+      foreignKeys: [],
+      indexes: [
+        _isp.IndexDefinition(
+          indexName: 'esi_identity__characterId__unique_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'characterId',
+            ),
+          ],
+          type: 'btree',
+          isUnique: true,
+          isPrimary: false,
+        ),
+      ],
+      managed: true,
+    ),
+    _isp.TableDefinition(
+      name: 'esi_scope_opt_in',
+      dartName: 'SsoOptInRow',
+      schema: 'public',
+      module: 'kaname',
+      columns: [
+        _isp.ColumnDefinition(
+          name: 'id',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'serial',
+        ),
+        _isp.ColumnDefinition(
+          name: 'memberId',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'owner',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'String',
+        ),
+        _isp.ColumnDefinition(
+          name: 'scopeClass',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'String',
+        ),
+        _isp.ColumnDefinition(
+          name: 'policyFingerprint',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'String',
+        ),
+      ],
+      foreignKeys: [],
+      indexes: [
+        _isp.IndexDefinition(
+          indexName: 'esi_opt_in_identity_class_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'memberId',
+            ),
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'scopeClass',
+            ),
+          ],
+          type: 'btree',
+          isUnique: true,
+          isPrimary: false,
+        ),
+      ],
+      managed: true,
+    ),
+    _isp.TableDefinition(
+      name: 'esi_session',
+      dartName: 'SsoSessionRow',
+      schema: 'public',
+      module: 'kaname',
+      columns: [
+        _isp.ColumnDefinition(
+          name: 'id',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'serial',
+        ),
+        _isp.ColumnDefinition(
+          name: 'digest',
+          columnType: _isp.ColumnType.text,
+          isNullable: false,
+          dartType: 'String',
+        ),
+        _isp.ColumnDefinition(
+          name: 'memberId',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'expiresAt',
+          columnType: _isp.ColumnType.timestampWithoutTimeZone,
+          isNullable: false,
+          dartType: 'DateTime',
+        ),
+      ],
+      foreignKeys: [],
+      indexes: [
+        _isp.IndexDefinition(
+          indexName: 'esi_session__digest__unique_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'digest',
+            ),
+          ],
+          type: 'btree',
+          isUnique: true,
+          isPrimary: false,
+        ),
+        _isp.IndexDefinition(
+          indexName: 'esi_session_identity_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'memberId',
+            ),
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'expiresAt',
+            ),
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'id',
+            ),
+          ],
+          type: 'btree',
+          isUnique: false,
+          isPrimary: false,
+        ),
+        _isp.IndexDefinition(
+          indexName: 'esi_session_expiry_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'expiresAt',
             ),
             _isp.IndexElementDefinition(
               type: _isp.IndexElementDefinitionType.column,
@@ -2364,6 +2663,18 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _iynhzf32.EsiTokenVaultRow) {
       return _iynhzf32.EsiTokenVaultRow.fromJson(data) as T;
     }
+    if (t == _idzz7lja.SsoHolderRow) {
+      return _idzz7lja.SsoHolderRow.fromJson(data) as T;
+    }
+    if (t == _i5h09tn7.SsoIdentityRow) {
+      return _i5h09tn7.SsoIdentityRow.fromJson(data) as T;
+    }
+    if (t == _iach3bls.SsoOptInRow) {
+      return _iach3bls.SsoOptInRow.fromJson(data) as T;
+    }
+    if (t == _iuhy3ot8.SsoSessionRow) {
+      return _iuhy3ot8.SsoSessionRow.fromJson(data) as T;
+    }
     if (t == _iztepymd.DependencyStatus) {
       return _iztepymd.DependencyStatus.fromJson(data) as T;
     }
@@ -2553,6 +2864,20 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (t == _is.getType<_iynhzf32.EsiTokenVaultRow?>()) {
       return (data != null ? _iynhzf32.EsiTokenVaultRow.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_idzz7lja.SsoHolderRow?>()) {
+      return (data != null ? _idzz7lja.SsoHolderRow.fromJson(data) : null) as T;
+    }
+    if (t == _is.getType<_i5h09tn7.SsoIdentityRow?>()) {
+      return (data != null ? _i5h09tn7.SsoIdentityRow.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_iach3bls.SsoOptInRow?>()) {
+      return (data != null ? _iach3bls.SsoOptInRow.fromJson(data) : null) as T;
+    }
+    if (t == _is.getType<_iuhy3ot8.SsoSessionRow?>()) {
+      return (data != null ? _iuhy3ot8.SsoSessionRow.fromJson(data) : null)
           as T;
     }
     if (t == _is.getType<_iztepymd.DependencyStatus?>()) {
@@ -2821,6 +3146,15 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _is.getType<_ib14m8bx.SdeTypeDogma?>()) {
       return (data != null ? _ib14m8bx.SdeTypeDogma.fromJson(data) : null) as T;
     }
+    if (t == List<String>) {
+      return (data as List).map((e) => deserialize<String>(e)).toList() as T;
+    }
+    if (t == _is.getType<List<String>?>()) {
+      return (data != null
+              ? (data as List).map((e) => deserialize<String>(e)).toList()
+              : null)
+          as T;
+    }
     if (t == _is.getType<_idp9h2tz.SdeJson?>()) {
       return (data != null ? _idp9h2tz.SdeJson.fromJson(data) : null) as T;
     }
@@ -2855,9 +3189,6 @@ class Protocol extends _is.DatabaseSerializationManager
               : null)
           as T;
     }
-    if (t == List<String>) {
-      return (data as List).map((e) => deserialize<String>(e)).toList() as T;
-    }
     if (t == _is.getType<_idp9h2tz.SdeJson?>()) {
       return (data != null ? _idp9h2tz.SdeJson.fromJson(data) : null) as T;
     }
@@ -2879,6 +3210,10 @@ class Protocol extends _is.DatabaseSerializationManager
       _idp9h2tz.SdeJson => 'SdeJson',
       _ifsmg7bk.EsiCallLogRow => 'EsiCallLogRow',
       _iynhzf32.EsiTokenVaultRow => 'EsiTokenVaultRow',
+      _idzz7lja.SsoHolderRow => 'SsoHolderRow',
+      _i5h09tn7.SsoIdentityRow => 'SsoIdentityRow',
+      _iach3bls.SsoOptInRow => 'SsoOptInRow',
+      _iuhy3ot8.SsoSessionRow => 'SsoSessionRow',
       _iztepymd.DependencyStatus => 'DependencyStatus',
       _if75m2mz.HealthReport => 'HealthReport',
       _iyccfpu2.AdminAnswer => 'AdminAnswer',
@@ -2960,6 +3295,14 @@ class Protocol extends _is.DatabaseSerializationManager
         return 'EsiCallLogRow';
       case _iynhzf32.EsiTokenVaultRow():
         return 'EsiTokenVaultRow';
+      case _idzz7lja.SsoHolderRow():
+        return 'SsoHolderRow';
+      case _i5h09tn7.SsoIdentityRow():
+        return 'SsoIdentityRow';
+      case _iach3bls.SsoOptInRow():
+        return 'SsoOptInRow';
+      case _iuhy3ot8.SsoSessionRow():
+        return 'SsoSessionRow';
       case _iztepymd.DependencyStatus():
         return 'DependencyStatus';
       case _if75m2mz.HealthReport():
@@ -3104,6 +3447,18 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (dataClassName == 'EsiTokenVaultRow') {
       return deserialize<_iynhzf32.EsiTokenVaultRow>(data['data']);
+    }
+    if (dataClassName == 'SsoHolderRow') {
+      return deserialize<_idzz7lja.SsoHolderRow>(data['data']);
+    }
+    if (dataClassName == 'SsoIdentityRow') {
+      return deserialize<_i5h09tn7.SsoIdentityRow>(data['data']);
+    }
+    if (dataClassName == 'SsoOptInRow') {
+      return deserialize<_iach3bls.SsoOptInRow>(data['data']);
+    }
+    if (dataClassName == 'SsoSessionRow') {
+      return deserialize<_iuhy3ot8.SsoSessionRow>(data['data']);
     }
     if (dataClassName == 'DependencyStatus') {
       return deserialize<_iztepymd.DependencyStatus>(data['data']);
@@ -3310,6 +3665,14 @@ class Protocol extends _is.DatabaseSerializationManager
         return _ifsmg7bk.EsiCallLogRow.t;
       case _iynhzf32.EsiTokenVaultRow:
         return _iynhzf32.EsiTokenVaultRow.t;
+      case _idzz7lja.SsoHolderRow:
+        return _idzz7lja.SsoHolderRow.t;
+      case _i5h09tn7.SsoIdentityRow:
+        return _i5h09tn7.SsoIdentityRow.t;
+      case _iach3bls.SsoOptInRow:
+        return _iach3bls.SsoOptInRow.t;
+      case _iuhy3ot8.SsoSessionRow:
+        return _iuhy3ot8.SsoSessionRow.t;
       case _i3kpj3vw.SdeAdminOperation:
         return _i3kpj3vw.SdeAdminOperation.t;
       case _iqvvlz0n.SdeBuild:

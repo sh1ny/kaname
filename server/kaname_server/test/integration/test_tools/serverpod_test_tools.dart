@@ -187,6 +187,8 @@ class _InternalTestEndpoints extends TestEndpoints
 class _FutureCalls {
   late final esiCallLogPruneCall = _EsiCallLogPruneCallFutureCall();
 
+  late final ssoSessionPruneCall = _SsoSessionPruneCallFutureCall();
+
   late final staticDataCheckCall = _StaticDataCheckCallFutureCall();
 }
 
@@ -468,6 +470,21 @@ class _EsiCallLogPruneCallFutureCall {
         (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild();
     try {
       await _ibdqg5o2.EsiCallLogPruneCallRunFutureCall().invoke(
+        _localUniqueSession,
+        null,
+      );
+    } finally {
+      await _localUniqueSession.close();
+    }
+  }
+}
+
+class _SsoSessionPruneCallFutureCall {
+  Future<void> run(_ist.TestSessionBuilder sessionBuilder) async {
+    var _localUniqueSession =
+        (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild();
+    try {
+      await _ibdqg5o2.SsoSessionPruneCallRunFutureCall().invoke(
         _localUniqueSession,
         null,
       );

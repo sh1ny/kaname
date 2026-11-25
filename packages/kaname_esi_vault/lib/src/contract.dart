@@ -111,6 +111,12 @@ final class VaultRefreshInvalidGrant extends VaultRefreshReply {
   const VaultRefreshInvalidGrant();
 }
 
+/// A reply could not be verified for the current authorization.
+final class VaultRefreshUnverifiedGrant extends VaultRefreshReply {
+  /// Discards the current credential without retrying on a replacement.
+  const VaultRefreshUnverifiedGrant();
+}
+
 /// No definitive grant result was obtained from upstream.
 final class VaultRefreshTemporaryFailure extends VaultRefreshReply {
   /// Reports only the classification, not a response, exception or stack.
