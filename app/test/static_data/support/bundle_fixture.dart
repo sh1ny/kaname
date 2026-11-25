@@ -59,6 +59,11 @@ BundleCopy fixtureBundle(int build, {Map<int, String> extraTypes = const {}}) {
 /// A [BundleOpener] running the reader in this isolate, optionally held
 /// until the test releases it.
 final class FakeBundleOpener implements BundleOpener {
+  /// Creates an opener that calls [onHold] after registering a held open.
+  FakeBundleOpener({this._onHold});
+
+  final void Function()? _onHold;
+
   /// Whether each open waits for [release] before it checks the bytes.
   bool hold = false;
 
@@ -90,6 +95,7 @@ final class FakeBundleOpener implements BundleOpener {
     if (hold) {
       final gate = Completer<void>();
       _held.add(gate);
+      _onHold?.call();
       await gate.future;
     }
     final opened = openBundle(

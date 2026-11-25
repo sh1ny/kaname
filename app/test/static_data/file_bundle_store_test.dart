@@ -15,6 +15,7 @@ import 'package:kaname_static_data_bundle/kaname_static_data_bundle.dart';
 import 'support/bundle_fixture.dart';
 
 const buildN = 3714173;
+const _hangGuard = Timeout(Duration(minutes: 3));
 
 /// A gzip bundle file whose header names format major [major], with its
 /// identity.
@@ -34,6 +35,38 @@ BundleCopy otherFormatBundle({required int build, required int major}) {
   );
 }
 
+final class _PausedSave {
+  _PausedSave(Directory directory, BundleCopy copy) {
+    finished = FileBundleStore(
+      directory: directory,
+      opener: FakeBundleOpener(),
+      beforeRename: _beforeRename,
+    ).save(copy);
+    addTearDown(() async {
+      release();
+      await finished;
+    });
+  }
+
+  final _reached = Completer<void>();
+  final _resume = Completer<void>();
+  late final Future<BundleSaveOutcome> finished;
+  var renames = 0;
+
+  Future<void> get reached => _reached.future;
+
+  Future<void> _beforeRename() async {
+    renames++;
+    if (renames != 1) return;
+    _reached.complete();
+    await _resume.future;
+  }
+
+  void release() {
+    if (!_resume.isCompleted) _resume.complete();
+  }
+}
+
 void main() {
   late Directory root;
   late Directory directory;
@@ -45,14 +78,12 @@ void main() {
 
   tearDown(() => root.deleteSync(recursive: true));
 
-  FileBundleStore store({
-    FakeBundleOpener? opener,
-    Future<void> Function()? beforeRename,
-  }) => FileBundleStore(
-    directory: directory,
-    opener: opener ?? FakeBundleOpener(),
-    beforeRename: beforeRename,
-  );
+  FileBundleStore store({FakeBundleOpener? opener, DateTime Function()? now}) =>
+      FileBundleStore(
+        directory: directory,
+        opener: opener ?? FakeBundleOpener(),
+        now: now,
+      );
 
   /// The files in the store's directory, by name.
   Map<String, File> files() => {
@@ -69,13 +100,6 @@ void main() {
   Iterable<File> temporaryFiles() => files().entries
       .where((entry) => entry.key.endsWith('.tmp'))
       .map((entry) => entry.value);
-
-  Future<void> waitFor(bool Function() condition) async {
-    for (var i = 0; i < 200 && !condition(); i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
-    expect(condition(), isTrue, reason: 'condition never became true');
-  }
 
   void expectLoaded(KeptBundleLoad load, BundleCopy expected) {
     expect(load, isA<KeptBundleLoaded>());
@@ -139,9 +163,15 @@ void main() {
     kept.writeAsBytesSync(kept.readAsBytesSync().sublist(0, 100));
 
     // Process A reads the truncated file and is still checking it.
-    final slowOpener = FakeBundleOpener()..hold = true;
+    final held = Completer<void>();
+    final slowOpener = FakeBundleOpener(onHold: held.complete)..hold = true;
     final slowLoad = store(opener: slowOpener).load();
-    await waitFor(() => slowOpener.waiting);
+    addTearDown(() async {
+      slowOpener.hold = false;
+      slowOpener.release();
+      await slowLoad;
+    });
+    await held.future;
 
     // Process B saves build N+1 meanwhile.
     final next = fixtureBundle(buildN + 1);
@@ -152,72 +182,59 @@ void main() {
 
     expect(keptFile().path, kept.path);
     expectLoaded(await store().load(), next);
-  });
+  }, timeout: _hangGuard);
 
   test('save stopped before the rename loads the previous bundle and removes '
       'temporary files older than an hour', () async {
     final previous = fixtureBundle(buildN);
-    await store().save(previous);
+    expect(await store().save(previous), isA<BundleSaved>());
+    final next = fixtureBundle(buildN + 1);
+    final now = DateTime.utc(2026);
 
-    // Two saves of build N+1 stop before their rename, as when the app
-    // stops; neither ever completes.
-    var stopped = 0;
-    Future<void> stop() {
-      stopped++;
-      return Completer<void>().future;
-    }
-
-    unawaited(store(beforeRename: stop).save(fixtureBundle(buildN + 1)));
-    await waitFor(() => stopped == 1);
+    // Both writers have closed their temporary file but have not renamed it.
+    final older = _PausedSave(directory, next);
+    await older.reached;
     final old = temporaryFiles().single;
-    old.setLastModifiedSync(DateTime.now().subtract(const Duration(hours: 2)));
-    unawaited(store(beforeRename: stop).save(fixtureBundle(buildN + 1)));
-    await waitFor(() => stopped == 2);
+    old.setLastModifiedSync(now.subtract(const Duration(hours: 2)));
+    final newer = _PausedSave(directory, next);
+    await newer.reached;
     final recent = temporaryFiles().singleWhere(
       (file) => file.path != old.path,
     );
-    recent.setLastModifiedSync(
-      DateTime.now().subtract(const Duration(minutes: 10)),
-    );
+    recent.setLastModifiedSync(now.subtract(const Duration(minutes: 10)));
 
-    expectLoaded(await store().load(), previous);
+    expectLoaded(await store(now: () => now).load(), previous);
 
     expect(old.existsSync(), isFalse);
     expect(recent.existsSync(), isTrue, reason: 'another save may own it');
-  });
+
+    older.release();
+    expect(await older.finished, isA<BundleSaved>());
+    newer.release();
+    expect(await newer.finished, isA<BundleSaved>());
+  }, timeout: _hangGuard);
 
   test('a save suspended past the cutoff before its rename writes again '
       'when another start removed its temporary file', () async {
-    await store().save(fixtureBundle(buildN));
+    final previous = fixtureBundle(buildN);
+    expect(await store().save(previous), isA<BundleSaved>());
     final next = fixtureBundle(buildN + 1);
-
-    // The first rename waits, as a process suspended before its rename.
-    final resume = Completer<void>();
-    var renames = 0;
-    Future<void> pause() {
-      renames++;
-      return renames == 1 ? resume.future : Future<void>.value();
-    }
-
-    final saving = store(beforeRename: pause).save(next);
-    await waitFor(() => renames == 1);
-
-    // Another process starts more than an hour later and removes the
-    // suspended save's temporary file as stale.
-    final later = FileBundleStore(
-      directory: directory,
-      opener: FakeBundleOpener(),
-      now: () => DateTime.now().add(const Duration(hours: 2)),
+    final now = DateTime.utc(2026);
+    final saving = _PausedSave(directory, next);
+    await saving.reached;
+    temporaryFiles().single.setLastModifiedSync(
+      now.subtract(const Duration(hours: 2)),
     );
-    await later.load();
+
+    expectLoaded(await store(now: () => now).load(), previous);
     expect(temporaryFiles(), isEmpty);
 
-    resume.complete();
-    expect(await saving, isA<BundleSaved>());
-    expect(renames, 2);
+    saving.release();
+    expect(await saving.finished, isA<BundleSaved>());
+    expect(saving.renames, 2);
     expect(temporaryFiles(), isEmpty);
     expectLoaded(await store().load(), next);
-  });
+  }, timeout: _hangGuard);
 
   test(
     'a failed write keeps the previous copy and lets no error escape',

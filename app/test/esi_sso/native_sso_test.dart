@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -531,6 +532,173 @@ void main() {
     expect(server.takes, 0);
   });
 
+  for (final (label, viewerReply) in <(String, http.Response Function())>[
+    ('transport failure', () => throw http.ClientException('offline')),
+    (
+      'server unavailable',
+      () => http.Response('{"status":"unavailable"}', 503),
+    ),
+    ('generic 401', () => http.Response('{"status":"proxyAuth"}', 401)),
+    ('unreadable 200', () => http.Response('not JSON', 200)),
+    (
+      'non-string holder',
+      () => _viewerResponse({..._viewerPilot, 'holder': 1}),
+    ),
+    ('null holder', () => _viewerResponse({..._viewerPilot, 'holder': null})),
+    (
+      'different member',
+      () => _viewerResponse(
+        {..._viewerPilot, 'memberId': 'other-member'}..remove('holder'),
+      ),
+    ),
+    (
+      'different character',
+      () => _viewerResponse({..._viewerPilot, 'characterId': '456'}),
+    ),
+  ]) {
+    test(
+      'An inconclusive Take refresh keeps the desktop holder check: $label',
+      () async {
+        await _withConnectedDesktop((container, server, device) async {
+          final account = container.read(accountProvider.notifier);
+          server.viewerReply = viewerReply;
+          await account.takeDesktop();
+          await _expectRetainedHolderCheck(container, device);
+        });
+      },
+    );
+  }
+
+  test(
+    'An inconclusive Return refresh keeps the desktop holder check',
+    () async {
+      await _withConnectedDesktop((container, server, device) async {
+        final account = container.read(accountProvider.notifier);
+        server.viewerReply = () =>
+            http.Response('{"status":"unavailable"}', 503);
+        await account.returnDesktop();
+        await _expectRetainedHolderCheck(container, device);
+      });
+    },
+  );
+
+  for (final verified in [false, true]) {
+    final name = verified
+        ? 'A verified viewer overrides a handoff 401'
+        : 'A handoff 401 does not report sign-out without viewer confirmation';
+    test(name, () async {
+      await _withConnectedDesktop((container, server, _) async {
+        final account = container.read(accountProvider.notifier);
+        server.reply = () => http.Response('{"status":"proxyAuth"}', 401);
+        server.viewerReply = verified
+            ? () =>
+                  _viewerResponse({..._viewerPilot, 'holder': 'serverReserved'})
+            : () => http.Response('{"status":"unavailable"}', 503);
+
+        await account.takeDesktop();
+
+        final state = container.read(accountProvider) as AccountIdle;
+        expect(
+          state.connected?.pilot.holder,
+          verified ? 'serverReserved' : 'serverHeld',
+        );
+        expect(state.notice, AccountNotice.unavailable);
+      });
+    });
+  }
+
+  test('A verified refresh replaces the retained holder view', () async {
+    await _withConnectedDesktop((container, server, device) async {
+      final account = container.read(accountProvider.notifier);
+      server.viewerReply = () => http.Response('{"status":"unavailable"}', 503);
+      await account.takeDesktop();
+      await _expectRetainedHolderCheck(container, device);
+
+      server.viewerReply = () =>
+          _viewerResponse({..._viewerPilot, 'holder': 'serverReserved'});
+      await account.takeDesktop();
+      expect(
+        container.read(accountProvider).connected?.pilot.holder,
+        'serverReserved',
+      );
+      await account.authorizeDesktop();
+      expect(
+        (container.read(accountProvider) as AccountIdle).notice,
+        AccountNotice.blocked,
+      );
+      expect(device.nativeRequests, 0);
+
+      server.viewerReply = () =>
+          _viewerResponse({..._viewerPilot}..remove('holder'));
+      await account.takeDesktop();
+      final session = container.read(accountProvider).connected;
+      expect(session?.pilot.characterId, '123');
+      expect(session?.pilot.holder, isNull);
+      await account.authorizeDesktop();
+      expect(device.nativeRequests, greaterThan(0));
+    }, allowNativeRequest: true);
+  });
+
+  for (final take in [true, false]) {
+    test(
+      take
+          ? 'A confirmed invalid viewer session signs out'
+          : 'A confirmed invalid viewer session after Return signs out',
+      () async {
+        await _withConnectedDesktop((container, server, _) async {
+          final account = container.read(accountProvider.notifier);
+          server.viewerReply = () =>
+              http.Response('{"status":"signInRequired"}', 401);
+
+          await (take ? account.takeDesktop() : account.returnDesktop());
+
+          final state = container.read(accountProvider) as AccountIdle;
+          expect(state.connected, isNull);
+          expect(state.notice, AccountNotice.signedOut);
+        });
+      },
+    );
+  }
+
+  test('A late viewer reply cannot restore a signed-out session', () async {
+    await _withConnectedDesktop((container, server, _) async {
+      final account = container.read(accountProvider.notifier);
+      final requested = Completer<void>();
+      final reply = Completer<http.Response>();
+      server.viewerReply = () {
+        requested.complete();
+        return reply.future;
+      };
+      final handoff = account.takeDesktop();
+      await requested.future;
+
+      try {
+        await account.signOut();
+        expect(container.read(accountProvider).connected, isNull);
+      } finally {
+        reply.complete(_viewerResponse(_viewerPilot));
+        await handoff;
+      }
+      expect(container.read(accountProvider).connected, isNull);
+    });
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test(
+    'Inconclusive viewer refresh after scoped completion is unavailable',
+    () async {
+      final server = _TakeServer();
+      final api = ConnectedAccount(server.origin, server.client, native: true);
+      final session = await server.signIn();
+      final (_, attempt) = await api.start(session: session);
+      server.viewerReply = () => http.Response('{"status":"unavailable"}', 503);
+
+      final (notice, updated) = await api.complete(attempt!, session: session);
+
+      expect(notice, AccountNotice.unavailable);
+      expect(updated, isNull);
+    },
+  );
+
   for (final (label, firstReply, notice)
       in <(String, http.Response Function(), AccountNotice)>[
         (
@@ -579,6 +747,64 @@ void main() {
   }
 }
 
+Future<void> _withConnectedDesktop(
+  Future<void> Function(ProviderContainer, _TakeServer, _TakeDevice) exercise, {
+  bool allowNativeRequest = false,
+}) async {
+  final device = await _TakeDevice.open(allowNativeRequest: allowNativeRequest);
+  final server = _TakeServer()..reply = _refusedTake;
+  device.store.save(_character(123));
+  device.store.setSetting('selected-character', '123');
+  final container = ProviderContainer.test(
+    overrides: [
+      serverTargetProvider.overrideWithValue(ConfiguredServer(server.origin)),
+      desktopAccountProvider.overrideWith((_) => device.account),
+    ],
+  );
+  await http.runWithClient(() async {
+    await container.read(desktopAccountProvider.future);
+    final account = container.read(accountProvider.notifier);
+    await account.start();
+    await account.complete();
+    expect(
+      container.read(accountProvider).connected?.pilot.holder,
+      'serverHeld',
+    );
+    await exercise(container, server, device);
+  }, () => server.client);
+}
+
+Future<void> _expectRetainedHolderCheck(
+  ProviderContainer container,
+  _TakeDevice device,
+) async {
+  final account = container.read(accountProvider.notifier);
+  final session = container.read(accountProvider).connected;
+  expect(session?.pilot.characterId, '123');
+  expect(session?.pilot.holder, 'serverHeld');
+  expect(
+    device.account.ownsReservationFor('https://fixture.test', '123'),
+    isFalse,
+  );
+  await account.authorizeDesktop();
+  expect(
+    (container.read(accountProvider) as AccountIdle).notice,
+    AccountNotice.blocked,
+  );
+  expect(device.nativeRequests, 0);
+}
+
+const _viewerPilot = {
+  'characterId': '123',
+  'characterName': 'Server Pilot',
+  'memberId': 'fixture-member',
+  'admin': false,
+  'holder': 'serverHeld',
+};
+
+http.Response _viewerResponse(Map<String, Object?> pilot) =>
+    http.Response(jsonEncode(pilot), 200);
+
 http.Response _refusedTake() =>
     http.Response('{"status":"notAuthorized"}', 403);
 
@@ -621,6 +847,7 @@ final class _TakeServer {
   http.Response Function()? recoveryReply;
   http.Response Function()? prepareReply;
   String? epoch;
+  FutureOr<http.Response> Function()? viewerReply;
   String? _proof;
   var sameProof = true;
   var takes = 0;
@@ -641,13 +868,6 @@ final class _TakeServer {
   }
 
   Future<http.Response> _respond(http.Request request) async {
-    const pilot = {
-      'characterId': '123',
-      'characterName': 'Server Pilot',
-      'memberId': 'fixture-member',
-      'admin': false,
-      'holder': 'serverHeld',
-    };
     switch (request.url.pathSegments.last) {
       case 'begin':
         return http.Response(
@@ -658,9 +878,14 @@ final class _TakeServer {
           200,
         );
       case 'complete':
-        return http.Response(jsonEncode({...pilot, 'session': 'b' * 43}), 200);
+        return http.Response(
+          jsonEncode({..._viewerPilot, 'session': 'b' * 43}),
+          200,
+        );
       case 'viewer':
-        return http.Response(jsonEncode(pilot), 200);
+        return viewerReply?.call() ?? _viewerResponse(_viewerPilot);
+      case 'sign-out':
+        return http.Response('{"status":"signedOut"}', 200);
       case 'take':
         final body = jsonDecode(request.body) as Map<String, Object?>;
         _observeProof(body['proof']);
@@ -693,18 +918,22 @@ final class _TakeServer {
 }
 
 final class _TakeDevice {
-  _TakeDevice(this._directory);
+  _TakeDevice(this._directory, {required this.allowNativeRequest});
 
   final Directory _directory;
+  final bool allowNativeRequest;
   final secrets = _MemoryKeyring();
   late DeviceStore store;
   late NativeAccount account;
   var nativeRequests = 0;
 
-  static Future<_TakeDevice> open() async {
+  static Future<_TakeDevice> open({bool allowNativeRequest = false}) async {
     final directory = await Directory.systemTemp.createTemp('kaname-take-');
     addTearDown(() => directory.delete(recursive: true));
-    final device = _TakeDevice(directory);
+    final device = _TakeDevice(
+      directory,
+      allowNativeRequest: allowNativeRequest,
+    );
     await device._open();
     addTearDown(() => device.account.close());
     expect(device.account.configure(_clientId), AccountNotice.none);
@@ -757,6 +986,7 @@ END
       store: store,
       httpClient: MockClient((_) async {
         nativeRequests++;
+        if (allowNativeRequest) return http.Response('', 503);
         fail('native authorization must not start');
       }),
       launch: (_) => fail('native browser must not open'),

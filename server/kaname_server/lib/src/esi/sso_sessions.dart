@@ -81,24 +81,33 @@ final class SsoSessions {
 
   /// Finds the live identity for the supplied bearer, never for a claimed ID.
   Future<SsoViewer?> viewer(Session session, String bearer) async {
-    if (!_bearerShape.hasMatch(bearer)) return null;
     try {
-      final now = _now();
-      final row = await SsoSessionRow.db.findFirstRow(
-        session,
-        where: (t) => t.digest.equals(ssoDigest(bearer)) & (t.expiresAt > now),
-      );
-      if (row == null) return null;
-      final identity = await SsoIdentityRow.db.findById(session, row.memberId);
-      if (identity == null || identity.blocked) return null;
-      return (
-        identity: identity,
-        admin: _admins.contains(identity.characterId),
-        sessionId: row.id!,
-      );
+      return await viewerForRefresh(session, bearer);
     } on Exception {
       return null;
     }
+  }
+
+  /// Resolves the bearer for the viewer route without hiding lookup errors.
+  ///
+  /// Returns `null` only if the bearer or session is invalid. Lookup errors
+  /// propagate so the viewer route can report unavailability. Other consumers
+  /// use [viewer] to keep their existing failure handling.
+  Future<SsoViewer?> viewerForRefresh(Session session, String bearer) async {
+    if (!_bearerShape.hasMatch(bearer)) return null;
+    final now = _now();
+    final row = await SsoSessionRow.db.findFirstRow(
+      session,
+      where: (t) => t.digest.equals(ssoDigest(bearer)) & (t.expiresAt > now),
+    );
+    if (row == null) return null;
+    final identity = await SsoIdentityRow.db.findById(session, row.memberId);
+    if (identity == null || identity.blocked) return null;
+    return (
+      identity: identity,
+      admin: _admins.contains(identity.characterId),
+      sessionId: row.id!,
+    );
   }
 
   /// Creates a session only after the caller proves browser and app possession.
