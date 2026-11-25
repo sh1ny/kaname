@@ -221,8 +221,13 @@ final class CcpJwtVerifier {
       if (characterId == null || characterId <= 0) return CcpJwtFailure.invalid;
       final scopes = <String>{};
       if (claims.containsKey('scp')) {
-        if (claims['scp'] case final List<Object?> entries
-            when entries.length <= 128) {
+        // CCP encodes a grant with one scope as a string or a singleton list.
+        final entries = switch (claims['scp']) {
+          final String scope => [scope],
+          final List<Object?> scopes when scopes.length <= 128 => scopes,
+          _ => null,
+        };
+        if (entries != null) {
           for (final entry in entries) {
             if (entry is! String ||
                 entry.isEmpty ||

@@ -72,7 +72,9 @@ void main() {
               'owner': 'VEVTVCBPTkxZ',
               'name': 'Native Pilot',
               'exp': _now.millisecondsSinceEpoch ~/ 1000 + 900,
-              'scp': authorizedScopes.toList(),
+              'scp': authorizedScopes.length == 1
+                  ? authorizedScopes.single
+                  : authorizedScopes.toList(),
             })
             ..addRecipient(signed, algorithm: 'RS256');
           return http.Response(
