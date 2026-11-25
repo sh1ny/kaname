@@ -109,12 +109,47 @@ final class DeviceTakeRefused extends DeviceTakeResult {
   const DeviceTakeRefused();
 }
 
+/// The exact fenced intent never committed and can no longer commit.
+final class DeviceTakeNotAccepted extends DeviceTakeResult {
+  /// Creates a terminal outcome for the matching epoch and proof.
+  const DeviceTakeNotAccepted();
+}
+
 /// The reply proves neither a reservation nor a definitive refusal.
 final class DeviceTakeIncomplete extends DeviceTakeResult {
   /// Wraps the fixed notice for the incomplete request.
   const DeviceTakeIncomplete(this.notice);
 
   /// The notice to show without discarding the pending intent.
+  final AccountNotice notice;
+}
+
+/// The source's answer before the desktop creates a new take journal.
+sealed class DeviceTakePreparation {
+  const DeviceTakePreparation();
+}
+
+/// The epoch to attach to the new proof before sending it.
+final class DeviceTakeEpoch extends DeviceTakePreparation {
+  /// Creates preparation for a canonical positive source epoch.
+  const DeviceTakeEpoch(this.epoch);
+
+  /// The epoch used for both start and reconciliation.
+  final int epoch;
+}
+
+/// The source does not implement the fenced take route.
+final class DeviceTakeLegacy extends DeviceTakePreparation {
+  /// The legacy route is available for unbound proofs only.
+  const DeviceTakeLegacy();
+}
+
+/// The caller cannot prepare a new take now.
+final class DeviceTakeUnprepared extends DeviceTakePreparation {
+  /// Keeps the fixed notice without creating a journal.
+  const DeviceTakeUnprepared(this.notice);
+
+  /// The notice to report to the user.
   final AccountNotice notice;
 }
 
@@ -131,6 +166,19 @@ abstract interface class HolderRemote {
   /// A refusal applies only to this request. A retry can be refused after an
   /// earlier request committed, so it must not discard the existing journal.
   Future<DeviceTakeResult> take(String proof);
+
+  /// Reads the source epoch before the new intent is committed locally.
+  Future<DeviceTakePreparation> prepareTake();
+
+  /// Starts or reconciles a journal that already has an epoch and proof.
+  ///
+  /// A pre-upgrade journal has no saved prior state. An epoch-bound proof
+  /// must never reach the legacy [take] route, even after a server downgrade.
+  Future<DeviceTakeResult> takeIntent(
+    String proof,
+    int sourceEpoch, {
+    required bool reconcile,
+  });
 
   /// Returns a parked reservation to the server.
   Future<AccountNotice> release(String proof, String generation);

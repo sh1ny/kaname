@@ -570,6 +570,12 @@ class Protocol extends _is.DatabaseSerializationManager
           isNullable: true,
           dartType: 'List<String>?',
         ),
+        _isp.ColumnDefinition(
+          name: 'takeClosures',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: true,
+          dartType: 'int?',
+        ),
       ],
       foreignKeys: [],
       indexes: [

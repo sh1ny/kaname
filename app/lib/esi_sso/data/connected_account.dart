@@ -171,6 +171,78 @@ final class ConnectedSession implements HolderRemote {
   }
 
   @override
+  Future<DeviceTakePreparation> prepareTake() async {
+    final reply = await _api._request('take-intent', {
+      'action': 'prepare',
+    }, bearer: _bearer);
+    if ((reply.code, reply.body) case (
+      200,
+      {'sourceEpoch': final String epoch} && Map(length: 1),
+    )) {
+      final value = _positiveDecimal(epoch);
+      return value == null || epoch == '9223372036854775807'
+          ? const DeviceTakeUnprepared(AccountNotice.unavailable)
+          : DeviceTakeEpoch(value);
+    }
+    if ((reply.code, reply.body) case (
+      404,
+      {'status': 'signInFailed'} && Map(length: 1),
+    )) {
+      return const DeviceTakeLegacy();
+    }
+    return DeviceTakeUnprepared(
+      reply.code == 200 ? AccountNotice.unavailable : _notice(reply),
+    );
+  }
+
+  @override
+  Future<DeviceTakeResult> takeIntent(
+    String proof,
+    int sourceEpoch, {
+    required bool reconcile,
+  }) async {
+    final expected = sourceEpoch.toString();
+    final reply = await _api._request('take-intent', {
+      'action': reconcile ? 'reconcile' : 'start',
+      'sourceEpoch': expected,
+      'proof': proof,
+    }, bearer: _bearer);
+    return switch ((reply.code, reply.body)) {
+      (
+        200,
+        {'status': 'notAccepted', 'sourceEpoch': final String epoch} &&
+            Map(length: 2),
+      )
+          when epoch == expected =>
+        const DeviceTakeNotAccepted(),
+      (
+        200,
+        {
+              'sourceEpoch': final String epoch,
+              'generation': final String generation,
+              'ownerFingerprint': final String fingerprint,
+            } &&
+            Map(length: 3),
+      )
+          when epoch == expected && _positiveDecimal(generation) != null =>
+        DeviceReservation(
+          generation: generation,
+          ownerFingerprint: fingerprint,
+        ),
+      _ => DeviceTakeIncomplete(
+        reply.code == 200 ? AccountNotice.unavailable : _notice(reply),
+      ),
+    };
+  }
+
+  static int? _positiveDecimal(String value) {
+    final number = int.tryParse(value, radix: 10);
+    return number != null && number > 0 && number.toString() == value
+        ? number
+        : null;
+  }
+
+  @override
   Future<AccountNotice> release(String proof, String generation) async =>
       _notice(
         await _api._request('release', {

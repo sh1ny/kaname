@@ -32,6 +32,9 @@ enum SsoHandoffStatus implements SsoHandoffResult {
 
   /// The server may activate only after fresh confidential authorization.
   released,
+
+  /// This exact epoch-bound take never committed and cannot commit later.
+  notAccepted,
 }
 
 /// Durably excludes the old holder before permitting the next (ADR 0017).
@@ -56,7 +59,46 @@ final class SsoHandoff {
     Session session,
     SsoIdentityRow viewer,
     String proof,
-  ) async {
+  ) => _take(session, viewer, proof);
+
+  /// Snapshots the epoch at which this viewer can start a fenced take.
+  Future<int?> prepareTake(Session session, SsoIdentityRow viewer) async {
+    if (viewer.blocked) return null;
+    final row = await ServerSsoGrants.assignment(session, viewer.characterId);
+    if (row == null || row.phase != 'serverHeld') return null;
+    final epoch = _takeEpoch(row);
+    return epoch != null && epoch < _maxGeneration ? epoch : null;
+  }
+
+  /// Starts or reconciles a take within the epoch captured before first send.
+  ///
+  /// Acceptance advances the holder generation and records the digest.
+  /// Closure advances only the offset. Park, release and activation preserve
+  /// both. More than one intervening advance cannot prove non-acceptance.
+  Future<SsoHandoffResult> takeIntent(
+    Session session,
+    SsoIdentityRow viewer,
+    String proof,
+    int sourceEpoch, {
+    required bool reconcile,
+  }) {
+    if (sourceEpoch <= 0 || sourceEpoch >= _maxGeneration) {
+      return Future.value(SsoHandoffStatus.blocked);
+    }
+    return _take(
+      session,
+      viewer,
+      proof,
+      intent: (epoch: sourceEpoch, reconcile: reconcile),
+    );
+  }
+
+  Future<SsoHandoffResult> _take(
+    Session session,
+    SsoIdentityRow viewer,
+    String proof, {
+    ({int epoch, bool reconcile})? intent,
+  }) async {
     final character = viewer.characterId;
     if (!_proof.hasMatch(proof) || viewer.blocked) {
       return SsoHandoffStatus.blocked;
@@ -66,8 +108,25 @@ final class SsoHandoff {
     try {
       if (_gate.isMutating(character)) return SsoHandoffStatus.pending;
       var row = await ServerSsoGrants.assignment(session, character);
-      if (row == null) return SsoHandoffStatus.blocked;
+      if (row == null) {
+        return intent == null
+            ? SsoHandoffStatus.blocked
+            : SsoHandoffStatus.pending;
+      }
       final digest = ssoDigest(proof);
+      if (intent != null) {
+        final epoch = _takeEpoch(row);
+        if (epoch == intent.epoch + 1) {
+          if (!_matches(row, digest)) return SsoHandoffStatus.notAccepted;
+          if (row.phase != 'toDevice' && row.phase != 'deviceReserved') {
+            return SsoHandoffStatus.pending;
+          }
+        } else if (epoch != intent.epoch || row.phase != 'serverHeld') {
+          return SsoHandoffStatus.pending;
+        } else if (intent.reconcile) {
+          return await _closeTake(session, row);
+        }
+      }
       ({VaultAuthorization authorization, VaultStatus status})? current;
       switch (row.phase) {
         case 'deviceReserved':
@@ -76,7 +135,9 @@ final class SsoHandoff {
               : SsoHandoffStatus.blocked;
         case 'serverHeld':
           if (row.generation >= _maxGeneration || row.vaultGeneration == null) {
-            return SsoHandoffStatus.blocked;
+            return intent == null
+                ? SsoHandoffStatus.blocked
+                : await _closeTake(session, row);
           }
           current = await _inspectHolder(character);
           if (current == null) return SsoHandoffStatus.pending;
@@ -84,7 +145,9 @@ final class SsoHandoff {
           // repair an interrupted vault/assignment write.
           if (current.authorization.holder != ServerSsoGrants.holder ||
               current.authorization.generation != row.vaultGeneration) {
-            return SsoHandoffStatus.blocked;
+            return intent == null
+                ? SsoHandoffStatus.blocked
+                : await _closeTake(session, row);
           }
           if (!await _cas(
             session,
@@ -221,6 +284,40 @@ final class SsoHandoff {
   static bool _releaseRecorded(SsoHolderRow row) =>
       row.phase == 'serverReserved' || row.phase == 'serverHeld';
 
+  static int? _takeEpoch(SsoHolderRow row) {
+    final closures = row.takeClosures ?? 0;
+    final generation = row.generation;
+    if (generation <= 0 ||
+        closures < 0 ||
+        closures > _maxGeneration - generation) {
+      return null;
+    }
+    return generation + closures;
+  }
+
+  static Future<SsoHandoffStatus> _closeTake(
+    Session session,
+    SsoHolderRow row,
+  ) async {
+    final rows = await session.db.unsafeQuery(
+      '''
+UPDATE esi_holder_assignment
+SET "takeClosures" = COALESCE("takeClosures", 0) + 1
+WHERE id = \$1 AND generation = \$2 AND phase = 'serverHeld'
+  AND COALESCE("takeClosures", 0) = \$3
+RETURNING id
+''',
+      parameters: QueryParameters.positional([
+        row.id,
+        row.generation,
+        row.takeClosures ?? 0,
+      ]),
+    );
+    return rows.isEmpty
+        ? SsoHandoffStatus.pending
+        : SsoHandoffStatus.notAccepted;
+  }
+
   static bool _matches(SsoHolderRow row, String digest) {
     final stored = row.proofDigest;
     return stored != null && ssoDigestMatches(digest, stored);
@@ -246,6 +343,7 @@ final class SsoHandoff {
 UPDATE esi_holder_assignment
 SET phase = \$1, generation = \$2, "proofDigest" = \$3
 WHERE id = \$4 AND generation = \$5 AND phase = \$6
+  AND COALESCE("takeClosures", 0) = \$7
 RETURNING id
 ''',
       parameters: QueryParameters.positional([
@@ -255,6 +353,7 @@ RETURNING id
         row.id,
         row.generation,
         row.phase,
+        row.takeClosures ?? 0,
       ]),
     );
     return rows.isNotEmpty;

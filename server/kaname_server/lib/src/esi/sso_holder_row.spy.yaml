@@ -10,3 +10,6 @@ fields:
   proofDigest: String?
   grantFingerprint: String?
   requestedScopes: List<String>?
+  ### Take reconciliation advances only this offset, never the holder generation,
+  ### phase, or proof used by release and join acknowledgement retries.
+  takeClosures: int?

@@ -85,6 +85,17 @@ final class DeviceStore implements VaultStore {
   bool _writing = false;
   bool _closed = false;
 
+  // A null owner means no prior row; a present row may have an empty owner.
+  static const _takeRecoverySchema = '''
+CREATE TABLE take_recovery(
+ character INTEGER PRIMARY KEY, pending_digest TEXT NOT NULL,
+ source_epoch INTEGER, prior_selection TEXT,
+ owner TEXT, name TEXT, registration TEXT, opt_in INTEGER, grant_revision INTEGER,
+ phase TEXT, origin TEXT, assignment INTEGER, proof_digest TEXT,
+ vault_generation INTEGER, owner_fingerprint TEXT);
+PRAGMA user_version=2;
+''';
+
   /// The dedicated install key read from OS secure storage.
   final String installKey;
 
@@ -136,7 +147,7 @@ CREATE TABLE character(character INTEGER PRIMARY KEY, owner TEXT NOT NULL,
 CREATE TABLE vault(character INTEGER PRIMARY KEY, holder TEXT NOT NULL,
  generation INTEGER NOT NULL, status TEXT NOT NULL, ciphertext TEXT,
  fence INTEGER NOT NULL, lease_ms INTEGER);
-PRAGMA user_version=1;
+$_takeRecoverySchema
 ''');
         db.execute('INSERT INTO setting VALUES (?,?)', [
           'key-verifier',
@@ -144,12 +155,17 @@ PRAGMA user_version=1;
         ]);
         db.execute('COMMIT');
       }
-      if (db.select('PRAGMA user_version').single.values.single != 1 ||
+      final version = db.select('PRAGMA user_version').single.values.single;
+      if ((version != 1 && version != 2) ||
           db
                   .select("SELECT value FROM setting WHERE name='key-verifier'")
                   .single['value'] !=
               digest) {
         throw StateError('Device credential store does not match this key');
+      }
+      if (version == 1) {
+        final opened = db;
+        _transaction(opened, () => opened.execute(_takeRecoverySchema));
       }
       return DeviceStore._(db, lock, path, secrets, key);
     } on Object {
@@ -231,41 +247,129 @@ INSERT INTO character VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(character) DO 
     ],
   );
 
-  /// Restores the state saved before a fresh take that the server refused.
+  /// Commits a take and its rollback snapshot before the caller sends it.
   ///
-  /// The caller must not use this on a resumed journal. Commit the row and
-  /// selection together before touching the keyring, so an interrupted
-  /// rollback cannot destroy the proof of a still-pending journal.
-  Future<void> restoreRefusedTake(
-    int character,
-    String digest, {
-    required DeviceCharacter? previous,
-    required String? selection,
-  }) async {
-    _db.execute('BEGIN IMMEDIATE');
-    try {
-      if (previous == null) {
-        _db.execute('DELETE FROM character WHERE character=?', [character]);
-      } else {
-        save(previous);
+  /// `taking` references the new proof; the snapshot may also reference the
+  /// prior proof until reservation or rollback commits. No proof is in SQLite.
+  void beginTake(DeviceCharacter taking, int? sourceEpoch) {
+    _transaction(_db, () {
+      _db.execute(
+        '''
+INSERT INTO take_recovery
+SELECT ?, ?, ?, ?, owner, name, registration, opt_in, grant_revision,
+ phase, origin, assignment, proof_digest, vault_generation, owner_fingerprint
+FROM (SELECT 1)
+LEFT JOIN character ON character.character = ?
+''',
+        [
+          taking.characterId,
+          taking.proofDigest!,
+          sourceEpoch,
+          setting(selectedCharacterSetting),
+          taking.characterId,
+        ],
+      );
+      _saveSelected(taking);
+    });
+  }
+
+  /// Returns the rollback snapshot's identity, not the prior row.
+  ///
+  /// No row means the take predates recovery. A null epoch in a present row
+  /// means the source supported only the legacy take route.
+  ({String digest, int? epoch})? takeRecovery(int id) {
+    final row = _db.select(
+      'SELECT pending_digest, source_epoch FROM take_recovery WHERE character=?',
+      [id],
+    ).firstOrNull;
+    return row == null
+        ? null
+        : (
+            digest: row['pending_digest'] as String,
+            epoch: row['source_epoch'] as int?,
+          );
+  }
+
+  /// Commits the reservation and drops only the rollback snapshot.
+  void finishTake(DeviceCharacter taking, DeviceCharacter reserved) {
+    _transaction(_db, () {
+      if (character(taking.characterId) != taking) {
+        throw StateError('Pending take changed');
       }
-      if (selection == null) {
-        _db.execute('DELETE FROM setting WHERE name=?', [
-          selectedCharacterSetting,
-        ]);
-      } else {
-        setSetting(selectedCharacterSetting, selection);
+      _saveSelected(reserved);
+      _deleteTakeRecovery(taking.characterId);
+    });
+  }
+
+  /// Restores a definitively refused take after proof of non-acceptance.
+  ///
+  /// Commit before removing the rejected proof. Neither an unsuccessful
+  /// transaction nor a reservation may delete the proof of a pending holder.
+  Future<void> restoreRefusedTake(DeviceCharacter taking) async {
+    final id = taking.characterId;
+    final digest = taking.proofDigest!;
+    _transaction(_db, () {
+      final snapshot = _db.select(
+        'SELECT pending_digest, prior_selection, owner FROM take_recovery WHERE character=?',
+        [id],
+      ).single;
+      if (character(id) != taking ||
+          taking.phase != DevicePhase.taking ||
+          snapshot['pending_digest'] != digest) {
+        throw StateError('Pending take changed');
       }
-      _db.execute('COMMIT');
-    } on Object {
-      _db.execute('ROLLBACK');
-      rethrow;
-    }
+      if (snapshot['owner'] == null) {
+        _db.execute('DELETE FROM character WHERE character=?', [id]);
+      } else {
+        _db.execute(
+          '''
+INSERT OR REPLACE INTO character
+SELECT character, owner, name, registration, opt_in, grant_revision,
+ phase, origin, assignment, proof_digest, vault_generation, owner_fingerprint
+FROM take_recovery WHERE character=?
+''',
+          [id],
+        );
+      }
+      if (setting(selectedCharacterSetting) == id.toString()) {
+        final selection = snapshot['prior_selection'] as String?;
+        final selectedId = selection == null ? null : int.tryParse(selection);
+        if (selection != null &&
+            selectedId != null &&
+            character(selectedId) != null) {
+          setSetting(selectedCharacterSetting, selection);
+        } else {
+          _db.execute('DELETE FROM setting WHERE name=?', [
+            selectedCharacterSetting,
+          ]);
+        }
+      }
+      _deleteTakeRecovery(id);
+    });
 
     try {
-      await _secrets.delete(_proofKey(character, digest));
+      await _secrets.delete(_proofKey(id, digest));
     } on Object {
       // The rollback committed. A keyring failure can only leave an unused proof.
+    }
+  }
+
+  void _saveSelected(DeviceCharacter row) {
+    save(row);
+    setSetting(selectedCharacterSetting, row.characterId.toString());
+  }
+
+  void _deleteTakeRecovery(int character) =>
+      _db.execute('DELETE FROM take_recovery WHERE character=?', [character]);
+
+  static void _transaction(Database db, void Function() write) {
+    db.execute('BEGIN IMMEDIATE');
+    try {
+      write();
+      db.execute('COMMIT');
+    } on Object {
+      db.execute('ROLLBACK');
+      rethrow;
     }
   }
 

@@ -161,6 +161,7 @@ final class SsoRoute {
         'sign-out' => await _signOut(request),
         'opt-in' => await _optIn(request, decoded),
         'skills' => await _readSkills(request),
+        'take-intent' => await _takeIntent(request, decoded),
         'take' ||
         'release' ||
         'join' => await _handoffRequest(request, action, decoded),
@@ -410,6 +411,60 @@ final class SsoRoute {
     return _json(reply.status, reply.body);
   }
 
+  Future<Response> _takeIntent(Request request, Object? input) async {
+    final bearer = _bearer(request);
+    final handoff = _handoff;
+    if (bearer == null) return _failure(401);
+    if (handoff == null) return _failure(503);
+    return _withSession((session) async {
+      final viewer = await _sessions.viewer(session, bearer);
+      if (viewer == null) return _failure(403);
+      if (input case {'action': 'prepare'} && Map(length: 1)) {
+        final epoch = await handoff.prepareTake(session, viewer.identity);
+        return epoch == null
+            ? _failure(403)
+            : _json(200, {'sourceEpoch': epoch.toString()});
+      }
+      if (input
+          case {
+                'action': final String action,
+                'sourceEpoch': final String sourceEpoch,
+                'proof': final String proof,
+              } &&
+              Map(length: 3)
+          when (action == 'start' || action == 'reconcile') &&
+              _proof.hasMatch(proof)) {
+        final epoch = int.tryParse(sourceEpoch, radix: 10);
+        if (epoch == null || epoch <= 0 || epoch.toString() != sourceEpoch) {
+          return _failure(400);
+        }
+        final result = await handoff.takeIntent(
+          session,
+          viewer.identity,
+          proof,
+          epoch,
+          reconcile: action == 'reconcile',
+        );
+        return switch (result) {
+          SsoDeviceReservation(:final generation, :final ownerFingerprint) =>
+            _json(200, {
+              'sourceEpoch': sourceEpoch,
+              'generation': generation.toString(),
+              'ownerFingerprint': ownerFingerprint,
+            }),
+          SsoHandoffStatus.notAccepted => _json(200, {
+            'status': 'notAccepted',
+            'sourceEpoch': sourceEpoch,
+          }),
+          SsoHandoffStatus.pending => _json(202, {'status': 'pending'}),
+          SsoHandoffStatus.blocked => _failure(403),
+          SsoHandoffStatus.released => _failure(503),
+        };
+      }
+      return _failure(400);
+    });
+  }
+
   Future<Response> _handoffRequest(
     Request request,
     String action,
@@ -446,6 +501,7 @@ final class SsoRoute {
         SsoHandoffStatus.released => _json(200, {'status': 'released'}),
         SsoHandoffStatus.pending => _json(202, {'status': 'pending'}),
         SsoHandoffStatus.blocked => _failure(403),
+        SsoHandoffStatus.notAccepted => _failure(503),
       };
     }
     return _failure(400);

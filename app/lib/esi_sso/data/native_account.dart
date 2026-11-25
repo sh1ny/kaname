@@ -269,7 +269,7 @@ final class NativeAccount implements DesktopAccount {
       return AccountNotice.unavailable;
     }
     var row = _store.character(id);
-    ({DeviceCharacter? row, String? selection, String digest})? rollback;
+    var fresh = false;
     if (row?.phase == DevicePhase.deviceReserved ||
         row?.phase == DevicePhase.solo) {
       if (row!.serverOrigin != remote.origin) return AccountNotice.blocked;
@@ -279,34 +279,49 @@ final class NativeAccount implements DesktopAccount {
     if (row == null ||
         row.phase == DevicePhase.returned ||
         row.phase == DevicePhase.identified && row.serverOrigin == null) {
-      final selection = _store.setting(DeviceStore.selectedCharacterSetting);
-      // Commit a source-bound intent while the new proof is still local.
+      final int? epoch;
+      switch (await remote.prepareTake()) {
+        case DeviceTakeEpoch(epoch: final value):
+          epoch = value;
+        case DeviceTakeLegacy():
+          epoch = null;
+        case DeviceTakeUnprepared(:final notice):
+          return notice;
+      }
       final digest = await _store.newProof(id);
-      rollback = (row: row, selection: selection, digest: digest);
       row = _change(
         _newRow(id, '', remote.pilot.name, registration),
         phase: DevicePhase.taking,
         serverOrigin: remote.origin,
         proofDigest: digest,
       );
-      _select(row);
+      _store.beginTake(row, epoch);
+      fresh = true;
     }
     if (row.phase != DevicePhase.taking ||
         row.serverOrigin != remote.origin ||
         row.registration != registration) {
       return AccountNotice.blocked;
     }
+    final recovery = _store.takeRecovery(id);
+    if (recovery != null && recovery.digest != row.proofDigest) {
+      return AccountNotice.blocked;
+    }
+    final epoch = recovery?.epoch;
     final proof = await _store.proof(row);
     if (proof == null) return AccountNotice.blocked;
-    switch (await remote.take(proof)) {
+    final result = epoch == null
+        ? await remote.take(proof)
+        : await remote.takeIntent(proof, epoch, reconcile: !fresh);
+    switch (result) {
       case DeviceTakeRefused():
-        if (rollback case final previous?) {
-          await _store.restoreRefusedTake(
-            id,
-            previous.digest,
-            previous: previous.row,
-            selection: previous.selection,
-          );
+        if (fresh && epoch == null) {
+          await _store.restoreRefusedTake(row);
+        }
+        return AccountNotice.blocked;
+      case DeviceTakeNotAccepted():
+        if (epoch != null) {
+          await _store.restoreRefusedTake(row);
         }
         return AccountNotice.blocked;
       case DeviceTakeIncomplete(:final notice):
@@ -318,7 +333,8 @@ final class NativeAccount implements DesktopAccount {
             !_hash.hasMatch(ownerFingerprint)) {
           return AccountNotice.unavailable;
         }
-        _select(
+        _store.finishTake(
+          row,
           _change(
             row,
             phase: DevicePhase.deviceReserved,
