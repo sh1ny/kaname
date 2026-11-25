@@ -47,12 +47,5 @@ void main() {
         before.autoUpdate,
       );
     });
-
-    test('Unconfigured during start-up recovery', () async {
-      expect(
-        (await endpoints.staticData.operation(sessions, _id)).state,
-        AdminOperationReadState.unknownOperation,
-      );
-    });
   });
 }

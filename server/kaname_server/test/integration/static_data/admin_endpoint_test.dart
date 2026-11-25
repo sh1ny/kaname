@@ -249,6 +249,15 @@ void main() {
     },
   );
 
+  test('Unconfigured during start-up recovery', () async {
+    await start();
+    expect(runtime.recovery?.admissionOpen ?? false, isFalse);
+    expect((await update(1)).outcome, api.AdminAnswerOutcome.notAuthorized);
+    expect(poolCalls, 0);
+    expect(await operation(1), isNull);
+    await expectNoChecks();
+  });
+
   test(
     'a down worker refuses a new id only after lookup, without storing it',
     () async {
