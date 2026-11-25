@@ -490,7 +490,7 @@ final class SsoRoute {
     final expected = attempt.browserDigest;
     if (expected == null) return true;
     final cookie = _onlyHeader(request, 'cookie');
-    if (cookie == null || cookie.length > 4096) return false;
+    if (cookie == null) return false;
     final values = cookie
         .split(';')
         .map((part) => part.trim())

@@ -103,6 +103,8 @@ invalid policy permits identity sign-in but does not grant a skills scope.
 The browser callback and completion replies use `no-store` and `no-referrer`.
 Do not log callbacks, their query strings, or authentication request bodies
 and headers at any reverse proxy.
+The browser must keep Kaname's short-lived attempt cookie. Other cookies on
+the same host do not affect the sign-in check.
 
 ### Test both sign-in modes locally
 

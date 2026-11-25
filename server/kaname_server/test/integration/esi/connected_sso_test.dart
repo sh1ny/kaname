@@ -296,8 +296,18 @@ void main() {
     return jsonDecode(response.body) as Map<String, Object?>;
   }
 
-  test('Confidential browser sign-in', () async {
-    final data = await signIn();
+  test('Confidential browser sign-in with other cookies on the host', () async {
+    final start = await begin();
+    final browserCookies = (
+      id: start.id,
+      state: start.state,
+      cookie: 'first=${'x' * 2100}; ${start.cookie}; last=${'y' * 2100}',
+      proof: start.proof,
+    );
+    expect((await callback(browserCookies)).statusCode, 200);
+    final response = await complete(browserCookies);
+    expect(response.statusCode, 200);
+    final data = jsonDecode(response.body) as Map<String, Object?>;
     expect(exchanges, 1);
     expect(data['session'], isNotEmpty);
     expect(jsonEncode(data), isNot(contains(_serverSecret)));
