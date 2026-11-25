@@ -1,6 +1,6 @@
 # 0015. Interim install admin key
 
-- Status: accepted (2026-11-23)
+- Status: superseded by [ADR 0018](0018-scoped-static-data-administration.md)
 - Date: 2026-11-23
 - Supersedes: none
 - Chosen by: user (`static-data-settings` proposal S1, S8 and S9; design D1, D6, D12, D24 and D29)

@@ -6,9 +6,9 @@ Kaname ("linchpin") is an open-source EVE Online corporation and alliance suite:
 M2 (ESI platform and SSO) is in progress. The app has a responsive shell,
 static-data settings and offline type/system search, backed by the
 [self-host stack](deploy/README.md). The generated ESI client, shared request
-scheduler, privacy-scoped server call history and encrypted token vault are
-implemented; product sign-in and server/device token handoff remain in
-`esi-sso`. See the [roadmap](openspec/roadmap.md) for milestone scope.
+scheduler, scoped call history, encrypted token vault, EVE sign-in, skills
+reads and server/device holder handoff are implemented. The live CCP
+acceptance check is pending. See the [roadmap](openspec/roadmap.md).
 
 ## Development
 

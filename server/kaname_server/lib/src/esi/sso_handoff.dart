@@ -149,7 +149,11 @@ final class SsoHandoff {
               !_matches(row, digest)) {
             return SsoHandoffStatus.blocked;
           }
-          if (row.phase == 'serverReserved') return SsoHandoffStatus.released;
+          // The original device can retry after a lost response, even if
+          // the matching server reservation has already activated.
+          if (row.phase == 'serverReserved' || row.phase == 'serverHeld') {
+            return SsoHandoffStatus.released;
+          }
           if (row.phase != 'deviceReserved') return SsoHandoffStatus.blocked;
           return await _cas(
                 session,

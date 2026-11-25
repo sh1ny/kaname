@@ -92,7 +92,7 @@ void main() {
       }),
       known.token({'azp': 'other-client'}),
       known.token({'exp': _now.millisecondsSinceEpoch ~/ 1000}),
-      known.token({'nbf': _now.millisecondsSinceEpoch ~/ 1000 + 1}),
+      known.token({'nbf': _now.millisecondsSinceEpoch ~/ 1000 + 61}),
       known.token({'iss': 'https://other.invalid'}),
       known.token({'sub': 'CHARACTER:EVE:-1'}),
       known.token({'owner': null}),
@@ -104,6 +104,37 @@ void main() {
     }
     expect(fetches, 2);
   });
+
+  test(
+    'Allows a minute of desktop clock skew without extending expiry',
+    () async {
+      final verifier = CcpJwtVerifier(
+        now: () => _now,
+        loadKeys: () async => [known.publicJwk],
+      );
+      final now = _now.millisecondsSinceEpoch ~/ 1000;
+      for (final field in ['iat', 'nbf']) {
+        expect(
+          await verifier.verify(
+            known.token({field: now + 60}),
+            clientId: _client,
+          ),
+          isA<CcpVerifiedIdentity>(),
+        );
+        expect(
+          await verifier.verify(
+            known.token({field: now + 61}),
+            clientId: _client,
+          ),
+          CcpJwtFailure.invalid,
+        );
+      }
+      expect(
+        await verifier.verify(known.token({'exp': now}), clientId: _client),
+        CcpJwtFailure.invalid,
+      );
+    },
+  );
 
   test('Rejects an embedded JWK before looking up a CCP key', () async {
     final verifier = CcpJwtVerifier(

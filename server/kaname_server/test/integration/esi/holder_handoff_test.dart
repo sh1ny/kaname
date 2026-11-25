@@ -102,6 +102,52 @@ void main() {
     expect(await handoff.take(session, pilot, _two), SsoHandoffStatus.blocked);
   });
 
+  test(
+    'A device can retry a lost release reply after server activation',
+    () async {
+      await holdOnServer();
+      final reservation =
+          await handoff.take(session, pilot, _one) as SsoDeviceReservation;
+      await handoff.release(session, pilot, _one, reservation.generation);
+      final parked = await vault.inspect(_character);
+      if (parked
+          is! VaultSuccess<
+            ({VaultAuthorization authorization, VaultStatus status})?
+          >) {
+        fail('the previous generation could not be read');
+      }
+      final renewed = await vault.activate(
+        character: _character,
+        holder: ServerSsoGrants.holder,
+        expectedGeneration: parked.value!.authorization.generation,
+        refreshToken: 'fresh-synthetic-grant',
+      );
+      final authorization = (renewed as VaultSuccess<VaultAuthorization>).value;
+      final row = (await assigned())!;
+      await SsoHolderRow.db.updateRow(
+        session,
+        row.copyWith(
+          phase: 'serverHeld',
+          vaultGeneration: authorization.generation,
+        ),
+      );
+
+      expect(
+        await handoff.release(session, pilot, _one, reservation.generation),
+        SsoHandoffStatus.released,
+      );
+      expect(
+        await handoff.release(session, pilot, _two, reservation.generation),
+        SsoHandoffStatus.blocked,
+      );
+      expect(
+        await handoff.release(session, pilot, _one, reservation.generation - 1),
+        SsoHandoffStatus.blocked,
+      );
+      expect((await assigned())?.phase, 'serverHeld');
+    },
+  );
+
   test('Mismatch, replay or competing destination', () async {
     await holdOnServer();
     final reservation =

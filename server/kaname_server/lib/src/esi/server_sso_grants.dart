@@ -191,6 +191,8 @@ final class ServerSsoGrants implements SsoGrantAuthority {
           bearer: VaultBearer(grant.accessToken, identity.expiresAt),
         );
         if (activation is! VaultSuccess<VaultAuthorization>) return false;
+        // A failed assignment write leaves no matching grant generation.
+        // Dispatch stays blocked until fresh authorization replaces it.
         final scopeList = identity.scopes.toList()..sort();
         if (observed == null) {
           await SsoHolderRow.db.insertRow(

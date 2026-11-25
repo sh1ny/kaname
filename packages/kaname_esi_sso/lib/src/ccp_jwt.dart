@@ -211,7 +211,8 @@ final class CcpJwtVerifier {
       for (final field in ['iat', 'nbf']) {
         if (!claims.containsKey(field)) continue;
         final time = claims[field];
-        if (time is! int || time < 0 || time > now) {
+        // Desktop clocks can trail CCP. Expiry remains strict above.
+        if (time is! int || time < 0 || time > now + 60) {
           return CcpJwtFailure.invalid;
         }
       }
