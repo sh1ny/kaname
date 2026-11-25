@@ -448,7 +448,13 @@ Future<_Transition> _transitions({required int maxGroups}) async {
     await command.send_object(['UNLINK', ...keys]);
     await wire.close();
   });
-  return (action, incarnation, now, arg, {issuedBy}) async {
+  return (
+    String action,
+    String incarnation,
+    int now,
+    Object arg, {
+    String? issuedBy,
+  }) async {
     final Object? result = await command.send_object([
       'EVAL',
       schedulerScript,
