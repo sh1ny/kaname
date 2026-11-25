@@ -13,6 +13,12 @@
 import 'dart:async' as _ida;
 
 import 'package:http/http.dart' as _i85jenna;
+import 'package:kaname_client/src/protocol/esi/esi_call_log_cursor.dart'
+    as _isbxvgd1;
+import 'package:kaname_client/src/protocol/esi/esi_call_log_page.dart'
+    as _i0ohbe4c;
+import 'package:kaname_client/src/protocol/esi/esi_route_count_page.dart'
+    as _inqxx39c;
 import 'package:kaname_client/src/protocol/health/health_report.dart'
     as _ipujyub9;
 import 'package:kaname_client/src/protocol/static_data/admin_answer.dart'
@@ -28,6 +34,32 @@ import 'package:kaname_client/src/protocol/static_data/static_data_status.dart'
 import 'package:serverpod_client/serverpod_client.dart' as _isc;
 
 import 'protocol.dart' as _il2as5qe;
+
+/// Viewer-only receipts and fixed-window totals. Callers cannot choose a viewer.
+/// {@category Endpoint}
+class EndpointEsiCallLog extends _isc.EndpointRef {
+  EndpointEsiCallLog(_isc.EndpointCaller caller) : super(caller);
+
+  @override
+  String get name => 'esiCallLog';
+
+  /// Returns the current viewer's bounded page after an optional keyset cursor.
+  _ida.Future<_i0ohbe4c.EsiCallLogPage> ownRows(
+    _isbxvgd1.EsiCallLogCursor? after,
+  ) => caller.callServerEndpoint<_i0ohbe4c.EsiCallLogPage>(
+    'esiCallLog',
+    'ownRows',
+    {'after': after},
+  );
+
+  /// Returns released totals only to an authenticated admin.
+  _ida.Future<_inqxx39c.EsiRouteCountPage> routeCounts() =>
+      caller.callServerEndpoint<_inqxx39c.EsiRouteCountPage>(
+        'esiCallLog',
+        'routeCounts',
+        {},
+      );
+}
 
 /// Reports the server version and the status of its dependencies, to anyone.
 ///
@@ -50,7 +82,7 @@ class EndpointHealth extends _isc.EndpointRef {
       caller.callServerEndpoint<_ipujyub9.HealthReport>('health', 'check', {});
 }
 
-/// Key-gated static-data commands; the key is never persisted or logged.
+/// Static-data mutations require live Kaname admin scope (ADR 0018).
 ///
 /// C11: check the operation id before taking the slot and before dispatch.
 /// C21: settlement owns an admin job from before its admission insert until
@@ -64,55 +96,34 @@ class EndpointStaticDataAdmin extends _isc.EndpointRef {
   @override
   String get name => 'staticDataAdmin';
 
-  /// Checks the install key without writing anything (D1, D6).
-  _ida.Future<_ix017a22.AdminAnswer> checkKey(String adminKey) =>
+  /// Starts an admitted CCP check (D4). The row owns its terminal outcome.
+  _ida.Future<_ix017a22.AdminAnswer> updateNow(String operationId) =>
       caller.callServerEndpoint<_ix017a22.AdminAnswer>(
         'staticDataAdmin',
-        'checkKey',
-        {'adminKey': adminKey},
+        'updateNow',
+        {'operationId': operationId},
       );
-
-  /// Starts an admitted CCP check (D4). The row owns its terminal outcome.
-  _ida.Future<_ix017a22.AdminAnswer> updateNow(
-    String adminKey,
-    String operationId,
-  ) => caller.callServerEndpoint<_ix017a22.AdminAnswer>(
-    'staticDataAdmin',
-    'updateNow',
-    {'adminKey': adminKey, 'operationId': operationId},
-  );
 
   /// Restores only the build revision confirmed by the caller (D5, C14).
   _ida.Future<_ix017a22.AdminAnswer> rollBack(
-    String adminKey,
     String operationId,
     int expectedRevision,
   ) => caller.callServerEndpoint<_ix017a22.AdminAnswer>(
     'staticDataAdmin',
     'rollBack',
-    {
-      'adminKey': adminKey,
-      'operationId': operationId,
-      'expectedRevision': expectedRevision,
-    },
+    {'operationId': operationId, 'expectedRevision': expectedRevision},
   );
 
   /// C31: applies a setting only at the confirmed revision. A replay of the
   /// exact write id confirms the current value and revision, never overwrites.
   _ida.Future<_ix017a22.AdminAnswer> setAutoUpdate(
-    String adminKey,
     bool value,
     _i4m0ll8r.SettingRevision expectedRevision,
     String writeId,
   ) => caller.callServerEndpoint<_ix017a22.AdminAnswer>(
     'staticDataAdmin',
     'setAutoUpdate',
-    {
-      'adminKey': adminKey,
-      'value': value,
-      'expectedRevision': expectedRevision,
-      'writeId': writeId,
-    },
+    {'value': value, 'expectedRevision': expectedRevision, 'writeId': writeId},
   );
 }
 
@@ -208,10 +219,13 @@ class Client extends _isc.ServerpodClientShared {
              disconnectStreamsOnLostInternetConnection,
          httpClientOverride: httpClientOverride,
        ) {
+    esiCallLog = EndpointEsiCallLog(this);
     health = EndpointHealth(this);
     staticDataAdmin = EndpointStaticDataAdmin(this);
     staticData = EndpointStaticData(this);
   }
+
+  late final EndpointEsiCallLog esiCallLog;
 
   late final EndpointHealth health;
 
@@ -221,6 +235,7 @@ class Client extends _isc.ServerpodClientShared {
 
   @override
   Map<String, _isc.EndpointRef> get endpointRefLookup => {
+    'esiCallLog': esiCallLog,
     'health': health,
     'staticDataAdmin': staticDataAdmin,
     'staticData': staticData,

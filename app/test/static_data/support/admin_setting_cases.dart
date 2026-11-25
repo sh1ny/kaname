@@ -184,7 +184,7 @@ void adminSettingCases() {
         h.write(false);
         final changes = h.changes;
         h.tracker.dispose();
-        h.calls.single.complete(_answer(AdminAnswerOutcome.keyRejected));
+        h.calls.single.complete(_answer(AdminAnswerOutcome.notAuthorized));
         await _flush();
         h.retry();
         h.write(true);
@@ -206,7 +206,7 @@ void adminSettingCases() {
         h.write(true);
         h.calls.last.completeUnanswered();
         await _flush();
-        oldRetry.complete(_answer(AdminAnswerOutcome.keyRejected));
+        oldRetry.complete(_answer(AdminAnswerOutcome.notAuthorized));
         await _flush();
         expect(h.tracker.view!.value, isTrue);
         expect(h.tracker.view!.notConfirmed, isTrue);
@@ -220,9 +220,9 @@ void adminSettingCases() {
       'a current authentication refusal carries the sending key session',
       () async {
         h.write(false);
-        h.calls.single.complete(_answer(AdminAnswerOutcome.keyRejected));
+        h.calls.single.complete(_answer(AdminAnswerOutcome.notAuthorized));
         await _flush();
-        expect(h.refusals, [(AdminAnswerOutcome.keyRejected, 7)]);
+        expect(h.refusals, [(AdminAnswerOutcome.notAuthorized, 7)]);
         expect(h.tracker.view!.value, isTrue);
       },
     );
@@ -258,7 +258,7 @@ void adminSettingCases() {
       tracker.observe(true, NoWrites());
       tracker.write(
         false,
-        keySession: 1,
+        authorityEpoch: 1,
         send: (value, revision, id) {
           final call = _Call(value, revision, id);
           calls.add(call);
@@ -326,8 +326,8 @@ final class _Harness {
     return (answer: call.answer.future, settled: call.settled.future);
   }
 
-  void write(bool value) => tracker.write(value, keySession: 7, send: send);
-  void retry() => tracker.retry(keySession: 7, send: send);
+  void write(bool value) => tracker.write(value, authorityEpoch: 7, send: send);
+  void retry() => tracker.retry(authorityEpoch: 7, send: send);
 }
 
 final class _Call {

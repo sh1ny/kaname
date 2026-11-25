@@ -120,5 +120,6 @@ Accepted, not superseded. Proposed ADRs are drafts and are not listed.
 | [0012](../docs/adr/0012-worker-isolate-access.md) | Worker-owned per-job Postgres; bus settled by ADR 0014, ESI Redis by ADR 0016; vault and privacy scope still open (R56) | — |
 | [0013](../docs/adr/0013-client-data-bundle.md) | One versioned gzip JSON Lines bundle per SDE build, public data only, served by build and hash; same builder on server and device | — |
 | [0014](../docs/adr/0014-realtime-bus-topics.md) | RealtimeBus topics typed and versioned, public or scoped, local delivery first, only the main isolate publishes | — |
-| [0015](../docs/adr/0015-interim-install-admin-key.md) | One install-wide static-data admin key until M2 sign-in and roles; public reads stay open | — |
 | [0016](../docs/adr/0016-esi-scheduler-shared-state.md) | Isolate-owned Redis connections and one atomic scheduler state; solo in process | — |
+| [0017](../docs/adr/0017-esi-holder-handoff.md) | Durable ESI holder handoff and a desktop credential-only store; verified reclaim stays in M7 | — |
+| [0018](../docs/adr/0018-scoped-static-data-administration.md) | Live Kaname admin scope for static-data mutations; public reads stay open | [0015](../docs/adr/0015-interim-install-admin-key.md) |

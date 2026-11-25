@@ -12,7 +12,7 @@ typedef AdminJobProgress = ({
   bool canRetry,
 });
 
-/// An action's message, separate from its reservation and key session.
+/// An action's message, separate from its reservation and viewer.
 sealed class AdminJobMessage {
   const AdminJobMessage();
 }
@@ -56,8 +56,9 @@ final class AdminJobUnknown extends AdminJobMessage {
   const AdminJobUnknown();
 }
 
-/// State shared between the key phases; a key is never part of this view.
+/// Public UI state. A bearer is never part of this view.
 typedef AdminSessionView = ({
+  int? authority,
   bool? configured,
   bool secure,
   bool serverBusy,
@@ -66,49 +67,22 @@ typedef AdminSessionView = ({
   AdminSettingView? setting,
 });
 
-/// The key phase and independent public job/setting state (D8).
+/// The current admin authority and independent public job state (ADR 0018).
 sealed class AdminSessionState {
   const AdminSessionState(this.view);
 
-  /// Everything the section may show about this session.
+  /// The displayed public job and setting state.
   final AdminSessionView view;
 }
 
-/// No key is held.
-final class NoKey extends AdminSessionState {
-  /// Creates the no-key state for [view].
-  const NoKey(super.view);
+/// No current admin authority for this server.
+final class ReadOnlyAdmin extends AdminSessionState {
+  /// Keeps public progress readable without mutation controls.
+  const ReadOnlyAdmin(super.view);
 }
 
-/// A submitted key is being checked.
-final class CheckingKey extends AdminSessionState {
-  /// Creates the checking state for [view].
-  const CheckingKey(super.view);
-}
-
-/// The key was kept in memory, but the transport gave no answer.
-final class KeyUnconfirmed extends AdminSessionState {
-  /// Permits an explicit retry or forgotten key, not any admin command.
-  const KeyUnconfirmed(super.view);
-}
-
-/// The current in-memory key was accepted by the target server.
+/// This server has verified live admin scope for the current viewer.
 final class Admin extends AdminSessionState {
   /// Creates the accepted state for [view].
   const Admin(super.view);
-}
-
-/// The server rejected the key, and the app forgot it.
-final class KeyRejected extends AdminSessionState {
-  /// Creates the rejected state for [view].
-  const KeyRejected(super.view);
-}
-
-/// The key is held until a new check can be made, with admin commands hidden.
-final class Paused extends AdminSessionState {
-  /// Creates the pause state and its check-again affordance.
-  const Paused(super.view, {required this.canCheckAgain});
-
-  /// The server's pause has elapsed and the held key can now be checked.
-  final bool canCheckAgain;
 }

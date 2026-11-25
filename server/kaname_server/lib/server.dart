@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'src/esi/server_sso.dart';
 import 'src/generated/serverpod.dart';
 import 'src/network/trusted_proxies.dart';
 import 'src/static_data/bundle_announcement_runtime.dart';
@@ -21,7 +22,16 @@ import 'src/static_data/static_data_start.dart';
 /// before the server starts, because the API listener accepts subscriptions
 /// before `pod.start()` returns. The bundle and report routes are registered
 /// before the server starts, when the API listener still takes middleware.
-Future<void> run(List<String> args) => serve(Serverpod(args));
+Future<void> run(List<String> args) {
+  ServerSso? sso;
+  final pod = Serverpod(
+    args,
+    authenticationHandler: (session, bearer) async =>
+        sso?.authenticate(session, bearer),
+  );
+  sso = ServerSso.install(pod, Platform.environment);
+  return serve(pod);
+}
 
 /// Wires the bundle route and announcer into [pod], starts it, then starts
 /// the announcer and the static-data work, as [run] does for its pod.
@@ -59,6 +69,7 @@ Future<void> serve(Serverpod pod) async {
   startBundleAnnouncer(pod, announcer);
   startStaticData(pod);
   await scheduleEsiCallLogPrune(pod);
+  if (ServerSso.of(pod) != null) await _scheduleSsoSessionPrune(pod);
 }
 
 const _esiCallLogPruneId = 'kaname-esi-call-log-prune';
@@ -75,5 +86,20 @@ Future<void> scheduleEsiCallLogPrune(Serverpod pod) async {
         .run();
   } on Exception {
     stderr.writeln('esi-call-log: could not schedule pruning');
+  }
+}
+
+Future<void> _scheduleSsoSessionPrune(Serverpod pod) async {
+  if (pod.runMode == 'test' || pod.config.role.name != 'monolith') return;
+  const id = 'kaname-esi-session-prune';
+  try {
+    await pod.futureCalls.cancel(id);
+    await pod.futureCalls
+        .callRecurring(identifier: id)
+        .cron('* * * * *')
+        .ssoSessionPruneCall
+        .run();
+  } on Exception {
+    stderr.writeln('esi-sso: could not schedule session pruning');
   }
 }

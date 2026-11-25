@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:kaname_ember_ui/kaname_ember_ui.dart';
 
+import '../../esi_sso/ui/call_log_panel.dart';
+import '../../esi_sso/ui/esi_account_section.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../server/ui/server_section.dart';
 import 'about_section.dart';
@@ -54,6 +56,9 @@ class SettingsScreen extends StatelessWidget {
                   const SizedBox(height: EmberSpace.xl),
                   const StaticDataSection(),
                   const SizedBox(height: EmberSpace.xl),
+                  const EsiAccountSection(),
+                  const SizedBox(height: EmberSpace.xl),
+                  const CallLogPanel(),
                   const AboutSection(),
                 ],
               ),

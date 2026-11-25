@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:kaname_client/kaname_client.dart' as api;
-import 'package:kaname_server/src/static_data/admin_gate.dart';
 import 'package:kaname_server/src/static_data/read_work_tokens.dart';
 import 'package:kaname_server/src/static_data/static_data_access.dart';
 import 'package:kaname_server/src/static_data/static_data_status_cache.dart';
@@ -189,7 +188,6 @@ void main() {
 
       final failure = Completer<Object>();
       final access = StaticDataAccess(
-        gate: AdminGate(key: null, log: (_, _) {}),
         withSession: <T>(action) async {
           try {
             return await server.pod.withSession(action);

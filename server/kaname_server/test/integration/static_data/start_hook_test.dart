@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
-import 'package:kaname_server/src/static_data/admin_gate.dart';
 import 'package:kaname_server/src/static_data/bundle_announcer.dart';
 import 'package:kaname_server/src/static_data/postgres_connection_settings.dart';
 import 'package:kaname_server/src/static_data/static_data_access.dart';
@@ -246,7 +245,6 @@ void main() {
 
     Future<StaticDataStatus?> status(FakeClock clock) => StaticDataAccess(
       withSession: session.serverpod.withSession,
-      gate: AdminGate(key: null, log: (_, _) {}),
       clock: clock,
     ).status.status();
 

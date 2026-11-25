@@ -14,6 +14,7 @@
 !packages/kaname_core/pubspec.yaml
 !packages/kaname_esi/pubspec.yaml
 !packages/kaname_esi_scheduler/pubspec.yaml
+!packages/kaname_esi_sso/pubspec.yaml
 !packages/kaname_esi_vault/pubspec.yaml
 !packages/kaname_static_data/pubspec.yaml
 !packages/kaname_static_data_bundle/pubspec.yaml
@@ -24,6 +25,7 @@
 !packages/kaname_core/lib/**
 !packages/kaname_esi/lib/**
 !packages/kaname_esi_scheduler/lib/**
+!packages/kaname_esi_sso/lib/**
 !packages/kaname_esi_vault/lib/**
 !packages/kaname_static_data/lib/**
 !packages/kaname_static_data_bundle/lib/**

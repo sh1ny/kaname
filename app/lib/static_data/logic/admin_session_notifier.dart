@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kaname_client/kaname_client.dart';
 
+import '../../esi_sso/logic/account.dart';
 import '../../server/data/secure_for_admin.dart';
 import '../../server/data/server_address.dart';
 import '../../server/logic/server_status.dart' show serverTargetProvider;
@@ -27,17 +28,21 @@ ClientStaticDataAdmin _adminClient(Ref ref, Uri uri) {
   return client;
 }
 
+/// Current verified admin bearer for the exact target; null is read-only.
+final staticDataAdminBearerProvider = Provider<String?>((ref) {
+  final session = ref.watch(connectedAccountSessionProvider);
+  if (session == null || !session.pilot.admin) return null;
+  return switch (ref.watch(serverTargetProvider)) {
+    ConfiguredServer(:final uri) => session.bearerFor(uri),
+    _ => null,
+  };
+});
+
 /// Monotonic time since an arbitrary origin, used for job limits (D18).
 final adminSessionElapsedProvider = Provider<Duration Function()>((ref) {
   final watch = Stopwatch()..start();
   return () => watch.elapsed;
 });
-
-/// Wall time is used only for the server's key-pause deadline.
-final adminSessionUtcNowProvider = Provider<DateTime Function()>(
-  (ref) =>
-      () => DateTime.now().toUtc(),
-);
 
 /// Supplies fresh operation and setting-write IDs.
 final adminRequestIdProvider = Provider<String Function()>(
@@ -50,13 +55,10 @@ final adminSessionProvider =
       AdminSessionNotifier.new,
     );
 
-enum _KeyPhase { absent, checking, unconfirmed, accepted, rejected, paused }
-
-/// Owns the key, admin presses, follow and setting writes (D8, D18).
+/// Owns static-data actions separately from identity and the public job follow.
 ///
-/// The key is held only in memory and is never published or logged (D8).
-/// A gate refusal affects the sending key session only. Job and setting
-/// ownership use their own fences, so replacing a key never drops the job.
+/// A denial affects only the exact session generation that sent the request.
+/// Losing authority does not drop a submitted public job (ADR 0018).
 ///
 /// C33: only fencing evidence clears a pending, unconfirmed auto-update
 /// write: a confirmed answer, "setting changed", or a status read above the
@@ -69,7 +71,7 @@ final class AdminSessionNotifier extends Notifier<AdminSessionState> {
   StaticDataAdminClient? _client;
   late AdminSettingTracker _setting;
   late Duration Function() _elapsed;
-  late DateTime Function() _now;
+  String? _connectedBearer;
   late String Function() _newId;
   late Timer Function(Duration, void Function()) _timer;
   bool _built = false;
@@ -78,11 +80,8 @@ final class AdminSessionNotifier extends Notifier<AdminSessionState> {
   bool? _configured;
   StaticDataStatus? _snapshot;
   int _lifetime = 0;
-  int _keySession = 0;
-  String? _key;
-  _KeyPhase _phase = _KeyPhase.absent;
-  DateTime? _pausedUntil;
-  Timer? _pauseTimer;
+  int _authorityEpoch = 0;
+  String? _bearer;
   Timer? _pollTimer;
   _Job? _job;
   AdminJobMessage? _message;
@@ -98,20 +97,23 @@ final class AdminSessionNotifier extends Notifier<AdminSessionState> {
       NoServer() || InvalidServer() => false,
     };
     _elapsed = ref.read(adminSessionElapsedProvider);
-    _now = ref.read(adminSessionUtcNowProvider);
+    _connectedBearer = ref.read(staticDataAdminBearerProvider);
+    _bearer = _connectedBearer;
     _newId = ref.read(adminRequestIdProvider);
     _timer = ref.read(staticDataTimersProvider);
     _visible = ref.read(staticDataSettingsVisibleProvider);
     _setting = AdminSettingTracker(
       newId: _newId,
       onChanged: _publish,
-      onRefusal: _applyGate,
+      onRefusal: _applyDenial,
     );
     ref.onDispose(() {
       if (lifetime != _lifetime) return;
       _lifetime++;
       _built = false;
-      _dropKey(_KeyPhase.absent);
+      _authorityEpoch++;
+      _connectedBearer = null;
+      _bearer = null;
       _setting.dispose();
       _pollTimer?.cancel();
       _pollTimer = null;
@@ -120,6 +122,13 @@ final class AdminSessionNotifier extends Notifier<AdminSessionState> {
       _message = null;
       _snapshot = null;
       _configured = null;
+    });
+    ref.listen(staticDataAdminBearerProvider, (_, next) {
+      if (_connectedBearer == next) return;
+      _connectedBearer = next;
+      _bearer = next;
+      _authorityEpoch++;
+      _publish();
     });
     ref.listen(staticDataSettingsVisibleProvider, (_, shown) {
       _visible = shown;
@@ -146,21 +155,16 @@ final class AdminSessionNotifier extends Notifier<AdminSessionState> {
     if (identical(_snapshot, status)) return;
     _snapshot = status;
     _configured = status.adminConfigured;
-    if (!status.adminConfigured) _dropKey(_KeyPhase.absent);
     _setting.observe(status.autoUpdate, status.settingRevision);
     _publish();
   }
 
-  bool get _accepted => _phase == _KeyPhase.accepted && _key != null;
-
-  bool get _canCheckAgain => switch (_pausedUntil) {
-    final until? => !_now().isBefore(until),
-    null => false,
-  };
+  bool get _accepted => _secure && _configured == true && _bearer != null;
 
   AdminSessionState _compose() {
     final job = _job;
     final AdminSessionView view = (
+      authority: _accepted ? _authorityEpoch : null,
       configured: _configured,
       secure: _secure,
       serverBusy: _snapshot?.busy ?? false,
@@ -177,102 +181,25 @@ final class AdminSessionNotifier extends Notifier<AdminSessionState> {
       message: _message,
       setting: _setting.view,
     );
-    return switch (_phase) {
-      _KeyPhase.absent => NoKey(view),
-      _KeyPhase.checking => CheckingKey(view),
-      _KeyPhase.unconfirmed => KeyUnconfirmed(view),
-      _KeyPhase.accepted => Admin(view),
-      _KeyPhase.rejected => KeyRejected(view),
-      _KeyPhase.paused => Paused(view, canCheckAgain: _canCheckAgain),
-    };
+    return _accepted ? Admin(view) : ReadOnlyAdmin(view);
   }
 
   void _publish() {
     if (_built && ref.mounted) state = _compose();
   }
 
-  /// Submits a key for this app run, only to a configured secure target.
-  void enterKey(String key) {
-    if (!_secure || _configured != true || key.isEmpty || _client == null) {
-      return;
+  void _applyDenial(AdminAnswer answer, int session) {
+    if (_applyDenialAnswer(answer, session)) _publish();
+  }
+
+  bool _applyDenialAnswer(AdminAnswer answer, int session) {
+    if (session != _authorityEpoch ||
+        _bearer == null ||
+        answer.outcome != AdminAnswerOutcome.notAuthorized) {
+      return false;
     }
-    _key = key;
-    _checkKey();
-  }
-
-  /// Checks the held key again after an unanswered check or an ended pause.
-  void retryKey() {
-    if (_phase == _KeyPhase.unconfirmed ||
-        (_phase == _KeyPhase.paused && _canCheckAgain)) {
-      _checkKey();
-    }
-  }
-
-  /// Forgets the key without stopping a followed public job.
-  void forgetKey() {
-    _dropKey(_KeyPhase.absent);
-    _publish();
-  }
-
-  void _dropKey(_KeyPhase next) {
-    _keySession++;
-    _phase = next;
-    _key = null;
-    _pauseTimer?.cancel();
-    _pauseTimer = null;
-    _pausedUntil = null;
-  }
-
-  void _checkKey() {
-    final key = _key;
-    final client = _client;
-    if (key == null || client == null) return;
-    final session = ++_keySession;
-    _phase = _KeyPhase.checking;
-    _pauseTimer?.cancel();
-    _pauseTimer = null;
-    _pausedUntil = null;
-    _publish();
-    unawaited(
-      client.checkKey(key).answer.then<void>((result) {
-        if (session != _keySession || _key == null) return;
-        switch (result) {
-          case RpcAnswered(:final value):
-            if (value.outcome == AdminAnswerOutcome.keyAccepted) {
-              _phase = _KeyPhase.accepted;
-            } else if (!_applyGateAnswer(value, session)) {
-              _phase = _KeyPhase.unconfirmed;
-            }
-          case RpcUnanswered():
-            _phase = _KeyPhase.unconfirmed;
-        }
-        _publish();
-      }),
-    );
-  }
-
-  void _applyGate(AdminAnswer answer, int session) {
-    if (_applyGateAnswer(answer, session)) _publish();
-  }
-
-  bool _applyGateAnswer(AdminAnswer answer, int session) {
-    if (session != _keySession || _key == null) return false;
-    switch (answer.outcome) {
-      case AdminAnswerOutcome.notConfigured:
-        _configured = false;
-        _dropKey(_KeyPhase.absent);
-      case AdminAnswerOutcome.keyRejected:
-        _dropKey(_KeyPhase.rejected);
-      case AdminAnswerOutcome.tooManyAttempts:
-        _phase = _KeyPhase.paused;
-        _pausedUntil =
-            answer.pausedUntil ?? _now().add(const Duration(minutes: 1));
-        _pauseTimer?.cancel();
-        final delay = _pausedUntil!.difference(_now());
-        _pauseTimer = delay > Duration.zero ? _timer(delay, _publish) : null;
-      default:
-        return false;
-    }
+    _authorityEpoch++;
+    _bearer = null;
     return true;
   }
 
@@ -316,17 +243,17 @@ final class AdminSessionNotifier extends Notifier<AdminSessionState> {
   }
 
   void _send(_Job job) {
-    final key = _key!;
+    final bearer = _bearer!;
     final client = _client!;
     job.sending = true;
     final send = ++job.send;
-    final session = _keySession;
+    final session = _authorityEpoch;
     final alreadyFollowing = job.following;
     _publish();
     final call = switch (job.kind) {
-      SdeAdminOperationKind.updateNow => client.updateNow(key, job.id),
+      SdeAdminOperationKind.updateNow => client.updateNow(bearer, job.id),
       SdeAdminOperationKind.rollback => client.rollBack(
-        key,
+        bearer,
         job.id,
         job.expectedRevision!,
       ),
@@ -366,7 +293,7 @@ final class AdminSessionNotifier extends Notifier<AdminSessionState> {
       RpcAnswered(:final value) => value,
       RpcUnanswered() => AdminAnswer(outcome: AdminAnswerOutcome.noAnswerYet),
     };
-    _applyGateAnswer(answer, session);
+    _applyDenialAnswer(answer, session);
     _message = AdminJobAnswered(job.kind, answer);
     switch (answer.outcome) {
       case AdminAnswerOutcome.started:
@@ -500,20 +427,24 @@ final class AdminSessionNotifier extends Notifier<AdminSessionState> {
   /// Writes the desired setting using the latest known revision.
   void setAutoUpdate(bool value) {
     if (!_accepted || _client == null) return;
-    _setting.write(value, keySession: _keySession, send: _sendSetting());
+    _setting.write(
+      value,
+      authorityEpoch: _authorityEpoch,
+      send: _sendSetting(),
+    );
   }
 
   /// Resends the pending setting value, revision and write ID.
   void retryAutoUpdate() {
     if (!_accepted || _client == null) return;
-    _setting.retry(keySession: _keySession, send: _sendSetting());
+    _setting.retry(authorityEpoch: _authorityEpoch, send: _sendSetting());
   }
 
   SendAutoUpdate _sendSetting() {
-    final key = _key!;
+    final bearer = _bearer!;
     final client = _client!;
     return (value, revision, id) =>
-        client.setAutoUpdate(key, value, revision, id);
+        client.setAutoUpdate(bearer, value, revision, id);
   }
 }
 

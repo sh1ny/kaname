@@ -169,7 +169,7 @@ enum EsiRefusalReason {
   /// The operation and supplied context cannot safely be used together.
   invalidContext,
 
-  /// The shared store is waiting for prior upstream debits to drain.
+  /// An earlier request is establishing the recovering group's budget.
   stateRecovering,
 }
 

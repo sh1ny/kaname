@@ -14,6 +14,7 @@ import 'package:kaname_client/kaname_client.dart';
 
 import 'server_static_data_status_notifier_test.dart'
     show FakeStaticDataNotifier, FakeStatusClient, snapshot;
+import 'support/admin_bearer.dart';
 import 'support/admin_setting_cases.dart';
 import 'support/static_data_fakes.dart' show FakeClock;
 
@@ -48,28 +49,15 @@ final class _Command {
   final SettingRevision? expected;
   final result = _Pending<AdminAnswer>();
 
-  void answer(
-    AdminAnswerOutcome outcome, {
-    DateTime? pause,
-    AdminOperationView? operation,
-  }) => result.reply(
-    AdminAnswer(outcome: outcome, pausedUntil: pause, operation: operation),
-  );
+  void answer(AdminAnswerOutcome outcome, {AdminOperationView? operation}) =>
+      result.reply(AdminAnswer(outcome: outcome, operation: operation));
 }
 
 final class _AdminApi implements StaticDataAdminClient {
-  final keys = <_Command>[];
   final updates = <_Command>[];
   final rollbacks = <_Command>[];
   final toggles = <_Command>[];
   final reads = <({String id, _Pending<AdminOperationAnswer> result})>[];
-
-  @override
-  RpcCall<AdminAnswer> checkKey(String key) {
-    final command = _Command(key);
-    keys.add(command);
-    return command.result.call;
-  }
 
   @override
   RpcCall<AdminAnswer> updateNow(String key, String operationId) {
@@ -129,7 +117,9 @@ final class _Fixture {
         adminSessionElapsedProvider.overrideWithValue(
           () => clock.now().difference(DateTime.utc(2026)),
         ),
-        adminSessionUtcNowProvider.overrideWithValue(clock.now),
+        staticDataAdminBearerProvider.overrideWith(
+          (ref) => ref.watch(testBearerProvider),
+        ),
         adminRequestIdProvider.overrideWithValue(() => 'operation-${++next}'),
       ],
     );
@@ -161,8 +151,7 @@ final class _Fixture {
   }
 
   Future<void> accept(String key) async {
-    controller.enterKey(key);
-    api.keys.last.answer(AdminAnswerOutcome.keyAccepted);
+    container.read(testBearerProvider.notifier).set(key);
     await _flush();
     expect(state, isA<Admin>());
   }
@@ -535,116 +524,58 @@ void main() {
   );
 
   test(
-    'admin key rejected forgets the key and hides the admin controls',
+    'a denied admin call drops mutation authority and hides the admin controls',
     () async {
       final f = _Fixture();
-      await f.start(withKey: false);
-      f.controller.enterKey('bad key');
-      f.api.keys.single.answer(AdminAnswerOutcome.keyRejected);
-      await _flush();
-      expect(f.state, isA<KeyRejected>());
-      f.controller.retryKey();
+      await f.start();
       f.controller.updateNow();
-      expect(f.api.keys, hasLength(1));
-      expect(f.api.updates, isEmpty);
+      f.api.updates.single.answer(AdminAnswerOutcome.notAuthorized);
+      await _flush();
+      expect(f.state, isA<ReadOnlyAdmin>());
+      f.controller.updateNow();
+      expect(f.api.updates, hasLength(1));
     },
   );
-
-  test('a late rejection for key A keeps key B and settles only its own job or write', () async {
-    final f = _Fixture();
-    await f.start();
-    f.controller.updateNow();
-    f.controller.setAutoUpdate(false);
-    f.api.updates.single.answer(AdminAnswerOutcome.keyRejected);
-    await _flush();
-    expect(f.state, isA<KeyRejected>());
-    await f.accept('key B');
-    f.api.toggles.single.answer(AdminAnswerOutcome.keyRejected);
-    await _flush();
-    expect(f.state, isA<Admin>());
-    expect(f.view.setting?.saving, isFalse);
-    f.controller.updateNow();
-    expect(f.api.updates.last.key, 'key B');
-  });
 
   test(
-    'too many attempts keeps the key and hides the admin controls',
+    'Delayed denial from an older session leaves the new admin authorized',
     () async {
       final f = _Fixture();
-      await f.start(withKey: false);
-      f.controller.enterKey('held key');
-      f.api.keys.single.answer(
-        AdminAnswerOutcome.tooManyAttempts,
-        pause: f.clock.now().add(const Duration(minutes: 1)),
-      );
-      await _flush();
-      expect((f.state as Paused).canCheckAgain, isFalse);
-      f.controller.retryKey();
+      await f.start();
       f.controller.updateNow();
-      expect(f.api.keys, hasLength(1));
-      expect(f.api.updates, isEmpty);
+      f.controller.setAutoUpdate(false);
+      f.api.updates.single.answer(AdminAnswerOutcome.notAuthorized);
+      await _flush();
+      expect(f.state, isA<ReadOnlyAdmin>());
+      await f.accept('key B');
+      f.api.toggles.single.answer(AdminAnswerOutcome.notAuthorized);
+      await _flush();
+      expect(f.state, isA<Admin>());
+      expect(f.view.setting?.saving, isFalse);
+      f.controller.updateNow();
+      expect(f.api.updates.last.key, 'key B');
     },
   );
 
-  test('Check again after the pause sends checkKey with the held key and shows the controls on accepted', () async {
-    final f = _Fixture();
-    await f.start(withKey: false);
-    f.controller.enterKey('held key');
-    f.api.keys.single.answer(
-      AdminAnswerOutcome.tooManyAttempts,
-      pause: f.clock.now().add(const Duration(minutes: 1)),
-    );
-    await _flush();
-    await f.clock.elapse(const Duration(minutes: 1));
-    expect((f.state as Paused).canCheckAgain, isTrue);
-    f.controller.retryKey();
-    expect(f.api.keys.last.key, 'held key');
-    f.api.keys.last.answer(AdminAnswerOutcome.keyAccepted);
-    await _flush();
-    expect(f.state, isA<Admin>());
-  });
-
-  test('a new app session holds no key', () async {
+  test('a new app session is read-only until signed in', () async {
     final first = _Fixture();
     await first.start();
     final restarted = _Fixture();
     await restarted.start(withKey: false);
-    expect(restarted.state, isA<NoKey>());
-    expect(restarted.api.keys, isEmpty);
+    expect(restarted.state, isA<ReadOnlyAdmin>());
   });
 
-  test(
-    'a not-configured answer forgets the key and keeps following the job',
-    () async {
-      final f = _Fixture();
-      await f.start();
-      final id = await f.follow();
-      f.controller.setAutoUpdate(false);
-      f.api.toggles.single.answer(AdminAnswerOutcome.notConfigured);
-      await _flush();
-      expect(f.state, isA<NoKey>());
-      expect(f.view.configured, isFalse);
-      expect(f.view.job?.id, id);
-      await f.record(AdminOperationReadState.running);
-      await f.clock.elapse(const Duration(seconds: 5));
-      expect(f.api.reads.last.id, id);
-    },
-  );
-
-  test('a timed-out key check gives Could not check the key with Try again and Forget key', () async {
+  test('a denied setting write drops mutation authority but keeps following the job', () async {
     final f = _Fixture();
-    await f.start(withKey: false);
-    f.controller.enterKey('held key');
-    f.api.keys.single.result.lose();
+    await f.start();
+    final id = await f.follow();
+    f.controller.setAutoUpdate(false);
+    f.api.toggles.single.answer(AdminAnswerOutcome.notAuthorized);
     await _flush();
-    expect(f.state, isA<KeyUnconfirmed>());
-    f.controller.updateNow();
-    expect(f.api.updates, isEmpty);
-    f.controller.retryKey();
-    expect(f.api.keys.last.key, 'held key');
-    f.controller.forgetKey();
-    f.api.keys.last.answer(AdminAnswerOutcome.keyAccepted);
-    await _flush();
-    expect(f.state, isA<NoKey>());
+    expect(f.state, isA<ReadOnlyAdmin>());
+    expect(f.view.job?.id, id);
+    await f.record(AdminOperationReadState.running);
+    await f.clock.elapse(const Duration(seconds: 5));
+    expect(f.api.reads.last.id, id);
   });
 }

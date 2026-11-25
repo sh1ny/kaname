@@ -1,7 +1,6 @@
-/// Whether [address] is safe for sending the install admin key (D24).
+/// Whether [address] may carry a Kaname admin session (ADR 0018).
 ///
-/// Public reads may still use HTTP to another host. Only the three explicit
-/// loopback addresses are allowed to carry a key over HTTP.
+/// Remote HTTP remains available for public reads only.
 bool isSecureForAdmin(Uri address) {
   final host = address.host;
   if (!address.hasAuthority || host.isEmpty) return false;

@@ -1,0 +1,12 @@
+### Durable holder assignment; never stores plaintext proof or credentials.
+class: SsoHolderRow
+table: esi_holder_assignment
+serverOnly: true
+fields:
+  characterId: int, unique
+  phase: String
+  generation: int
+  vaultGeneration: int?
+  proofDigest: String?
+  grantFingerprint: String?
+  requestedScopes: List<String>?

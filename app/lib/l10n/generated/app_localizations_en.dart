@@ -477,34 +477,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sdReasonOther => 'Failed, see the server log';
 
   @override
-  String get sdAdminKey => 'Admin key';
-
-  @override
-  String get sdAdminCheckKey => 'Check key';
-
-  @override
-  String get sdAdminForget => 'Forget key';
-
-  @override
-  String get sdAdminChecking => 'Checking key…';
-
-  @override
-  String get sdAdminUnconfirmed => 'Could not check the key';
-
-  @override
-  String get sdAdminRetryKey => 'Try again';
-
-  @override
-  String get sdAdminPaused => 'Too many attempts, try again in a minute';
-
-  @override
-  String get sdAdminCheckAgain => 'Check again';
-
-  @override
-  String get sdAdminRejected => 'Admin key rejected';
-
-  @override
-  String get sdAdminAccepted => 'Key accepted.';
+  String get sdAdminSignIn => 'Sign in with a server admin account.';
 
   @override
   String get sdAdminNotConfigured =>
@@ -694,5 +667,220 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String sdReportKeys(String kind, int count) {
     return '$kind keys ($count)';
+  }
+
+  @override
+  String get esiAccountTitle => 'EVE account';
+
+  @override
+  String get esiSignIn => 'Sign in to server';
+
+  @override
+  String get esiSignOut => 'Sign out of server';
+
+  @override
+  String get esiSecureConnection => 'Server sign-in needs a secure connection.';
+
+  @override
+  String get esiOpenBrowser => 'Open EVE sign-in';
+
+  @override
+  String get esiFinishSignIn => 'Finish sign-in';
+
+  @override
+  String get esiFinishAuthorization => 'Finish authorization';
+
+  @override
+  String get esiCompletionCode => 'Code shown in your browser';
+
+  @override
+  String get esiBrowserInstruction =>
+      'Approve in your browser, then return here.';
+
+  @override
+  String get esiCancel => 'Cancel';
+
+  @override
+  String get esiAuthorizeServer => 'Authorize server skills access';
+
+  @override
+  String get esiAllowOptional => 'Allow optional skills access';
+
+  @override
+  String get esiRemoveOptional => 'Remove optional skills access';
+
+  @override
+  String get esiReadServerSkills => 'Read skills on server';
+
+  @override
+  String get esiReadNativeSkills => 'Read skills in solo mode';
+
+  @override
+  String get esiTakeHolder => 'Take holder to this device';
+
+  @override
+  String get esiReturnHolder => 'Park device and return holder';
+
+  @override
+  String get esiNativeRegistration => 'Native SSO client ID';
+
+  @override
+  String get esiSaveRegistration => 'Save client ID';
+
+  @override
+  String get esiNativeIdentify => 'Sign in on this device';
+
+  @override
+  String get esiNativeAuthorize => 'Allow and authorize solo skills';
+
+  @override
+  String get esiNativeDisable => 'Disable solo skills';
+
+  @override
+  String get esiNativeUnavailable =>
+      'Desktop credential storage is unavailable. Unlock the system keyring and reopen Kaname.';
+
+  @override
+  String esiServerPilot(String name) {
+    return 'Server: $name';
+  }
+
+  @override
+  String esiNativePilot(String name) {
+    return 'Device: $name';
+  }
+
+  @override
+  String get esiServerHolder => 'The server holds skills access.';
+
+  @override
+  String get esiDeviceHolder => 'This device holds solo skills access.';
+
+  @override
+  String get esiOriginalHolder =>
+      'The original device must park before the server can take over.';
+
+  @override
+  String get esiHolderPending =>
+      'Handoff is pending. Resume on the original device.';
+
+  @override
+  String get esiHolderReserved =>
+      'The holder is reserved. Complete fresh authorization to read skills.';
+
+  @override
+  String get esiUnavailable => 'Kaname could not complete the EVE request.';
+
+  @override
+  String get esiCancelled => 'The EVE request was cancelled.';
+
+  @override
+  String get esiBlocked =>
+      'This account, device, or scope cannot perform the request.';
+
+  @override
+  String get esiSignedOut => 'Sign in again to continue.';
+
+  @override
+  String get esiReauthorize =>
+      'Authorize skills access again before reading skills.';
+
+  @override
+  String get esiSkillsBusy =>
+      'Kaname is busy. Try the skills read again shortly.';
+
+  @override
+  String get esiRefusedBudget =>
+      'EVE’s rate limit does not allow this request yet.';
+
+  @override
+  String get esiRefusedStopped =>
+      'EVE calls are paused because a request limit was reached.';
+
+  @override
+  String get esiRefusedQueueFull => 'The EVE request queue is full.';
+
+  @override
+  String get esiRefusedWaitExpired =>
+      'This request expired while waiting to be sent.';
+
+  @override
+  String get esiRefusedNegativeCached =>
+      'EVE recently refused this read or reported it missing.';
+
+  @override
+  String get esiRefusedNotDue =>
+      'The current EVE data is not due to be refreshed.';
+
+  @override
+  String get esiRefusedOutage =>
+      'EVE requests are paused while Tranquility is unavailable.';
+
+  @override
+  String get esiRefusedStateUnavailable =>
+      'Kaname could not confirm a safe slot for this EVE request.';
+
+  @override
+  String get esiRefusedCorpBusy =>
+      'Another caller is already checking this corporation data.';
+
+  @override
+  String get esiRefusedScopeCapacity =>
+      'Kaname is tracking too many EVE request limits.';
+
+  @override
+  String get esiRefusedRouteConflict =>
+      'EVE reported conflicting limits for this request.';
+
+  @override
+  String get esiRefusedInvalidContext =>
+      'The current request or account could not be used safely.';
+
+  @override
+  String get esiRefusedStateRecovering =>
+      'One request is already checking this EVE rate limit.';
+
+  @override
+  String esiRetryAfter(String date, String time) {
+    return 'Retry after $date at $time.';
+  }
+
+  @override
+  String get esiRetryNow => 'You can try again now.';
+
+  @override
+  String esiSkillsResult(int count, int totalSp) {
+    return '$count skills, $totalSp skill points';
+  }
+
+  @override
+  String get esiCallLogTitle => 'ESI call log';
+
+  @override
+  String get esiCallLogOwn => 'My calls';
+
+  @override
+  String get esiCallLogTotals => 'Server totals by route';
+
+  @override
+  String get esiCallLogOlder => 'Older calls';
+
+  @override
+  String get esiCallLogEmpty => 'No calls in this view.';
+
+  @override
+  String get esiCallLogBusy => 'The call log is busy. Try again.';
+
+  @override
+  String get esiCallLogUnavailable => 'The call log is unavailable.';
+
+  @override
+  String esiCallLogReceipt(String time, String outcome) {
+    return '$time · $outcome';
+  }
+
+  @override
+  String esiCallLogRouteCounts(int total, int errors) {
+    return 'Calls: $total · Errors: $errors';
   }
 }

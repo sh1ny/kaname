@@ -33,6 +33,7 @@ final class InProcessPod {
     Map<String, Endpoint> extraEndpoints = const {},
     Map<String, Map<String, EndpointMethodConnector>> extraMethods = const {},
     List<Middleware> middleware = const [],
+    AuthenticationHandler? authenticationHandler,
     ServerpodConfig Function(ServerpodConfig)? configOverride,
   }) async {
     return _start(
@@ -40,6 +41,7 @@ final class InProcessPod {
       extraEndpoints: extraEndpoints,
       extraMethods: extraMethods,
       middleware: middleware,
+      authenticationHandler: authenticationHandler,
       configOverride: configOverride,
     );
   }
@@ -55,12 +57,14 @@ final class InProcessPod {
     Map<String, Endpoint> extraEndpoints = const {},
     Map<String, Map<String, EndpointMethodConnector>> extraMethods = const {},
     List<Middleware> middleware = const [],
+    AuthenticationHandler? authenticationHandler,
     ServerpodConfig Function(ServerpodConfig)? configOverride,
   }) async {
     final pod = Serverpod(
       ['--mode', 'test', '--apply-migrations'],
       Protocol(),
       _ProbeEndpoints(extraEndpoints, extraMethods),
+      authenticationHandler: authenticationHandler,
       configOverride: (config) {
         final named = config.copyWith(
           database: (config.database! as PostgresDatabaseConfig).withName(

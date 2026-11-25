@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/realtime/server_clock.dart';
-import 'package:kaname_server/src/static_data/admin_gate.dart';
 import 'package:kaname_server/src/static_data/admin_operation_reader.dart';
 import 'package:kaname_server/src/static_data/admin_operation_settler.dart';
 import 'package:kaname_server/src/static_data/admission_connection_attempt.dart';
@@ -93,7 +92,6 @@ void main() {
         StaticDataAccess(
           clock: clock,
           runtime: StaticDataRuntime()..settler = settler,
-          gate: AdminGate(key: null, log: (_, _) {}),
           withSession: session.serverpod.withSession,
         );
 

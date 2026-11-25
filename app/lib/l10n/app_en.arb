@@ -664,53 +664,17 @@
   "@sdReasonOther": {
     "description": "Public fallback for a failure whose details stay in the server log."
   },
-  "sdAdminKey": "Admin key",
-  "@sdAdminKey": {
-    "description": "Label for the session-only administrator key field."
-  },
-  "sdAdminCheckKey": "Check key",
-  "@sdAdminCheckKey": {
-    "description": "Submit the administrator key."
-  },
-  "sdAdminForget": "Forget key",
-  "@sdAdminForget": {
-    "description": "Forget the current administrator key."
-  },
-  "sdAdminChecking": "Checking key…",
-  "@sdAdminChecking": {
-    "description": "Key verification is in progress."
-  },
-  "sdAdminUnconfirmed": "Could not check the key",
-  "@sdAdminUnconfirmed": {
-    "description": "The key check did not answer."
-  },
-  "sdAdminRetryKey": "Try again",
-  "@sdAdminRetryKey": {
-    "description": "Retry checking the held key."
-  },
-  "sdAdminPaused": "Too many attempts, try again in a minute",
-  "@sdAdminPaused": {
-    "description": "The server temporarily paused administrator calls."
-  },
-  "sdAdminCheckAgain": "Check again",
-  "@sdAdminCheckAgain": {
-    "description": "Check the held admin key after the pause."
-  },
-  "sdAdminRejected": "Admin key rejected",
-  "@sdAdminRejected": {
-    "description": "The server rejected the key."
-  },
-  "sdAdminAccepted": "Key accepted.",
-  "@sdAdminAccepted": {
-    "description": "The server accepted the key."
+  "sdAdminSignIn": "Sign in with a server admin account.",
+  "@sdAdminSignIn": {
+    "description": "Static-data mutations require a current administrator session."
   },
   "sdAdminNotConfigured": "Admin actions are not configured on this server.",
   "@sdAdminNotConfigured": {
-    "description": "The server has no administrator key configured."
+    "description": "No administrators are configured for static-data actions."
   },
   "sdAdminSecureRequired": "Admin actions need a secure connection.",
   "@sdAdminSecureRequired": {
-    "description": "The connection cannot safely carry an administrator key."
+    "description": "The connection cannot safely carry an authenticated session."
   },
   "sdAdminUpdate": "Update now",
   "@sdAdminUpdate": {
@@ -963,5 +927,72 @@
         "type": "int"
       }
     }
-  }
+  },
+  "esiAccountTitle": "EVE account",
+  "esiSignIn": "Sign in to server",
+  "esiSignOut": "Sign out of server",
+  "esiSecureConnection": "Server sign-in needs a secure connection.",
+  "esiOpenBrowser": "Open EVE sign-in",
+  "esiFinishSignIn": "Finish sign-in",
+  "esiFinishAuthorization": "Finish authorization",
+  "esiCompletionCode": "Code shown in your browser",
+  "esiBrowserInstruction": "Approve in your browser, then return here.",
+  "esiCancel": "Cancel",
+  "esiAuthorizeServer": "Authorize server skills access",
+  "esiAllowOptional": "Allow optional skills access",
+  "esiRemoveOptional": "Remove optional skills access",
+  "esiReadServerSkills": "Read skills on server",
+  "esiReadNativeSkills": "Read skills in solo mode",
+  "esiTakeHolder": "Take holder to this device",
+  "esiReturnHolder": "Park device and return holder",
+  "esiNativeRegistration": "Native SSO client ID",
+  "esiSaveRegistration": "Save client ID",
+  "esiNativeIdentify": "Sign in on this device",
+  "esiNativeAuthorize": "Allow and authorize solo skills",
+  "esiNativeDisable": "Disable solo skills",
+  "esiNativeUnavailable": "Desktop credential storage is unavailable. Unlock the system keyring and reopen Kaname.",
+  "esiServerPilot": "Server: {name}",
+  "@esiServerPilot": {"placeholders": {"name": {"type": "String"}}},
+  "esiNativePilot": "Device: {name}",
+  "@esiNativePilot": {"placeholders": {"name": {"type": "String"}}},
+  "esiServerHolder": "The server holds skills access.",
+  "esiDeviceHolder": "This device holds solo skills access.",
+  "esiOriginalHolder": "The original device must park before the server can take over.",
+  "esiHolderPending": "Handoff is pending. Resume on the original device.",
+  "esiHolderReserved": "The holder is reserved. Complete fresh authorization to read skills.",
+  "esiUnavailable": "Kaname could not complete the EVE request.",
+  "esiCancelled": "The EVE request was cancelled.",
+  "esiBlocked": "This account, device, or scope cannot perform the request.",
+  "esiSignedOut": "Sign in again to continue.",
+  "esiReauthorize": "Authorize skills access again before reading skills.",
+  "esiSkillsBusy": "Kaname is busy. Try the skills read again shortly.",
+  "esiRefusedBudget": "EVE’s rate limit does not allow this request yet.",
+  "esiRefusedStopped": "EVE calls are paused because a request limit was reached.",
+  "esiRefusedQueueFull": "The EVE request queue is full.",
+  "esiRefusedWaitExpired": "This request expired while waiting to be sent.",
+  "esiRefusedNegativeCached": "EVE recently refused this read or reported it missing.",
+  "esiRefusedNotDue": "The current EVE data is not due to be refreshed.",
+  "esiRefusedOutage": "EVE requests are paused while Tranquility is unavailable.",
+  "esiRefusedStateUnavailable": "Kaname could not confirm a safe slot for this EVE request.",
+  "esiRefusedCorpBusy": "Another caller is already checking this corporation data.",
+  "esiRefusedScopeCapacity": "Kaname is tracking too many EVE request limits.",
+  "esiRefusedRouteConflict": "EVE reported conflicting limits for this request.",
+  "esiRefusedInvalidContext": "The current request or account could not be used safely.",
+  "esiRefusedStateRecovering": "One request is already checking this EVE rate limit.",
+  "esiRetryAfter": "Retry after {date} at {time}.",
+  "@esiRetryAfter": {"placeholders": {"date": {"type": "String"}, "time": {"type": "String"}}},
+  "esiRetryNow": "You can try again now.",
+  "esiSkillsResult": "{count} skills, {totalSp} skill points",
+  "@esiSkillsResult": {"placeholders": {"count": {"type": "int"}, "totalSp": {"type": "int"}}},
+  "esiCallLogTitle": "ESI call log",
+  "esiCallLogOwn": "My calls",
+  "esiCallLogTotals": "Server totals by route",
+  "esiCallLogOlder": "Older calls",
+  "esiCallLogEmpty": "No calls in this view.",
+  "esiCallLogBusy": "The call log is busy. Try again.",
+  "esiCallLogUnavailable": "The call log is unavailable.",
+  "esiCallLogReceipt": "{time} · {outcome}",
+  "@esiCallLogReceipt": {"placeholders": {"time": {"type": "String"}, "outcome": {"type": "String"}}},
+  "esiCallLogRouteCounts": "Calls: {total} · Errors: {errors}",
+  "@esiCallLogRouteCounts": {"placeholders": {"total": {"type": "int"}, "errors": {"type": "int"}}}
 }

@@ -224,6 +224,22 @@ void schedulerConformance(SchedulerState Function() create) {
   late SchedulerState state;
   setUp(() => state = create());
 
+  Future<void> learnBudget() async {
+    final first = await state.admit(request(), 0) as Granted;
+    await state.complete(
+      first.id,
+      0,
+      const Observation(
+        status: 200,
+        cost: 0,
+        group: 'group',
+        capacity: 25,
+        windowMs: 900000,
+        remaining: 25,
+      ),
+    );
+  }
+
   test('admits exactly one last reservation', () async {
     final calls = await Future.wait([
       for (var i = 0; i < 8; i++)
@@ -234,6 +250,7 @@ void schedulerConformance(SchedulerState Function() create) {
   });
 
   test('charges outstanding work against observed remaining', () async {
+    await learnBudget();
     final first = await state.admit(request(), 1000) as Granted;
     await state.admit(request(), 1000) as Granted;
     await state.complete(
@@ -331,6 +348,7 @@ void schedulerConformance(SchedulerState Function() create) {
   });
 
   test('settles late response without replacing ceiling', () async {
+    await learnBudget();
     final first = await state.admit(request(), 1000) as Granted;
     final second = await state.admit(request(), 1001) as Granted;
     await state.complete(
@@ -571,6 +589,7 @@ void schedulerConformance(SchedulerState Function() create) {
   });
 
   test('distinguishes not due from no local representation', () async {
+    await learnBudget();
     final first = await state.admit(request(poll: true), 1000) as Granted;
     await state.complete(
       first.id,

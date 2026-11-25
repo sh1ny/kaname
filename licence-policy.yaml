@@ -38,3 +38,19 @@ exceptions:
     licence: unrecognised
     reason: "BSD-3-Clause with the template's <organization> placeholder unfilled; dev-only dependency of the grid spike's headless bench runner"
     approved: 2026-11-17
+  # Approved by the owner on Ormy item 67, with a forged-token regression.
+  - package: jose
+    version: "0.3.5+2"
+    licence: unrecognised
+    reason: "BSD-3-Clause with an unfilled <organization> placeholder"
+    approved: 2026-11-25
+  - package: crypto_keys
+    version: "0.3.1"
+    licence: unrecognised
+    reason: "BSD-3-Clause with an unfilled <organization> placeholder; dependency of jose"
+    approved: 2026-11-25
+  - package: x509
+    version: "0.2.4+3"
+    licence: unrecognised
+    reason: "BSD-3-Clause with an unfilled <organization> placeholder; dependency of jose"
+    approved: 2026-11-25

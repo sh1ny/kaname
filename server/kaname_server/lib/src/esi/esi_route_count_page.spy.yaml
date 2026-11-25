@@ -1,0 +1,5 @@
+### The released route aggregate view.
+class: EsiRouteCountPage
+fields:
+  status: String
+  rows: List<EsiRouteCount>

@@ -7,33 +7,31 @@ import 'dart:math';
 import 'package:http/http.dart' as http;
 import 'package:kaname_client/kaname_client.dart';
 
+import '../../esi_sso/data/call_log_client.dart' show KanameRpcBearer;
 import '../../server/data/secure_for_admin.dart';
 import 'rpc_call.dart';
 
 /// Sends admin commands and reads public operation progress.
 abstract interface class StaticDataAdminClient {
-  /// Checks the in-memory key without changing server state.
-  RpcCall<AdminAnswer> checkKey(String key);
-
   /// Starts or resends the update identified by [operationId].
-  RpcCall<AdminAnswer> updateNow(String key, String operationId);
+  RpcCall<AdminAnswer> updateNow(String bearer, String operationId);
 
   /// Starts or resends a rollback against [expectedRevision].
   RpcCall<AdminAnswer> rollBack(
-    String key,
+    String bearer,
     String operationId,
     int expectedRevision,
   );
 
   /// Writes or retries a setting using the same [writeId] and revision.
   RpcCall<AdminAnswer> setAutoUpdate(
-    String key,
+    String bearer,
     bool value,
     SettingRevision expectedRevision,
     String writeId,
   );
 
-  /// Reads public progress for [operationId] without an admin key.
+  /// Reads public progress for [operationId] without a session bearer.
   RpcCall<AdminOperationAnswer> operation(String operationId);
 }
 
@@ -52,6 +50,7 @@ final class ClientStaticDataAdmin implements StaticDataAdminClient {
   final Client _client;
 
   RpcCall<AdminAnswer> _admin(
+    String bearer,
     Future<AdminAnswer> Function() send, {
     Duration? answerTimeout,
   }) {
@@ -61,42 +60,46 @@ final class ClientStaticDataAdmin implements StaticDataAdminClient {
       );
       return (answer: unanswered, settled: unanswered);
     }
-    return startRpc(send, answerTimeout: answerTimeout);
+    return startRpc(() {
+      // Serverpod captures the immutable provider before its first await.
+      // Public reads never inherit it, and settled sends cannot reuse it.
+      _client.authKeyProvider = KanameRpcBearer(bearer);
+      try {
+        return send();
+      } finally {
+        _client.authKeyProvider = null;
+      }
+    }, answerTimeout: answerTimeout);
   }
 
   @override
-  RpcCall<AdminAnswer> checkKey(String key) =>
-      _admin(() => _client.staticDataAdmin.checkKey(key));
-
-  @override
-  RpcCall<AdminAnswer> updateNow(String key, String operationId) => _admin(
-    () => _client.staticDataAdmin.updateNow(key, operationId),
+  RpcCall<AdminAnswer> updateNow(String bearer, String operationId) => _admin(
+    bearer,
+    () => _client.staticDataAdmin.updateNow(operationId),
     answerTimeout: const Duration(seconds: 15),
   );
 
   @override
   RpcCall<AdminAnswer> rollBack(
-    String key,
+    String bearer,
     String operationId,
     int expectedRevision,
   ) => _admin(
-    () => _client.staticDataAdmin.rollBack(key, operationId, expectedRevision),
+    bearer,
+    () => _client.staticDataAdmin.rollBack(operationId, expectedRevision),
     answerTimeout: const Duration(seconds: 40),
   );
 
   @override
   RpcCall<AdminAnswer> setAutoUpdate(
-    String key,
+    String bearer,
     bool value,
     SettingRevision expectedRevision,
     String writeId,
   ) => _admin(
-    () => _client.staticDataAdmin.setAutoUpdate(
-      key,
-      value,
-      expectedRevision,
-      writeId,
-    ),
+    bearer,
+    () =>
+        _client.staticDataAdmin.setAutoUpdate(value, expectedRevision, writeId),
   );
 
   @override

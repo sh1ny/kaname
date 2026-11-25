@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:kaname_client/kaname_client.dart' as api;
 import 'package:kaname_server/src/generated/protocol.dart';
-import 'package:kaname_server/src/static_data/admin_gate.dart';
 import 'package:kaname_server/src/static_data/postgres_connection_settings.dart';
 import 'package:kaname_server/src/static_data/postgres_static_data_store.dart';
 import 'package:kaname_server/src/static_data/static_data_access.dart';
@@ -224,11 +223,7 @@ void _publicOperationTests() {
 
       StaticDataAccess.installForTest(
         server.pod,
-        StaticDataAccess(
-          withSession: leased,
-          gate: AdminGate(key: null, log: (_, _) {}, now: clock.now),
-          clock: clock,
-        ),
+        StaticDataAccess(withSession: leased, clock: clock),
       );
       client = api.Client(server.baseUrl);
       addTearDown(client.close);

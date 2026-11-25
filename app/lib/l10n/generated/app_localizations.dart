@@ -946,73 +946,19 @@ abstract class AppLocalizations {
   /// **'Failed, see the server log'**
   String get sdReasonOther;
 
-  /// Label for the session-only administrator key field.
+  /// Static-data mutations require a current administrator session.
   ///
   /// In en, this message translates to:
-  /// **'Admin key'**
-  String get sdAdminKey;
+  /// **'Sign in with a server admin account.'**
+  String get sdAdminSignIn;
 
-  /// Submit the administrator key.
-  ///
-  /// In en, this message translates to:
-  /// **'Check key'**
-  String get sdAdminCheckKey;
-
-  /// Forget the current administrator key.
-  ///
-  /// In en, this message translates to:
-  /// **'Forget key'**
-  String get sdAdminForget;
-
-  /// Key verification is in progress.
-  ///
-  /// In en, this message translates to:
-  /// **'Checking key…'**
-  String get sdAdminChecking;
-
-  /// The key check did not answer.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not check the key'**
-  String get sdAdminUnconfirmed;
-
-  /// Retry checking the held key.
-  ///
-  /// In en, this message translates to:
-  /// **'Try again'**
-  String get sdAdminRetryKey;
-
-  /// The server temporarily paused administrator calls.
-  ///
-  /// In en, this message translates to:
-  /// **'Too many attempts, try again in a minute'**
-  String get sdAdminPaused;
-
-  /// Check the held admin key after the pause.
-  ///
-  /// In en, this message translates to:
-  /// **'Check again'**
-  String get sdAdminCheckAgain;
-
-  /// The server rejected the key.
-  ///
-  /// In en, this message translates to:
-  /// **'Admin key rejected'**
-  String get sdAdminRejected;
-
-  /// The server accepted the key.
-  ///
-  /// In en, this message translates to:
-  /// **'Key accepted.'**
-  String get sdAdminAccepted;
-
-  /// The server has no administrator key configured.
+  /// No administrators are configured for static-data actions.
   ///
   /// In en, this message translates to:
   /// **'Admin actions are not configured on this server.'**
   String get sdAdminNotConfigured;
 
-  /// The connection cannot safely carry an administrator key.
+  /// The connection cannot safely carry an authenticated session.
   ///
   /// In en, this message translates to:
   /// **'Admin actions need a secure connection.'**
@@ -1371,6 +1317,372 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{kind} keys ({count})'**
   String sdReportKeys(String kind, int count);
+
+  /// No description provided for @esiAccountTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'EVE account'**
+  String get esiAccountTitle;
+
+  /// No description provided for @esiSignIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to server'**
+  String get esiSignIn;
+
+  /// No description provided for @esiSignOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out of server'**
+  String get esiSignOut;
+
+  /// No description provided for @esiSecureConnection.
+  ///
+  /// In en, this message translates to:
+  /// **'Server sign-in needs a secure connection.'**
+  String get esiSecureConnection;
+
+  /// No description provided for @esiOpenBrowser.
+  ///
+  /// In en, this message translates to:
+  /// **'Open EVE sign-in'**
+  String get esiOpenBrowser;
+
+  /// No description provided for @esiFinishSignIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish sign-in'**
+  String get esiFinishSignIn;
+
+  /// No description provided for @esiFinishAuthorization.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish authorization'**
+  String get esiFinishAuthorization;
+
+  /// No description provided for @esiCompletionCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Code shown in your browser'**
+  String get esiCompletionCode;
+
+  /// No description provided for @esiBrowserInstruction.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve in your browser, then return here.'**
+  String get esiBrowserInstruction;
+
+  /// No description provided for @esiCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get esiCancel;
+
+  /// No description provided for @esiAuthorizeServer.
+  ///
+  /// In en, this message translates to:
+  /// **'Authorize server skills access'**
+  String get esiAuthorizeServer;
+
+  /// No description provided for @esiAllowOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow optional skills access'**
+  String get esiAllowOptional;
+
+  /// No description provided for @esiRemoveOptional.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove optional skills access'**
+  String get esiRemoveOptional;
+
+  /// No description provided for @esiReadServerSkills.
+  ///
+  /// In en, this message translates to:
+  /// **'Read skills on server'**
+  String get esiReadServerSkills;
+
+  /// No description provided for @esiReadNativeSkills.
+  ///
+  /// In en, this message translates to:
+  /// **'Read skills in solo mode'**
+  String get esiReadNativeSkills;
+
+  /// No description provided for @esiTakeHolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Take holder to this device'**
+  String get esiTakeHolder;
+
+  /// No description provided for @esiReturnHolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Park device and return holder'**
+  String get esiReturnHolder;
+
+  /// No description provided for @esiNativeRegistration.
+  ///
+  /// In en, this message translates to:
+  /// **'Native SSO client ID'**
+  String get esiNativeRegistration;
+
+  /// No description provided for @esiSaveRegistration.
+  ///
+  /// In en, this message translates to:
+  /// **'Save client ID'**
+  String get esiSaveRegistration;
+
+  /// No description provided for @esiNativeIdentify.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in on this device'**
+  String get esiNativeIdentify;
+
+  /// No description provided for @esiNativeAuthorize.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow and authorize solo skills'**
+  String get esiNativeAuthorize;
+
+  /// No description provided for @esiNativeDisable.
+  ///
+  /// In en, this message translates to:
+  /// **'Disable solo skills'**
+  String get esiNativeDisable;
+
+  /// No description provided for @esiNativeUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Desktop credential storage is unavailable. Unlock the system keyring and reopen Kaname.'**
+  String get esiNativeUnavailable;
+
+  /// No description provided for @esiServerPilot.
+  ///
+  /// In en, this message translates to:
+  /// **'Server: {name}'**
+  String esiServerPilot(String name);
+
+  /// No description provided for @esiNativePilot.
+  ///
+  /// In en, this message translates to:
+  /// **'Device: {name}'**
+  String esiNativePilot(String name);
+
+  /// No description provided for @esiServerHolder.
+  ///
+  /// In en, this message translates to:
+  /// **'The server holds skills access.'**
+  String get esiServerHolder;
+
+  /// No description provided for @esiDeviceHolder.
+  ///
+  /// In en, this message translates to:
+  /// **'This device holds solo skills access.'**
+  String get esiDeviceHolder;
+
+  /// No description provided for @esiOriginalHolder.
+  ///
+  /// In en, this message translates to:
+  /// **'The original device must park before the server can take over.'**
+  String get esiOriginalHolder;
+
+  /// No description provided for @esiHolderPending.
+  ///
+  /// In en, this message translates to:
+  /// **'Handoff is pending. Resume on the original device.'**
+  String get esiHolderPending;
+
+  /// No description provided for @esiHolderReserved.
+  ///
+  /// In en, this message translates to:
+  /// **'The holder is reserved. Complete fresh authorization to read skills.'**
+  String get esiHolderReserved;
+
+  /// No description provided for @esiUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Kaname could not complete the EVE request.'**
+  String get esiUnavailable;
+
+  /// No description provided for @esiCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'The EVE request was cancelled.'**
+  String get esiCancelled;
+
+  /// No description provided for @esiBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'This account, device, or scope cannot perform the request.'**
+  String get esiBlocked;
+
+  /// No description provided for @esiSignedOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in again to continue.'**
+  String get esiSignedOut;
+
+  /// No description provided for @esiReauthorize.
+  ///
+  /// In en, this message translates to:
+  /// **'Authorize skills access again before reading skills.'**
+  String get esiReauthorize;
+
+  /// No description provided for @esiSkillsBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Kaname is busy. Try the skills read again shortly.'**
+  String get esiSkillsBusy;
+
+  /// No description provided for @esiRefusedBudget.
+  ///
+  /// In en, this message translates to:
+  /// **'EVE’s rate limit does not allow this request yet.'**
+  String get esiRefusedBudget;
+
+  /// No description provided for @esiRefusedStopped.
+  ///
+  /// In en, this message translates to:
+  /// **'EVE calls are paused because a request limit was reached.'**
+  String get esiRefusedStopped;
+
+  /// No description provided for @esiRefusedQueueFull.
+  ///
+  /// In en, this message translates to:
+  /// **'The EVE request queue is full.'**
+  String get esiRefusedQueueFull;
+
+  /// No description provided for @esiRefusedWaitExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'This request expired while waiting to be sent.'**
+  String get esiRefusedWaitExpired;
+
+  /// No description provided for @esiRefusedNegativeCached.
+  ///
+  /// In en, this message translates to:
+  /// **'EVE recently refused this read or reported it missing.'**
+  String get esiRefusedNegativeCached;
+
+  /// No description provided for @esiRefusedNotDue.
+  ///
+  /// In en, this message translates to:
+  /// **'The current EVE data is not due to be refreshed.'**
+  String get esiRefusedNotDue;
+
+  /// No description provided for @esiRefusedOutage.
+  ///
+  /// In en, this message translates to:
+  /// **'EVE requests are paused while Tranquility is unavailable.'**
+  String get esiRefusedOutage;
+
+  /// No description provided for @esiRefusedStateUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Kaname could not confirm a safe slot for this EVE request.'**
+  String get esiRefusedStateUnavailable;
+
+  /// No description provided for @esiRefusedCorpBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Another caller is already checking this corporation data.'**
+  String get esiRefusedCorpBusy;
+
+  /// No description provided for @esiRefusedScopeCapacity.
+  ///
+  /// In en, this message translates to:
+  /// **'Kaname is tracking too many EVE request limits.'**
+  String get esiRefusedScopeCapacity;
+
+  /// No description provided for @esiRefusedRouteConflict.
+  ///
+  /// In en, this message translates to:
+  /// **'EVE reported conflicting limits for this request.'**
+  String get esiRefusedRouteConflict;
+
+  /// No description provided for @esiRefusedInvalidContext.
+  ///
+  /// In en, this message translates to:
+  /// **'The current request or account could not be used safely.'**
+  String get esiRefusedInvalidContext;
+
+  /// No description provided for @esiRefusedStateRecovering.
+  ///
+  /// In en, this message translates to:
+  /// **'One request is already checking this EVE rate limit.'**
+  String get esiRefusedStateRecovering;
+
+  /// No description provided for @esiRetryAfter.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry after {date} at {time}.'**
+  String esiRetryAfter(String date, String time);
+
+  /// No description provided for @esiRetryNow.
+  ///
+  /// In en, this message translates to:
+  /// **'You can try again now.'**
+  String get esiRetryNow;
+
+  /// No description provided for @esiSkillsResult.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} skills, {totalSp} skill points'**
+  String esiSkillsResult(int count, int totalSp);
+
+  /// No description provided for @esiCallLogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ESI call log'**
+  String get esiCallLogTitle;
+
+  /// No description provided for @esiCallLogOwn.
+  ///
+  /// In en, this message translates to:
+  /// **'My calls'**
+  String get esiCallLogOwn;
+
+  /// No description provided for @esiCallLogTotals.
+  ///
+  /// In en, this message translates to:
+  /// **'Server totals by route'**
+  String get esiCallLogTotals;
+
+  /// No description provided for @esiCallLogOlder.
+  ///
+  /// In en, this message translates to:
+  /// **'Older calls'**
+  String get esiCallLogOlder;
+
+  /// No description provided for @esiCallLogEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No calls in this view.'**
+  String get esiCallLogEmpty;
+
+  /// No description provided for @esiCallLogBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'The call log is busy. Try again.'**
+  String get esiCallLogBusy;
+
+  /// No description provided for @esiCallLogUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The call log is unavailable.'**
+  String get esiCallLogUnavailable;
+
+  /// No description provided for @esiCallLogReceipt.
+  ///
+  /// In en, this message translates to:
+  /// **'{time} · {outcome}'**
+  String esiCallLogReceipt(String time, String outcome);
+
+  /// No description provided for @esiCallLogRouteCounts.
+  ///
+  /// In en, this message translates to:
+  /// **'Calls: {total} · Errors: {errors}'**
+  String esiCallLogRouteCounts(int total, int errors);
 }
 
 class _AppLocalizationsDelegate

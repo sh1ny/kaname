@@ -88,7 +88,14 @@ services:
     command: ["--mode", "production"]
     environment:
       <<: *server-environment
-      SERVERPOD_PASSWORD_adminKey: ${KANAME_ADMIN_KEY:-}
+      # Server-only EVE SSO configuration. Unset credentials disable SSO.
+      KANAME_ESI_SSO_CLIENT_ID: ${KANAME_ESI_SSO_CLIENT_ID:-}
+      KANAME_ESI_SSO_CLIENT_SECRET: ${KANAME_ESI_SSO_CLIENT_SECRET:-}
+      KANAME_ESI_SSO_REDIRECT_URI: ${KANAME_ESI_SSO_REDIRECT_URI:-}
+      KANAME_ESI_SSO_ALLOW_LOCAL_HTTP: ${KANAME_ESI_SSO_ALLOW_LOCAL_HTTP:-false}
+      KANAME_ESI_SSO_ADMIN_CHARACTERS: ${KANAME_ESI_SSO_ADMIN_CHARACTERS:-}
+      KANAME_ESI_SCOPE_POLICY: ${KANAME_ESI_SCOPE_POLICY:-}
+      KANAME_ESI_VAULT_KEY: ${KANAME_ESI_VAULT_KEY:-}
       # The server reads a client's address from X-Forwarded-For only on a
       # connection from Caddy's fixed address below, and from nobody else,
       # never from the whole subnet (C4). Change it with that address.

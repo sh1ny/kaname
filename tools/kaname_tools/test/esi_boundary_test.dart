@@ -93,6 +93,7 @@ void main() {
               file.readAsStringSync(),
               allowImport: supported || native || scheduled,
               allowOrigin: pinFetch || native,
+              allowSolo: relative == 'app/lib/esi_sso/data/native_account.dart',
             )) {
               violations.add('$relative: $reason');
             }
@@ -108,14 +109,15 @@ List<String> _bypass(
   String source, {
   bool allowImport = false,
   bool allowOrigin = false,
+  bool allowSolo = false,
 }) {
-  final visitor = _Boundary(allowImport, allowOrigin);
+  final visitor = _Boundary(allowImport, allowOrigin, allowSolo);
   parseString(content: source, throwIfDiagnostics: false).unit.accept(visitor);
   return visitor.violations;
 }
 
 final class _Boundary extends RecursiveAstVisitor<void> {
-  _Boundary(this.allowImport, this.allowOrigin);
+  _Boundary(this.allowImport, this.allowOrigin, this.allowSolo);
 
   static const _sendTypes = {
     'EsiClient',
@@ -131,6 +133,7 @@ final class _Boundary extends RecursiveAstVisitor<void> {
   };
   final bool allowImport;
   final bool allowOrigin;
+  final bool allowSolo;
   final violations = <String>[];
 
   @override
@@ -151,6 +154,7 @@ final class _Boundary extends RecursiveAstVisitor<void> {
 
   void _checkImport(String? uri, Iterable<Combinator> combinators) {
     if (allowImport || uri == null) return;
+    if (allowSolo && uri == 'package:kaname_esi_scheduler/native.dart') return;
     final (blocked, message) = switch (uri) {
       'package:kaname_esi/kaname_esi.dart' => (
         _sendTypes,

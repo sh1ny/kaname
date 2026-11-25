@@ -11,8 +11,9 @@ const _maxCounter = 0x7fffffffffffffff;
 ///
 /// The HTTP adapter must finish or actually abort locally within ten seconds
 /// (below the vault's lease). Racing an uncancelled request is not sufficient.
-/// Only an authoritative upstream `invalid_grant` is a definitive rejection.
+/// The adapter uses the non-secret handle to verify the reply for this grant.
 typedef VaultRefreshExchange = Future<VaultRefreshReply> Function(
+  VaultAuthorization authorization,
   String refreshToken,
 );
 
@@ -214,7 +215,7 @@ final class EsiTokenVault {
       if (prepared.outcome case final done?) return done;
       var attempt = prepared.attempt!;
       for (var round = 0; ; round++) {
-        final reply = await _refresh(attempt.refresh);
+        final reply = await _refresh(auth, attempt.refresh);
         final completed = await _store.withCharacter<_Step>(
           auth.character,
           wait: true,
@@ -256,9 +257,12 @@ final class EsiTokenVault {
         : VaultSuccess(bearer);
   }
 
-  Future<VaultRefreshReply> _refresh(String token) async {
+  Future<VaultRefreshReply> _refresh(
+    VaultAuthorization auth,
+    String token,
+  ) async {
     try {
-      return await _exchange(token);
+      return await _exchange(auth, token);
     } on Object {
       return const VaultRefreshTemporaryFailure();
     }
@@ -279,10 +283,13 @@ final class EsiTokenVault {
     switch (reply) {
       case VaultRefreshTemporaryFailure():
         return _stop(unavailable, next: ownsLease ? _release(row) : null);
-      case VaultRefreshInvalidGrant():
+      case VaultRefreshUnverifiedGrant() || VaultRefreshInvalidGrant():
         if (!ownsLease) return _stop(unavailable);
         final credential = await _cipher.open(row);
         if (credential.refresh != attempt.refresh) {
+          if (reply is VaultRefreshUnverifiedGrant) {
+            return _stop(unavailable, next: _release(row));
+          }
           return mayRetry
               ? _claim(row, credential.refresh)
               : _stop(unavailable, next: _release(row));

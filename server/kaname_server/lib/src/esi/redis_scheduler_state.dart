@@ -25,6 +25,9 @@ final class RedisSchedulerState implements SchedulerState {
            'meta-exp',
            'bucket',
            'bucket-exp',
+           'budget',
+           'budget-idle',
+           'cooldown',
          ])
            'kaname:esi:1:$namespace:$suffix',
        ];
@@ -52,21 +55,49 @@ final class RedisSchedulerState implements SchedulerState {
   _RedisCommands? _live;
   bool _closed = false;
   int _pending = 0;
+  final _handles = <int, _RedisHandle>{};
+  int _serial = 0;
+  int? _nextSweep;
 
   @override
-  Future<Admission> admit(SchedulerRequest request, int nowMs) async =>
-      _decision(await _transition('admit', nowMs, _request(request)));
+  Future<Admission> admit(SchedulerRequest request, int nowMs) async {
+    if (_nextSweep == null || nowMs >= _nextSweep!) {
+      _handles.removeWhere((_, handle) => handle.expires < nowMs);
+      _nextSweep = nowMs + 1000;
+    }
+    final (data, incarnation) = await _transition(
+      'admit',
+      nowMs,
+      _request(request),
+    );
+    return _admission(data, incarnation, nowMs);
+  }
 
   @override
-  Future<Admission> advance(int id, int nowMs) async =>
-      _decision(await _transition('advance', nowMs, id));
+  Future<Admission> advance(int id, int nowMs) async {
+    final handle = _handles[id];
+    if (handle == null || !handle.waiting || handle.expires < nowMs) {
+      return const Denied(EsiTransportRefused(EsiRefusalReason.waitExpired));
+    }
+    final (data, incarnation) = await _transition(
+      'advance',
+      nowMs,
+      handle.remoteId,
+      issuedBy: handle.incarnation,
+    );
+    if (data['kind'] == 'waiting') return Waiting(id);
+    _handles.remove(id);
+    return _admission(data, incarnation, nowMs);
+  }
 
   @override
   Future<void> complete(int id, int nowMs, Observation observation) async {
-    final result = await _transition('complete', nowMs, <String, Object>{
-      'id': id,
+    final handle = _handles.remove(id);
+    if (handle == null || handle.waiting || handle.expires < nowMs) return;
+    final (result, _) = await _transition('complete', nowMs, <String, Object>{
+      'id': handle.remoteId,
       'observation': _observation(observation),
-    });
+    }, issuedBy: handle.incarnation);
     if (result['kind'] != 'complete') throw const SchedulerStateUnavailable();
   }
 
@@ -74,6 +105,7 @@ final class RedisSchedulerState implements SchedulerState {
   /// a new connection after close.
   Future<void> close() async {
     _closed = true;
+    _handles.clear();
     _live?.socket.destroy();
     _live = null;
     try {
@@ -137,11 +169,12 @@ final class RedisSchedulerState implements SchedulerState {
     }
   }
 
-  Future<Map<String, Object?>> _transition(
+  Future<(Map<String, Object?>, String)> _transition(
     String action,
     int now,
-    Object value,
-  ) async {
+    Object value, {
+    String? issuedBy,
+  }) async {
     if (_closed || _pending >= 80) throw const SchedulerStateUnavailable();
     _pending++;
     _RedisCommands? channel;
@@ -155,6 +188,7 @@ final class RedisSchedulerState implements SchedulerState {
         '$now',
         '$_maxGroups',
         jsonEncode(value),
+        issuedBy ?? '',
       ];
       final Object? raw = await (() async {
         try {
@@ -175,7 +209,7 @@ final class RedisSchedulerState implements SchedulerState {
       })().timeout(_deadline);
       if (raw is String) {
         if (jsonDecode(raw) case final Map<String, Object?> result) {
-          return result;
+          return (result, connection.runId);
         }
       }
       throw const SchedulerStateUnavailable();
@@ -190,18 +224,36 @@ final class RedisSchedulerState implements SchedulerState {
     }
   }
 
-  static Admission _decision(Map<String, Object?> result) => switch (result) {
-    {'kind': 'granted', 'id': final int id, 'by': final int by} => Granted(
-      id,
-      by,
-    ),
-    {'kind': 'waiting', 'id': final int id} => Waiting(id),
-    {'kind': 'denied', 'reason': final String reason} => _denial(
-      result,
-      reason,
-    ),
-    _ => throw const SchedulerStateUnavailable(),
-  };
+  Admission _admission(
+    Map<String, Object?> result,
+    String incarnation,
+    int now,
+  ) {
+    switch (result) {
+      case {'kind': 'granted', 'id': final int remote, 'by': final int by}:
+        final id = ++_serial;
+        _handles[id] = (
+          remoteId: remote,
+          incarnation: incarnation,
+          expires: by + 30000,
+          waiting: false,
+        );
+        return Granted(id, by);
+      case {'kind': 'waiting', 'id': final int remote}:
+        final id = ++_serial;
+        _handles[id] = (
+          remoteId: remote,
+          incarnation: incarnation,
+          expires: now + 5000,
+          waiting: true,
+        );
+        return Waiting(id);
+      case {'kind': 'denied', 'reason': final String reason}:
+        return _denial(result, reason);
+      default:
+        throw const SchedulerStateUnavailable();
+    }
+  }
 
   static Denied _denial(Map<String, Object?> result, String reason) {
     final code = EsiRefusalReason.values.asNameMap()[reason];
@@ -220,6 +272,13 @@ final class RedisSchedulerState implements SchedulerState {
     return Denied(EsiTransportRefused(code, retryAt: retry));
   }
 }
+
+typedef _RedisHandle = ({
+  int remoteId,
+  String incarnation,
+  int expires,
+  bool waiting,
+});
 
 final class _RedisCommands {
   const _RedisCommands(this.socket, this.command, this.runId, this.sha);

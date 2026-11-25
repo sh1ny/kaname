@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:kaname_client/kaname_client.dart' as api;
 import 'package:kaname_server/src/generated/protocol.dart';
-import 'package:kaname_server/src/static_data/admin_gate.dart';
 import 'package:kaname_server/src/static_data/auto_update_setting_writer.dart';
 import 'package:kaname_server/src/static_data/postgres_connection_settings.dart';
 import 'package:kaname_server/src/static_data/postgres_static_data_store.dart';
@@ -18,6 +17,7 @@ import '../support/announcer_support.dart' show FakeClock;
 import '../support/in_process_pod.dart';
 import '../support/migrated_database.dart';
 import '../support/sde_bundle_support.dart';
+import '../support/static_data_test_auth.dart';
 import '../support/tcp_proxy.dart';
 import '../test_tools/serverpod_test_tools.dart';
 
@@ -235,7 +235,6 @@ void main() {
 
     test('after setting not confirmed a status call never joins or reuses '
         'the invalidated read', () async {
-      const key = 'late-commit-setting-test-key-0123456789';
       final direct = await migratedDatabaseSettings(session);
       final (server, proxy, observer, _) = await _gateCommit(direct);
       final clock = FakeClock();
@@ -249,7 +248,7 @@ void main() {
         server.pod,
         StaticDataAccess(
           clock: clock,
-          gate: AdminGate(key: key, log: (_, _) {}),
+          adminConfigured: true,
           withSession: <T>(action) async {
             final first = ++owned == 1;
             final result = await server.pod.withSession(action);
@@ -261,12 +260,11 @@ void main() {
           },
         ),
       );
-      final client = api.Client(server.baseUrl);
+      final client = staticDataTestClient(server.baseUrl);
       addTearDown(client.close);
       final old = client.staticData.status();
       await oldReadFinished.future;
       final write = client.staticDataAdmin.setAutoUpdate(
-        key,
         false,
         api.NoWrites(),
         _id(1),
@@ -297,8 +295,9 @@ void main() {
 
   test('a status during the uncommitted first write shows NoWrites and a '
       'write sent from it answers setting changed', () async {
-    const key = 'first-setting-test-key-0123456789012345';
-    final server = await InProcessPod.start();
+    final server = await InProcessPod.start(
+      authenticationHandler: staticDataTestAuthentication,
+    );
     addTearDown(server.stop);
     final connection = await _open(
       await server.pod.withSession(migratedDatabaseSettings),
@@ -307,11 +306,11 @@ void main() {
     StaticDataAccess.installForTest(
       server.pod,
       StaticDataAccess(
-        gate: AdminGate(key: key, log: (_, _) {}),
+        adminConfigured: true,
         withSession: server.pod.withSession,
       ),
     );
-    final client = api.Client(server.baseUrl);
+    final client = staticDataTestClient(server.baseUrl);
     addTearDown(client.close);
     final during = await connection.runTx((tx) async {
       await tx.execute(
@@ -327,7 +326,6 @@ void main() {
       return snapshot;
     });
     final stale = await client.staticDataAdmin.setAutoUpdate(
-      key,
       true,
       during.settingRevision,
       _id(2),
@@ -339,10 +337,11 @@ void main() {
 
   test('a status call during a delayed write acknowledgement may carry the old '
       'revision, one after the answer the new one', () async {
-    const key = 'delayed-setting-test-key-01234567890123';
-    final server = await InProcessPod.start();
+    final server = await InProcessPod.start(
+      authenticationHandler: staticDataTestAuthentication,
+    );
     addTearDown(server.stop);
-    final client = api.Client(server.baseUrl);
+    final client = staticDataTestClient(server.baseUrl);
     addTearDown(client.close);
     final clock = FakeClock();
     final committed = Completer<void>();
@@ -355,7 +354,7 @@ void main() {
       server.pod,
       StaticDataAccess(
         clock: clock,
-        gate: AdminGate(key: key, log: (_, _) {}),
+        adminConfigured: true,
         withSession: <T>(action) async {
           final settingWrite = ++began == 2;
           final answer = await server.pod.withSession(action);
@@ -370,7 +369,6 @@ void main() {
 
     final before = await client.staticData.status();
     final pending = client.staticDataAdmin.setAutoUpdate(
-      key,
       false,
       before.settingRevision,
       _id(1),
@@ -395,10 +393,11 @@ void main() {
 
   test('a status read in flight across a toggle can finish late but cannot '
       'refill the status cache', () async {
-    const key = 'in-flight-setting-test-key-01234567890123';
-    final server = await InProcessPod.start();
+    final server = await InProcessPod.start(
+      authenticationHandler: staticDataTestAuthentication,
+    );
     addTearDown(server.stop);
-    final client = api.Client(server.baseUrl);
+    final client = staticDataTestClient(server.baseUrl);
     addTearDown(client.close);
     final readFinished = Completer<void>();
     final deliverRead = Completer<void>();
@@ -410,7 +409,7 @@ void main() {
       server.pod,
       StaticDataAccess(
         clock: FakeClock(),
-        gate: AdminGate(key: key, log: (_, _) {}),
+        adminConfigured: true,
         withSession: <T>(action) async {
           final oldRead = ++began == 1;
           final answer = await server.pod.withSession(action);
@@ -426,7 +425,6 @@ void main() {
     final earlier = client.staticData.status();
     await readFinished.future;
     final written = await client.staticDataAdmin.setAutoUpdate(
-      key,
       false,
       api.NoWrites(),
       _id(1),
@@ -447,23 +445,23 @@ void main() {
   test(
     'a setting written from public status is retained across restart',
     () async {
-      const key = 'persisted-setting-test-key-01234567890123';
-      final server = await InProcessPod.start();
+      final server = await InProcessPod.start(
+        authenticationHandler: staticDataTestAuthentication,
+      );
       addTearDown(server.stop);
       StaticDataAccess.installForTest(
         server.pod,
         StaticDataAccess(
           withSession: server.pod.withSession,
-          gate: AdminGate(key: key, log: (_, _) {}),
+          adminConfigured: true,
         ),
       );
-      final client = api.Client(server.baseUrl);
+      final client = staticDataTestClient(server.baseUrl);
       addTearDown(client.close);
       final before = await client.staticData.status();
       expect(before.autoUpdate, isTrue);
       expect(before.settingRevision, isA<api.NoWrites>());
       final off = await client.staticDataAdmin.setAutoUpdate(
-        key,
         false,
         before.settingRevision,
         _id(1),
@@ -496,6 +494,7 @@ _gateCommit(PostgresConnectionSettings direct) async {
   addTearDown(proxy.close);
   late String databaseName;
   final server = await InProcessPod.start(
+    authenticationHandler: staticDataTestAuthentication,
     configOverride: (config) {
       databaseName = config.database!.name;
       return config.copyWith(

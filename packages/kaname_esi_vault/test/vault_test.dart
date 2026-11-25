@@ -496,7 +496,7 @@ final class _Harness {
   EsiTokenVault make({required String? key}) => EsiTokenVault(
     store: store,
     base64Key: key,
-    refresh: exchange.call,
+    refresh: (_, token) => exchange.call(token),
     now: () => now,
   );
 

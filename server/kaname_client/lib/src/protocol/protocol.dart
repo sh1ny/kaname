@@ -14,6 +14,11 @@
 import 'package:kaname_core/kaname_core.dart' as _idp9h2tz;
 import 'package:serverpod_client/serverpod_client.dart' as _isc;
 
+import 'esi/esi_call_log_cursor.dart' as _iqs4md3s;
+import 'esi/esi_call_log_item.dart' as _iuknwcy9;
+import 'esi/esi_call_log_page.dart' as _iiojdgzp;
+import 'esi/esi_route_count_item.dart' as _iy73o4xt;
+import 'esi/esi_route_count_page.dart' as _ikoz4zoy;
 import 'health/dependency_status.dart' as _iztepymd;
 import 'health/health_report.dart' as _if75m2mz;
 import 'static_data/admin_answer.dart' as _iyccfpu2;
@@ -46,6 +51,11 @@ import 'static_data/static_data_report_outcome.dart' as _iixf2rnc;
 import 'static_data/static_data_status.dart' as _i4ollqgk;
 import 'static_data/static_data_status_unavailable.dart' as _ixbsr0c1;
 import 'static_data/static_data_switch_status.dart' as _iidkva5e;
+export 'esi/esi_call_log_cursor.dart';
+export 'esi/esi_call_log_item.dart';
+export 'esi/esi_call_log_page.dart';
+export 'esi/esi_route_count_item.dart';
+export 'esi/esi_route_count_page.dart';
 export 'health/dependency_status.dart';
 export 'health/health_report.dart';
 export 'static_data/admin_answer.dart';
@@ -93,6 +103,11 @@ class Protocol extends _isc.SerializationManager
       _isc.ProtocolDeserialization.cached(
         this,
         types: const [
+          _isc.getType<_iqs4md3s.EsiCallLogCursor>,
+          _isc.getType<_iuknwcy9.EsiCallLogReceipt>,
+          _isc.getType<_iiojdgzp.EsiCallLogPage>,
+          _isc.getType<_iy73o4xt.EsiRouteCount>,
+          _isc.getType<_ikoz4zoy.EsiRouteCountPage>,
           _isc.getType<_iztepymd.DependencyStatus>,
           _isc.getType<_if75m2mz.HealthReport>,
           _isc.getType<_iyccfpu2.AdminAnswer>,
@@ -127,6 +142,11 @@ class Protocol extends _isc.SerializationManager
           _isc.getType<_i4ollqgk.StaticDataStatus>,
           _isc.getType<_ixbsr0c1.StaticDataStatusUnavailable>,
           _isc.getType<_iidkva5e.StaticDataSwitchStatus>,
+          _isc.getType<_iqs4md3s.EsiCallLogCursor?>,
+          _isc.getType<_iuknwcy9.EsiCallLogReceipt?>,
+          _isc.getType<_iiojdgzp.EsiCallLogPage?>,
+          _isc.getType<_iy73o4xt.EsiRouteCount?>,
+          _isc.getType<_ikoz4zoy.EsiRouteCountPage?>,
           _isc.getType<_iztepymd.DependencyStatus?>,
           _isc.getType<_if75m2mz.HealthReport?>,
           _isc.getType<_iyccfpu2.AdminAnswer?>,
@@ -161,6 +181,8 @@ class Protocol extends _isc.SerializationManager
           _isc.getType<_i4ollqgk.StaticDataStatus?>,
           _isc.getType<_ixbsr0c1.StaticDataStatusUnavailable?>,
           _isc.getType<_iidkva5e.StaticDataSwitchStatus?>,
+          _isc.getType<List<_iuknwcy9.EsiCallLogReceipt>>,
+          _isc.getType<List<_iy73o4xt.EsiRouteCount>>,
           _isc.getType<List<_iacxd2dw.StaticDataReportFile>>,
           _isc.getType<List<_iacxd2dw.StaticDataReportFile>?>,
           _isc.getType<Map<String, int>>,
@@ -172,6 +194,11 @@ class Protocol extends _isc.SerializationManager
         modules: const [],
         classNames: const [
           'SdeJson',
+          'EsiCallLogCursor',
+          'EsiCallLogReceipt',
+          'EsiCallLogPage',
+          'EsiRouteCount',
+          'EsiRouteCountPage',
           'DependencyStatus',
           'HealthReport',
           'AdminAnswer',
@@ -230,6 +257,21 @@ class Protocol extends _isc.SerializationManager
       }
     }
 
+    if (t == _iqs4md3s.EsiCallLogCursor) {
+      return _iqs4md3s.EsiCallLogCursor.fromJson(data) as T;
+    }
+    if (t == _iuknwcy9.EsiCallLogReceipt) {
+      return _iuknwcy9.EsiCallLogReceipt.fromJson(data) as T;
+    }
+    if (t == _iiojdgzp.EsiCallLogPage) {
+      return _iiojdgzp.EsiCallLogPage.fromJson(data) as T;
+    }
+    if (t == _iy73o4xt.EsiRouteCount) {
+      return _iy73o4xt.EsiRouteCount.fromJson(data) as T;
+    }
+    if (t == _ikoz4zoy.EsiRouteCountPage) {
+      return _ikoz4zoy.EsiRouteCountPage.fromJson(data) as T;
+    }
     if (t == _iztepymd.DependencyStatus) {
       return _iztepymd.DependencyStatus.fromJson(data) as T;
     }
@@ -331,6 +373,26 @@ class Protocol extends _isc.SerializationManager
     }
     if (t == _iidkva5e.StaticDataSwitchStatus) {
       return _iidkva5e.StaticDataSwitchStatus.fromJson(data) as T;
+    }
+    if (t == _isc.getType<_iqs4md3s.EsiCallLogCursor?>()) {
+      return (data != null ? _iqs4md3s.EsiCallLogCursor.fromJson(data) : null)
+          as T;
+    }
+    if (t == _isc.getType<_iuknwcy9.EsiCallLogReceipt?>()) {
+      return (data != null ? _iuknwcy9.EsiCallLogReceipt.fromJson(data) : null)
+          as T;
+    }
+    if (t == _isc.getType<_iiojdgzp.EsiCallLogPage?>()) {
+      return (data != null ? _iiojdgzp.EsiCallLogPage.fromJson(data) : null)
+          as T;
+    }
+    if (t == _isc.getType<_iy73o4xt.EsiRouteCount?>()) {
+      return (data != null ? _iy73o4xt.EsiRouteCount.fromJson(data) : null)
+          as T;
+    }
+    if (t == _isc.getType<_ikoz4zoy.EsiRouteCountPage?>()) {
+      return (data != null ? _ikoz4zoy.EsiRouteCountPage.fromJson(data) : null)
+          as T;
     }
     if (t == _isc.getType<_iztepymd.DependencyStatus?>()) {
       return (data != null ? _iztepymd.DependencyStatus.fromJson(data) : null)
@@ -500,6 +562,18 @@ class Protocol extends _isc.SerializationManager
               : null)
           as T;
     }
+    if (t == List<_iuknwcy9.EsiCallLogReceipt>) {
+      return (data as List)
+              .map((e) => deserialize<_iuknwcy9.EsiCallLogReceipt>(e))
+              .toList()
+          as T;
+    }
+    if (t == List<_iy73o4xt.EsiRouteCount>) {
+      return (data as List)
+              .map((e) => deserialize<_iy73o4xt.EsiRouteCount>(e))
+              .toList()
+          as T;
+    }
     if (t == List<_iacxd2dw.StaticDataReportFile>) {
       return (data as List)
               .map((e) => deserialize<_iacxd2dw.StaticDataReportFile>(e))
@@ -543,6 +617,11 @@ class Protocol extends _isc.SerializationManager
   static String? getClassNameForType(Type type) {
     return switch (type) {
       _idp9h2tz.SdeJson => 'SdeJson',
+      _iqs4md3s.EsiCallLogCursor => 'EsiCallLogCursor',
+      _iuknwcy9.EsiCallLogReceipt => 'EsiCallLogReceipt',
+      _iiojdgzp.EsiCallLogPage => 'EsiCallLogPage',
+      _iy73o4xt.EsiRouteCount => 'EsiRouteCount',
+      _ikoz4zoy.EsiRouteCountPage => 'EsiRouteCountPage',
       _iztepymd.DependencyStatus => 'DependencyStatus',
       _if75m2mz.HealthReport => 'HealthReport',
       _iyccfpu2.AdminAnswer => 'AdminAnswer',
@@ -593,6 +672,16 @@ class Protocol extends _isc.SerializationManager
     switch (data) {
       case _idp9h2tz.SdeJson():
         return 'SdeJson';
+      case _iqs4md3s.EsiCallLogCursor():
+        return 'EsiCallLogCursor';
+      case _iuknwcy9.EsiCallLogReceipt():
+        return 'EsiCallLogReceipt';
+      case _iiojdgzp.EsiCallLogPage():
+        return 'EsiCallLogPage';
+      case _iy73o4xt.EsiRouteCount():
+        return 'EsiRouteCount';
+      case _ikoz4zoy.EsiRouteCountPage():
+        return 'EsiRouteCountPage';
       case _iztepymd.DependencyStatus():
         return 'DependencyStatus';
       case _if75m2mz.HealthReport():
@@ -673,6 +762,21 @@ class Protocol extends _isc.SerializationManager
     }
     if (dataClassName == 'SdeJson') {
       return deserialize<_idp9h2tz.SdeJson>(data['data']);
+    }
+    if (dataClassName == 'EsiCallLogCursor') {
+      return deserialize<_iqs4md3s.EsiCallLogCursor>(data['data']);
+    }
+    if (dataClassName == 'EsiCallLogReceipt') {
+      return deserialize<_iuknwcy9.EsiCallLogReceipt>(data['data']);
+    }
+    if (dataClassName == 'EsiCallLogPage') {
+      return deserialize<_iiojdgzp.EsiCallLogPage>(data['data']);
+    }
+    if (dataClassName == 'EsiRouteCount') {
+      return deserialize<_iy73o4xt.EsiRouteCount>(data['data']);
+    }
+    if (dataClassName == 'EsiRouteCountPage') {
+      return deserialize<_ikoz4zoy.EsiRouteCountPage>(data['data']);
     }
     if (dataClassName == 'DependencyStatus') {
       return deserialize<_iztepymd.DependencyStatus>(data['data']);

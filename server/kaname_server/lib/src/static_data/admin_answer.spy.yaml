@@ -5,6 +5,5 @@ fields:
   reason: PublicReason?
   activeBuild: int?
   operation: AdminOperationView?
-  pausedUntil: DateTime?
   autoUpdate: bool?
   settingRevision: SettingRevision?

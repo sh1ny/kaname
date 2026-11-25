@@ -1,0 +1,147 @@
+import 'package:kaname_esi/kaname_esi.dart' show EsiRefusalReason;
+
+/// A viewer from a verified Kaname or native authorization. No CCP secret.
+final class AccountPilot {
+  /// Public projection used by app state.
+  const AccountPilot({
+    required this.characterId,
+    required this.name,
+    this.memberId,
+    this.admin = false,
+    this.holder,
+  });
+
+  /// String representation preserves the full ID on web.
+  final String characterId;
+
+  /// Name returned by the verified identity provider.
+  final String name;
+
+  /// Kaname member ID for connected sessions only.
+  final String? memberId;
+
+  /// Current server admin scope. Native solo never grants it.
+  final bool admin;
+
+  /// Fixed server or native holder state; never an upstream diagnostic.
+  final String? holder;
+
+  /// Decodes a trusted app RPC response; invalid values have no authority.
+  static AccountPilot? parse(Object? response) {
+    if (response case {
+      'characterId': final String id,
+      'characterName': final String name,
+      'memberId': final String member,
+      'admin': final bool admin,
+    }) {
+      final result = response as Map<String, Object?>;
+      return AccountPilot(
+        characterId: id,
+        name: name,
+        memberId: member,
+        admin: admin,
+        holder: result['holder'] is String ? result['holder'] as String : null,
+      );
+    }
+    return null;
+  }
+}
+
+/// The two values shown by the skills read in Settings.
+typedef SkillStats = ({int count, int totalSp});
+
+/// A scheduler refusal with a known retry time when one was supplied.
+typedef SkillsRefusal = ({EsiRefusalReason reason, DateTime? retryAt});
+
+/// The result of one connected or solo skills request.
+typedef SkillsRead = (AccountNotice, SkillStats?, SkillsRefusal?);
+
+/// A stable failure or next step, suitable for app state and localization.
+enum AccountNotice {
+  /// A definitive grant rejection requires fresh scoped authorization.
+  reauthorize,
+
+  /// Kaname's own work limit prevented the skills request.
+  busy,
+
+  /// Completed or nothing pending.
+  none,
+
+  /// Work was refused or did not complete. No raw error reaches the app.
+  unavailable,
+
+  /// The user cancelled before activation.
+  cancelled,
+
+  /// The existing holder has not yet confirmed exclusion.
+  pending,
+
+  /// This installation cannot take or reclaim the current holder.
+  blocked,
+
+  /// The viewer needs a valid bearer again.
+  signedOut,
+}
+
+/// Server handoff reports confirmed source park, not a CCP credential.
+typedef DeviceReservation = ({String generation, String ownerFingerprint});
+
+/// The parts of a connected session needed by the original desktop device.
+abstract interface class HolderRemote {
+  /// Canonical origin of the authenticated server.
+  String get origin;
+
+  /// Current trusted connected viewer, never a typed-in target character.
+  AccountPilot get pilot;
+
+  /// Requests or resumes parking on the server.
+  Future<(AccountNotice, DeviceReservation?)> take(String proof);
+
+  /// Returns a parked reservation to the server.
+  Future<AccountNotice> release(String proof, String generation);
+
+  /// Joins a server that had no holder assignment for this character.
+  Future<AccountNotice> join(String proof, String ownerFingerprint);
+}
+
+/// Credential-only surface available on the supported desktop platforms.
+abstract interface class DesktopAccount {
+  /// Stored public ID, not a client secret.
+  String? get clientId;
+
+  /// Whether this app can request a new server grant without a local overlap.
+  bool permitsServerGrant(String characterId);
+
+  /// Whether the original device holds a confirmed reservation or grant.
+  bool ownsReservationFor(String origin, String characterId);
+
+  /// The current native identity and visible journal state.
+  AccountPilot? get pilot;
+
+  /// Sets the owner-provided native application ID when safe to do so.
+  AccountNotice configure(String clientId);
+
+  /// Runs an unscoped native identity check.
+  Future<AccountNotice> identify();
+
+  /// Records local permission and performs a new, scoped PKCE authorization.
+  Future<AccountNotice> authorizeSkills();
+
+  /// Revokes local scope without releasing a linked holder.
+  Future<AccountNotice> disableSkills();
+
+  /// Confirms park on the server before allowing a native grant.
+  Future<AccountNotice> take(HolderRemote remote);
+
+  /// Parks local credentials before returning or joining.
+  Future<AccountNotice> returnTo(HolderRemote remote);
+
+  /// Reads skills only with a current local holder and scope.
+  Future<SkillsRead> skills();
+
+  /// Cancels an open browser attempt.
+  void cancel();
+
+  /// Drains work and closes scheduler, OAuth client and credential store.
+  Future<void> close();
+}

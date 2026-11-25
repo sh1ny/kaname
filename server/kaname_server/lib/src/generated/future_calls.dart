@@ -17,6 +17,7 @@ import 'package:clock/clock.dart' as _io0w16m8;
 import 'package:serverpod/serverpod.dart' as _is;
 
 import '../esi/esi_call_log_prune_call.dart' as _iowjp61k;
+import '../esi/sso_session_prune_call.dart' as _isn4qq34;
 import '../static_data/static_data_check_call.dart' as _i66h21ix;
 
 /// Invokes a future call.
@@ -61,6 +62,7 @@ class FutureCalls extends _is.FutureCallDispatch<_FutureCallRef> {
   void initialize(_is.FutureCallManager futureCallManager, String serverId) {
     var registeredFutureCalls = <String, _is.InvokableFutureCall>{
       'EsiCallLogPruneCallRunFutureCall': EsiCallLogPruneCallRunFutureCall(),
+      'SsoSessionPruneCallRunFutureCall': SsoSessionPruneCallRunFutureCall(),
       'StaticDataCheckCallRunFutureCall': StaticDataCheckCallRunFutureCall(),
     };
     _futureCallManager = futureCallManager;
@@ -169,6 +171,10 @@ class _FutureCallRef {
     _invokeFutureCall,
   );
 
+  late final ssoSessionPruneCall = _SsoSessionPruneCallFutureCallDispatcher(
+    _invokeFutureCall,
+  );
+
   late final staticDataCheckCall = _StaticDataCheckCallFutureCallDispatcher(
     _invokeFutureCall,
   );
@@ -181,6 +187,16 @@ class _EsiCallLogPruneCallFutureCallDispatcher {
 
   Future<void> run() {
     return _invokeFutureCall('EsiCallLogPruneCallRunFutureCall', null);
+  }
+}
+
+class _SsoSessionPruneCallFutureCallDispatcher {
+  _SsoSessionPruneCallFutureCallDispatcher(this._invokeFutureCall);
+
+  final _InvokeFutureCall _invokeFutureCall;
+
+  Future<void> run() {
+    return _invokeFutureCall('SsoSessionPruneCallRunFutureCall', null);
   }
 }
 
@@ -203,6 +219,18 @@ class EsiCallLogPruneCallRunFutureCall extends _is.FutureCall
     _is.SerializableModel? object,
   ) async {
     await _iowjp61k.EsiCallLogPruneCall().run(session);
+  }
+}
+
+/// Removes one indexed batch. The next run handles any backlog.
+class SsoSessionPruneCallRunFutureCall extends _is.FutureCall
+    implements _is.InvokableFutureCall {
+  @override
+  _ida.Future<void> invoke(
+    _is.Session session,
+    _is.SerializableModel? object,
+  ) async {
+    await _isn4qq34.SsoSessionPruneCall().run(session);
   }
 }
 

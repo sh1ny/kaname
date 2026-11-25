@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:kaname_client/kaname_client.dart' as api;
 import 'package:kaname_server/src/generated/protocol.dart';
-import 'package:kaname_server/src/static_data/admin_gate.dart';
 import 'package:kaname_server/src/static_data/admin_operation_settler.dart';
 import 'package:kaname_server/src/static_data/admission_connection_attempt.dart';
 import 'package:kaname_server/src/static_data/admission_recovery.dart';
@@ -28,10 +27,8 @@ import '../support/announcer_support.dart';
 import '../support/in_process_pod.dart';
 import '../support/migrated_database.dart';
 import '../support/sde_bundle_support.dart';
+import '../support/static_data_test_auth.dart';
 import '../support/tcp_proxy.dart';
-
-const _key = 'accepted-test-admin-key-01234567890123456789';
-const _bad = 'rejected-test-admin-key-01234567890123456789';
 
 void main() {
   late FakeClock clock;
@@ -43,9 +40,11 @@ void main() {
   Future<void> Function(int call)? beforeSession;
   Future<void> Function(int call)? afterSession;
 
-  Future<void> start({String? key}) async {
+  Future<void> start({bool admin = false}) async {
     clock = FakeClock();
-    server = await InProcessPod.start();
+    server = await InProcessPod.start(
+      authenticationHandler: staticDataTestAuthentication,
+    );
     addTearDown(server.stop);
     runtime = StaticDataRuntime();
     poolCalls = 0;
@@ -72,13 +71,13 @@ void main() {
     StaticDataAccess.installForTest(
       server.pod,
       StaticDataAccess(
-        gate: AdminGate(key: key, log: (_, _) {}, now: clock.now),
+        adminConfigured: admin,
         withSession: pooled,
         clock: clock,
         runtime: runtime,
       ),
     );
-    client = api.Client(server.baseUrl);
+    client = staticDataTestClient(server.baseUrl, admin: admin);
     addTearDown(client.close);
   }
 
@@ -170,10 +169,10 @@ void main() {
   });
 
   Future<api.AdminAnswer> update(int id) =>
-      client.staticDataAdmin.updateNow(_key, _id(id).toString());
+      client.staticDataAdmin.updateNow(_id(id).toString());
 
   Future<api.AdminAnswer> rollback(int id, int revision) =>
-      client.staticDataAdmin.rollBack(_key, _id(id).toString(), revision);
+      client.staticDataAdmin.rollBack(_id(id).toString(), revision);
 
   Future<void> waitForFreeSlot() async {
     await _until(
@@ -214,65 +213,9 @@ void main() {
   );
 
   test(
-    'no adminKey refuses admin calls and status shows not configured',
-    () async {
-      await start();
-      final check = await client.staticDataAdmin.checkKey(_key);
-      expect(check.outcome, api.AdminAnswerOutcome.notConfigured);
-      final status = await client.staticData.status();
-      expect(status.adminConfigured, isFalse);
-      expect(status.settingRevision, isA<api.NoWrites>());
-    },
-  );
-
-  test(
-    'checkKey with the right key answers accepted and stores nothing',
-    () async {
-      await start(key: _key);
-      final check = await client.staticDataAdmin.checkKey(_key);
-      expect(check.outcome, api.AdminAnswerOutcome.keyAccepted);
-      await server.pod.withSession((session) async {
-        expect(await SdeAdminOperation.db.count(session), 0);
-        expect(await SdeSettingWrite.db.count(session), 0);
-      });
-    },
-  );
-
-  test(
-    'checkKey with a wrong key rejects it and counts the rejection',
-    () async {
-      await start(key: _key);
-      for (var i = 0; i < 9; i++) {
-        final answer = await client.staticDataAdmin.checkKey(_bad);
-        expect(answer.outcome, api.AdminAnswerOutcome.keyRejected);
-      }
-      final accepted = await client.staticDataAdmin.checkKey(_key);
-      expect(accepted.outcome, api.AdminAnswerOutcome.keyAccepted);
-      await client.staticDataAdmin.checkKey(_bad);
-      final paused = await client.staticDataAdmin.checkKey(_key);
-      expect(paused.outcome, api.AdminAnswerOutcome.tooManyAttempts);
-    },
-  );
-
-  test(
-    'ten wrong keys in 50 seconds pause admin calls but not status',
-    () async {
-      await start(key: _key);
-      for (var i = 0; i < 10; i++) {
-        await client.staticDataAdmin.checkKey(_bad);
-        clock.elapse(const Duration(seconds: 5));
-      }
-      final paused = await client.staticDataAdmin.checkKey(_key);
-      expect(paused.outcome, api.AdminAnswerOutcome.tooManyAttempts);
-      expect(paused.pausedUntil, clock.now().add(const Duration(seconds: 55)));
-      expect((await client.staticData.status()).adminConfigured, isTrue);
-    },
-  );
-
-  test(
     'update now answers started and then stores its committed switch',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       await server.pod.withSession(
         (s) => seedBuild(s, 900, SdeBuildState.active),
       );
@@ -295,7 +238,7 @@ void main() {
   test(
     'update now refused by the lock ends import running and writes no check',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       await runWorker();
       final held = await PostgresStaticDataStore.open(settings);
       addTearDown(held.close);
@@ -306,10 +249,19 @@ void main() {
     },
   );
 
+  test('Unconfigured during start-up recovery', () async {
+    await start();
+    expect(runtime.recovery?.admissionOpen ?? false, isFalse);
+    expect((await update(1)).outcome, api.AdminAnswerOutcome.notAuthorized);
+    expect(poolCalls, 0);
+    expect(await operation(1), isNull);
+    await expectNoChecks();
+  });
+
   test(
     'a down worker refuses a new id only after lookup, without storing it',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       await runWorker(controlled: _ControlledWorker());
       await runtime.supervisor!.stop();
       expect(
@@ -323,7 +275,7 @@ void main() {
   );
 
   test('an ended id is replayed even while the worker is down', () async {
-    await start(key: _key);
+    await start(admin: true);
     final worker = _ControlledWorker();
     await runWorker(controlled: worker);
     await seedEnded(1, SdeAdminOperationOutcome.switched);
@@ -335,7 +287,7 @@ void main() {
   });
 
   test('a replay of up to date returns the row without a request', () async {
-    await start(key: _key);
+    await start(admin: true);
     final worker = _ControlledWorker();
     await runWorker(controlled: worker);
     await seedEnded(1, SdeAdminOperationOutcome.upToDate);
@@ -348,14 +300,14 @@ void main() {
   for (final rollback in [false, true]) {
     test('a worker exit while admission storage is pending settles the '
         'unsent job (rollback: $rollback)', () async {
-      await start(key: _key);
+      await start(admin: true);
       final worker = _ControlledWorker();
       await runWorker(controlled: worker);
       afterSession = (call) async {
         if (call == 2) await runtime.supervisor!.stop();
       };
       final answer = rollback
-          ? await client.staticDataAdmin.rollBack(_key, _id(1).toString(), 0)
+          ? await client.staticDataAdmin.rollBack(_id(1).toString(), 0)
           : await update(1);
       expect(answer.outcome, api.AdminAnswerOutcome.workerNotRunning);
       final row = await ended(1);
@@ -375,7 +327,7 @@ void main() {
   }
 
   test('two pending admin lookups exhaust only their own budget', () async {
-    await start(key: _key);
+    await start(admin: true);
     final worker = _ControlledWorker();
     await runWorker(controlled: worker);
     final original = update(9);
@@ -412,7 +364,7 @@ void main() {
     test(
       'a lookup returning after $lateSeconds seconds takes no slot or insert',
       () async {
-        await start(key: _key);
+        await start(admin: true);
         final worker = _ControlledWorker();
         await runWorker(controlled: worker);
         final hold = Completer<void>();
@@ -443,7 +395,7 @@ void main() {
   test(
     'a check ending before entry answers update failed with a public reason',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       final worker = _ControlledWorker();
       await runWorker(controlled: worker);
       final pending = update(1);
@@ -472,7 +424,7 @@ void main() {
   test(
     'an unanswered worker times out at 10 seconds but retains its slot',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       final worker = _ControlledWorker();
       await runWorker(controlled: worker);
       final pending = update(1);
@@ -504,7 +456,7 @@ void main() {
   test(
     'replay before the worker lock is waiting, then running is started',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       final worker = _ControlledWorker();
       await runWorker(controlled: worker);
       final pending = update(1);
@@ -539,7 +491,7 @@ void main() {
   test(
     'replay of an ended rollback answers while another id owns the slot',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       final worker = _ControlledWorker();
       await runWorker(controlled: worker);
       await seedEnded(
@@ -570,7 +522,7 @@ void main() {
   );
 
   test('reusing a stored update-now id for rollback is malformed', () async {
-    await start(key: _key);
+    await start(admin: true);
     final worker = _ControlledWorker();
     await runWorker(controlled: worker);
     await seedEnded(1, SdeAdminOperationOutcome.upToDate);
@@ -581,7 +533,7 @@ void main() {
   for (final revision in [null, 3, 4]) {
     test('two ${revision == null ? 'update-now' : 'rollback'} lookups miss, '
         'then one reservation wins (second revision: $revision)', () async {
-      await start(key: _key);
+      await start(admin: true);
       final worker = _ControlledWorker();
       await runWorker(controlled: worker);
       final firstLookup = Completer<void>();
@@ -662,7 +614,7 @@ void main() {
     test(
       'a delayed first lookup sees X ended even with the slot $otherSlot',
       () async {
-        await start(key: _key);
+        await start(admin: true);
         final worker = _ControlledWorker();
         await runWorker(controlled: worker);
         final missed = Completer<void>();
@@ -741,7 +693,7 @@ void main() {
       'a store that ${ackLost ? 'loses acknowledgement' : 'answers late'} '
       'never dispatches and keeps its replay marker until settlement',
       () async {
-        await start(key: _key);
+        await start(admin: true);
         final worker = _ControlledWorker();
         final unavailable = await postgresProxy();
         final port = unavailable.port;
@@ -822,10 +774,10 @@ void main() {
   }
 
   test('invalid ids never look up or send a job', () async {
-    await start(key: _key);
+    await start(admin: true);
     final worker = _ControlledWorker();
     await runWorker(controlled: worker);
-    final answer = await client.staticDataAdmin.updateNow(_key, 'abc');
+    final answer = await client.staticDataAdmin.updateNow('abc');
     expect(answer.outcome, api.AdminAnswerOutcome.malformed);
     expect(poolCalls, 0);
     expect(worker.checks, isEmpty);
@@ -834,7 +786,7 @@ void main() {
   test(
     'a resend after expiry creates a new waiting row for the same id',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       final worker = _ControlledWorker();
       await runWorker(controlled: worker);
       await seedEnded(
@@ -863,7 +815,7 @@ void main() {
   test(
     'rollback at the shown revision commits once and a replay swaps nothing',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       await seedRollbackPair();
       await runWorker();
       final shown = await client.staticData.status();
@@ -920,7 +872,7 @@ void main() {
   test(
     'retry after restore keeps its own outcome and refuses an older revision',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       await seedRollbackPair();
       await runWorker();
       expect((await rollback(1, 4)).outcome, api.AdminAnswerOutcome.rolledBack);
@@ -948,7 +900,7 @@ void main() {
   test(
     'a switch and pruning cannot make an older rollback revision valid',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       await server.pod.withSession(
         (s) => seedBuild(s, 900, SdeBuildState.active),
       );
@@ -989,7 +941,7 @@ void main() {
   test(
     'no previous build refuses rollback and writes a failed record',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       await seedRollbackPair(withPrevious: false);
       await runWorker();
       expect((await rollback(1, 4)).outcome, api.AdminAnswerOutcome.noPrevious);
@@ -1003,7 +955,7 @@ void main() {
   );
 
   test('a rollback while an import holds the lock changes nothing', () async {
-    await start(key: _key);
+    await start(admin: true);
     await seedRollbackPair();
     await runWorker();
     final held = await PostgresStaticDataStore.open(settings);
@@ -1025,7 +977,7 @@ void main() {
     test(
       'a rollback statement fails (failed record also aborts: $rejectFailure)',
       () async {
-        await start(key: _key);
+        await start(admin: true);
         await seedRollbackPair();
         await runWorker();
         await server.pod.withSession(
@@ -1079,7 +1031,7 @@ void main() {
   test(
     'an aborted rollback without a readable job connection settles unknown',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       await seedRollbackPair();
       final proxy = await postgresProxy();
       addTearDown(proxy.close);
@@ -1147,7 +1099,7 @@ void main() {
   test(
     'a rollback timeout keeps its slot and a later commit requests refresh',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       await seedRollbackPair();
       final worker = _ControlledWorker();
       var refreshes = 0;
@@ -1194,7 +1146,7 @@ void main() {
   test(
     'a lost conflict acknowledgement preserves the first rollback result',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       await seedRollbackPair();
       await runWorker();
       final missed = Completer<void>();
@@ -1223,9 +1175,9 @@ void main() {
   );
 
   test(
-    'recovery gates both new jobs and replays but not check key or setting',
+    'recovery gates both new jobs and replays but not a setting write',
     () async {
-      await start(key: _key);
+      await start(admin: true);
       final worker = _ControlledWorker();
       await runWorker(controlled: worker, recover: false);
       await seedEnded(1, SdeAdminOperationOutcome.switched);
@@ -1240,12 +1192,7 @@ void main() {
       expect(poolCalls, 0);
       expect(worker.checks, isEmpty);
       expect(await operation(2), isNull);
-      expect(
-        (await client.staticDataAdmin.checkKey(_key)).outcome,
-        api.AdminAnswerOutcome.keyAccepted,
-      );
       final setting = await client.staticDataAdmin.setAutoUpdate(
-        _key,
         false,
         api.NoWrites(),
         _id(1).toString(),
@@ -1258,16 +1205,19 @@ void main() {
     },
   );
 
-  test('missing key takes precedence over closed startup admission', () async {
-    await start();
-    await runWorker(controlled: _ControlledWorker(), recover: false);
-    expect((await update(1)).outcome, api.AdminAnswerOutcome.notConfigured);
-    expect(
-      (await rollback(1, 4)).outcome,
-      api.AdminAnswerOutcome.notConfigured,
-    );
-    expect(poolCalls, 0);
-  });
+  test(
+    'missing admin scope takes precedence over closed startup admission',
+    () async {
+      await start();
+      await runWorker(controlled: _ControlledWorker(), recover: false);
+      expect((await update(1)).outcome, api.AdminAnswerOutcome.notAuthorized);
+      expect(
+        (await rollback(1, 4)).outcome,
+        api.AdminAnswerOutcome.notAuthorized,
+      );
+      expect(poolCalls, 0);
+    },
+  );
 }
 
 UuidValue _id(int sequence) => UuidValue.fromString(
