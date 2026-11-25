@@ -104,10 +104,10 @@
 
 ## 1. Architecture and prerequisites
 
-- [ ] 1.1 Write ADRs 0017 and 0018 and update the architecture index. Carry C3, C4, C7, C10 and C12; verify the index lists 0018 as superseding 0015 and the M7 reclaim decision remains visible.
-- [ ] 1.2 Verify A1 against CCP documentation and the local stack origin. Record the exact redirect check for both registrations in the owner check; do not use real credentials in automated tests.
-- [ ] 1.3 Verify A2 against CCP's documented owner claim; include equality across the two registrations in the owner check and rejection in the handoff fixtures. If the owner check disproves it, stop before archive and report design drift.
-- [ ] 1.4 Verify A3 against the pinned desktop toolchain, SQLite 3.9.1 and the OS secure-storage adapter. Exercise opening and reconstructing the credential store; do not treat a build alone as secure-store read-back.
+- [x] 1.1 Write ADRs 0017 and 0018 and update the architecture index. Carry C3, C4, C7, C10 and C12; verify the index lists 0018 as superseding 0015 and the M7 reclaim decision remains visible.
+- [x] 1.2 Verify A1 against CCP documentation and the local stack origin. Record the exact redirect check for both registrations in the owner check; do not use real credentials in automated tests.
+- [x] 1.3 Verify A2 against CCP's documented owner claim; include equality across the two registrations in the owner check and rejection in the handoff fixtures. If the owner check disproves it, stop before archive and report design drift.
+- [x] 1.4 Verify A3 against the pinned desktop toolchain, SQLite 3.9.1 and the OS secure-storage adapter. Exercise opening and reconstructing the credential store; do not treat a build alone as secure-store read-back.
 
 ## 2. Shared CCP verification and scope policy
 
@@ -134,7 +134,7 @@
 - [ ] 6.1 Add and run failing stack tests for callback routing, local opt-in, disabled remote HTTP and server-only credential injection. Verify the tests exercise the real Compose/proxy routing and named failures.
 - [ ] 6.2 Wire Caddy and the deployment settings, including the scope policy in the server container only; verify the stack tests and strict OpenSpec validation. Publish the local setup guide with both exact redirects and the skills-read steps, using only example values.
 - [ ] 6.3 Run the repository's required CI-equivalent checks or verify the same checks run on the PR head. Verify generated Serverpod artefacts, locale output, notices and all enabled platform targets. Before any heavy local run, check the owner's gaming guard.
-- [ ] 6.4 [user] With the owner's two CCP registrations, follow the local acceptance guide: sign in on the loopback stack, read skills and see the own call-log entry; take the same character to the native device and read skills through PKCE. Confirm matching identity and that connected mode cannot dispatch while the device holds the character. Enter secrets only on the test machine.
+- [ ] 6.4 [user] Register the stack at `http://localhost/auth/esi/callback` and native solo at `http://localhost:48175/auth/esi/callback`. Follow the local acceptance guide: sign in on the loopback stack, read skills and see the own call-log entry; take the same character to the native device and read skills through PKCE. Confirm matching identity and that connected mode cannot dispatch while the device holds the character. Enter secrets only on the test machine.
 
 ## Workflow follow-up
 
