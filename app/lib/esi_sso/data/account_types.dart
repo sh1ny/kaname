@@ -1,4 +1,4 @@
-import 'package:kaname_esi/kaname_esi.dart';
+import 'package:kaname_esi/kaname_esi.dart' show EsiRefusalReason;
 
 /// A viewer from a verified Kaname or native authorization. No CCP secret.
 final class AccountPilot {

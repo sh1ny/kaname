@@ -4,7 +4,7 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
-import 'package:kaname_esi/kaname_esi.dart';
+import 'package:kaname_esi/kaname_esi.dart' show EsiRefusalReason;
 
 import 'account_types.dart';
 
