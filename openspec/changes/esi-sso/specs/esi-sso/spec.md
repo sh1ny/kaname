@@ -117,6 +117,12 @@ The connected and desktop solo modes SHALL allow a signed-in viewer to request t
 - **WHEN** the requester is signed out, scope is missing, the grant is stale, the other mode holds the character, or the connected server cannot be reached
 - **THEN** no ESI request leaves the wrong mode and the app shows a fixed reason without secrets
 
+#### Scenario: The scheduler refuses a skills read
+
+- **WHEN** the connected or solo scheduler refuses to send a skills request
+- **THEN** the app explains the refusal using its stable reason and shows the retry time when one is known
+- **AND** if the deadline is unknown, the app does not invent one or retry automatically
+
 ### Requirement: Handoff parks the source before activating the destination
 
 Kaname SHALL identify the active holder and require an explicit handoff for a character moving between the server and a desktop device. Only the matching destination SHALL activate after confirmed source parking and fresh CCP authorization of the same character and owner. Handoff SHALL NOT transfer CCP credentials or allow ordinary sign-in to bypass a known holder assignment.

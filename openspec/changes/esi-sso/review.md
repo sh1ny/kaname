@@ -125,3 +125,9 @@ Narrow recheck of Required Changes 1–3 against the current files. All three ar
 **Required Change 3: satisfied (M8).**
 - **Scenario.** Present under "Handoff parks the source before activating the destination" at `specs/esi-sso/spec.md:149-152`: WHEN a desktop holds a character solo, the server has no holder assignment for it, the device records its join intent and parks its credential, and the same character and owner complete confidential authorization, THEN the server activates only after that sequence, and refuses this path for a character with any existing assignment.
 - **Definition.** `design.md:64` now reads: "for a character with no holder assignment row on the server: record a source-bound intent, park the device, then authorize server activation. A known different assignment never takes this path." The phrase "unclaimed server identity" no longer appears.
+
+## Redis recovery and refusal amendment
+
+Claude Opus 5.5 reviewed only the amendment through the isolated Specwright CLI route with Read, Grep and Glob. Round 1 identified a critical collision between old and new reservation IDs. The revised design binds each ticket and grant to its Redis incarnation, warms buckets only from valid headers, and preserves unexpired cooldowns.
+
+Round 2 found no critical issues and approved with three required changes: specify the immediate refusal and lease deadline, define ordered reclaim without dropping live state, and test both. The owner authorized those changes without a third review and required a first-skills-read scenario on a fresh stack. The scheduling delta, design and test map reflect that decision.

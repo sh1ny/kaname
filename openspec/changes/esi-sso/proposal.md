@@ -11,6 +11,7 @@ This is change 5 of [M2](../../roadmap.md#now-m2---esi-platform-and-sso). It con
 - Expose the existing privacy-scoped call-log reads in the connected app. Members can read their own rows. Admins can also read route totals and error counts, without other members' rows or drill-down.
 - Move the active ESI holder between a server and a native device, including taking a server-held character solo. Park the source before activating the destination with a fresh CCP authorization for that registration. No CCP token or client secret moves between installs.
 - **BREAKING:** Replace the static-data admin key with signed-in Serverpod admin scope. Remove the key configuration, check RPC, key prompt and fallback. Public status, job status and the change report stay readable without sign-in.
+- Replace the Redis scheduler's one-hour startup pause with per-bucket recovery. Show why a skills call was refused and, when known, when the user can retry.
 
 ## Capabilities
 
@@ -24,6 +25,7 @@ This is change 5 of [M2](../../roadmap.md#now-m2---esi-platform-and-sso). It con
 - `static-data-admin`: Require a signed-in admin for mutations without changing public reads or job semantics.
 - `static-data-settings`: Derive the admin controls from authenticated authority instead of a shared key.
 - `self-host-stack`: Route the browser callback to Kaname and supply confidential credentials only to the running server.
+- `esi-request-scheduling`: Recover each rate-limit bucket from CCP's reported budget without blocking an eligible first call.
 
 ## Impact
 

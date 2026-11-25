@@ -22,6 +22,9 @@
 | esi-sso → Configured scope policy fails closed | Grant differs from the permitted request | `packages/kaname_esi_sso/test/scope_policy_test.dart` | Grant differs from the permitted request | green |
 | esi-sso → An active holder can read character skills | Scoped read in both modes | `server/kaname_server/test/integration/esi/scoped_skills_test.dart`; `app/test/esi_sso/native_sso_test.dart` | Scoped read in both modes; Unconfigured solo signs in without skills access | green |
 | esi-sso → An active holder can read character skills | No authority or no scope | `server/kaname_server/test/integration/esi/scoped_skills_test.dart`; `app/test/esi_sso/native_sso_test.dart` | No authority or no scope; Unconfigured solo signs in without skills access | green |
+| esi-request-scheduling → Shared atomic admission | Redis was replaced or restarted | `server/kaname_server/test/integration/esi/redis_scheduler_test.dart` | Redis recovers each rate-limit bucket independently | red |
+| esi-request-scheduling → Shared atomic admission | First server skills read on a fresh stack | `server/kaname_server/test/integration/esi/redis_scheduler_test.dart` | First server skills read on a fresh stack | red |
+| esi-sso → An active holder can read character skills | The scheduler refuses a skills read | `server/kaname_server/test/integration/esi/connected_sso_test.dart`; `app/test/esi_sso/native_sso_test.dart`; `app/test/esi_sso/skills_refusal_test.dart` | Skills refusals preserve their reasons and retry times | red |
 | esi-sso → Handoff parks the source before activating the destination | Take a server-held character solo | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | Take a server-held character solo | green |
 | esi-sso → Handoff parks the source before activating the destination | Return a device-held character to the server | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | Return a device-held character to the server | green |
 | esi-sso → Handoff parks the source before activating the destination | Mismatch, replay or competing destination | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | Mismatch, replay or competing destination | green |
@@ -135,6 +138,13 @@
 - [x] 6.2 Wire Caddy and the deployment settings, including the scope policy in the server container only; verify the stack tests and strict OpenSpec validation. Publish the local setup guide with both exact redirects and the skills-read steps, using only example values.
 - [x] 6.3 Run the repository's required CI-equivalent checks or verify the same checks run on the PR head. Verify generated Serverpod artefacts, locale output, notices and all enabled platform targets. Before any heavy local run, check the owner's gaming guard.
 - [ ] 6.4 [user] Register the stack at `http://localhost/auth/esi/callback` and native solo at `http://localhost:48175/auth/esi/callback`. Follow the local acceptance guide: sign in on the loopback stack, read skills and see the own call-log entry; take the same character to the native device and read skills through PKCE. Confirm matching identity and that connected mode cannot dispatch while the device holds the character. Enter secrets only on the test machine.
+
+## 7. Redis recovery and skills call refusals
+
+- [ ] 7.1 Run failing Redis tests for the first server skills read on a fresh stack, immediate `stateRecovering` with the lease deadline for concurrent requests, other buckets, lease and grace boundaries, and valid, missing or mismatched observations. Replace the quarantine test. Cover stale advances and completions with reused IDs, idle warm buckets, bounded reclaim returning a bucket to recovery without losing any live debit or block, preserved restored 429/420/route cooldowns without old estimates, and unchanged unpinned admission and error rules. Use fake time and explicit completion order.
+- [ ] 7.2 Replace the global startup pause with per-bucket recovery and verify the Redis tests.
+- [ ] 7.3 Run failing tests for server refusal projection, connected parsing, solo refusal propagation, and localized display of every stable reason. Cover missing, future and past deadlines, unknown reasons, local busy and unavailable responses, upstream and transport failures, and no automatic retry.
+- [ ] 7.4 Carry the reason and optional retry time into both skills views. Run the targeted tests and regenerate localization output.
 
 ## Workflow follow-up
 
