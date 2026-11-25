@@ -368,6 +368,155 @@ void main() {
     }, () => server.client);
   });
 
+  test('Recovery restores a refused take after a lost reply', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer()..epoch = '3';
+    final session = await server.signIn();
+    final original = _character(
+      123,
+      phase: DevicePhase.returned,
+      origin: server.origin.origin,
+      proofDigest: await device.store.newProof(123),
+    );
+    device.store.save(original);
+    device.store.save(_character(456));
+    device.store.setSetting('selected-character', '456');
+    final priorProof = await device.store.proof(original);
+    server.reply = () => throw http.ClientException('offline fixture');
+    expect(await device.account.take(session), AccountNotice.unavailable);
+    expect(device.account.pilot?.holder, DevicePhase.taking.name);
+    await device.reopen();
+
+    server.reply = _refusedTake;
+    server.recoveryReply = _notAccepted;
+    expect(await device.account.returnTo(session), AccountNotice.blocked);
+    expect(device.account.pilot?.characterId, '456');
+    expect(device.store.character(123) == original, isTrue);
+    expect((await device.store.proof(original)) == priorProof, isTrue);
+    expect(device.secrets.values.length, 2);
+    expect(server.sameProof, isTrue);
+    expect(server.legacyTakes, 0);
+    expect(await device.account.returnTo(session), AccountNotice.blocked);
+    expect(server.reconciles, 1);
+  });
+
+  test(
+    'Recovery retries a failed rollback without dropping the proof',
+    () async {
+      final device = await _TakeDevice.open();
+      final server = _TakeServer()
+        ..epoch = '3'
+        ..reply = _refusedTake
+        ..startReply = _notAccepted
+        ..recoveryReply = _notAccepted;
+      final session = await server.signIn();
+      device.store.save(_character(456));
+      device.store.setSetting('selected-character', '456');
+      device.failSelectionRestore();
+      expect(await device.account.take(session), AccountNotice.unavailable);
+      await device.reopen();
+      final taking = device.store.character(123)!;
+      expect(taking.phase, DevicePhase.taking);
+      expect(await device.store.proof(taking) != null, isTrue);
+      expect(await device.account.returnTo(session), AccountNotice.unavailable);
+      expect(await device.store.proof(taking) != null, isTrue);
+
+      device.allowSelectionRestore();
+      expect(await device.account.returnTo(session), AccountNotice.blocked);
+      expect(device.account.pilot?.characterId, '456');
+      expect(device.store.character(123), isNull);
+      expect(await device.store.proof(taking) == null, isTrue);
+      expect(server.sameProof, isTrue);
+    },
+  );
+
+  test('Recovery preserves a newer selection', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer()
+      ..epoch = '3'
+      ..reply = (() => http.Response('{"status":"pending"}', 202))
+      ..recoveryReply = _notAccepted;
+    final session = await server.signIn();
+    device.store.save(_character(456));
+    device.store.setSetting('selected-character', '456');
+    expect(await device.account.take(session), AccountNotice.pending);
+    device.store.save(_character(789));
+    device.store.setSetting('selected-character', '789');
+    expect(await device.account.take(session), AccountNotice.blocked);
+    expect(device.account.pilot?.characterId, '789');
+    expect(device.store.character(123), isNull);
+  });
+
+  test('Uncertain reconciliation keeps the original proof', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer()
+      ..epoch = '3'
+      ..reply = () => http.Response('{"status":"pending"}', 202);
+    final session = await server.signIn();
+    expect(await device.account.take(session), AccountNotice.pending);
+    await device.reopen();
+    final pending = device.store.character(123)!;
+    for (final reply in <http.Response Function()>[
+      _refusedTake,
+      _unsupportedTake,
+      () => http.Response('{"status":"signInRequired"}', 401),
+      () => throw http.RequestAbortedException(),
+      () => http.Response('malformed', 200),
+      () => http.Response('{"status":"notAccepted","sourceEpoch":"4"}', 200),
+    ]) {
+      server.recoveryReply = reply;
+      expect(await device.account.returnTo(session), isNot(AccountNotice.none));
+      expect(device.store.character(123) == pending, isTrue);
+      expect(await device.store.proof(pending) != null, isTrue);
+      expect(await device.account.authorizeSkills(), AccountNotice.blocked);
+    }
+    server.recoveryReply = () => http.Response(
+      jsonEncode({
+        'sourceEpoch': '3',
+        'generation': '2',
+        'ownerFingerprint': 'a' * 64,
+      }),
+      200,
+    );
+    expect(await device.account.take(session), AccountNotice.none);
+    expect(device.account.ownsReservationFor(session.origin, '123'), isTrue);
+    expect(
+      await device.store.proof(device.store.character(123)!) != null,
+      isTrue,
+    );
+    expect(server.sameProof, isTrue);
+    expect(server.legacyTakes, 0);
+  });
+
+  test('A pre-upgrade take cannot fabricate prior state', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer()
+      ..epoch = '3'
+      ..reply = _refusedTake;
+    final session = await server.signIn();
+    final pending = _character(
+      123,
+      phase: DevicePhase.taking,
+      origin: session.origin,
+      proofDigest: await device.store.newProof(123),
+    );
+    device.store.save(pending);
+    device.store.setSetting('selected-character', '123');
+    await device.reopenV1();
+    expect(await device.account.returnTo(session), AccountNotice.blocked);
+    expect(device.store.character(123) == pending, isTrue);
+    expect(await device.store.proof(pending) != null, isTrue);
+    server.reply = () => http.Response(
+      jsonEncode({'generation': '2', 'ownerFingerprint': 'a' * 64}),
+      200,
+    );
+    expect(await device.account.take(session), AccountNotice.none);
+    expect(device.account.ownsReservationFor(session.origin, '123'), isTrue);
+    expect(server.sameProof, isTrue);
+    expect(server.reconciles, 0);
+    expect(server.legacyTakes, 2);
+  });
+
   for (final (label, firstReply, notice)
       in <(String, http.Response Function(), AccountNotice)>[
         (
@@ -419,6 +568,12 @@ void main() {
 http.Response _refusedTake() =>
     http.Response('{"status":"notAuthorized"}', 403);
 
+http.Response _unsupportedTake() =>
+    http.Response('{"status":"signInFailed"}', 404);
+
+http.Response _notAccepted() =>
+    http.Response('{"status":"notAccepted","sourceEpoch":"3"}', 200);
+
 DeviceCharacter _character(
   int id, {
   DevicePhase phase = DevicePhase.identified,
@@ -448,9 +603,20 @@ final class _TakeServer {
   final origin = Uri.parse('https://fixture.test');
   late final http.Client client;
   late http.Response Function() reply;
+  http.Response Function()? startReply;
+  http.Response Function()? recoveryReply;
+  String? epoch;
   String? _proof;
   var sameProof = true;
   var takes = 0;
+  var legacyTakes = 0;
+  var reconciles = 0;
+
+  void _observeProof(Object? proof) {
+    if (proof is! String) fail('expected a device proof');
+    _proof ??= proof;
+    sameProof = sameProof && _proof == proof;
+  }
 
   Future<ConnectedSession> signIn() async {
     final api = ConnectedAccount(origin, client, native: true);
@@ -482,11 +648,28 @@ final class _TakeServer {
         return http.Response(jsonEncode(pilot), 200);
       case 'take':
         final body = jsonDecode(request.body) as Map<String, Object?>;
-        final proof = body['proof'] as String;
-        _proof ??= proof;
-        sameProof = sameProof && _proof == proof;
+        _observeProof(body['proof']);
         takes++;
+        legacyTakes++;
         return reply();
+      case 'take-intent':
+        if (epoch == null) return _unsupportedTake();
+        final body = jsonDecode(request.body) as Map<String, Object?>;
+        if (body['action'] == 'prepare') {
+          return http.Response(jsonEncode({'sourceEpoch': epoch}), 200);
+        }
+        expect(body['sourceEpoch'], epoch);
+        _observeProof(body['proof']);
+        switch (body['action']) {
+          case 'start':
+            takes++;
+            return (startReply ?? reply)();
+          case 'reconcile':
+            reconciles++;
+            return recoveryReply!();
+          default:
+            fail('unexpected intent action');
+        }
       default:
         fail('unexpected connected request');
     }
@@ -515,6 +698,26 @@ final class _TakeDevice {
   Future<void> reopen() async {
     await account.close();
     await _open();
+  }
+
+  Future<void> reopenV1() async {
+    await account.close();
+    final db = sqlite3.open(p.join(_directory.path, 'esi-credentials.sqlite'));
+    try {
+      db.execute('DROP TABLE IF EXISTS take_recovery; PRAGMA user_version=1;');
+    } finally {
+      db.close();
+    }
+    await _open();
+  }
+
+  void allowSelectionRestore() {
+    final db = sqlite3.open(p.join(_directory.path, 'esi-credentials.sqlite'));
+    try {
+      db.execute('DROP TRIGGER reject_selection_restore');
+    } finally {
+      db.close();
+    }
   }
 
   void failSelectionRestore() {
@@ -590,4 +793,15 @@ final class _JoiningServer implements HolderRemote {
   @override
   Future<DeviceTakeResult> take(String proof) async =>
       fail('standalone join does not take a reservation');
+
+  @override
+  Future<DeviceTakePreparation> prepareTake() async =>
+      fail('standalone join does not prepare a take');
+
+  @override
+  Future<DeviceTakeResult> takeIntent(
+    String proof,
+    int sourceEpoch, {
+    required bool reconcile,
+  }) async => fail('standalone join does not start or reconcile a take');
 }
