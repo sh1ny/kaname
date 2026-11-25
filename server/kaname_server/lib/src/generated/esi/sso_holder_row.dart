@@ -27,6 +27,7 @@ abstract class SsoHolderRow
     this.proofDigest,
     this.grantFingerprint,
     this.requestedScopes,
+    this.takeClosures,
   });
 
   factory SsoHolderRow({
@@ -38,6 +39,7 @@ abstract class SsoHolderRow
     String? proofDigest,
     String? grantFingerprint,
     List<String>? requestedScopes,
+    int? takeClosures,
   }) = _SsoHolderRowImpl;
 
   factory SsoHolderRow.fromJson(Map<String, dynamic> jsonSerialization) {
@@ -54,6 +56,7 @@ abstract class SsoHolderRow
           : _iwxagaxh.Protocol().deserialize<List<String>>(
               jsonSerialization['requestedScopes'],
             ),
+      takeClosures: jsonSerialization['takeClosures'] as int?,
     );
   }
 
@@ -78,6 +81,10 @@ abstract class SsoHolderRow
 
   List<String>? requestedScopes;
 
+  /// Take reconciliation advances only this offset, never the holder generation,
+  /// phase, or proof used by release and join acknowledgement retries.
+  int? takeClosures;
+
   @override
   _is.Table<int?> get table => t;
 
@@ -93,6 +100,7 @@ abstract class SsoHolderRow
     String? proofDigest,
     String? grantFingerprint,
     List<String>? requestedScopes = const _is.$UndefinedList<String>(),
+    int? takeClosures,
   });
   @override
   Map<String, dynamic> toJson() {
@@ -106,6 +114,7 @@ abstract class SsoHolderRow
       if (proofDigest != null) 'proofDigest': proofDigest,
       if (grantFingerprint != null) 'grantFingerprint': grantFingerprint,
       if (requestedScopes != null) 'requestedScopes': requestedScopes?.toJson(),
+      if (takeClosures != null) 'takeClosures': takeClosures,
     };
   }
 
@@ -154,6 +163,7 @@ class _SsoHolderRowImpl extends SsoHolderRow {
     String? proofDigest,
     String? grantFingerprint,
     List<String>? requestedScopes,
+    int? takeClosures,
   }) : super._(
          id: id,
          characterId: characterId,
@@ -163,6 +173,7 @@ class _SsoHolderRowImpl extends SsoHolderRow {
          proofDigest: proofDigest,
          grantFingerprint: grantFingerprint,
          requestedScopes: requestedScopes,
+         takeClosures: takeClosures,
        );
 
   /// Returns a shallow copy of this [SsoHolderRow]
@@ -178,6 +189,7 @@ class _SsoHolderRowImpl extends SsoHolderRow {
     Object? proofDigest = _Undefined,
     Object? grantFingerprint = _Undefined,
     List<String>? requestedScopes = const _is.$UndefinedList<String>(),
+    Object? takeClosures = _Undefined,
   }) {
     return SsoHolderRow(
       id: id is int? ? id : this.id,
@@ -194,6 +206,7 @@ class _SsoHolderRowImpl extends SsoHolderRow {
       requestedScopes: requestedScopes is _is.UndefinedSentinel
           ? this.requestedScopes?.map((e0) => e0).toList()
           : requestedScopes,
+      takeClosures: takeClosures is int? ? takeClosures : this.takeClosures,
     );
   }
 }
@@ -222,6 +235,9 @@ class SsoHolderRowUpdateTable extends _is.UpdateTable<SsoHolderRowTable> {
   _is.ColumnValue<List<String>, List<String>> requestedScopes(
     List<String>? value,
   ) => _is.ColumnValue(table.requestedScopes, value);
+
+  _is.ColumnValue<int, int> takeClosures(int? value) =>
+      _is.ColumnValue(table.takeClosures, value);
 }
 
 class SsoHolderRowTable extends _is.Table<int?> {
@@ -238,6 +254,7 @@ class SsoHolderRowTable extends _is.Table<int?> {
       'requestedScopes',
       this,
     );
+    takeClosures = _is.ColumnInt('takeClosures', this);
   }
 
   late final SsoHolderRowUpdateTable updateTable;
@@ -256,6 +273,10 @@ class SsoHolderRowTable extends _is.Table<int?> {
 
   late final _is.ColumnSerializable<List<String>> requestedScopes;
 
+  /// Take reconciliation advances only this offset, never the holder generation,
+  /// phase, or proof used by release and join acknowledgement retries.
+  late final _is.ColumnInt takeClosures;
+
   @override
   List<_is.Column> get columns => [
     id,
@@ -266,6 +287,7 @@ class SsoHolderRowTable extends _is.Table<int?> {
     proofDigest,
     grantFingerprint,
     requestedScopes,
+    takeClosures,
   ];
 }
 

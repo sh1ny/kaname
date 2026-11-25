@@ -10,6 +10,7 @@ import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
 import 'package:kaname_server/src/esi/server_esi_vault.dart';
 import 'package:kaname_server/src/esi/server_sso_grants.dart';
+import 'package:kaname_server/src/esi/sso_handoff.dart';
 import 'package:kaname_server/src/esi/sso_route.dart';
 import 'package:kaname_server/src/esi/sso_sessions.dart';
 import 'package:kaname_server/src/esi/sso_skills.dart';
@@ -203,6 +204,7 @@ void main() {
       sessions: sessions,
       now: () => clock,
       grants: grants,
+      handoff: SsoHandoff(gate: sessions.gate, vault: vault),
       skills: ServerSsoSkills(
         sessions: sessions,
         grants: grants,
@@ -301,6 +303,137 @@ void main() {
     final response = await complete(start);
     expect(response.statusCode, 200);
     return jsonDecode(response.body) as Map<String, Object?>;
+  }
+
+  Future<void> authorize(String session) async {
+    expect(
+      (await post('opt-in', {'enabled': true}, bearer: session)).statusCode,
+      200,
+    );
+    final attempt = await begin(bearer: session);
+    expect(
+      (await callback(
+        attempt,
+        query: 'code=$_scopedCode&state=${attempt.state}',
+      )).statusCode,
+      200,
+    );
+    expect((await complete(attempt, bearer: session)).statusCode, 200);
+  }
+
+  Future<String> prepare(String session) async {
+    final reply = await post('take-intent', {
+      'action': 'prepare',
+    }, bearer: session);
+    expect(reply.statusCode, 200);
+    return (jsonDecode(reply.body) as Map<String, Object?>)['sourceEpoch']
+        as String;
+  }
+
+  Future<http.Response> intent(
+    String action,
+    String session,
+    String epoch,
+    String proof,
+  ) => post('take-intent', {
+    'action': action,
+    'sourceEpoch': epoch,
+    'proof': proof,
+  }, bearer: session);
+
+  void expectClosed(http.Response reply, String epoch) {
+    expect(reply.statusCode, 200);
+    expect(jsonDecode(reply.body), {
+      'status': 'notAccepted',
+      'sourceEpoch': epoch,
+    });
+  }
+
+  test(
+    'Reconciliation prevents a delayed start from taking the holder',
+    () async {
+      final session = (await signIn())['session'] as String;
+      await authorize(session);
+      final epoch = await prepare(session);
+      final proof = newOAuthProof();
+      await intent(
+        'reconcile',
+        session,
+        epoch,
+        proof,
+      ); // Simulate a lost reply.
+      expectClosed(await intent('reconcile', session, epoch, proof), epoch);
+      expectClosed(await intent('start', session, epoch, proof), epoch);
+      expect((await post('skills', {}, bearer: session)).statusCode, 200);
+
+      final next = await prepare(session);
+      expectClosed(
+        await intent('reconcile', session, next, newOAuthProof()),
+        next,
+      );
+      expect(
+        (await intent('reconcile', session, epoch, proof)).statusCode,
+        202,
+      );
+    },
+  );
+
+  test('An accepted start reconciles to the same reservation', () async {
+    final session = (await signIn())['session'] as String;
+    await authorize(session);
+    final epoch = await prepare(session);
+    final proof = newOAuthProof();
+    final started = await intent('start', session, epoch, proof);
+    expect(started.statusCode, 200);
+    final refused = await intent('reconcile', 'a' * 43, epoch, proof);
+    expect(refused.statusCode, 403);
+    expectClosed(
+      await intent('reconcile', session, epoch, newOAuthProof()),
+      epoch,
+    );
+    final recovered = await intent('reconcile', session, epoch, proof);
+    expect(recovered.statusCode, 200);
+    expect(recovered.body == started.body, isTrue);
+    final reservation = jsonDecode(recovered.body) as Map<String, Object?>;
+    expect(reservation['sourceEpoch'], epoch);
+    expect(reservation['generation'], isA<String>());
+    expect((await post('skills', {}, bearer: session)).statusCode, 403);
+  });
+
+  for (final join in [false, true]) {
+    test(
+      'A closed take preserves a lost ${join ? 'join' : 'release'} acknowledgement',
+      () async {
+        final session = (await signIn())['session'] as String;
+        final proof = newOAuthProof();
+        final String action;
+        final Map<String, Object?> payload;
+        if (join) {
+          action = 'join';
+          payload = {
+            'proof': proof,
+            'ownerFingerprint': ssoDigest('410:$owner'),
+          };
+        } else {
+          await authorize(session);
+          final taken = await post('take', {'proof': proof}, bearer: session);
+          expect(taken.statusCode, 200);
+          final body = jsonDecode(taken.body) as Map<String, Object?>;
+          action = 'release';
+          payload = {'proof': proof, 'generation': body['generation']};
+        }
+        expect((await post(action, payload, bearer: session)).statusCode, 200);
+        await authorize(session);
+        final epoch = await prepare(session);
+        expectClosed(
+          await intent('reconcile', session, epoch, newOAuthProof()),
+          epoch,
+        );
+        final retried = await post(action, payload, bearer: session);
+        expect(retried.statusCode, 200);
+        expect(jsonDecode(retried.body), {'status': 'released'});
+      },
+    );
   }
 
   test('Confidential browser sign-in with other cookies on the host', () async {
