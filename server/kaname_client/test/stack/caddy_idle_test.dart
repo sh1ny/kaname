@@ -113,8 +113,8 @@ Future<void> _probe({required bool disableIdle}) async {
   final config = original
       .replaceFirst('{\n', '{\n\tdebug\n')
       .replaceFirst(
-        'reverse_proxy server:8080',
-        'reverse_proxy server:8080 {\n\t\t\tverbose_logs\n\t\t}',
+        'handle_path /api/* {\n\t\treverse_proxy server:8080',
+        'handle_path /api/* {\n\t\treverse_proxy server:8080 {\n\t\t\tverbose_logs\n\t\t}',
       )
       .replaceAll('server:8080', 'server:$port');
   final disabled = config.replaceFirst('write_idle 1m', 'write_idle -1ns');

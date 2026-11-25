@@ -3,7 +3,6 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:kaname_client/kaname_client.dart';
 import 'package:test/test.dart';
@@ -300,8 +299,7 @@ void main() {
     }
   }, timeout: _slow);
 
-  test('the status reports admin actions configured with KANAME_ADMIN_KEY '
-      'and not configured without it', () async {
+  test('public status reports configured SSO admins without exposing their IDs or the old key', () async {
     const recreate = [
       'up',
       '--detach',
@@ -316,25 +314,36 @@ void main() {
       await waitUntilReady();
     });
 
-    final random = Random.secure();
-    final key = List.generate(
-      32,
-      (_) => random.nextInt(256),
-    ).map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
-    final client = Client('$stackOrigin/api/');
-    try {
-      for (final configured in [true, false]) {
-        final started = await compose(
-          recreate,
-          environment: {'KANAME_ADMIN_KEY': configured ? key : ''},
-        );
-        expect(started.exitCode, 0, reason: started.output);
-        await waitUntilReady();
-        final result = await client.staticData.status();
-        expect(result.adminConfigured, configured);
-      }
-    } finally {
-      client.close();
+    const formerKey = 'synthetic-legacy-admin-key';
+    const admin = '90123456789';
+    for (final (enabled, admins, configured) in [
+      (true, admin, true),
+      (true, '', false),
+      (false, admin, false),
+    ]) {
+      final started = await compose(
+        recreate,
+        environment: {
+          'KANAME_ADMIN_KEY': formerKey,
+          'KANAME_ESI_SSO_CLIENT_ID': enabled ? 'synthetic-client-id' : '',
+          'KANAME_ESI_SSO_CLIENT_SECRET': 'synthetic-stack-secret',
+          'KANAME_ESI_SSO_REDIRECT_URI': '$stackOrigin/auth/esi/callback',
+          'KANAME_ESI_SSO_ALLOW_LOCAL_HTTP': 'true',
+          'KANAME_ESI_VAULT_KEY': base64Encode(List.filled(32, 81)),
+          'KANAME_ESI_SSO_ADMIN_CHARACTERS': admins,
+        },
+      );
+      expect(started.exitCode, 0);
+      await waitUntilReady();
+      final status = await http('POST', '/api/staticData/status', body: {});
+      expect(status.status, 200);
+      expect(
+        jsonDecode(status.body),
+        containsPair('adminConfigured', configured),
+      );
+      expect(status.body, isNot(contains(admin)));
+      expect(status.body, isNot(contains(formerKey)));
+      expect(status.body, isNot(contains('synthetic-stack-secret')));
     }
   }, timeout: _slow);
 
