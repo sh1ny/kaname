@@ -1,7 +1,9 @@
+esiCallLog:
+  - ownRows:
+  - routeCounts:
 health:
   - check:
 staticDataAdmin:
-  - checkKey:
   - updateNow:
   - rollBack:
   - setAutoUpdate:

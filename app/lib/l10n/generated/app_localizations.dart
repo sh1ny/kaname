@@ -946,73 +946,19 @@ abstract class AppLocalizations {
   /// **'Failed, see the server log'**
   String get sdReasonOther;
 
-  /// Label for the session-only administrator key field.
+  /// Static-data mutations require a current administrator session.
   ///
   /// In en, this message translates to:
-  /// **'Admin key'**
-  String get sdAdminKey;
+  /// **'Sign in with a server admin account.'**
+  String get sdAdminSignIn;
 
-  /// Submit the administrator key.
-  ///
-  /// In en, this message translates to:
-  /// **'Check key'**
-  String get sdAdminCheckKey;
-
-  /// Forget the current administrator key.
-  ///
-  /// In en, this message translates to:
-  /// **'Forget key'**
-  String get sdAdminForget;
-
-  /// Key verification is in progress.
-  ///
-  /// In en, this message translates to:
-  /// **'Checking key…'**
-  String get sdAdminChecking;
-
-  /// The key check did not answer.
-  ///
-  /// In en, this message translates to:
-  /// **'Could not check the key'**
-  String get sdAdminUnconfirmed;
-
-  /// Retry checking the held key.
-  ///
-  /// In en, this message translates to:
-  /// **'Try again'**
-  String get sdAdminRetryKey;
-
-  /// The server temporarily paused administrator calls.
-  ///
-  /// In en, this message translates to:
-  /// **'Too many attempts, try again in a minute'**
-  String get sdAdminPaused;
-
-  /// Check the held admin key after the pause.
-  ///
-  /// In en, this message translates to:
-  /// **'Check again'**
-  String get sdAdminCheckAgain;
-
-  /// The server rejected the key.
-  ///
-  /// In en, this message translates to:
-  /// **'Admin key rejected'**
-  String get sdAdminRejected;
-
-  /// The server accepted the key.
-  ///
-  /// In en, this message translates to:
-  /// **'Key accepted.'**
-  String get sdAdminAccepted;
-
-  /// The server has no administrator key configured.
+  /// No administrators are configured for static-data actions.
   ///
   /// In en, this message translates to:
   /// **'Admin actions are not configured on this server.'**
   String get sdAdminNotConfigured;
 
-  /// The connection cannot safely carry an administrator key.
+  /// The connection cannot safely carry an authenticated session.
   ///
   /// In en, this message translates to:
   /// **'Admin actions need a secure connection.'**
@@ -1587,6 +1533,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count} skills, {totalSp} skill points'**
   String esiSkillsResult(int count, int totalSp);
+
+  /// No description provided for @esiCallLogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'ESI call log'**
+  String get esiCallLogTitle;
+
+  /// No description provided for @esiCallLogOwn.
+  ///
+  /// In en, this message translates to:
+  /// **'My calls'**
+  String get esiCallLogOwn;
+
+  /// No description provided for @esiCallLogTotals.
+  ///
+  /// In en, this message translates to:
+  /// **'Server totals by route'**
+  String get esiCallLogTotals;
+
+  /// No description provided for @esiCallLogOlder.
+  ///
+  /// In en, this message translates to:
+  /// **'Older calls'**
+  String get esiCallLogOlder;
+
+  /// No description provided for @esiCallLogEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No calls in this view.'**
+  String get esiCallLogEmpty;
+
+  /// No description provided for @esiCallLogBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'The call log is busy. Try again.'**
+  String get esiCallLogBusy;
+
+  /// No description provided for @esiCallLogUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The call log is unavailable.'**
+  String get esiCallLogUnavailable;
+
+  /// No description provided for @esiCallLogReceipt.
+  ///
+  /// In en, this message translates to:
+  /// **'{time} · {outcome}'**
+  String esiCallLogReceipt(String time, String outcome);
+
+  /// No description provided for @esiCallLogRouteCounts.
+  ///
+  /// In en, this message translates to:
+  /// **'Calls: {total} · Errors: {errors}'**
+  String esiCallLogRouteCounts(int total, int errors);
 }
 
 class _AppLocalizationsDelegate

@@ -1,24 +1,23 @@
 import 'package:meta/meta.dart';
 import 'package:serverpod/serverpod.dart';
 
+import '../esi/server_sso.dart';
 import '../generated/protocol.dart';
 import '../realtime/server_clock.dart';
 import 'admin_admission.dart';
-import 'admin_gate.dart';
 import 'read_work_tokens.dart';
 import 'static_data_report_reader.dart';
 import 'static_data_runtime.dart';
-import 'static_data_start.dart';
 import 'static_data_start_hook.dart' show WithSession;
 import 'static_data_status_cache.dart';
 import 'static_data_status_reader.dart';
 
-/// Owns the main-isolate gate and pooled work for one Serverpod.
+/// Owns pooled work for one main-isolate Serverpod.
 final class StaticDataAccess {
-  /// Binds independent pooled sessions and the install gate to RPC work.
+  /// Binds independent pooled sessions to public and admin work.
   StaticDataAccess({
     required this.withSession,
-    required this.gate,
+    this.adminConfigured = false,
     this.clock = const SystemClock(),
     StaticDataRuntime? runtime,
   }) : runtime = runtime ?? staticDataRuntime,
@@ -26,14 +25,11 @@ final class StaticDataAccess {
 
   static final _byPod = Expando<StaticDataAccess>();
 
-  /// Gets the install's gate and shared work, independent of RPC sessions.
+  /// Gets the install's shared work, independent of RPC sessions.
   static StaticDataAccess forPod(Serverpod pod) =>
       _byPod[pod] ??= StaticDataAccess(
         withSession: pod.withSession,
-        gate: AdminGate(
-          key: pod.getPassword('adminKey'),
-          log: (level, message) => logStaticData(pod, level, message),
-        ),
+        adminConfigured: ServerSso.of(pod)?.sessions.adminConfigured ?? false,
       );
 
   /// Installs isolated test dependencies before sending any RPC to [pod].
@@ -45,8 +41,8 @@ final class StaticDataAccess {
   /// Opens an owner session that stays alive until the work cleans up.
   final WithSession withSession;
 
-  /// The shared install-wide key and wrong-key window.
-  final AdminGate gate;
+  /// Whether the operator configured a running SSO admin allowlist.
+  final bool adminConfigured;
 
   /// Supplies request and snapshot deadlines.
   final ServerClock clock;
@@ -80,7 +76,7 @@ final class StaticDataAccess {
       (session) => const StaticDataStatusReader().read(
         session,
         beforeStatement: beforeStatement,
-        adminConfigured: gate.configured,
+        adminConfigured: adminConfigured,
         workerStuck:
             (runtime.supervisor?.workerStuck ?? false) ||
             (runtime.settler?.workerStuck ?? false),

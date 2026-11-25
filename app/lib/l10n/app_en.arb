@@ -664,53 +664,17 @@
   "@sdReasonOther": {
     "description": "Public fallback for a failure whose details stay in the server log."
   },
-  "sdAdminKey": "Admin key",
-  "@sdAdminKey": {
-    "description": "Label for the session-only administrator key field."
-  },
-  "sdAdminCheckKey": "Check key",
-  "@sdAdminCheckKey": {
-    "description": "Submit the administrator key."
-  },
-  "sdAdminForget": "Forget key",
-  "@sdAdminForget": {
-    "description": "Forget the current administrator key."
-  },
-  "sdAdminChecking": "Checking key…",
-  "@sdAdminChecking": {
-    "description": "Key verification is in progress."
-  },
-  "sdAdminUnconfirmed": "Could not check the key",
-  "@sdAdminUnconfirmed": {
-    "description": "The key check did not answer."
-  },
-  "sdAdminRetryKey": "Try again",
-  "@sdAdminRetryKey": {
-    "description": "Retry checking the held key."
-  },
-  "sdAdminPaused": "Too many attempts, try again in a minute",
-  "@sdAdminPaused": {
-    "description": "The server temporarily paused administrator calls."
-  },
-  "sdAdminCheckAgain": "Check again",
-  "@sdAdminCheckAgain": {
-    "description": "Check the held admin key after the pause."
-  },
-  "sdAdminRejected": "Admin key rejected",
-  "@sdAdminRejected": {
-    "description": "The server rejected the key."
-  },
-  "sdAdminAccepted": "Key accepted.",
-  "@sdAdminAccepted": {
-    "description": "The server accepted the key."
+  "sdAdminSignIn": "Sign in with a server admin account.",
+  "@sdAdminSignIn": {
+    "description": "Static-data mutations require a current administrator session."
   },
   "sdAdminNotConfigured": "Admin actions are not configured on this server.",
   "@sdAdminNotConfigured": {
-    "description": "The server has no administrator key configured."
+    "description": "No administrators are configured for static-data actions."
   },
   "sdAdminSecureRequired": "Admin actions need a secure connection.",
   "@sdAdminSecureRequired": {
-    "description": "The connection cannot safely carry an administrator key."
+    "description": "The connection cannot safely carry an authenticated session."
   },
   "sdAdminUpdate": "Update now",
   "@sdAdminUpdate": {
@@ -1002,5 +966,16 @@
   "esiSignedOut": "Sign in again to continue.",
   "esiReauthorize": "Authorize skills access again before reading skills.",
   "esiSkillsResult": "{count} skills, {totalSp} skill points",
-  "@esiSkillsResult": {"placeholders": {"count": {"type": "int"}, "totalSp": {"type": "int"}}}
+  "@esiSkillsResult": {"placeholders": {"count": {"type": "int"}, "totalSp": {"type": "int"}}},
+  "esiCallLogTitle": "ESI call log",
+  "esiCallLogOwn": "My calls",
+  "esiCallLogTotals": "Server totals by route",
+  "esiCallLogOlder": "Older calls",
+  "esiCallLogEmpty": "No calls in this view.",
+  "esiCallLogBusy": "The call log is busy. Try again.",
+  "esiCallLogUnavailable": "The call log is unavailable.",
+  "esiCallLogReceipt": "{time} · {outcome}",
+  "@esiCallLogReceipt": {"placeholders": {"time": {"type": "String"}, "outcome": {"type": "String"}}},
+  "esiCallLogRouteCounts": "Calls: {total} · Errors: {errors}",
+  "@esiCallLogRouteCounts": {"placeholders": {"total": {"type": "int"}, "errors": {"type": "int"}}}
 }

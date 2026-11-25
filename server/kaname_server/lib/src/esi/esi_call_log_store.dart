@@ -171,6 +171,12 @@ final class EsiCallLogStore {
     }
   }
 
+  /// End of the fixed aggregate window currently available to readers.
+  DateTime get releasedWindow {
+    final releasedAt = _now().toUtc().subtract(_aggregateGrace);
+    return DateTime.utc(releasedAt.year, releasedAt.month, releasedAt.day);
+  }
+
   /// Returns route counts from one fixed window, to a trusted admin only.
   ///
   /// No subject or period filter is accepted. Unattributed private calls
@@ -178,12 +184,15 @@ final class EsiCallLogStore {
   Future<List<EsiCallLogRouteCount>> routeCounts(
     Session session,
     EsiCallLogViewer? viewer,
-  ) async {
+  ) async => (await routeCountsWithWindow(session, viewer)).rows;
+
+  /// Carries the exact window selected before the first database await.
+  Future<({DateTime window, List<EsiCallLogRouteCount> rows})>
+  routeCountsWithWindow(Session session, EsiCallLogViewer? viewer) async {
     if (viewer == null || viewer.member <= 0 || !viewer.admin) {
       throw const EsiCallLogDenied._();
     }
-    final releasedAt = _now().toUtc().subtract(_aggregateGrace);
-    final end = DateTime.utc(releasedAt.year, releasedAt.month, releasedAt.day);
+    final end = releasedWindow;
     final start = end.subtract(const Duration(days: 5));
     try {
       await session.db.transaction((tx) async {
@@ -235,7 +244,7 @@ final class EsiCallLogStore {
           ));
         }
       }
-      return counts;
+      return (window: end, rows: counts);
     } on Exception {
       throw const EsiCallLogUnavailable._();
     }

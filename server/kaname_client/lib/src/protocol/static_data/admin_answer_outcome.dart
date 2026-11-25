@@ -12,12 +12,9 @@
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'package:serverpod_client/serverpod_client.dart' as _isc;
 
-/// Public admin command outcomes; never contains the submitted key (D9).
+/// Public admin command outcomes (D9, ADR 0018).
 enum AdminAnswerOutcome implements _isc.SerializableModel {
-  keyAccepted,
-  notConfigured,
-  keyRejected,
-  tooManyAttempts,
+  notAuthorized,
   started,
   noAnswerYet,
   outcomeUnknown,
@@ -38,14 +35,8 @@ enum AdminAnswerOutcome implements _isc.SerializableModel {
 
   static AdminAnswerOutcome fromJson(String name) {
     switch (name) {
-      case 'keyAccepted':
-        return AdminAnswerOutcome.keyAccepted;
-      case 'notConfigured':
-        return AdminAnswerOutcome.notConfigured;
-      case 'keyRejected':
-        return AdminAnswerOutcome.keyRejected;
-      case 'tooManyAttempts':
-        return AdminAnswerOutcome.tooManyAttempts;
+      case 'notAuthorized':
+        return AdminAnswerOutcome.notAuthorized;
       case 'started':
         return AdminAnswerOutcome.started;
       case 'noAnswerYet':

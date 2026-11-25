@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:kaname_client/kaname_client.dart' as api;
 import 'package:kaname_core/kaname_core.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
-import 'package:kaname_server/src/static_data/admin_gate.dart';
 import 'package:kaname_server/src/static_data/postgres_static_data_store.dart';
 import 'package:kaname_server/src/static_data/static_data_access.dart';
 import 'package:kaname_server/src/static_data/static_data_lock.dart';
@@ -76,7 +75,6 @@ void main() {
     var ownedReads = 0;
     final access = StaticDataAccess(
       clock: clock,
-      gate: AdminGate(key: null, log: (_, _) {}),
       withSession: <T>(action) async {
         final first = ++ownedReads == 1;
         final result = await server.pod.withSession(action);

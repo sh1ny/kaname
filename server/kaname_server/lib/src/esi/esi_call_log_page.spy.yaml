@@ -1,0 +1,6 @@
+### One bounded page from the viewer's own history.
+class: EsiCallLogPage
+fields:
+  status: String
+  rows: List<EsiCallLogReceipt>
+  next: EsiCallLogCursor?

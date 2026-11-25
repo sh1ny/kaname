@@ -23,21 +23,8 @@ class StaticDataAdminControls extends ConsumerStatefulWidget {
 
 class _StaticDataAdminControlsState
     extends ConsumerState<StaticDataAdminControls> {
-  final _key = TextEditingController();
-
-  @override
-  void dispose() {
-    _key.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final key = _key.text;
-    _key.clear();
-    ref.read(adminSessionProvider.notifier).enterKey(key);
-  }
-
   Future<void> _confirmRollback(int active, int previous, int revision) async {
+    final authority = ref.read(adminSessionProvider).view.authority;
     final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
@@ -56,7 +43,10 @@ class _StaticDataAdminControlsState
         ],
       ),
     );
-    if (confirmed == true && mounted) {
+    if (confirmed == true &&
+        mounted &&
+        authority != null &&
+        ref.read(adminSessionProvider).view.authority == authority) {
       ref.read(adminSessionProvider.notifier).rollBack(revision);
     }
   }
@@ -99,158 +89,72 @@ class _StaticDataAdminControlsState
         children.add(Text(_answer(l10n, notice)));
       }
     }
-    if (view.configured == false) {
-      children.add(Text(l10n.sdAdminNotConfigured));
-    } else if (!view.secure) {
+    if (!view.secure) {
       children.add(Text(l10n.sdAdminSecureRequired));
-    } else if (view.configured == true) {
-      switch (state) {
-        case NoKey() || KeyRejected():
-          if (state is KeyRejected) children.add(Text(l10n.sdAdminRejected));
-          children.add(
-            TextField(
-              controller: _key,
-              decoration: InputDecoration(labelText: l10n.sdAdminKey),
-              obscureText: true,
-              enableSuggestions: false,
-              autocorrect: false,
-              autofillHints: null,
-              enableInteractiveSelection: false,
-              onSubmitted: (_) => _submit(),
+    } else if (view.configured == false) {
+      children.add(Text(l10n.sdAdminNotConfigured));
+    } else if (view.configured == true && state is! Admin) {
+      children.add(Text(l10n.sdAdminSignIn));
+    } else if (state is Admin) {
+      if (setting != null) {
+        children.add(
+          Material(
+            type: MaterialType.transparency,
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(l10n.sdAdminAutoUpdate),
+              value: setting.value,
+              onChanged: setting.saving || setting.notConfirmed
+                  ? null
+                  : controller.setAutoUpdate,
             ),
-          );
-          children.add(
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton(
-                onPressed: _submit,
-                child: Text(l10n.sdAdminCheckKey),
-              ),
-            ),
-          );
-        case CheckingKey():
-          children.add(Text(l10n.sdAdminChecking));
-          children.add(
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton(
-                onPressed: controller.forgetKey,
-                child: Text(l10n.sdAdminForget),
-              ),
-            ),
-          );
-        case KeyUnconfirmed():
-          children.add(Text(l10n.sdAdminUnconfirmed));
+          ),
+        );
+        if (setting.saving) children.add(Text(l10n.sdAdminSaving));
+        if (setting.notConfirmed) {
+          children.add(Text(l10n.sdAdminSettingUnconfirmed));
+        }
+        if (setting.notice case final notice?) {
+          children.add(Text(_answer(l10n, notice)));
+        }
+        if (setting.canRetry) {
           children.add(
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: TextButton(
-                onPressed: controller.retryKey,
-                child: Text(l10n.sdAdminRetryKey),
+                onPressed: controller.retryAutoUpdate,
+                child: Text(l10n.sdAdminRetrySetting),
               ),
             ),
           );
+        }
+      }
+      if (view.job == null && !view.serverBusy && status != null) {
+        children.add(
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton(
+              onPressed: controller.updateNow,
+              child: Text(l10n.sdAdminUpdate),
+            ),
+          ),
+        );
+        if (status case StaticDataStatus(
+          activeBuild: final active?,
+          previousBuild: final previous?,
+          :final buildRevision,
+        )) {
           children.add(
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: TextButton(
-                onPressed: controller.forgetKey,
-                child: Text(l10n.sdAdminForget),
+                onPressed: () =>
+                    _confirmRollback(active, previous, buildRevision),
+                child: Text(l10n.sdAdminRollback),
               ),
             ),
           );
-        case Paused(:final canCheckAgain):
-          children.add(Text(l10n.sdAdminPaused));
-          if (canCheckAgain) {
-            children.add(
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: TextButton(
-                  onPressed: controller.retryKey,
-                  child: Text(l10n.sdAdminCheckAgain),
-                ),
-              ),
-            );
-          }
-          children.add(
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton(
-                onPressed: controller.forgetKey,
-                child: Text(l10n.sdAdminForget),
-              ),
-            ),
-          );
-        case Admin():
-          children.add(
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton(
-                onPressed: controller.forgetKey,
-                child: Text(l10n.sdAdminForget),
-              ),
-            ),
-          );
-          if (setting != null) {
-            children.add(
-              Material(
-                type: MaterialType.transparency,
-                child: SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(l10n.sdAdminAutoUpdate),
-                  value: setting.value,
-                  onChanged: setting.saving || setting.notConfirmed
-                      ? null
-                      : controller.setAutoUpdate,
-                ),
-              ),
-            );
-            if (setting.saving) children.add(Text(l10n.sdAdminSaving));
-            if (setting.notConfirmed) {
-              children.add(Text(l10n.sdAdminSettingUnconfirmed));
-            }
-            if (setting.notice case final notice?) {
-              children.add(Text(_answer(l10n, notice)));
-            }
-            if (setting.canRetry) {
-              children.add(
-                Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: TextButton(
-                    onPressed: controller.retryAutoUpdate,
-                    child: Text(l10n.sdAdminRetrySetting),
-                  ),
-                ),
-              );
-            }
-          }
-          if (view.job == null && !view.serverBusy && status != null) {
-            children.add(
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: TextButton(
-                  onPressed: controller.updateNow,
-                  child: Text(l10n.sdAdminUpdate),
-                ),
-              ),
-            );
-            if (status case StaticDataStatus(
-              activeBuild: final active?,
-              previousBuild: final previous?,
-              :final buildRevision,
-            )) {
-              children.add(
-                Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: TextButton(
-                    onPressed: () =>
-                        _confirmRollback(active, previous, buildRevision),
-                    child: Text(l10n.sdAdminRollback),
-                  ),
-                ),
-              );
-            }
-          }
+        }
       }
     }
     return Column(
@@ -294,10 +198,7 @@ String _message(AppLocalizations l10n, AdminJobMessage message) {
 
 String _answer(AppLocalizations l10n, AdminAnswerOutcome outcome) =>
     switch (outcome) {
-      AdminAnswerOutcome.keyAccepted => l10n.sdAdminAccepted,
-      AdminAnswerOutcome.notConfigured => l10n.sdAdminNotConfigured,
-      AdminAnswerOutcome.keyRejected => l10n.sdAdminRejected,
-      AdminAnswerOutcome.tooManyAttempts => l10n.sdAdminPaused,
+      AdminAnswerOutcome.notAuthorized => l10n.sdAdminSignIn,
       AdminAnswerOutcome.started => l10n.sdAdminStarted,
       AdminAnswerOutcome.noAnswerYet => l10n.sdAdminWatching,
       AdminAnswerOutcome.outcomeUnknown => l10n.sdAdminOutcomeUnknownWatching,

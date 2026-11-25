@@ -3,7 +3,6 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -13,40 +12,6 @@ import 'package:kaname_app/static_data/data/rpc_call.dart';
 import 'package:kaname_client/kaname_client.dart';
 
 void main() {
-  test('admin calls end at 45 s with no answer yet', () async {
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    addTearDown(() => server.close(force: true));
-    final accepted = Completer<Socket>();
-    final ended = Completer<void>();
-    final requests = server.listen((request) async {
-      await request.drain<void>();
-      final socket = await request.response.detachSocket(writeHeaders: false);
-      socket.listen(
-        (_) {},
-        onDone: ended.complete,
-        onError: (Object _) => ended.complete(),
-        cancelOnError: true,
-      );
-      accepted.complete(socket);
-    });
-    addTearDown(requests.cancel);
-    final client = ClientStaticDataAdmin(
-      Uri.parse('http://127.0.0.1:${server.port}/'),
-    );
-    addTearDown(client.close);
-
-    final clock = Stopwatch()..start();
-    final call = client.checkKey('test-key');
-    final socket = await accepted.future.timeout(const Duration(seconds: 5));
-    addTearDown(socket.destroy);
-    expect(await call.answer, isA<RpcUnanswered<AdminAnswer>>());
-    expect(await call.settled, isA<RpcUnanswered<AdminAnswer>>());
-    expect(clock.elapsed, greaterThanOrEqualTo(const Duration(seconds: 45)));
-    expect(clock.elapsed, lessThan(const Duration(seconds: 52)));
-    await Future<void>.delayed(const Duration(milliseconds: 250));
-    expect(ended.isCompleted, isFalse);
-  }, timeout: const Timeout(Duration(seconds: 65)));
-
   test('short action deadlines retain the generated call settlement', () async {
     final responses = <Completer<http.Response>>[];
     final requests = <http.Request>[];
@@ -137,6 +102,11 @@ void main() {
       expect(body['writeId'], 'write-id');
       expect(body['value'], isTrue);
       expect(body['expectedRevision'], containsPair('id', 17));
+      expect(requests.single.headers['authorization'], 'Bearer key');
+      expect(
+        body.keys,
+        unorderedEquals(['value', 'expectedRevision', 'writeId']),
+      );
       final operation =
           await client.operation('operation-id').answer
               as RpcAnswered<AdminOperationAnswer>;
@@ -144,7 +114,7 @@ void main() {
       final operationBody =
           jsonDecode(requests.last.body) as Map<String, dynamic>;
       expect(operationBody['operationId'], 'operation-id');
-      expect(operationBody.containsKey('adminKey'), isFalse);
+      expect(requests.last.headers['authorization'], isNull);
     },
   );
 
@@ -159,10 +129,6 @@ void main() {
       httpClientOverride: transport,
     );
     addTearDown(client.close);
-    expect(
-      await client.checkKey('key').answer,
-      isA<RpcUnanswered<AdminAnswer>>(),
-    );
     expect(
       await client.updateNow('key', 'id').answer,
       isA<RpcUnanswered<AdminAnswer>>(),

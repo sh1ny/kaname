@@ -477,34 +477,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sdReasonOther => 'Failed, see the server log';
 
   @override
-  String get sdAdminKey => 'Admin key';
-
-  @override
-  String get sdAdminCheckKey => 'Check key';
-
-  @override
-  String get sdAdminForget => 'Forget key';
-
-  @override
-  String get sdAdminChecking => 'Checking key…';
-
-  @override
-  String get sdAdminUnconfirmed => 'Could not check the key';
-
-  @override
-  String get sdAdminRetryKey => 'Try again';
-
-  @override
-  String get sdAdminPaused => 'Too many attempts, try again in a minute';
-
-  @override
-  String get sdAdminCheckAgain => 'Check again';
-
-  @override
-  String get sdAdminRejected => 'Admin key rejected';
-
-  @override
-  String get sdAdminAccepted => 'Key accepted.';
+  String get sdAdminSignIn => 'Sign in with a server admin account.';
 
   @override
   String get sdAdminNotConfigured =>
@@ -815,5 +788,36 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String esiSkillsResult(int count, int totalSp) {
     return '$count skills, $totalSp skill points';
+  }
+
+  @override
+  String get esiCallLogTitle => 'ESI call log';
+
+  @override
+  String get esiCallLogOwn => 'My calls';
+
+  @override
+  String get esiCallLogTotals => 'Server totals by route';
+
+  @override
+  String get esiCallLogOlder => 'Older calls';
+
+  @override
+  String get esiCallLogEmpty => 'No calls in this view.';
+
+  @override
+  String get esiCallLogBusy => 'The call log is busy. Try again.';
+
+  @override
+  String get esiCallLogUnavailable => 'The call log is unavailable.';
+
+  @override
+  String esiCallLogReceipt(String time, String outcome) {
+    return '$time · $outcome';
+  }
+
+  @override
+  String esiCallLogRouteCounts(int total, int errors) {
+    return 'Calls: $total · Errors: $errors';
   }
 }

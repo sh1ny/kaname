@@ -44,7 +44,7 @@ final class AdminSettingView {
   final AdminAnswerOutcome? notice;
 }
 
-/// Tracks one auto-update write independently of the admin key session.
+/// Tracks one auto-update write independently of the admin session.
 final class AdminSettingTracker {
   /// Creates a tracker with callbacks for changes and authentication refusals.
   AdminSettingTracker({
@@ -101,7 +101,7 @@ final class AdminSettingTracker {
   /// Starts a fresh write using the greatest known committed revision.
   void write(
     bool value, {
-    required int keySession,
+    required int authorityEpoch,
     required SendAutoUpdate send,
   }) {
     final revision = _revision;
@@ -109,11 +109,11 @@ final class AdminSettingTracker {
     final pending = _SettingWrite(value, revision.copyWith(), _newId());
     _pending = pending;
     _notice = null;
-    _send(pending, keySession, send, retry: false);
+    _send(pending, authorityEpoch, send, retry: false);
   }
 
   /// Resends the uncertain write without changing its identity or revision.
-  void retry({required int keySession, required SendAutoUpdate send}) {
+  void retry({required int authorityEpoch, required SendAutoUpdate send}) {
     final pending = _pending;
     if (_disposed ||
         pending == null ||
@@ -122,12 +122,12 @@ final class AdminSettingTracker {
       return;
     }
     _notice = null;
-    _send(pending, keySession, send, retry: true);
+    _send(pending, authorityEpoch, send, retry: true);
   }
 
   void _send(
     _SettingWrite pending,
-    int keySession,
+    int authorityEpoch,
     SendAutoUpdate send, {
     required bool retry,
   }) {
@@ -141,7 +141,7 @@ final class AdminSettingTracker {
       if (_disposed || definitive) return;
       if (result is RpcAnswered<AdminAnswer>) {
         definitive = true;
-        _answer(pending, result.value, keySession, retry);
+        _answer(pending, result.value, authorityEpoch, retry);
       } else if (identical(_pending, pending)) {
         pending.saving = false;
         pending.uncertain = true;
@@ -153,7 +153,7 @@ final class AdminSettingTracker {
       pending.inFlight = false;
       if (!definitive && result is RpcAnswered<AdminAnswer>) {
         definitive = true;
-        _answer(pending, result.value, keySession, retry);
+        _answer(pending, result.value, authorityEpoch, retry);
       } else if (identical(_pending, pending)) {
         _onChanged();
       }
@@ -163,7 +163,7 @@ final class AdminSettingTracker {
   void _answer(
     _SettingWrite pending,
     AdminAnswer answer,
-    int keySession,
+    int authorityEpoch,
     bool retry,
   ) {
     final outcome = answer.outcome;
@@ -196,10 +196,8 @@ final class AdminSettingTracker {
       } else {
         _pending = null;
       }
-      if (outcome == AdminAnswerOutcome.keyRejected ||
-          outcome == AdminAnswerOutcome.tooManyAttempts ||
-          outcome == AdminAnswerOutcome.notConfigured) {
-        _onRefusal(answer, keySession);
+      if (outcome == AdminAnswerOutcome.notAuthorized) {
+        _onRefusal(answer, authorityEpoch);
         if (_disposed) return;
       }
     }

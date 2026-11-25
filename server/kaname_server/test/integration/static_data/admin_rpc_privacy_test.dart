@@ -5,13 +5,12 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/health/health_endpoint.dart';
-import 'package:kaname_server/src/static_data/admin_gate.dart';
 import 'package:kaname_server/src/static_data/static_data_access.dart';
-import 'package:kaname_server/src/static_data/static_data_start.dart';
 import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
 
 import '../support/in_process_pod.dart';
+import '../support/static_data_test_auth.dart';
 
 void main() {
   test('A2/A4: failed HTTP calls do not echo call parameters', () async {
@@ -93,17 +92,17 @@ WHERE s.endpoint = 'health' AND s.method = 'check'
   });
 
   test(
-    'real admin HTTP answers, logs and setting records contain no key',
+    'admin HTTP authorizes only the bearer and does not log either credential',
     () async {
-      const accepted = 'sentinel-accepted-admin-key-0123456789123456789';
-      const rejected = 'sentinel-rejected-admin-key-9876543219876543210';
-      const malformed = 'sentinel-malformed-key-argument-12345678901234';
+      const former = 'synthetic-legacy-static-data-key';
+      const rejected = 'synthetic-rejected-static-data-session';
       final console = <String>[];
       final capture = _ConsoleCapture(console);
       await IOOverrides.runZoned(
         () => runZoned(
           () async {
             final server = await InProcessPod.start(
+              authenticationHandler: staticDataTestAuthentication,
               configOverride: (config) => config.copyWith(
                 sessionLogs: config.sessionLogs.copyWith(
                   persistentEnabled: true,
@@ -124,38 +123,48 @@ WHERE s.endpoint = 'health' AND s.method = 'check'
             StaticDataAccess.installForTest(
               server.pod,
               StaticDataAccess(
-                gate: AdminGate(
-                  key: accepted,
-                  log: (level, message) =>
-                      logStaticData(server.pod, level, message),
-                ),
+                adminConfigured: true,
                 withSession: server.pod.withSession,
               ),
             );
             Future<http.Response> post(
               String method,
-              Map<String, Object?> body,
-            ) => http.post(
+              Map<String, Object?> body, {
+              String? bearer,
+            }) => http.post(
               Uri.parse('${server.baseUrl}staticDataAdmin/$method'),
-              headers: {'content-type': 'application/json'},
+              headers: {
+                'content-type': 'application/json',
+                if (bearer != null) 'authorization': 'Bearer $bearer',
+              },
               body: jsonEncode(body),
             );
 
-            final saved = await post('setAutoUpdate', {
-              'adminKey': accepted,
+            final fields = {
               'value': false,
               'expectedRevision': NoWrites().toJson(),
               'writeId': '302b1b0d-fcb7-4ae8-8bd4-add5e94e5332',
+            };
+            final legacy = await post('setAutoUpdate', {
+              ...fields,
+              'adminKey': former,
             });
+            expect(legacy.body, contains('notAuthorized'));
+            final refused = await post(
+              'setAutoUpdate',
+              fields,
+              bearer: rejected,
+            );
+            expect(refused.body, contains('notAuthorized'));
+            final removed = await post('checkKey', {'adminKey': former});
+            expect(removed.statusCode, HttpStatus.badRequest);
+            final saved = await post(
+              'setAutoUpdate',
+              fields,
+              bearer: staticDataTestBearer,
+            );
             expect(saved.statusCode, HttpStatus.ok);
             expect(saved.body, contains('settingConfirmed'));
-            final refused = await post('checkKey', {'adminKey': rejected});
-            expect(refused.statusCode, HttpStatus.ok);
-            expect(refused.body, contains('keyRejected'));
-            final invalid = await post('checkKey', {
-              'adminKey': {'key': malformed},
-            });
-            expect(invalid.statusCode, HttpStatus.badRequest);
 
             final persisted = await server.pod.withSession((session) async {
               expect(
@@ -173,15 +182,15 @@ WHERE s.endpoint = 'health' AND s.method = 'check'
             });
             expect(persisted, contains('setAutoUpdate'));
             final printed = console.join('\n');
-            expect(printed, contains('admin key rejected'));
             for (final surface in [
               saved.body,
               refused.body,
-              invalid.body,
+              removed.body,
+              legacy.body,
               printed,
               persisted,
             ]) {
-              for (final key in [accepted, rejected, malformed]) {
+              for (final key in [staticDataTestBearer, rejected, former]) {
                 expect(surface, isNot(contains(key)));
               }
             }

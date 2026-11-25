@@ -15,7 +15,12 @@ import 'package:kaname_core/kaname_core.dart' as _idp9h2tz;
 import 'package:serverpod/protocol.dart' as _isp;
 import 'package:serverpod/serverpod.dart' as _is;
 
+import 'esi/esi_call_log_cursor.dart' as _iqs4md3s;
 import 'esi/esi_call_log_entry.dart' as _ifsmg7bk;
+import 'esi/esi_call_log_item.dart' as _iuknwcy9;
+import 'esi/esi_call_log_page.dart' as _iiojdgzp;
+import 'esi/esi_route_count_item.dart' as _iy73o4xt;
+import 'esi/esi_route_count_page.dart' as _ikoz4zoy;
 import 'esi/esi_token_vault_row.dart' as _iynhzf32;
 import 'esi/sso_holder_row.dart' as _idzz7lja;
 import 'esi/sso_identity_row.dart' as _i5h09tn7;
@@ -25,7 +30,6 @@ import 'health/dependency_status.dart' as _iztepymd;
 import 'health/health_report.dart' as _if75m2mz;
 import 'static_data/admin_answer.dart' as _iyccfpu2;
 import 'static_data/admin_answer_outcome.dart' as _i6gkafob;
-import 'static_data/admin_key_result.dart' as _iu1ol9jl;
 import 'static_data/admin_operation_answer.dart' as _i7odid2e;
 import 'static_data/admin_operation_read_state.dart' as _ibihcb51;
 import 'static_data/admin_operation_view.dart' as _iduf9i0n;
@@ -80,7 +84,12 @@ import 'static_data/tables/sde_region.dart' as _ioiqjh1t;
 import 'static_data/tables/sde_solar_system.dart' as _iataywh8;
 import 'static_data/tables/sde_type.dart' as _i19vm38w;
 import 'static_data/tables/sde_type_dogma.dart' as _ib14m8bx;
+export 'esi/esi_call_log_cursor.dart';
 export 'esi/esi_call_log_entry.dart';
+export 'esi/esi_call_log_item.dart';
+export 'esi/esi_call_log_page.dart';
+export 'esi/esi_route_count_item.dart';
+export 'esi/esi_route_count_page.dart';
 export 'esi/esi_token_vault_row.dart';
 export 'esi/sso_holder_row.dart';
 export 'esi/sso_identity_row.dart';
@@ -90,7 +99,6 @@ export 'health/dependency_status.dart';
 export 'health/health_report.dart';
 export 'static_data/admin_answer.dart';
 export 'static_data/admin_answer_outcome.dart';
-export 'static_data/admin_key_result.dart';
 export 'static_data/admin_operation_answer.dart';
 export 'static_data/admin_operation_read_state.dart';
 export 'static_data/admin_operation_view.dart';
@@ -159,7 +167,12 @@ class Protocol extends _is.DatabaseSerializationManager
       _is.ProtocolDeserialization.cached(
         this,
         types: const [
+          _is.getType<_iqs4md3s.EsiCallLogCursor>,
           _is.getType<_ifsmg7bk.EsiCallLogRow>,
+          _is.getType<_iuknwcy9.EsiCallLogReceipt>,
+          _is.getType<_iiojdgzp.EsiCallLogPage>,
+          _is.getType<_iy73o4xt.EsiRouteCount>,
+          _is.getType<_ikoz4zoy.EsiRouteCountPage>,
           _is.getType<_iynhzf32.EsiTokenVaultRow>,
           _is.getType<_idzz7lja.SsoHolderRow>,
           _is.getType<_i5h09tn7.SsoIdentityRow>,
@@ -169,7 +182,6 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_if75m2mz.HealthReport>,
           _is.getType<_iyccfpu2.AdminAnswer>,
           _is.getType<_i6gkafob.AdminAnswerOutcome>,
-          _is.getType<_iu1ol9jl.AdminKeyResult>,
           _is.getType<_i7odid2e.AdminOperationAnswer>,
           _is.getType<_ibihcb51.AdminOperationReadState>,
           _is.getType<_iduf9i0n.AdminOperationView>,
@@ -226,7 +238,12 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_iataywh8.SdeSolarSystem>,
           _is.getType<_i19vm38w.SdeType>,
           _is.getType<_ib14m8bx.SdeTypeDogma>,
+          _is.getType<_iqs4md3s.EsiCallLogCursor?>,
           _is.getType<_ifsmg7bk.EsiCallLogRow?>,
+          _is.getType<_iuknwcy9.EsiCallLogReceipt?>,
+          _is.getType<_iiojdgzp.EsiCallLogPage?>,
+          _is.getType<_iy73o4xt.EsiRouteCount?>,
+          _is.getType<_ikoz4zoy.EsiRouteCountPage?>,
           _is.getType<_iynhzf32.EsiTokenVaultRow?>,
           _is.getType<_idzz7lja.SsoHolderRow?>,
           _is.getType<_i5h09tn7.SsoIdentityRow?>,
@@ -236,7 +253,6 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_if75m2mz.HealthReport?>,
           _is.getType<_iyccfpu2.AdminAnswer?>,
           _is.getType<_i6gkafob.AdminAnswerOutcome?>,
-          _is.getType<_iu1ol9jl.AdminKeyResult?>,
           _is.getType<_i7odid2e.AdminOperationAnswer?>,
           _is.getType<_ibihcb51.AdminOperationReadState?>,
           _is.getType<_iduf9i0n.AdminOperationView?>,
@@ -293,6 +309,8 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_iataywh8.SdeSolarSystem?>,
           _is.getType<_i19vm38w.SdeType?>,
           _is.getType<_ib14m8bx.SdeTypeDogma?>,
+          _is.getType<List<_iuknwcy9.EsiCallLogReceipt>>,
+          _is.getType<List<_iy73o4xt.EsiRouteCount>>,
           _is.getType<List<String>>,
           _is.getType<List<String>?>,
           _is.getType<_idp9h2tz.SdeJson?>,
@@ -306,7 +324,12 @@ class Protocol extends _is.DatabaseSerializationManager
         modules: const [_isp.Protocol.new],
         classNames: const [
           'SdeJson',
+          'EsiCallLogCursor',
           'EsiCallLogRow',
+          'EsiCallLogReceipt',
+          'EsiCallLogPage',
+          'EsiRouteCount',
+          'EsiRouteCountPage',
           'EsiTokenVaultRow',
           'SsoHolderRow',
           'SsoIdentityRow',
@@ -316,7 +339,6 @@ class Protocol extends _is.DatabaseSerializationManager
           'HealthReport',
           'AdminAnswer',
           'AdminAnswerOutcome',
-          'AdminKeyResult',
           'AdminOperationAnswer',
           'AdminOperationReadState',
           'AdminOperationView',
@@ -2657,8 +2679,23 @@ class Protocol extends _is.DatabaseSerializationManager
       }
     }
 
+    if (t == _iqs4md3s.EsiCallLogCursor) {
+      return _iqs4md3s.EsiCallLogCursor.fromJson(data) as T;
+    }
     if (t == _ifsmg7bk.EsiCallLogRow) {
       return _ifsmg7bk.EsiCallLogRow.fromJson(data) as T;
+    }
+    if (t == _iuknwcy9.EsiCallLogReceipt) {
+      return _iuknwcy9.EsiCallLogReceipt.fromJson(data) as T;
+    }
+    if (t == _iiojdgzp.EsiCallLogPage) {
+      return _iiojdgzp.EsiCallLogPage.fromJson(data) as T;
+    }
+    if (t == _iy73o4xt.EsiRouteCount) {
+      return _iy73o4xt.EsiRouteCount.fromJson(data) as T;
+    }
+    if (t == _ikoz4zoy.EsiRouteCountPage) {
+      return _ikoz4zoy.EsiRouteCountPage.fromJson(data) as T;
     }
     if (t == _iynhzf32.EsiTokenVaultRow) {
       return _iynhzf32.EsiTokenVaultRow.fromJson(data) as T;
@@ -2686,9 +2723,6 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (t == _i6gkafob.AdminAnswerOutcome) {
       return _i6gkafob.AdminAnswerOutcome.fromJson(data) as T;
-    }
-    if (t == _iu1ol9jl.AdminKeyResult) {
-      return _iu1ol9jl.AdminKeyResult.fromJson(data) as T;
     }
     if (t == _i7odid2e.AdminOperationAnswer) {
       return _i7odid2e.AdminOperationAnswer.fromJson(data) as T;
@@ -2858,8 +2892,28 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _ib14m8bx.SdeTypeDogma) {
       return _ib14m8bx.SdeTypeDogma.fromJson(data) as T;
     }
+    if (t == _is.getType<_iqs4md3s.EsiCallLogCursor?>()) {
+      return (data != null ? _iqs4md3s.EsiCallLogCursor.fromJson(data) : null)
+          as T;
+    }
     if (t == _is.getType<_ifsmg7bk.EsiCallLogRow?>()) {
       return (data != null ? _ifsmg7bk.EsiCallLogRow.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_iuknwcy9.EsiCallLogReceipt?>()) {
+      return (data != null ? _iuknwcy9.EsiCallLogReceipt.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_iiojdgzp.EsiCallLogPage?>()) {
+      return (data != null ? _iiojdgzp.EsiCallLogPage.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_iy73o4xt.EsiRouteCount?>()) {
+      return (data != null ? _iy73o4xt.EsiRouteCount.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_ikoz4zoy.EsiRouteCountPage?>()) {
+      return (data != null ? _ikoz4zoy.EsiRouteCountPage.fromJson(data) : null)
           as T;
     }
     if (t == _is.getType<_iynhzf32.EsiTokenVaultRow?>()) {
@@ -2892,10 +2946,6 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (t == _is.getType<_i6gkafob.AdminAnswerOutcome?>()) {
       return (data != null ? _i6gkafob.AdminAnswerOutcome.fromJson(data) : null)
-          as T;
-    }
-    if (t == _is.getType<_iu1ol9jl.AdminKeyResult?>()) {
-      return (data != null ? _iu1ol9jl.AdminKeyResult.fromJson(data) : null)
           as T;
     }
     if (t == _is.getType<_i7odid2e.AdminOperationAnswer?>()) {
@@ -3146,6 +3196,18 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _is.getType<_ib14m8bx.SdeTypeDogma?>()) {
       return (data != null ? _ib14m8bx.SdeTypeDogma.fromJson(data) : null) as T;
     }
+    if (t == List<_iuknwcy9.EsiCallLogReceipt>) {
+      return (data as List)
+              .map((e) => deserialize<_iuknwcy9.EsiCallLogReceipt>(e))
+              .toList()
+          as T;
+    }
+    if (t == List<_iy73o4xt.EsiRouteCount>) {
+      return (data as List)
+              .map((e) => deserialize<_iy73o4xt.EsiRouteCount>(e))
+              .toList()
+          as T;
+    }
     if (t == List<String>) {
       return (data as List).map((e) => deserialize<String>(e)).toList() as T;
     }
@@ -3208,7 +3270,12 @@ class Protocol extends _is.DatabaseSerializationManager
   static String? getClassNameForType(Type type) {
     return switch (type) {
       _idp9h2tz.SdeJson => 'SdeJson',
+      _iqs4md3s.EsiCallLogCursor => 'EsiCallLogCursor',
       _ifsmg7bk.EsiCallLogRow => 'EsiCallLogRow',
+      _iuknwcy9.EsiCallLogReceipt => 'EsiCallLogReceipt',
+      _iiojdgzp.EsiCallLogPage => 'EsiCallLogPage',
+      _iy73o4xt.EsiRouteCount => 'EsiRouteCount',
+      _ikoz4zoy.EsiRouteCountPage => 'EsiRouteCountPage',
       _iynhzf32.EsiTokenVaultRow => 'EsiTokenVaultRow',
       _idzz7lja.SsoHolderRow => 'SsoHolderRow',
       _i5h09tn7.SsoIdentityRow => 'SsoIdentityRow',
@@ -3218,7 +3285,6 @@ class Protocol extends _is.DatabaseSerializationManager
       _if75m2mz.HealthReport => 'HealthReport',
       _iyccfpu2.AdminAnswer => 'AdminAnswer',
       _i6gkafob.AdminAnswerOutcome => 'AdminAnswerOutcome',
-      _iu1ol9jl.AdminKeyResult => 'AdminKeyResult',
       _i7odid2e.AdminOperationAnswer => 'AdminOperationAnswer',
       _ibihcb51.AdminOperationReadState => 'AdminOperationReadState',
       _iduf9i0n.AdminOperationView => 'AdminOperationView',
@@ -3291,8 +3357,18 @@ class Protocol extends _is.DatabaseSerializationManager
     switch (data) {
       case _idp9h2tz.SdeJson():
         return 'SdeJson';
+      case _iqs4md3s.EsiCallLogCursor():
+        return 'EsiCallLogCursor';
       case _ifsmg7bk.EsiCallLogRow():
         return 'EsiCallLogRow';
+      case _iuknwcy9.EsiCallLogReceipt():
+        return 'EsiCallLogReceipt';
+      case _iiojdgzp.EsiCallLogPage():
+        return 'EsiCallLogPage';
+      case _iy73o4xt.EsiRouteCount():
+        return 'EsiRouteCount';
+      case _ikoz4zoy.EsiRouteCountPage():
+        return 'EsiRouteCountPage';
       case _iynhzf32.EsiTokenVaultRow():
         return 'EsiTokenVaultRow';
       case _idzz7lja.SsoHolderRow():
@@ -3311,8 +3387,6 @@ class Protocol extends _is.DatabaseSerializationManager
         return 'AdminAnswer';
       case _i6gkafob.AdminAnswerOutcome():
         return 'AdminAnswerOutcome';
-      case _iu1ol9jl.AdminKeyResult():
-        return 'AdminKeyResult';
       case _i7odid2e.AdminOperationAnswer():
         return 'AdminOperationAnswer';
       case _ibihcb51.AdminOperationReadState():
@@ -3442,8 +3516,23 @@ class Protocol extends _is.DatabaseSerializationManager
     if (dataClassName == 'SdeJson') {
       return deserialize<_idp9h2tz.SdeJson>(data['data']);
     }
+    if (dataClassName == 'EsiCallLogCursor') {
+      return deserialize<_iqs4md3s.EsiCallLogCursor>(data['data']);
+    }
     if (dataClassName == 'EsiCallLogRow') {
       return deserialize<_ifsmg7bk.EsiCallLogRow>(data['data']);
+    }
+    if (dataClassName == 'EsiCallLogReceipt') {
+      return deserialize<_iuknwcy9.EsiCallLogReceipt>(data['data']);
+    }
+    if (dataClassName == 'EsiCallLogPage') {
+      return deserialize<_iiojdgzp.EsiCallLogPage>(data['data']);
+    }
+    if (dataClassName == 'EsiRouteCount') {
+      return deserialize<_iy73o4xt.EsiRouteCount>(data['data']);
+    }
+    if (dataClassName == 'EsiRouteCountPage') {
+      return deserialize<_ikoz4zoy.EsiRouteCountPage>(data['data']);
     }
     if (dataClassName == 'EsiTokenVaultRow') {
       return deserialize<_iynhzf32.EsiTokenVaultRow>(data['data']);
@@ -3471,9 +3560,6 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (dataClassName == 'AdminAnswerOutcome') {
       return deserialize<_i6gkafob.AdminAnswerOutcome>(data['data']);
-    }
-    if (dataClassName == 'AdminKeyResult') {
-      return deserialize<_iu1ol9jl.AdminKeyResult>(data['data']);
     }
     if (dataClassName == 'AdminOperationAnswer') {
       return deserialize<_i7odid2e.AdminOperationAnswer>(data['data']);

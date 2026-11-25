@@ -62,6 +62,9 @@ final class SsoSessions {
 
   final DateTime Function() _now;
   final Set<int> _admins;
+
+  /// Whether this install can grant admin scope to a verified character.
+  bool get adminConfigured => _admins.isNotEmpty;
   static final _bearerShape = RegExp(r'^[A-Za-z0-9_-]{43}$');
 
   /// Authenticates a Serverpod bearer and derives scope from the live identity.

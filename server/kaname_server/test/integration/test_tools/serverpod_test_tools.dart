@@ -14,6 +14,12 @@
 import 'dart:async' as _ida;
 import 'dart:io' as _idi;
 
+import 'package:kaname_server/src/generated/esi/esi_call_log_cursor.dart'
+    as _izoszn5i;
+import 'package:kaname_server/src/generated/esi/esi_call_log_page.dart'
+    as _iyla48b1;
+import 'package:kaname_server/src/generated/esi/esi_route_count_page.dart'
+    as _ikp5wj4n;
 import 'package:kaname_server/src/generated/future_calls.dart' as _ibdqg5o2;
 import 'package:kaname_server/src/generated/health/health_report.dart'
     as _iaouzw49;
@@ -164,6 +170,8 @@ void withServerpod(
 class TestEndpoints {
   late final futureCalls = _FutureCalls();
 
+  late final _EsiCallLogEndpoint esiCallLog;
+
   late final _HealthEndpoint health;
 
   late final _StaticDataAdminEndpoint staticDataAdmin;
@@ -178,6 +186,7 @@ class _InternalTestEndpoints extends TestEndpoints
     _is.SerializationManager serializationManager,
     _is.EndpointDispatch endpoints,
   ) {
+    esiCallLog = _EsiCallLogEndpoint(endpoints, serializationManager);
     health = _HealthEndpoint(endpoints, serializationManager);
     staticDataAdmin = _StaticDataAdminEndpoint(endpoints, serializationManager);
     staticData = _StaticDataEndpoint(endpoints, serializationManager);
@@ -190,6 +199,71 @@ class _FutureCalls {
   late final ssoSessionPruneCall = _SsoSessionPruneCallFutureCall();
 
   late final staticDataCheckCall = _StaticDataCheckCallFutureCall();
+}
+
+class _EsiCallLogEndpoint {
+  _EsiCallLogEndpoint(this._endpointDispatch, this._serializationManager);
+
+  final _is.EndpointDispatch _endpointDispatch;
+
+  final _is.SerializationManager _serializationManager;
+
+  _ida.Future<_iyla48b1.EsiCallLogPage> ownRows(
+    _ist.TestSessionBuilder sessionBuilder,
+    _izoszn5i.EsiCallLogCursor? after,
+  ) async {
+    return _ist.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'esiCallLog',
+            method: 'ownRows',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'esiCallLog',
+          methodName: 'ownRows',
+          parameters: _ist.testObjectToJson({'after': after}),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue = await (_localCallContext.method.call(
+          _localUniqueSession,
+          _localCallContext.arguments,
+        ) as _ida.Future<_iyla48b1.EsiCallLogPage>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
+
+  _ida.Future<_ikp5wj4n.EsiRouteCountPage> routeCounts(
+    _ist.TestSessionBuilder sessionBuilder,
+  ) async {
+    return _ist.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'esiCallLog',
+            method: 'routeCounts',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'esiCallLog',
+          methodName: 'routeCounts',
+          parameters: _ist.testObjectToJson({}),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue = await (_localCallContext.method.call(
+          _localUniqueSession,
+          _localCallContext.arguments,
+        ) as _ida.Future<_ikp5wj4n.EsiRouteCountPage>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
 }
 
 class _HealthEndpoint {
@@ -235,38 +309,8 @@ class _StaticDataAdminEndpoint {
 
   final _is.SerializationManager _serializationManager;
 
-  _ida.Future<_izz9ft7x.AdminAnswer> checkKey(
-    _ist.TestSessionBuilder sessionBuilder,
-    String adminKey,
-  ) async {
-    return _ist.callAwaitableFunctionAndHandleExceptions(() async {
-      var _localUniqueSession =
-          (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild(
-            endpoint: 'staticDataAdmin',
-            method: 'checkKey',
-          );
-      try {
-        var _localCallContext = await _endpointDispatch.getMethodCallContext(
-          createSessionCallback: (_) => _localUniqueSession,
-          endpointPath: 'staticDataAdmin',
-          methodName: 'checkKey',
-          parameters: _ist.testObjectToJson({'adminKey': adminKey}),
-          serializationManager: _serializationManager,
-        );
-        var _localReturnValue = await (_localCallContext.method.call(
-          _localUniqueSession,
-          _localCallContext.arguments,
-        ) as _ida.Future<_izz9ft7x.AdminAnswer>);
-        return _localReturnValue;
-      } finally {
-        await _localUniqueSession.close();
-      }
-    });
-  }
-
   _ida.Future<_izz9ft7x.AdminAnswer> updateNow(
     _ist.TestSessionBuilder sessionBuilder,
-    String adminKey,
     String operationId,
   ) async {
     return _ist.callAwaitableFunctionAndHandleExceptions(() async {
@@ -280,10 +324,7 @@ class _StaticDataAdminEndpoint {
           createSessionCallback: (_) => _localUniqueSession,
           endpointPath: 'staticDataAdmin',
           methodName: 'updateNow',
-          parameters: _ist.testObjectToJson({
-            'adminKey': adminKey,
-            'operationId': operationId,
-          }),
+          parameters: _ist.testObjectToJson({'operationId': operationId}),
           serializationManager: _serializationManager,
         );
         var _localReturnValue = await (_localCallContext.method.call(
@@ -299,7 +340,6 @@ class _StaticDataAdminEndpoint {
 
   _ida.Future<_izz9ft7x.AdminAnswer> rollBack(
     _ist.TestSessionBuilder sessionBuilder,
-    String adminKey,
     String operationId,
     int expectedRevision,
   ) async {
@@ -315,7 +355,6 @@ class _StaticDataAdminEndpoint {
           endpointPath: 'staticDataAdmin',
           methodName: 'rollBack',
           parameters: _ist.testObjectToJson({
-            'adminKey': adminKey,
             'operationId': operationId,
             'expectedRevision': expectedRevision,
           }),
@@ -334,7 +373,6 @@ class _StaticDataAdminEndpoint {
 
   _ida.Future<_izz9ft7x.AdminAnswer> setAutoUpdate(
     _ist.TestSessionBuilder sessionBuilder,
-    String adminKey,
     bool value,
     _isqu85ty.SettingRevision expectedRevision,
     String writeId,
@@ -351,7 +389,6 @@ class _StaticDataAdminEndpoint {
           endpointPath: 'staticDataAdmin',
           methodName: 'setAutoUpdate',
           parameters: _ist.testObjectToJson({
-            'adminKey': adminKey,
             'value': value,
             'expectedRevision': expectedRevision,
             'writeId': writeId,

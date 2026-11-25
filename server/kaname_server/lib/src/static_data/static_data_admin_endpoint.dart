@@ -6,7 +6,7 @@ import 'auto_update_setting_writer.dart';
 import 'read_work_tokens.dart';
 import 'static_data_access.dart';
 
-/// Key-gated static-data commands; the key is never persisted or logged.
+/// Static-data mutations require live Kaname admin scope (ADR 0018).
 ///
 /// C11: check the operation id before taking the slot and before dispatch.
 /// C21: settlement owns an admin job from before its admission insert until
@@ -14,62 +14,38 @@ import 'static_data_access.dart';
 /// C27: each admin database call takes one of two work tokens through its
 /// session cleanup; admission checks its deadline before the slot and insert.
 class StaticDataAdminEndpoint extends Endpoint {
-  @override
-  bool get requireLogin => false;
-
-  /// Checks the install key without writing anything (D1, D6).
-  Future<AdminAnswer> checkKey(Session session, String adminKey) async =>
-      _keyAnswer(StaticDataAccess.forPod(session.serverpod), adminKey);
-
   /// Starts an admitted CCP check (D4). The row owns its terminal outcome.
-  Future<AdminAnswer> updateNow(
-    Session session,
-    String adminKey,
-    String operationId,
-  ) {
-    final access = StaticDataAccess.forPod(session.serverpod);
-    final key = _keyAnswer(access, adminKey);
-    return key.outcome == AdminAnswerOutcome.keyAccepted
-        ? access.admission.request(
-            operationId,
-            kind: SdeAdminOperationKind.updateNow,
-          )
-        : Future.value(key);
+  Future<AdminAnswer> updateNow(Session session, String operationId) {
+    if (!_admin(session)) return Future.value(_denied());
+    return StaticDataAccess.forPod(session.serverpod).admission
+        .request(operationId, kind: SdeAdminOperationKind.updateNow);
   }
 
   /// Restores only the build revision confirmed by the caller (D5, C14).
   Future<AdminAnswer> rollBack(
     Session session,
-    String adminKey,
     String operationId,
     int expectedRevision,
   ) {
-    final access = StaticDataAccess.forPod(session.serverpod);
-    final key = _keyAnswer(access, adminKey);
-    return key.outcome == AdminAnswerOutcome.keyAccepted
-        ? access.admission.request(
-            operationId,
-            kind: SdeAdminOperationKind.rollback,
-            revision: expectedRevision,
-          )
-        : Future.value(key);
+    if (!_admin(session)) return Future.value(_denied());
+    return StaticDataAccess.forPod(session.serverpod).admission.request(
+      operationId,
+      kind: SdeAdminOperationKind.rollback,
+      revision: expectedRevision,
+    );
   }
 
   /// C31: applies a setting only at the confirmed revision. A replay of the
   /// exact write id confirms the current value and revision, never overwrites.
   Future<AdminAnswer> setAutoUpdate(
     Session session,
-    String adminKey,
     bool value,
     SettingRevision expectedRevision,
     String writeId,
   ) async {
+    if (!_admin(session)) return _denied();
     final access = StaticDataAccess.forPod(session.serverpod);
     try {
-      final key = _keyAnswer(access, adminKey);
-      if (key.outcome != AdminAnswerOutcome.keyAccepted) {
-        return key;
-      }
       final invalidRevision = switch (expectedRevision) {
         WriteRevision(id: <= 0) => true,
         _ => false,
@@ -122,20 +98,9 @@ class StaticDataAdminEndpoint extends Endpoint {
     }
   }
 
-  static AdminAnswer _keyAnswer(StaticDataAccess access, String key) =>
-      switch (access.gate.check(key)) {
-        AdminKeyResult.accepted => AdminAnswer(
-          outcome: AdminAnswerOutcome.keyAccepted,
-        ),
-        AdminKeyResult.notConfigured => AdminAnswer(
-          outcome: AdminAnswerOutcome.notConfigured,
-        ),
-        AdminKeyResult.rejected => AdminAnswer(
-          outcome: AdminAnswerOutcome.keyRejected,
-        ),
-        AdminKeyResult.tooManyAttempts => AdminAnswer(
-          outcome: AdminAnswerOutcome.tooManyAttempts,
-          pausedUntil: access.gate.pausedUntil,
-        ),
-      };
+  static bool _admin(Session session) =>
+      session.authenticated?.scopes.contains(Scope.admin) ?? false;
+
+  static AdminAnswer _denied() =>
+      AdminAnswer(outcome: AdminAnswerOutcome.notAuthorized);
 }

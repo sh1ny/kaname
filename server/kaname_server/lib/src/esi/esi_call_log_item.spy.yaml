@@ -1,0 +1,12 @@
+### One private receipt projected for its current owner.
+class: EsiCallLogReceipt
+fields:
+  cursor: EsiCallLogCursor
+  recordedAt: DateTime
+  characterId: String
+  operation: String
+  bucket: String?
+  outcome: String
+  status: int?
+  cost: int?
+  latencyMicros: int

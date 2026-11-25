@@ -26,7 +26,6 @@ abstract class AdminAnswer
     this.reason,
     this.activeBuild,
     this.operation,
-    this.pausedUntil,
     this.autoUpdate,
     this.settingRevision,
   });
@@ -36,7 +35,6 @@ abstract class AdminAnswer
     _iqdx9nyu.PublicReason? reason,
     int? activeBuild,
     _i8yd58de.AdminOperationView? operation,
-    DateTime? pausedUntil,
     bool? autoUpdate,
     _il5o3xgp.SettingRevision? settingRevision,
   }) = _AdminAnswerImpl;
@@ -57,11 +55,6 @@ abstract class AdminAnswer
           : _i7wvxdxe.Protocol().deserialize<_i8yd58de.AdminOperationView>(
               jsonSerialization['operation'],
             ),
-      pausedUntil: jsonSerialization['pausedUntil'] == null
-          ? null
-          : _isc.DateTimeJsonExtension.fromJson(
-              jsonSerialization['pausedUntil'],
-            ),
       autoUpdate: jsonSerialization['autoUpdate'] == null
           ? null
           : _isc.BoolJsonExtension.fromJson(jsonSerialization['autoUpdate']),
@@ -81,8 +74,6 @@ abstract class AdminAnswer
 
   _i8yd58de.AdminOperationView? operation;
 
-  DateTime? pausedUntil;
-
   bool? autoUpdate;
 
   _il5o3xgp.SettingRevision? settingRevision;
@@ -96,7 +87,6 @@ abstract class AdminAnswer
     int? activeBuild,
     _i8yd58de.AdminOperationView? operation =
         const _UndefinedAdminAnswer$operation(),
-    DateTime? pausedUntil = const _isc.$UndefinedDateTime(),
     bool? autoUpdate,
     _il5o3xgp.SettingRevision? settingRevision,
   });
@@ -108,7 +98,6 @@ abstract class AdminAnswer
       if (reason != null) 'reason': reason?.toJson(),
       if (activeBuild != null) 'activeBuild': activeBuild,
       if (operation != null) 'operation': operation?.toJson(),
-      if (pausedUntil != null) 'pausedUntil': pausedUntil?.toJson(),
       if (autoUpdate != null) 'autoUpdate': autoUpdate,
       if (settingRevision != null) 'settingRevision': settingRevision?.toJson(),
     };
@@ -122,7 +111,6 @@ abstract class AdminAnswer
       if (reason != null) 'reason': reason?.toJson(),
       if (activeBuild != null) 'activeBuild': activeBuild,
       if (operation != null) 'operation': operation?.toJsonForProtocol(),
-      if (pausedUntil != null) 'pausedUntil': pausedUntil?.toJson(),
       if (autoUpdate != null) 'autoUpdate': autoUpdate,
       if (settingRevision != null)
         'settingRevision': settingRevision?.toJsonForProtocol(),
@@ -148,7 +136,6 @@ class _AdminAnswerImpl extends AdminAnswer {
     _iqdx9nyu.PublicReason? reason,
     int? activeBuild,
     _i8yd58de.AdminOperationView? operation,
-    DateTime? pausedUntil,
     bool? autoUpdate,
     _il5o3xgp.SettingRevision? settingRevision,
   }) : super._(
@@ -156,7 +143,6 @@ class _AdminAnswerImpl extends AdminAnswer {
          reason: reason,
          activeBuild: activeBuild,
          operation: operation,
-         pausedUntil: pausedUntil,
          autoUpdate: autoUpdate,
          settingRevision: settingRevision,
        );
@@ -171,7 +157,6 @@ class _AdminAnswerImpl extends AdminAnswer {
     Object? activeBuild = _Undefined,
     _i8yd58de.AdminOperationView? operation =
         const _UndefinedAdminAnswer$operation(),
-    DateTime? pausedUntil = const _isc.$UndefinedDateTime(),
     Object? autoUpdate = _Undefined,
     Object? settingRevision = _Undefined,
   }) {
@@ -182,9 +167,6 @@ class _AdminAnswerImpl extends AdminAnswer {
       operation: operation is _isc.UndefinedSentinel
           ? this.operation?.copyWith()
           : operation,
-      pausedUntil: pausedUntil is _isc.UndefinedSentinel
-          ? this.pausedUntil
-          : pausedUntil,
       autoUpdate: autoUpdate is bool? ? autoUpdate : this.autoUpdate,
       settingRevision: settingRevision is _il5o3xgp.SettingRevision?
           ? settingRevision

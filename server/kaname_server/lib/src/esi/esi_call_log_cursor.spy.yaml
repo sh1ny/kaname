@@ -1,0 +1,5 @@
+### Keyset cursor; it never changes the authenticated viewer.
+class: EsiCallLogCursor
+fields:
+  recordedAt: DateTime
+  id: String

@@ -19,9 +19,9 @@ import 'package:kaname_ember_ui/kaname_ember_ui.dart';
 
 import '../server_static_data_status_notifier_test.dart'
     show FakeStaticDataNotifier, FakeStatusClient, snapshot;
+import 'admin_bearer.dart';
 
 class _FakeAdmin implements StaticDataAdminClient {
-  final keys = <Completer<RpcResult<AdminAnswer>>>[];
   final updates = <Completer<RpcResult<AdminAnswer>>>[];
   final rollbacks = <Completer<RpcResult<AdminAnswer>>>[];
   final reads = <Completer<RpcResult<AdminOperationAnswer>>>[];
@@ -33,8 +33,6 @@ class _FakeAdmin implements StaticDataAdminClient {
     return (answer: pending.future, settled: pending.future);
   }
 
-  @override
-  RpcCall<AdminAnswer> checkKey(String key) => _pending(keys);
   @override
   RpcCall<AdminAnswer> updateNow(String key, String operationId) =>
       _pending(updates);
@@ -80,6 +78,9 @@ class _Harness {
           ConfiguredServer(Uri.parse(address)),
         ),
         staticDataStatusClientProvider.overrideWithValue(statusClient),
+        staticDataAdminBearerProvider.overrideWith(
+          (ref) => ref.watch(testBearerProvider),
+        ),
         staticDataAdminClientProvider.overrideWithValue(api),
         staticDataProvider.overrideWith(FakeStaticDataNotifier.new),
       ],
@@ -104,14 +105,7 @@ class _Harness {
   }
 
   Future<void> accept(WidgetTester tester) async {
-    await tester.ensureVisible(find.byType(TextField));
-    await tester.enterText(find.byType(TextField), 'secret sentinel');
-    await tester.ensureVisible(find.text('Check key'));
-    await tester.tap(find.text('Check key'));
-    await tester.pump();
-    api.keys.last.complete(
-      RpcAnswered(AdminAnswer(outcome: AdminAnswerOutcome.keyAccepted)),
-    );
+    container.read(testBearerProvider.notifier).set('synthetic-admin-bearer');
     await tester.pump();
   }
 
@@ -126,25 +120,17 @@ class _Harness {
 
 /// Registers administrator-control widget regressions with the section suite.
 void staticDataAdminWidgetCases() {
-  testWidgets(
-    'an accepted key shows the admin controls and the field shows no characters of it',
-    (tester) async {
-      final h = _Harness();
-      await h.mount(tester);
-      final field = tester.widget<TextField>(find.byType(TextField));
-      expect(field.obscureText, isTrue);
-      expect(field.enableSuggestions, isFalse);
-      expect(field.autocorrect, isFalse);
-      expect(field.autofillHints, isNull);
-      await h.accept(tester);
-      expect(find.text('secret sentinel'), findsNothing);
-      expect(find.text('Update now'), findsOneWidget);
-      h.dispose();
-    },
-  );
-  testWidgets('not configured shows the message and no key field', (
+  testWidgets('Signed-in admin sees controls without a credential field', (
     tester,
   ) async {
+    final h = _Harness();
+    await h.mount(tester);
+    await h.accept(tester);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('Update now'), findsOneWidget);
+    h.dispose();
+  });
+  testWidgets('Server cannot grant admin access', (tester) async {
     final h = _Harness(configured: false);
     await h.mount(tester);
     expect(
@@ -155,7 +141,7 @@ void staticDataAdminWidgetCases() {
     h.dispose();
   });
   testWidgets(
-    'plain http to another host shows Admin actions need a secure connection and still shows the status',
+    'Insecure remote connection still shows the status but not actions',
     (tester) async {
       final h = _Harness(address: 'http://example.com/');
       await h.mount(tester);
@@ -168,10 +154,22 @@ void staticDataAdminWidgetCases() {
       h.dispose();
     },
   );
-  testWidgets('http://localhost:8080/ offers the key field', (tester) async {
+  testWidgets('Local stack shows actions after admin sign-in', (tester) async {
     final h = _Harness();
     await h.mount(tester);
-    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('Sign in with a server admin account.'), findsOneWidget);
+    await h.accept(tester);
+    expect(find.text('Update now'), findsOneWidget);
+    h.dispose();
+  });
+  testWidgets('Key check unanswered: no legacy input or retry', (tester) async {
+    final h = _Harness(address: 'https://example.com/');
+    await h.mount(tester);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('Check key'), findsNothing);
+    expect(find.text('Update now'), findsNothing);
+    expect(find.text('Server status'), findsOneWidget);
+    expect(h.api.updates, isEmpty);
     h.dispose();
   });
   testWidgets('an unanswered press hides Update now and Roll back', (
@@ -218,7 +216,7 @@ void staticDataAdminWidgetCases() {
     );
   }
   testWidgets(
-    'while following, Update now and Roll back are hidden and Waiting for the last action shows',
+    'Sign-out or revoked scope hides actions without dropping a followed job',
     (tester) async {
       final h = _Harness();
       await h.mount(tester);
@@ -230,8 +228,11 @@ void staticDataAdminWidgetCases() {
       await tester.pump();
       expect(find.text('Waiting for the last action.'), findsOneWidget);
       expect(find.text('Roll back'), findsNothing);
-      await h.tap(tester, 'Forget key');
+      h.container.read(testBearerProvider.notifier).set(null);
+      await tester.pump();
       expect(find.text('Waiting for the last action.'), findsOneWidget);
+      expect(find.text('Update now'), findsNothing);
+      expect(find.text('Roll back'), findsNothing);
       h.dispose();
     },
   );

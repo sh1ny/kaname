@@ -1,11 +1,8 @@
-### Public admin command outcomes; never contains the submitted key (D9).
+### Public admin command outcomes (D9, ADR 0018).
 enum: AdminAnswerOutcome
 serialized: byName
 values:
-  - keyAccepted
-  - notConfigured
-  - keyRejected
-  - tooManyAttempts
+  - notAuthorized
   - started
   - noAnswerYet
   - outcomeUnknown

@@ -1,0 +1,6 @@
+### A fixed-window route-level count, without character or member fields.
+class: EsiRouteCount
+fields:
+  operation: String
+  total: int
+  errors: int
