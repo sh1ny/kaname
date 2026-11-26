@@ -17,7 +17,7 @@ On a local Windows store under the installation lock, a process exit during an e
 - **GIVEN** a Windows desktop holds a committed set of credentials
 - **WHEN** its process exits during an exact-key write or deletion, before or after publishing the new set
 - **THEN** on reopen the desktop reads the complete old set before publication or the complete new set after publication
-- **AND** it does not read an incomplete staged write as committed data
+- **AND** it reads credentials only from the committed file. A staged file, complete or not, is never read or promoted to the committed file, even when no committed file exists
 
 #### Scenario: An unreadable Windows credential file stays intact
 
