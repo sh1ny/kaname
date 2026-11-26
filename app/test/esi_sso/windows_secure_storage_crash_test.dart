@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
@@ -201,12 +202,14 @@ void main() {
       await storage().save(_initial, options);
       final before = await committed().readAsBytes();
       var reachedRename = false;
+      final retries = <int>[];
       final plugin = createFlutterSecureStorageWindows(
         MethodChannelFlutterSecureStorage(),
         DpapiJsonFileMapStorage.forTesting(
           directory: directory.path,
           // Proves the write staged the new map and reached the rename.
           beforePublish: () async => reachedRename = true,
+          beforeRetry: retries.add,
         ),
       );
 
@@ -233,6 +236,8 @@ void main() {
         isTrue,
         reason: 'The write did not reach the rename.',
       );
+      // The held file blocked every bounded attempt before the write failed.
+      expect(retries, [2, 3, 4, 5]);
       expect(
         failure,
         isA<PlatformException>().having(
@@ -245,6 +250,44 @@ void main() {
       expect(await committed().readAsBytes(), before);
       expect(staged().existsSync(), isFalse);
       expect(await storage().load(options), _initial);
+    });
+
+    test('A briefly held committed file is replaced on retry', () async {
+      await storage().save(_initial, options);
+      // A handle without delete sharing blocks the first rename, as a
+      // scanner or indexer holding the file would.
+      final handle = _holdCommitted(
+        committed().path,
+        shareMode: FILE_SHARE_READ,
+      );
+      var released = false;
+      final retries = <int>[];
+      final plugin = createFlutterSecureStorageWindows(
+        MethodChannelFlutterSecureStorage(),
+        DpapiJsonFileMapStorage.forTesting(
+          directory: directory.path,
+          beforeRetry: (attempt) {
+            retries.add(attempt);
+            // The holder lets go before the second attempt.
+            handle.close();
+            released = true;
+          },
+        ),
+      );
+      try {
+        await plugin.write(
+          key: _writtenKey,
+          value: _writtenValue,
+          options: options,
+        );
+      } finally {
+        if (!released) handle.close();
+      }
+
+      expect(retries, [2]);
+      expect(staged().existsSync(), isFalse);
+      expect(await storage().load(options), _afterWrite);
+      _expectNoSecret(printed.join('\n'));
     });
 
     for (final operation in _Operation.values) {
@@ -461,6 +504,16 @@ Future<_ChildExit> _runChildToExit({
     workingDirectory: Directory.current.path,
     runInShell: true,
   );
+  // The test timeout is the only hang guard. If it fires while the child is
+  // stalled, this teardown ends the runner's whole process tree and waits for
+  // it, so no host keeps the case directory or the keyring file open.
+  var exited = false;
+  unawaited(process.exitCode.then((_) => exited = true));
+  addTearDown(() async {
+    if (exited) return;
+    await Process.run('taskkill', ['/T', '/F', '/PID', '${process.pid}']);
+    await process.exitCode;
+  });
   final output = StringBuffer();
   final drained = [
     process.stdout.transform(utf8.decoder).forEach(output.write),
@@ -499,13 +552,7 @@ Future<_ChildExit> _runChildToExit({
       await atBarrier();
       accepted.writeln('continue');
       await accepted.flush();
-      final address = handle.address;
-      final waited = await Isolate.run(
-        () => WaitForSingleObject(
-          HANDLE(Pointer.fromAddress(address)),
-          INFINITE,
-        ).value,
-      );
+      final waited = await _waitForExit(handle.address);
       expect(waited, WAIT_OBJECT_0, reason: 'The child host did not exit.');
       final code = using((alloc) {
         final exitCode = alloc<Uint32>();
@@ -526,6 +573,14 @@ Future<_ChildExit> _runChildToExit({
   }
   return (stage: observed.stage, code: observed.code, output: '$output');
 }
+
+/// Waits on the process handle at [address] in another isolate.
+///
+/// A top-level function, so the isolate closure captures only the address.
+Future<int> _waitForExit(int address) => Isolate.run(
+  () =>
+      WaitForSingleObject(HANDLE(Pointer.fromAddress(address)), INFINITE).value,
+);
 
 /// The `flutter` command of the SDK that runs this test.
 String _flutterCommand() {

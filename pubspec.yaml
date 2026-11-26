@@ -30,5 +30,5 @@ dependency_overrides:
   flutter_secure_storage_windows:
     git:
       url: https://github.com/sh1ny/flutter_secure_storage.git
-      ref: ecd6627b06ee5686880ca6bbe213ea111b785660
+      ref: f87ea6e365fb321288ef2e9256a8be5a5e3171ca
       path: flutter_secure_storage_windows

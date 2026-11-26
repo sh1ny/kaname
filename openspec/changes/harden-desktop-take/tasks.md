@@ -4,7 +4,7 @@
 
 | Requirement | Scenario | Test file | Test name | State |
 |---|---|---|---|---|
-| Windows secure-storage mutations preserve committed credentials | A Windows mutation publishes a complete credential set | `app/test/esi_sso/windows_secure_storage_crash_test.dart` | `The default Windows facade reopens the complete credential set` | green |
+| Windows secure-storage mutations preserve committed credentials | A Windows mutation publishes a complete credential set | `app/test/esi_sso/windows_secure_storage_crash_test.dart` | `The default Windows facade reopens the complete credential set`; `A briefly held committed file is replaced on retry` | green |
 | Windows secure-storage mutations preserve committed credentials | Windows exits during a credential mutation | `app/test/esi_sso/windows_secure_storage_crash_test.dart` | `Interrupted Windows write preserves the old or new map`; `Interrupted Windows delete preserves the old or new map`; `A complete staged file never supplies credentials` | green |
 | Windows secure-storage mutations preserve committed credentials | An unreadable Windows credential file stays intact | `app/test/esi_sso/windows_secure_storage_preservation_test.dart`; `app/test/esi_sso/windows_secure_storage_crash_test.dart` | `An unreadable committed Windows credential file stays intact`; `A malformed decrypted credential file fails without exposing it`; `A committed file that cannot be read is not empty storage` | green |
 | The source bounds closures of unused desktop take epochs | A new closure can commit at the cooldown boundary | `server/kaname_server/test/integration/esi/holder_handoff_test.dart` | `A new closure can commit at the cooldown boundary` | green |

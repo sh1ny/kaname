@@ -111,13 +111,14 @@ flutter_secure_storage_windows 4.2.2, modified
   bd602d0a47bea9088cd40bd87fcbf7d2c67f7e60)
   Fork: https://github.com/sh1ny/flutter_secure_storage, branch
   fix/windows-atomic-save-4.2.2
-  Pinned commit: ecd6627b06ee5686880ca6bbe213ea111b785660, package
+  Pinned commit: f87ea6e365fb321288ef2e9256a8be5a5e3171ca, package
   directory flutter_secure_storage_windows
   Licence: BSD-3-Clause, Copyright 2017 German Saprykin. The licence text is
   flutter_secure_storage_windows/LICENSE in the fork and in the generated
   section below.
   Modification: the DPAPI map is staged in a flushed sibling file and
-  published by one rename, and a file that cannot be read, decrypted or
+  published by one rename, retried up to five times while another handle
+  briefly blocks it, and a file that cannot be read, decrypted or
   decoded fails with a fixed error and is not deleted. The fork marks the
   modified code and lists the changes in the package CHANGELOG.
   Remove the override when an upstream release of the package ships the
