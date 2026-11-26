@@ -10,7 +10,7 @@ Status is derived: a change is done when archived on `main`; a milestone is done
 
 **Exit criteria:**
 - A member signs in with any linked character and reaches the same account. Linking an alt requires signing in with that alt while signed in. The member picks a main and can unlink a character. A character belongs to at most one account, and M2's per-character identities migrate into accounts. (agent)
-- When CCP reports a new owner hash for a character, Kaname detaches it from the old account, ends its sessions and drops its vault token, holder and opt-ins. The new owner gets the character only by signing in and never sees rows that belonged to the previous owner. (agent)
+- When CCP reports a new owner hash for a character, Kaname detaches it from the old account, ends its sessions and drops its server vault token and opt-ins. The new owner gets the character only by signing in and never sees rows that belonged to the previous owner. A device that still holds the character keeps server ESI blocked until it parks, as ADR 0017 requires; verified reclaim stays in M7. (agent)
 - The install declares one corporation, one alliance or a coalition of alliances as its tree. A scheduled job refreshes every known character's corporation and alliance through the public affiliation route and the shared scheduler, without a token. (agent)
 - Admin rules map affiliation to member states (member, guest or none). An account's state follows its characters, and a character that leaves the tree loses member state at the next affiliation check. (agent)
 - Modules declare capabilities, and states and groups grant them. A delegated group manager can change only the groups they manage. Every capability check runs on the server through one check, and an architecture test fails on a bypass. Static-data administration becomes a capability; the configured admin characters remain only as the first admin. (agent)
@@ -18,7 +18,7 @@ Status is derived: a change is done when archived on `main`; a milestone is done
 
 **Changes** (in order; each about one PR):
 1. `member-accounts` - one account per member with a main and alts, alt linking by signed-in SSO, unlinking, and migration of M2's per-character identities.
-2. `character-transfer` - owner-hash change detection, detaching the character from the old account, ending its sessions, dropping its token, holder and opt-ins, and keeping the previous owner's rows hidden; prerequisite `member-accounts`.
+2. `character-transfer` - owner-hash change detection, detaching the character from the old account, ending its sessions, dropping its server token and opt-ins, and keeping the previous owner's rows hidden, without clearing a device holder (ADR 0017); prerequisite `member-accounts`.
 3. `org-tree-affiliation` - the install's declared tree (corporation, alliance or coalition) and a scheduled, tokenless affiliation refresh through the shared scheduler.
 4. `member-states` - admin rules from affiliation to member states and an account state derived from its characters; prerequisites `member-accounts`, `org-tree-affiliation`.
 5. `groups-and-capabilities` - module-declared capabilities, grants from states and groups, delegated group managers, one server-side capability check with an architecture test, and static-data admin as a capability; prerequisite `member-states`.
