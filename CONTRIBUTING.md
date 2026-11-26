@@ -4,6 +4,18 @@ Thank you for helping. Kaname is an open-source EVE Online corporation and allia
 
 Report security problems privately, as [SECURITY.md](SECURITY.md) describes, not in an issue or a pull request.
 
+## Ways to help
+
+- **Report a bug or suggest an idea.** Open an [issue](https://github.com/sh1ny/kaname/issues/new/choose). The forms say what helps; only the first box is required.
+- **Fix something small** (a typo, a doc, an obvious bug): send a pull request straight away, with signed-off commits.
+- **Anything bigger** (a new feature, a new dependency, a server or protocol change): open an issue first, so we can agree on the approach before you spend time on it.
+
+## How the project is planned
+
+Maintainers plan work with [OpenSpec](https://github.com/Fission-AI/OpenSpec) and [Specwright](https://github.com/sh1ny/specwright): milestones live in [`openspec/roadmap.md`](openspec/roadmap.md) and each larger change gets a folder under `openspec/changes/`. You don't need either tool to contribute. If your change is larger, a maintainer may write it up as an OpenSpec change and ask you a question or two. Please don't edit `openspec/changes/` in your pull request unless you're asked to.
+
+Much of the maintainers' own work is done with AI coding agents, and an automated reviewer may comment on your pull request. A person makes every decision. AI-assisted contributions are welcome too, as long as you understand and have tested what you send, and they follow the no-copy rule below like any other change.
+
 ## No-copy rule (clean room)
 
 Kaname is built from concepts, never from other products' implementations ([ADR 0002](docs/adr/0002-licence-clean-room-and-eula-boundary.md)).
@@ -88,5 +100,7 @@ The repository is one pub workspace: the Flutter app in `app/`, pure-Dart shared
 
 1. Fork the repository (or branch, if you have access) from `main`; `main` is protected.
 2. Keep each pull request to one change, with signed-off commits.
-3. Open the pull request against `main` and fill in its checklist: the no-copy rule, the EULA boundary and the DCO sign-off.
+3. Open the pull request against `main` and fill in the template: a short **Summary**, what it's **Linked** to, how you **tested** it, and the three **Project checks** (no-copy rule, EULA boundary, DCO sign-off). The other sections are optional.
 4. A maintainer reviews it. The owner merges; nobody else merges into `main`.
+
+Tests must never fail because a machine is slow: wait for an event or a result, never sleep for a fixed time.
