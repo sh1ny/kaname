@@ -322,9 +322,10 @@ final class NativeAccount implements DesktopAccount {
       case DeviceTakeNotAccepted():
         if (epoch == null) return AccountNotice.blocked;
         // Throws if the rollback does not commit; proof cleanup after the
-        // commit cannot change this notice.
+        // commit cannot change this notice. A fresh take keeps the existing
+        // blocked notice; only recovery explains that a new Take can start.
         await _store.restoreRefusedTake(row);
-        return AccountNotice.takeNotAccepted;
+        return fresh ? AccountNotice.blocked : AccountNotice.takeNotAccepted;
       case DeviceTakePending():
         return fresh ? AccountNotice.pending : AccountNotice.takeUnconfirmed;
       case DeviceTakeIncomplete(:final notice):

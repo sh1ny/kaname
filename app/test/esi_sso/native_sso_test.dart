@@ -673,6 +673,20 @@ END
     },
   );
 
+  test('A fresh fenced refusal keeps the blocked notice', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer()
+      ..epoch = '3'
+      ..startReply = _notAccepted;
+    final session = await server.signIn();
+    device.store.save(_character(456));
+    device.store.setSetting('selected-character', '456');
+    expect(await device.account.take(session), AccountNotice.blocked);
+    expect(device.account.pilot?.characterId, '456');
+    expect(device.store.character(123), isNull);
+    expect(server.reconciles, 0);
+  });
+
   test('Recovery preserves a newer selection', () async {
     final device = await _TakeDevice.open();
     final server = _TakeServer()

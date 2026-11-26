@@ -122,7 +122,8 @@ flutter_secure_storage_windows 4.2.2, modified
   modified code and lists the changes in the package CHANGELOG.
   Remove the override when an upstream release of the package ships the
   same guarantees and passes Kaname's Windows secure-storage tests.
-  Publishing rule: this change publishes only the patch branch above to
+  Publishing rule: after the owner's explicit apply approval, this
+  change publishes only the patch branch above to
   sh1ny/flutter_secure_storage. Every gh command that touches the fork
   passes -R sh1ny/flutter_secure_storage. No pull request is opened in the
   fork. Pushes, pull requests, issues and comments in

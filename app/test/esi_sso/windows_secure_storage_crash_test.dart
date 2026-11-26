@@ -106,6 +106,69 @@ void main() {
       expect(staged().existsSync(), isFalse);
     });
 
+    test('A complete staged file never supplies credentials', () async {
+      // A complete staged map from an interrupted first write, with no
+      // committed file.
+      final source = await directory.createTemp('complete-');
+      await DpapiJsonFileMapStorage.forTesting(directory: source.path)
+          .save(_initial, options);
+      await File(p.join(source.path, encryptedJsonFileName))
+          .copy(staged().path);
+      final plugin = createFlutterSecureStorageWindows(
+        MethodChannelFlutterSecureStorage(),
+        storage(),
+      );
+
+      expect(await plugin.readAll(options: options), isEmpty);
+      expect(committed().existsSync(), isFalse);
+      await plugin.write(
+        key: _writtenKey,
+        value: _writtenValue,
+        options: options,
+      );
+
+      expect(await storage().load(options), {_writtenKey: _writtenValue});
+      expect(staged().existsSync(), isFalse);
+    });
+
+    test(
+      'A malformed decrypted credential file fails without exposing it',
+      () async {
+        for (final payload in [
+          'not json $_sentinel',
+          jsonEncode(['list-$_sentinel']),
+          jsonEncode({_installKey: 5, _deletedKey: 'proof-$_sentinel'}),
+        ]) {
+          final bytes = _protect(utf8.encode(payload));
+          await committed().writeAsBytes(bytes);
+          final plugin = createFlutterSecureStorageWindows(
+            MethodChannelFlutterSecureStorage(),
+            storage(),
+          );
+
+          for (final operation in [
+            () => plugin.readAll(options: options),
+            () => plugin.write(
+              key: _writtenKey,
+              value: _writtenValue,
+              options: options,
+            ),
+          ]) {
+            Object? failure;
+            try {
+              await operation();
+            } on Object catch (error) {
+              failure = error;
+            }
+            expect(failure, isA<PlatformException>());
+            _expectNoSecret('$failure\n${printed.join('\n')}');
+            expect(await committed().readAsBytes(), bytes);
+            expect(staged().existsSync(), isFalse);
+          }
+        }
+      },
+    );
+
     test('A failed replacement keeps the committed bytes', () async {
       await storage().save(_initial, options);
       final before = await committed().readAsBytes();
@@ -215,6 +278,26 @@ enum _Operation {
 
 enum _Stage { beforePublish, afterPublish }
 
+/// Encrypts [plain] with DPAPI for the current user, as the backend does.
+Uint8List _protect(List<int> plain) => using((alloc) {
+  final input = alloc<Uint8>(plain.length);
+  input.asTypedList(plain.length).setAll(0, plain);
+  final inputBlob = alloc<CRYPT_INTEGER_BLOB>()
+    ..ref.cbData = plain.length
+    ..ref.pbData = input;
+  final outputBlob = alloc<CRYPT_INTEGER_BLOB>();
+  if (!CryptProtectData(inputBlob, null, null, null, 0, outputBlob).value) {
+    fail('Could not protect the fixture.');
+  }
+  try {
+    return Uint8List.fromList(
+      outputBlob.ref.pbData.asTypedList(outputBlob.ref.cbData),
+    );
+  } finally {
+    LocalFree(HLOCAL(outputBlob.ref.pbData.cast()));
+  }
+});
+
 void _expectNoSecret(String text) {
   // Report a fixed failure; never print the text that leaked a value.
   expect(
@@ -296,9 +379,12 @@ Future<_ChildExit> _runChildToExit({
     process.stderr.transform(utf8.decoder).forEach(output.write),
   ];
 
+  // The parent owns the accepted socket and reaps the runner on every path.
+  // Closing the socket ends a child that is still waiting at its barrier.
+  Socket? socket;
   final ({String stage, int code}) observed;
   try {
-    final socket = await Future.any([
+    final accepted = await Future.any([
       server.first,
       process.exitCode.then<Socket>(
         (code) => throw StateError(
@@ -306,7 +392,8 @@ Future<_ChildExit> _runChildToExit({
         ),
       ),
     ]);
-    final lines = socket
+    socket = accepted;
+    final lines = accepted
         .cast<List<int>>()
         .transform(utf8.decoder)
         .transform(const LineSplitter());
@@ -321,8 +408,8 @@ Future<_ChildExit> _runChildToExit({
       fail('Could not open the child host process.');
     }
     try {
-      socket.writeln('continue');
-      await socket.flush();
+      accepted.writeln('continue');
+      await accepted.flush();
       final address = handle.address;
       final waited = await Isolate.run(
         () => WaitForSingleObject(
@@ -341,14 +428,13 @@ Future<_ChildExit> _runChildToExit({
       observed = (stage: childStage, code: code);
     } finally {
       handle.close();
-      socket.destroy();
     }
   } finally {
+    socket?.destroy();
     await server.close();
+    await process.exitCode;
+    await Future.wait(drained);
   }
-
-  await process.exitCode;
-  await Future.wait(drained);
   return (stage: observed.stage, code: observed.code, output: '$output');
 }
 

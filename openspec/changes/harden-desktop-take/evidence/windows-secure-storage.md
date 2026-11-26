@@ -26,13 +26,15 @@ Command, from `app/` after `flutter pub get --enforce-lockfile` with this branch
 mise exec -- flutter test --no-pub test/esi_sso/windows_secure_storage_preservation_test.dart test/esi_sso/windows_secure_storage_crash_test.dart
 ```
 
-Outcome: exit 0, 6 tests passed.
+Outcome: exit 0, 6 tests passed. After the pre-ship review added two tests, the same command on the same pin passed all 8 tests with exit 0.
 
 | Test | Result |
 |---|---|
 | An unreadable committed Windows credential file stays intact | Passed, with the test unchanged from the red run. The read fails and the committed bytes remain. |
 | The default Windows facade reopens the complete credential set | Passed. `const FlutterSecureStorage()` wrote and deleted one key. Each reopen through the storage read the full expected map with unrelated entries unchanged. No staged file remained and no synthetic secret appeared in diagnostics. |
 | A partial staged file is never read and is replaced | Passed. A partial `.staged` sibling was ignored on read and replaced by the next write. |
+| A complete staged file never supplies credentials | Passed (pre-ship round 1). With no committed file, a complete staged map was not read or promoted. The next write published only the new entry and removed the staged file. |
+| A malformed decrypted credential file fails without exposing it | Passed (pre-ship round 1). For DPAPI-protected invalid JSON, a JSON list and a map with a non-string value, read and write both returned a fixed `PlatformException`. The committed bytes were unchanged, and neither the error nor the diagnostics held the synthetic secret. |
 | A failed replacement keeps the committed bytes | Passed. A handle without delete sharing made the rename fail. The write returned a fixed `PlatformException`. The committed bytes were unchanged, the staged file was removed, and neither the error nor the diagnostics held a synthetic secret. |
 | Interrupted Windows write preserves the old or new map | Passed for both barriers |
 | Interrupted Windows delete preserves the old or new map | Passed for both barriers |
