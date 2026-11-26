@@ -467,6 +467,48 @@ void main() {
     },
   );
 
+  test('Return and reauthorization keep the closure cooldown', () async {
+    final session = (await signIn())['session'] as String;
+    await authorize(session);
+    Future<(int?, DateTime?)> closure() => pod.pod.withSession((db) async {
+      final row = (await ServerSsoGrants.assignment(db, 410))!;
+      return (row.takeClosures, row.lastTakeClosureAt);
+    }, enableLogging: false);
+    final closedAt = clock;
+    final epoch = await prepare(session);
+    expectClosed(
+      await intent('reconcile', session, epoch, newOAuthProof()),
+      epoch,
+    );
+    final closed = await closure();
+    expect(closed, (1, closedAt));
+
+    // An eligible take, its return and a fresh server authorization all
+    // happen inside the cooldown and keep both closure fields.
+    clock = clock.add(const Duration(seconds: 10));
+    final proof = newOAuthProof();
+    final taken = await post('take', {'proof': proof}, bearer: session);
+    expect(taken.statusCode, 200);
+    final generation =
+        (jsonDecode(taken.body) as Map<String, Object?>)['generation'];
+    expect(
+      (await post('release', {
+        'proof': proof,
+        'generation': generation,
+      }, bearer: session)).statusCode,
+      200,
+    );
+    await authorize(session);
+    expect(await closure(), closed);
+
+    clock = clock.add(const Duration(seconds: 10));
+    final next = await prepare(session);
+    final throttled = await intent('reconcile', session, next, newOAuthProof());
+    expect(throttled.statusCode, 202);
+    expect(jsonDecode(throttled.body), {'status': 'pending'});
+    expect(await closure(), closed);
+  });
+
   for (final join in [false, true]) {
     test(
       'A closed take preserves a lost ${join ? 'join' : 'release'} acknowledgement',

@@ -153,6 +153,7 @@ void main() {
               value: _writtenValue,
               options: options,
             ),
+            () => plugin.delete(key: _deletedKey, options: options),
           ]) {
             Object? failure;
             try {
