@@ -31,7 +31,9 @@ void main() {
 
         expect(desktop.takes, 1);
         expect(
-          find.text('The take did not go through. You can start a new take.'),
+          find.text(
+            'The take did not go through. You can start a new take if the character is free.',
+          ),
           findsOneWidget,
         );
         expect(_liveRegionHolds('did not go through'), isTrue);

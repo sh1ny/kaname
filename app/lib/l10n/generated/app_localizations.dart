@@ -1519,7 +1519,7 @@ abstract class AppLocalizations {
   /// No description provided for @esiTakeNotAccepted.
   ///
   /// In en, this message translates to:
-  /// **'The take did not go through. You can start a new take.'**
+  /// **'The take did not go through. You can start a new take if the character is free.'**
   String get esiTakeNotAccepted;
 
   /// No description provided for @esiTakeUnconfirmed.

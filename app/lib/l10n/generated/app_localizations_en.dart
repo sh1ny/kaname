@@ -780,7 +780,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get esiTakeNotAccepted =>
-      'The take did not go through. You can start a new take.';
+      'The take did not go through. You can start a new take if the character is free.';
 
   @override
   String get esiTakeUnconfirmed =>

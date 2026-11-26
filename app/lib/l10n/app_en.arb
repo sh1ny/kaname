@@ -963,7 +963,7 @@
   "esiUnavailable": "Kaname could not complete the EVE request.",
   "esiCancelled": "The EVE request was cancelled.",
   "esiBlocked": "This account, device, or scope cannot perform the request.",
-  "esiTakeNotAccepted": "The take did not go through. You can start a new take.",
+  "esiTakeNotAccepted": "The take did not go through. You can start a new take if the character is free.",
   "esiTakeUnconfirmed": "The take is still unconfirmed. Another retry may not settle it.",
   "esiSignedOut": "Sign in again to continue.",
   "esiReauthorize": "Authorize skills access again before reading skills.",
