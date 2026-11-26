@@ -26,7 +26,7 @@ Command, from `app/` after `flutter pub get --enforce-lockfile` with this branch
 mise exec -- flutter test --no-pub test/esi_sso/windows_secure_storage_preservation_test.dart test/esi_sso/windows_secure_storage_crash_test.dart
 ```
 
-Outcome: exit 0, 6 tests passed. After the pre-ship review added two tests, the same command on the same pin passed all 8 tests with exit 0.
+Outcome: exit 0, 6 tests passed. After the pre-ship review added tests in two rounds, the same command on the same pin passed all 9 tests with exit 0.
 
 | Test | Result |
 |---|---|
@@ -35,13 +35,14 @@ Outcome: exit 0, 6 tests passed. After the pre-ship review added two tests, the 
 | A partial staged file is never read and is replaced | Passed. A partial `.staged` sibling was ignored on read and replaced by the next write. |
 | A complete staged file never supplies credentials | Passed (pre-ship round 1). With no committed file, a complete staged map was not read or promoted. The next write published only the new entry and removed the staged file. |
 | A malformed decrypted credential file fails without exposing it | Passed (pre-ship round 1). For DPAPI-protected invalid JSON, a JSON list and a map with a non-string value, read and write both returned a fixed `PlatformException`. The committed bytes were unchanged, and neither the error nor the diagnostics held the synthetic secret. |
+| A committed file that cannot be read is not empty storage | Passed (pre-ship round 2). While a handle denied read sharing, a plugin read returned a fixed `PlatformException`, not an empty map. After release the original bytes and map were unchanged. |
 | A failed replacement keeps the committed bytes | Passed. A handle without delete sharing made the rename fail. The write returned a fixed `PlatformException`. The committed bytes were unchanged, the staged file was removed, and neither the error nor the diagnostics held a synthetic secret. |
-| Interrupted Windows write preserves the old or new map | Passed for both barriers |
+| Interrupted Windows write preserves the old or new map | Passed for both barriers. Since pre-ship round 2 the parent also inspects the files while the child waits at its barrier, as the next section describes. |
 | Interrupted Windows delete preserves the old or new map | Passed for both barriers |
 
 ## Process exits
 
-Each case ran a child `flutter test` host. At the barrier the child reported its process ID and stage over loopback. The parent opened that process with `SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION` before acknowledging. After the acknowledgement the child called `exit(73)` without unwinding the save. The parent waited for the handle to signal, read the exit code, closed the handle and reaped the runner before reopening the store. The child output held no synthetic secret.
+Each case ran a child `flutter test` host. At the barrier the child reported its process ID and stage over loopback. The parent opened that process with `SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION` before acknowledging. Still before acknowledging, it decoded the files. At the barrier before publication, the committed path held the complete old map and the staged sibling held the complete new map. At the barrier after publication, the committed path held the new map and no staged file remained. After the acknowledgement the child called `exit(73)` without unwinding the save. The parent waited for the handle to signal, read the exit code, closed the handle and reaped the runner before reopening the store. The child output held no synthetic secret.
 
 | Operation | Barrier | Observed host exit | Map on reopen |
 |---|---|---|---|

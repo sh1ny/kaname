@@ -169,6 +169,33 @@ void main() {
       },
     );
 
+    test('A committed file that cannot be read is not empty storage', () async {
+      await storage().save(_initial, options);
+      final before = await committed().readAsBytes();
+      final plugin = createFlutterSecureStorageWindows(
+        MethodChannelFlutterSecureStorage(),
+        storage(),
+      );
+
+      // A handle that denies read sharing makes the read itself fail.
+      final handle = _holdCommitted(
+        committed().path,
+        shareMode: FILE_SHARE_NONE,
+      );
+      Object? failure;
+      try {
+        await plugin.readAll(options: options);
+      } on Object catch (error) {
+        failure = error;
+      } finally {
+        handle.close();
+      }
+
+      expect(failure, isA<PlatformException>());
+      expect(await committed().readAsBytes(), before);
+      expect(await storage().load(options), _initial);
+    });
+
     test('A failed replacement keeps the committed bytes', () async {
       await storage().save(_initial, options);
       final before = await committed().readAsBytes();
@@ -178,19 +205,10 @@ void main() {
       );
 
       // A handle without delete sharing makes the replacement fail.
-      final handle = using((alloc) {
-        final Win32Result(value: handle, :error) = CreateFile(
-          alloc.pcwstr(committed().path),
-          GENERIC_READ,
-          FILE_SHARE_READ,
-          null,
-          OPEN_EXISTING,
-          FILE_ATTRIBUTE_NORMAL,
-          null,
-        );
-        if (!handle.isValid) fail('Could not hold the committed file: $error');
-        return handle;
-      });
+      final handle = _holdCommitted(
+        committed().path,
+        shareMode: FILE_SHARE_READ,
+      );
       Object? failure;
       try {
         await plugin.write(
@@ -224,10 +242,36 @@ void main() {
               directory: caseDirectory.path,
             ).save(_initial, options);
 
+            final caseCommitted = File(
+              p.join(caseDirectory.path, encryptedJsonFileName),
+            );
+            final caseStaged = File(
+              '${caseCommitted.path}$stagedJsonFileSuffix',
+            );
             final exit = await _runChildToExit(
               operation: operation,
               stage: stage,
               directory: caseDirectory.path,
+              // While the child waits at its barrier, the committed path holds
+              // the old map and the staged sibling the new one, or the new
+              // map is already published under the committed name.
+              atBarrier: () async {
+                final scratch = await directory.createTemp('inspect-');
+                switch (stage) {
+                  case _Stage.beforePublish:
+                    expect(await _loadFile(caseCommitted, scratch), _initial);
+                    expect(
+                      await _loadFile(caseStaged, scratch),
+                      operation.after,
+                    );
+                  case _Stage.afterPublish:
+                    expect(
+                      await _loadFile(caseCommitted, scratch),
+                      operation.after,
+                    );
+                    expect(caseStaged.existsSync(), isFalse);
+                }
+              },
             );
 
             expect(exit.stage, stage.name);
@@ -277,6 +321,31 @@ enum _Operation {
 }
 
 enum _Stage { beforePublish, afterPublish }
+
+/// Opens [path] for reading with only the given sharing, so other opens
+/// that need more access fail until the handle is closed.
+HANDLE _holdCommitted(String path, {required FILE_SHARE_MODE shareMode}) =>
+    using((alloc) {
+      final Win32Result(value: handle, :error) = CreateFile(
+        alloc.pcwstr(path),
+        GENERIC_READ,
+        shareMode,
+        null,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        null,
+      );
+      if (!handle.isValid) fail('Could not hold the committed file: $error');
+      return handle;
+    });
+
+/// Decodes the DPAPI map in [file] through a copy in a fresh directory.
+Future<Map<String, String>> _loadFile(File file, Directory scratch) async {
+  final copy = await scratch.createTemp();
+  await file.copy(p.join(copy.path, encryptedJsonFileName));
+  return DpapiJsonFileMapStorage.forTesting(directory: copy.path)
+      .load(const {'useBackwardCompatibility': 'false'});
+}
 
 /// Encrypts [plain] with DPAPI for the current user, as the backend does.
 Uint8List _protect(List<int> plain) => using((alloc) {
@@ -354,6 +423,7 @@ Future<_ChildExit> _runChildToExit({
   required _Operation operation,
   required _Stage stage,
   required String directory,
+  required Future<void> Function() atBarrier,
 }) async {
   final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
   final flutter = _flutterCommand();
@@ -408,6 +478,7 @@ Future<_ChildExit> _runChildToExit({
       fail('Could not open the child host process.');
     }
     try {
+      await atBarrier();
       accepted.writeln('continue');
       await accepted.flush();
       final address = handle.address;
