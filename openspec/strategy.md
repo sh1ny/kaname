@@ -38,6 +38,7 @@ The first real user is expected to be the owner's own corp; until then trials us
 - init 2026-11-14: all (source: setting)
 - close M0 2026-11-18: all (source: setting)
 - close M1 2026-11-23: all (source: setting)
+- close M2 2026-11-26: all (source: setting)
 
 | # | Run | Decision | Choice | Rejected | Reason | Important | Chosen by |
 |---|---|---|---|---|---|---|---|
@@ -110,3 +111,7 @@ The first real user is expected to be the owner's own corp; until then trials us
 | R67 | close M1 | New Next (M3) | One paragraph; split at M2 close | Agree the M3 split now | Let M2 prove the identity handoff first | no | user |
 | R68 | close M1 | Privacy boundary before M4 | Assign scoped own-row and admin aggregate reads to `esi-call-log` and explicit policy and opt-in inputs to `esi-sso`. Keep cross-member sharing and the full consent lifecycle in M4 | Leave those M2 exit criteria unassigned | Meet ADR 0006 without expanding M2 into organisation consent | yes | user |
 | R69 | close M1 | Static-data admin cutover | In `esi-sso`, replace the shared key with sign-in and required admin scope; public status stays readable | A sixth M2 change after `esi-sso` | Close the interim auth boundary in the change that supplies sign-in, as ADR 0015 requires | yes | user |
+| R70 | close M2 | Remaining pending strategy rows | Leave R35–R37, R39–R47, the Redis, vault and privacy-scope parts of R56, and R57 open | Settle some now | None is due at M3. Owner, 2026-11-26: "Keep all open" | no | user |
+| R71 | close M2 | M3 split | `member-accounts`, `character-transfer`, `org-tree-affiliation`, `member-states`, `groups-and-capabilities`, in that order | Four changes with the transfer folded into `member-accounts` | Review owner-hash transfer separately from account linking. Owner, 2026-11-26: "Five changes, in order" | yes | user |
+| R72 | close M2 | M3 owner exit check | On the local stack: main and alt sign-in with real affiliation and member state, a group capability granted and removed, and an outside character with no member state | Sign-in and state only; adding a real character transfer | Proves accounts, states and capabilities live without a character sale. Owner, 2026-11-26: "Full check" | yes | user |
+| R73 | close M2 | New Next (M4) | One paragraph; split at M3's close | Agree the M4 split now | Only Now is split. Owner, 2026-11-26: "Yes, one paragraph" | no | user |
