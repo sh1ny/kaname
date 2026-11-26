@@ -22,3 +22,13 @@ workspace:
 
 dev_dependencies:
   lints: ^6.0.0
+
+# Patched Windows secure-storage backend: atomic publication and no deletion
+# of unreadable data (#49). Pinned to an immutable commit of the owner's fork;
+# see THIRD_PARTY_NOTICES for provenance and when to remove this override.
+dependency_overrides:
+  flutter_secure_storage_windows:
+    git:
+      url: https://github.com/sh1ny/flutter_secure_storage.git
+      ref: ecd6627b06ee5686880ca6bbe213ea111b785660
+      path: flutter_secure_storage_windows
