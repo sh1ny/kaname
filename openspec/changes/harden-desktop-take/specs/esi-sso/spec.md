@@ -61,7 +61,8 @@ Successive unused take epoch closures for one character SHALL be at least 60 sec
 
 - **WHEN** a reconcile or start arrives for an epoch-bound take intent
 - **THEN** the source first answers from committed evidence for that intent, such as an accepted take or an epoch that is already closed, before it checks the cooldown or writes a closure
-- **AND** a cooldown, a database error, or a guarded write that matches no row leaves the outcome unproven, so the source reports pending and does not confirm non-acceptance
+- **AND** a cooldown or a guarded write that matches no row leaves the outcome unproven, so the source reports pending and does not confirm non-acceptance
+- **AND** a database error also never confirms non-acceptance; the route answers it as unavailable, and the desktop keeps the take and its original proof
 
 ## MODIFIED Requirements
 
