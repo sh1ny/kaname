@@ -26,7 +26,7 @@ Command, from `app/` after `flutter pub get --enforce-lockfile` with this branch
 mise exec -- flutter test --no-pub test/esi_sso/windows_secure_storage_preservation_test.dart test/esi_sso/windows_secure_storage_crash_test.dart
 ```
 
-Outcome: exit 0, 6 tests passed. After the pre-ship review added tests in rounds 1, 2 and 4, the same command on the same pin passed all 9 tests with exit 0.
+Outcome: exit 0, 6 tests passed. After the pre-ship review added or tightened tests in rounds 1, 2, 4 and 5, the same command on the same pin passed all 9 tests with exit 0.
 
 | Test | Result |
 |---|---|
@@ -36,7 +36,7 @@ Outcome: exit 0, 6 tests passed. After the pre-ship review added tests in rounds
 | A complete staged file never supplies credentials | Passed (pre-ship round 1). With no committed file, a complete staged map was not read or promoted. The next write published only the new entry and removed the staged file. |
 | A malformed decrypted credential file fails without exposing it | Passed (pre-ship round 1). For DPAPI-protected invalid JSON, a JSON list and a map with a non-string value, read, write and (since pre-ship round 4) exact-key delete each returned a fixed `PlatformException`. The committed bytes were unchanged, and neither the error nor the diagnostics held the synthetic secret. |
 | A committed file that cannot be read is not empty storage | Passed (pre-ship round 2). While a handle denied read sharing, a plugin read returned a fixed `PlatformException`, not an empty map. After release the original bytes and map were unchanged. |
-| A failed replacement keeps the committed bytes | Passed. A handle without delete sharing made the rename fail. The write returned a fixed `PlatformException`. The committed bytes were unchanged, the staged file was removed, and neither the error nor the diagnostics held a synthetic secret. |
+| A failed replacement keeps the committed bytes | Passed. A handle without delete sharing made the rename fail. Since pre-ship round 5 the test also confirms through the `beforePublish` hook that the write reached the rename. The write returned the fixed `PlatformException` with code `StorageWriteFailed`. The committed bytes were unchanged, the staged file was removed, and neither the error nor the diagnostics held a synthetic secret. |
 | Interrupted Windows write preserves the old or new map | Passed for both barriers. Since pre-ship round 2 the parent also inspects the files while the child waits at its barrier, as the next section describes. |
 | Interrupted Windows delete preserves the old or new map | Passed for both barriers |
 

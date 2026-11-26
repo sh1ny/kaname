@@ -200,9 +200,14 @@ void main() {
     test('A failed replacement keeps the committed bytes', () async {
       await storage().save(_initial, options);
       final before = await committed().readAsBytes();
+      var reachedRename = false;
       final plugin = createFlutterSecureStorageWindows(
         MethodChannelFlutterSecureStorage(),
-        storage(),
+        DpapiJsonFileMapStorage.forTesting(
+          directory: directory.path,
+          // Proves the write staged the new map and reached the rename.
+          beforePublish: () async => reachedRename = true,
+        ),
       );
 
       // A handle without delete sharing makes the replacement fail.
@@ -223,7 +228,19 @@ void main() {
         handle.close();
       }
 
-      expect(failure, isA<PlatformException>());
+      expect(
+        reachedRename,
+        isTrue,
+        reason: 'The write did not reach the rename.',
+      );
+      expect(
+        failure,
+        isA<PlatformException>().having(
+          (error) => error.code,
+          'code',
+          'StorageWriteFailed',
+        ),
+      );
       _expectNoSecret('$failure\n${printed.join('\n')}');
       expect(await committed().readAsBytes(), before);
       expect(staged().existsSync(), isFalse);
