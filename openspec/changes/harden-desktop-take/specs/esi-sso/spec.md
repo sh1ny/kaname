@@ -57,6 +57,12 @@ Successive unused take epoch closures for one character SHALL be at least 60 sec
 - **THEN** the cooldown does not prevent the start from parking the source and reserving its holder under the existing rules
 - **AND** a later reconcile does not close or cancel the accepted take
 
+#### Scenario: Only committed evidence confirms non-acceptance
+
+- **WHEN** a reconcile or start arrives for an epoch-bound take intent
+- **THEN** the source first answers from committed evidence for that intent, such as an accepted take or an epoch that is already closed, before it checks the cooldown or writes a closure
+- **AND** a cooldown, a database error, or a guarded write that matches no row leaves the outcome unproven, so the source reports pending and does not confirm non-acceptance
+
 ## MODIFIED Requirements
 
 ### Requirement: The desktop restores local state after a definitively refused take
