@@ -576,6 +576,12 @@ class Protocol extends _is.DatabaseSerializationManager
           isNullable: true,
           dartType: 'int?',
         ),
+        _isp.ColumnDefinition(
+          name: 'lastTakeClosureAt',
+          columnType: _isp.ColumnType.timestampWithoutTimeZone,
+          isNullable: true,
+          dartType: 'DateTime?',
+        ),
       ],
       foreignKeys: [],
       indexes: [

@@ -28,6 +28,7 @@ abstract class SsoHolderRow
     this.grantFingerprint,
     this.requestedScopes,
     this.takeClosures,
+    this.lastTakeClosureAt,
   });
 
   factory SsoHolderRow({
@@ -40,6 +41,7 @@ abstract class SsoHolderRow
     String? grantFingerprint,
     List<String>? requestedScopes,
     int? takeClosures,
+    DateTime? lastTakeClosureAt,
   }) = _SsoHolderRowImpl;
 
   factory SsoHolderRow.fromJson(Map<String, dynamic> jsonSerialization) {
@@ -57,6 +59,11 @@ abstract class SsoHolderRow
               jsonSerialization['requestedScopes'],
             ),
       takeClosures: jsonSerialization['takeClosures'] as int?,
+      lastTakeClosureAt: jsonSerialization['lastTakeClosureAt'] == null
+          ? null
+          : _is.DateTimeJsonExtension.fromJson(
+              jsonSerialization['lastTakeClosureAt'],
+            ),
     );
   }
 
@@ -85,6 +92,11 @@ abstract class SsoHolderRow
   /// phase, or proof used by release and join acknowledgement retries.
   int? takeClosures;
 
+  /// When the last take closure obtained the holder row lock, in UTC. Null
+  /// means no closure is recorded. Only a closure writes it; every other
+  /// holder write preserves it.
+  DateTime? lastTakeClosureAt;
+
   @override
   _is.Table<int?> get table => t;
 
@@ -101,6 +113,7 @@ abstract class SsoHolderRow
     String? grantFingerprint,
     List<String>? requestedScopes = const _is.$UndefinedList<String>(),
     int? takeClosures,
+    DateTime? lastTakeClosureAt = const _is.$UndefinedDateTime(),
   });
   @override
   Map<String, dynamic> toJson() {
@@ -115,6 +128,8 @@ abstract class SsoHolderRow
       if (grantFingerprint != null) 'grantFingerprint': grantFingerprint,
       if (requestedScopes != null) 'requestedScopes': requestedScopes?.toJson(),
       if (takeClosures != null) 'takeClosures': takeClosures,
+      if (lastTakeClosureAt != null)
+        'lastTakeClosureAt': lastTakeClosureAt?.toJson(),
     };
   }
 
@@ -164,6 +179,7 @@ class _SsoHolderRowImpl extends SsoHolderRow {
     String? grantFingerprint,
     List<String>? requestedScopes,
     int? takeClosures,
+    DateTime? lastTakeClosureAt,
   }) : super._(
          id: id,
          characterId: characterId,
@@ -174,6 +190,7 @@ class _SsoHolderRowImpl extends SsoHolderRow {
          grantFingerprint: grantFingerprint,
          requestedScopes: requestedScopes,
          takeClosures: takeClosures,
+         lastTakeClosureAt: lastTakeClosureAt,
        );
 
   /// Returns a shallow copy of this [SsoHolderRow]
@@ -190,6 +207,7 @@ class _SsoHolderRowImpl extends SsoHolderRow {
     Object? grantFingerprint = _Undefined,
     List<String>? requestedScopes = const _is.$UndefinedList<String>(),
     Object? takeClosures = _Undefined,
+    DateTime? lastTakeClosureAt = const _is.$UndefinedDateTime(),
   }) {
     return SsoHolderRow(
       id: id is int? ? id : this.id,
@@ -207,6 +225,9 @@ class _SsoHolderRowImpl extends SsoHolderRow {
           ? this.requestedScopes?.map((e0) => e0).toList()
           : requestedScopes,
       takeClosures: takeClosures is int? ? takeClosures : this.takeClosures,
+      lastTakeClosureAt: lastTakeClosureAt is _is.UndefinedSentinel
+          ? this.lastTakeClosureAt
+          : lastTakeClosureAt,
     );
   }
 }
@@ -238,6 +259,9 @@ class SsoHolderRowUpdateTable extends _is.UpdateTable<SsoHolderRowTable> {
 
   _is.ColumnValue<int, int> takeClosures(int? value) =>
       _is.ColumnValue(table.takeClosures, value);
+
+  _is.ColumnValue<DateTime, DateTime> lastTakeClosureAt(DateTime? value) =>
+      _is.ColumnValue(table.lastTakeClosureAt, value);
 }
 
 class SsoHolderRowTable extends _is.Table<int?> {
@@ -255,6 +279,7 @@ class SsoHolderRowTable extends _is.Table<int?> {
       this,
     );
     takeClosures = _is.ColumnInt('takeClosures', this);
+    lastTakeClosureAt = _is.ColumnDateTime('lastTakeClosureAt', this);
   }
 
   late final SsoHolderRowUpdateTable updateTable;
@@ -277,6 +302,11 @@ class SsoHolderRowTable extends _is.Table<int?> {
   /// phase, or proof used by release and join acknowledgement retries.
   late final _is.ColumnInt takeClosures;
 
+  /// When the last take closure obtained the holder row lock, in UTC. Null
+  /// means no closure is recorded. Only a closure writes it; every other
+  /// holder write preserves it.
+  late final _is.ColumnDateTime lastTakeClosureAt;
+
   @override
   List<_is.Column> get columns => [
     id,
@@ -288,6 +318,7 @@ class SsoHolderRowTable extends _is.Table<int?> {
     grantFingerprint,
     requestedScopes,
     takeClosures,
+    lastTakeClosureAt,
   ];
 }
 
