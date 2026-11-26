@@ -15,6 +15,7 @@ import '../support/in_process_pod.dart';
 const _one = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const _two = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 const _character = 415;
+const _other = 416;
 const _owner = 'VEVTVCBPTkxZ';
 
 void main() {
@@ -24,6 +25,7 @@ void main() {
   late EsiTokenVault vault;
   late SsoCharacterGate gate;
   late SsoHandoff handoff;
+  late DateTime clock;
 
   setUp(() async {
     pod = await InProcessPod.start();
@@ -45,12 +47,13 @@ void main() {
       refresh: (_, _) async => fail('handoff must not send refresh'),
     );
     gate = SsoCharacterGate();
-    handoff = SsoHandoff(gate: gate, vault: vault);
+    clock = DateTime.utc(2026, 11, 25, 10);
+    handoff = SsoHandoff(gate: gate, vault: vault, now: () => clock);
   });
 
-  Future<VaultAuthorization> holdOnServer() async {
+  Future<VaultAuthorization> holdOnServer({int character = _character}) async {
     final value = await vault.activate(
-      character: _character,
+      character: character,
       holder: ServerSsoGrants.holder,
       expectedGeneration: 0,
       refreshToken: 'synthetic-refresh',
@@ -59,7 +62,7 @@ void main() {
     await SsoHolderRow.db.insertRow(
       session,
       SsoHolderRow(
-        characterId: _character,
+        characterId: character,
         phase: 'serverHeld',
         generation: 1,
         vaultGeneration: auth.generation,
@@ -70,6 +73,21 @@ void main() {
 
   Future<SsoHolderRow?> assigned() =>
       ServerSsoGrants.assignment(session, _character);
+
+  /// The holder fields a closure may or may not change.
+  Future<Object> closure([int character = _character]) async {
+    final row = (await ServerSsoGrants.assignment(session, character))!;
+    return (
+      row.phase,
+      row.generation,
+      row.proofDigest,
+      row.takeClosures,
+      row.lastTakeClosureAt,
+    );
+  }
+
+  Future<SsoHandoffResult> reconcile(String proof, int epoch) =>
+      handoff.takeIntent(session, pilot, proof, epoch, reconcile: true);
 
   test('Take a server-held character solo', () async {
     final original = await holdOnServer();
@@ -222,7 +240,11 @@ void main() {
     );
     finish.complete();
     await admitted;
-    final reconstructed = SsoHandoff(gate: SsoCharacterGate(), vault: vault);
+    final reconstructed = SsoHandoff(
+      gate: SsoCharacterGate(),
+      vault: vault,
+      now: () => clock,
+    );
     expect(
       await reconstructed.take(session, pilot, _one),
       isA<SsoDeviceReservation>(),
@@ -324,5 +346,157 @@ void main() {
       SsoHandoffStatus.blocked,
     );
     expect((await assigned())?.phase, 'serverHeld');
+  });
+
+  test('A new closure can commit at the cooldown boundary', () async {
+    await holdOnServer();
+    final start = clock;
+    expect(await reconcile(_one, 1), SsoHandoffStatus.notAccepted);
+    final first = await closure();
+    expect(first, ('serverHeld', 1, null, 1, start));
+
+    clock = start.add(
+      const Duration(seconds: 60) - const Duration(microseconds: 1),
+    );
+    expect(await reconcile(_two, 2), SsoHandoffStatus.pending);
+    expect(await closure(), first);
+
+    clock = start.add(const Duration(seconds: 60));
+    expect(await reconcile(_two, 2), SsoHandoffStatus.notAccepted);
+    expect(await closure(), ('serverHeld', 1, null, 2, clock));
+  });
+
+  test('Repeated closures stay pending after restart and do not limit another character', () async {
+    await holdOnServer();
+    final other = await SsoIdentityRow.db.insertRow(
+      session,
+      SsoIdentityRow(
+        characterId: _other,
+        characterName: 'Other',
+        owner: _owner,
+        blocked: false,
+      ),
+    );
+    await holdOnServer(character: _other);
+    final start = clock;
+    expect(await reconcile(_one, 1), SsoHandoffStatus.notAccepted);
+    final closed = await closure();
+
+    clock = start.add(const Duration(seconds: 30));
+    final restarted = SsoHandoff(
+      gate: SsoCharacterGate(),
+      vault: vault,
+      now: () => clock,
+    );
+    for (final proof in [_one, _two, _two]) {
+      expect(
+        await restarted.takeIntent(session, pilot, proof, 2, reconcile: true),
+        SsoHandoffStatus.pending,
+      );
+    }
+    // A start the source would refuse cannot confirm non-acceptance either.
+    await SsoHolderRow.db.updateRow(
+      session,
+      (await assigned())!.copyWith(vaultGeneration: null),
+    );
+    expect(
+      await restarted.takeIntent(session, pilot, _two, 2, reconcile: false),
+      SsoHandoffStatus.pending,
+    );
+    expect(await closure(), closed);
+
+    expect(
+      await restarted.takeIntent(session, other, _one, 1, reconcile: true),
+      SsoHandoffStatus.notAccepted,
+    );
+    expect(await closure(_other), ('serverHeld', 1, null, 1, clock));
+  });
+
+  test(
+    'Waiting for the holder row does not consume the cooldown',
+    timeout: const Timeout(Duration(minutes: 5)),
+    () async {
+      await holdOnServer();
+      final start = clock;
+      final locked = Completer<void>();
+      final unlock = Completer<void>();
+      addTearDown(() {
+        if (!unlock.isCompleted) unlock.complete();
+      });
+      final holder = pod.pod.withSession(
+        (db) => db.db.transaction((transaction) async {
+          await db.db.unsafeQuery(
+            'SELECT id FROM esi_holder_assignment '
+            'WHERE "characterId" = @character FOR UPDATE',
+            parameters: QueryParameters.named({'character': _character}),
+            transaction: transaction,
+          );
+          locked.complete();
+          await unlock.future;
+        }),
+        enableLogging: false,
+      );
+      await locked.future;
+
+      var finished = false;
+      final closing = reconcile(_one, 1)
+        ..whenComplete(() => finished = true).ignore();
+      // Poll the server until the closure waits on the held row lock.
+      while (true) {
+        final waiting = await session.db.unsafeQuery('''
+SELECT count(*) FROM pg_stat_activity
+WHERE datname = current_database() AND wait_event_type = 'Lock'
+  AND query LIKE '%esi_holder_assignment%'
+''');
+        if ((waiting.single.single! as int) > 0) break;
+        if (finished) fail('The closure finished without waiting for the row.');
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      final lockedAt = start.add(const Duration(minutes: 2));
+      clock = lockedAt;
+      unlock.complete();
+      await holder;
+      expect(await closing, SsoHandoffStatus.notAccepted);
+      final first = await closure();
+      expect(first, ('serverHeld', 1, null, 1, lockedAt));
+
+      // The request began at start, but the cooldown runs from the lock.
+      clock = lockedAt.add(const Duration(seconds: 59));
+      expect(await reconcile(_two, 2), SsoHandoffStatus.pending);
+      // An exact replay is answered from the committed row.
+      expect(await reconcile(_one, 1), SsoHandoffStatus.notAccepted);
+      expect(await closure(), first);
+
+      clock = lockedAt.add(const Duration(seconds: 60));
+      expect(await reconcile(_two, 2), SsoHandoffStatus.notAccepted);
+    },
+  );
+
+  test('The cooldown does not block an eligible start', () async {
+    await holdOnServer();
+    final start = clock;
+    expect(await reconcile(_two, 1), SsoHandoffStatus.notAccepted);
+
+    clock = start.add(const Duration(seconds: 1));
+    expect(await handoff.prepareTake(session, pilot), 2);
+    final started = await handoff.takeIntent(
+      session,
+      pilot,
+      _one,
+      2,
+      reconcile: false,
+    );
+    expect(started, isA<SsoDeviceReservation>());
+    final reserved = await closure();
+    expect(reserved, ('deviceReserved', 2, ssoDigest(_one), 1, start));
+
+    // A later reconcile replays the accepted take and cannot close it.
+    final replayed = await reconcile(_one, 2);
+    expect(
+      (replayed as SsoDeviceReservation).generation,
+      (started as SsoDeviceReservation).generation,
+    );
+    expect(await reconcile(_two, 2), SsoHandoffStatus.notAccepted);
+    expect(await closure(), reserved);
   });
 }

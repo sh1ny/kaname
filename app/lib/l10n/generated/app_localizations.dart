@@ -1516,6 +1516,18 @@ abstract class AppLocalizations {
   /// **'This account, device, or scope cannot perform the request.'**
   String get esiBlocked;
 
+  /// No description provided for @esiTakeNotAccepted.
+  ///
+  /// In en, this message translates to:
+  /// **'The take did not go through. You can start a new take if the character is free.'**
+  String get esiTakeNotAccepted;
+
+  /// No description provided for @esiTakeUnconfirmed.
+  ///
+  /// In en, this message translates to:
+  /// **'The take is still unconfirmed. Another retry may not settle it.'**
+  String get esiTakeUnconfirmed;
+
   /// No description provided for @esiSignedOut.
   ///
   /// In en, this message translates to:

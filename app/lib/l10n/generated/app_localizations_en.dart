@@ -779,6 +779,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'This account, device, or scope cannot perform the request.';
 
   @override
+  String get esiTakeNotAccepted =>
+      'The take did not go through. You can start a new take if the character is free.';
+
+  @override
+  String get esiTakeUnconfirmed =>
+      'The take is still unconfirmed. Another retry may not settle it.';
+
+  @override
   String get esiSignedOut => 'Sign in again to continue.';
 
   @override

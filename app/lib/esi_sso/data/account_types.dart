@@ -81,6 +81,15 @@ enum AccountNotice {
 
   /// The viewer needs a valid bearer again.
   signedOut,
+
+  /// The source confirmed that a recovered take never went through, and the
+  /// desktop committed its rollback. A new Take can start under the existing
+  /// holder rules.
+  takeNotAccepted,
+
+  /// A retried take is still pending at the source. Another retry may not
+  /// settle it; the journal and original proof stay.
+  takeUnconfirmed,
 }
 
 /// The server's answer to a desktop take request.
@@ -113,6 +122,14 @@ final class DeviceTakeRefused extends DeviceTakeResult {
 final class DeviceTakeNotAccepted extends DeviceTakeResult {
   /// Creates a terminal outcome for the matching epoch and proof.
   const DeviceTakeNotAccepted();
+}
+
+/// The source's exact pending reply to a fenced take intent.
+///
+/// Like [DeviceTakeIncomplete] it proves nothing about the intent's outcome.
+final class DeviceTakePending extends DeviceTakeResult {
+  /// Creates the result of a well-formed pending reply.
+  const DeviceTakePending();
 }
 
 /// The reply proves neither a reservation nor a definitive refusal.

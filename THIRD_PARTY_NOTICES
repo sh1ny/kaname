@@ -100,6 +100,37 @@ CCP's ESI OpenAPI spec
   of CCP hf.
   Kaname's own code keeps its AGPL-3.0 licence.
 
+Patched Windows secure storage
+------------------------------
+
+flutter_secure_storage_windows 4.2.2, modified
+  The root pubspec.yaml overrides this package with a patched copy from the
+  owner's public fork. Kaname's tree contains none of its code.
+  Upstream: https://github.com/juliansteenbakker/flutter_secure_storage, tag
+  flutter_secure_storage_windows-v4.2.2 (commit
+  bd602d0a47bea9088cd40bd87fcbf7d2c67f7e60)
+  Fork: https://github.com/sh1ny/flutter_secure_storage, branch
+  fix/windows-atomic-save-4.2.2
+  Pinned commit: f87ea6e365fb321288ef2e9256a8be5a5e3171ca, package
+  directory flutter_secure_storage_windows
+  Licence: BSD-3-Clause, Copyright 2017 German Saprykin. The licence text is
+  flutter_secure_storage_windows/LICENSE in the fork and in the generated
+  section below.
+  Modification: the DPAPI map is staged in a flushed sibling file and
+  published by one rename, retried up to five times while another handle
+  briefly blocks it, and a file that cannot be read, decrypted or
+  decoded fails with a fixed error and is not deleted. The fork marks the
+  modified code and lists the changes in the package CHANGELOG.
+  Remove the override when an upstream release of the package ships the
+  same guarantees and passes Kaname's Windows secure-storage tests.
+  Publishing rule: after the owner's explicit apply approval, this
+  change publishes only the patch branch above to
+  sh1ny/flutter_secure_storage. Every gh command that touches the fork
+  passes -R sh1ny/flutter_secure_storage. No pull request is opened in the
+  fork. Pushes, pull requests, issues and comments in
+  juliansteenbakker/flutter_secure_storage or any other upstream or
+  third-party repository are outside this change.
+
 Pub dependencies
 ----------------
 
@@ -157,7 +188,7 @@ flutter_secure_storage_darwin 0.4.3 hosted L30
 flutter_secure_storage_linux 3.0.3 hosted L29
 flutter_secure_storage_platform_interface 2.1.1 hosted L29
 flutter_secure_storage_web 2.1.1 hosted L29
-flutter_secure_storage_windows 4.2.2 hosted L29
+flutter_secure_storage_windows 4.2.2 git L29
 flutter_test 0.0.0 sdk flutter-sdk
 flutter_web_plugins 0.0.0 sdk flutter-sdk
 frontend_server_client 4.2.0 hosted L31

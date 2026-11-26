@@ -229,6 +229,8 @@ final class ConnectedSession implements HolderRemote {
           generation: generation,
           ownerFingerprint: fingerprint,
         ),
+      (202, {'status': 'pending'} && Map(length: 1)) =>
+        const DeviceTakePending(),
       _ => DeviceTakeIncomplete(
         reply.code == 200 ? AccountNotice.unavailable : _notice(reply),
       ),

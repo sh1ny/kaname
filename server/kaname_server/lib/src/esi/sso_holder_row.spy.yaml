@@ -13,3 +13,7 @@ fields:
   ### Take reconciliation advances only this offset, never the holder generation,
   ### phase, or proof used by release and join acknowledgement retries.
   takeClosures: int?
+  ### When the last take closure obtained the holder row lock, in UTC. Null
+  ### means no closure is recorded. Only a closure writes it; every other
+  ### holder write preserves it.
+  lastTakeClosureAt: DateTime?

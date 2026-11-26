@@ -40,12 +40,16 @@ enum SsoHandoffStatus implements SsoHandoffResult {
 /// Durably excludes the old holder before permitting the next (ADR 0017).
 final class SsoHandoff {
   /// Shares the main-isolate gate with all authenticated server ESI work.
-  SsoHandoff({required this._gate, required this._vault});
+  ///
+  /// `now` is the server runtime clock that times epoch closures.
+  SsoHandoff({required this._gate, required this._vault, required this._now});
 
   final SsoCharacterGate _gate;
   final EsiTokenVault _vault;
+  final DateTime Function() _now;
   final _changing = <int>{};
   static const _maxGeneration = 0x7fffffffffffffff;
+  static const _closureCooldown = Duration(seconds: 60);
   static final _proof = RegExp(r'^[A-Za-z0-9_-]{43}$');
 
   /// Requests or resumes transfer to the exact device holding [proof].
@@ -73,8 +77,16 @@ final class SsoHandoff {
   /// Starts or reconciles a take within the epoch captured before first send.
   ///
   /// Acceptance advances the holder generation and records the digest.
-  /// Closure advances only the offset. Park, release and activation preserve
-  /// both. More than one intervening advance cannot prove non-acceptance.
+  /// A closure changes only the closure offset and its timestamp, never the
+  /// holder generation, phase or proof. Other holder writes, including park,
+  /// release and activation, preserve both closure fields. More than one
+  /// intervening advance cannot prove non-acceptance.
+  ///
+  /// Closures of one character are at least 60 seconds apart, measured on
+  /// the server clock at the holder row lock. Within that cooldown a request
+  /// that would close a new epoch gets `pending`, as does any other result
+  /// that cannot prove non-acceptance. Prepare, an eligible start and a reply
+  /// from a committed row do not consult the cooldown.
   Future<SsoHandoffResult> takeIntent(
     Session session,
     SsoIdentityRow viewer,
@@ -295,27 +307,45 @@ final class SsoHandoff {
     return generation + closures;
   }
 
-  static Future<SsoHandoffStatus> _closeTake(
-    Session session,
-    SsoHolderRow row,
-  ) async {
-    final rows = await session.db.unsafeQuery(
-      '''
+  /// Closes the observed unused epoch at most once per [_closureCooldown].
+  ///
+  /// The cooldown runs from the time sampled after the holder row lock is
+  /// granted, so time spent waiting for the lock does not count. The same
+  /// update checks the cooldown and the observed row, so a stale observation
+  /// or a closure inside the cooldown writes nothing and stays pending. Only
+  /// a committed closure proves non-acceptance.
+  Future<SsoHandoffStatus> _closeTake(Session session, SsoHolderRow row) async {
+    final closed = await session.db.transaction((transaction) async {
+      final locked = await session.db.unsafeQuery(
+        'SELECT id FROM esi_holder_assignment WHERE id = @id FOR UPDATE',
+        parameters: QueryParameters.named({'id': row.id}),
+        transaction: transaction,
+      );
+      if (locked.isEmpty) return false;
+      final now = _now().toUtc();
+      final rows = await session.db.unsafeQuery(
+        '''
 UPDATE esi_holder_assignment
-SET "takeClosures" = COALESCE("takeClosures", 0) + 1
-WHERE id = \$1 AND generation = \$2 AND phase = 'serverHeld'
-  AND COALESCE("takeClosures", 0) = \$3
+SET "takeClosures" = COALESCE("takeClosures", 0) + 1,
+  "lastTakeClosureAt" = @now::timestamp
+WHERE id = @id AND generation = @generation AND phase = 'serverHeld'
+  AND COALESCE("takeClosures", 0) = @closures
+  AND ("lastTakeClosureAt" IS NULL
+    OR "lastTakeClosureAt" <= @earliest::timestamp)
 RETURNING id
 ''',
-      parameters: QueryParameters.positional([
-        row.id,
-        row.generation,
-        row.takeClosures ?? 0,
-      ]),
-    );
-    return rows.isEmpty
-        ? SsoHandoffStatus.pending
-        : SsoHandoffStatus.notAccepted;
+        parameters: QueryParameters.named({
+          'now': now,
+          'earliest': now.subtract(_closureCooldown),
+          'id': row.id,
+          'generation': row.generation,
+          'closures': row.takeClosures ?? 0,
+        }),
+        transaction: transaction,
+      );
+      return rows.isNotEmpty;
+    });
+    return closed ? SsoHandoffStatus.notAccepted : SsoHandoffStatus.pending;
   }
 
   static bool _matches(SsoHolderRow row, String digest) {

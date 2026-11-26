@@ -214,7 +214,7 @@ void main() {
       sessions: sessions,
       now: () => clock,
       grants: grants,
-      handoff: SsoHandoff(gate: sessions.gate, vault: vault),
+      handoff: SsoHandoff(gate: sessions.gate, vault: vault, now: () => clock),
       skills: ServerSsoSkills(
         sessions: sessions,
         grants: grants,
@@ -376,6 +376,8 @@ void main() {
       expectClosed(await intent('start', session, epoch, proof), epoch);
       expect((await post('skills', {}, bearer: session)).statusCode, 200);
 
+      // An intentional second closure waits out the closure cooldown.
+      clock = clock.add(const Duration(minutes: 1));
       final next = await prepare(session);
       expectClosed(
         await intent('reconcile', session, next, newOAuthProof()),
@@ -387,6 +389,32 @@ void main() {
       );
     },
   );
+
+  test('A lost closure reply can be retried during the cooldown', () async {
+    final session = (await signIn())['session'] as String;
+    await authorize(session);
+    final epoch = await prepare(session);
+    final proof = newOAuthProof();
+    Future<(int?, DateTime?)> closure() => pod.pod.withSession((db) async {
+      final row = (await ServerSsoGrants.assignment(db, 410))!;
+      return (row.takeClosures, row.lastTakeClosureAt);
+    }, enableLogging: false);
+
+    final closedAt = clock;
+    // Simulate a lost reply.
+    expectClosed(await intent('reconcile', session, epoch, proof), epoch);
+    final committed = await closure();
+    expect(committed, (1, closedAt));
+
+    clock = clock.add(const Duration(seconds: 30));
+    expectClosed(await intent('reconcile', session, epoch, proof), epoch);
+    expectClosed(await intent('start', session, epoch, proof), epoch);
+    final next = await prepare(session);
+    final throttled = await intent('reconcile', session, next, newOAuthProof());
+    expect(throttled.statusCode, 202);
+    expect(jsonDecode(throttled.body), {'status': 'pending'});
+    expect(await closure(), committed);
+  });
 
   test('An accepted start reconciles to the same reservation', () async {
     final session = (await signIn())['session'] as String;
@@ -438,6 +466,48 @@ void main() {
       expect((await post('skills', {}, bearer: session)).statusCode, 200);
     },
   );
+
+  test('Return and reauthorization keep the closure cooldown', () async {
+    final session = (await signIn())['session'] as String;
+    await authorize(session);
+    Future<(int?, DateTime?)> closure() => pod.pod.withSession((db) async {
+      final row = (await ServerSsoGrants.assignment(db, 410))!;
+      return (row.takeClosures, row.lastTakeClosureAt);
+    }, enableLogging: false);
+    final closedAt = clock;
+    final epoch = await prepare(session);
+    expectClosed(
+      await intent('reconcile', session, epoch, newOAuthProof()),
+      epoch,
+    );
+    final closed = await closure();
+    expect(closed, (1, closedAt));
+
+    // An eligible take, its return and a fresh server authorization all
+    // happen inside the cooldown and keep both closure fields.
+    clock = clock.add(const Duration(seconds: 10));
+    final proof = newOAuthProof();
+    final taken = await post('take', {'proof': proof}, bearer: session);
+    expect(taken.statusCode, 200);
+    final generation =
+        (jsonDecode(taken.body) as Map<String, Object?>)['generation'];
+    expect(
+      (await post('release', {
+        'proof': proof,
+        'generation': generation,
+      }, bearer: session)).statusCode,
+      200,
+    );
+    await authorize(session);
+    expect(await closure(), closed);
+
+    clock = clock.add(const Duration(seconds: 10));
+    final next = await prepare(session);
+    final throttled = await intent('reconcile', session, next, newOAuthProof());
+    expect(throttled.statusCode, 202);
+    expect(jsonDecode(throttled.body), {'status': 'pending'});
+    expect(await closure(), closed);
+  });
 
   for (final join in [false, true]) {
     test(

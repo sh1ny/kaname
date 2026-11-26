@@ -237,6 +237,8 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
               AccountNotice.blocked => l10n.esiBlocked,
               AccountNotice.signedOut => l10n.esiSignedOut,
               AccountNotice.reauthorize => l10n.esiReauthorize,
+              AccountNotice.takeNotAccepted => l10n.esiTakeNotAccepted,
+              AccountNotice.takeUnconfirmed => l10n.esiTakeUnconfirmed,
             }),
           ),
         if (state case AccountIdle(refusal: final refusal?))

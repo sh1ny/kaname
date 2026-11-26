@@ -414,7 +414,7 @@ void main() {
       isTrue,
     );
     server.recoveryReply = _notAccepted;
-    expect(await device.account.take(session), AccountNotice.blocked);
+    expect(await device.account.take(session), AccountNotice.takeNotAccepted);
     expect(device.store.character(123) == prior, isTrue);
     expect(
       priorProof != null && await device.store.proof(prior) == priorProof,
@@ -626,7 +626,10 @@ END
 
     server.reply = _refusedTake;
     server.recoveryReply = _notAccepted;
-    expect(await device.account.returnTo(session), AccountNotice.blocked);
+    expect(
+      await device.account.returnTo(session),
+      AccountNotice.takeNotAccepted,
+    );
     expect(device.account.pilot?.characterId, '456');
     expect(device.store.character(123) == original, isTrue);
     expect((await device.store.proof(original)) == priorProof, isTrue);
@@ -659,13 +662,30 @@ END
       expect(await device.store.proof(taking) != null, isTrue);
 
       device.allowSelectionRestore();
-      expect(await device.account.returnTo(session), AccountNotice.blocked);
+      expect(
+        await device.account.returnTo(session),
+        AccountNotice.takeNotAccepted,
+      );
       expect(device.account.pilot?.characterId, '456');
       expect(device.store.character(123), isNull);
       expect(await device.store.proof(taking) == null, isTrue);
       expect(server.sameProof, isTrue);
     },
   );
+
+  test('A fresh fenced refusal keeps the blocked notice', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer()
+      ..epoch = '3'
+      ..startReply = _notAccepted;
+    final session = await server.signIn();
+    device.store.save(_character(456));
+    device.store.setSetting('selected-character', '456');
+    expect(await device.account.take(session), AccountNotice.blocked);
+    expect(device.account.pilot?.characterId, '456');
+    expect(device.store.character(123), isNull);
+    expect(server.reconciles, 0);
+  });
 
   test('Recovery preserves a newer selection', () async {
     final device = await _TakeDevice.open();
@@ -679,9 +699,79 @@ END
     expect(await device.account.take(session), AccountNotice.pending);
     device.store.save(_character(789));
     device.store.setSetting('selected-character', '789');
-    expect(await device.account.take(session), AccountNotice.blocked);
+    expect(await device.account.take(session), AccountNotice.takeNotAccepted);
     expect(device.account.pilot?.characterId, '789');
     expect(device.store.character(123), isNull);
+  });
+
+  test(
+    'Failed proof deletion does not change the committed rollback notice',
+    () async {
+      final device = await _TakeDevice.open();
+      final server = _TakeServer()
+        ..epoch = '3'
+        ..reply = () => http.Response('{"status":"pending"}', 202);
+      final session = await server.signIn();
+      device.store.save(_character(456));
+      device.store.setSetting('selected-character', '456');
+      final retained = device.secrets.values.keys.toSet();
+      expect(await device.account.take(session), AccountNotice.pending);
+      await device.reopen();
+
+      device.secrets.failDelete = true;
+      server.recoveryReply = _notAccepted;
+      expect(
+        await device.account.returnTo(session),
+        AccountNotice.takeNotAccepted,
+      );
+      expect(device.account.pilot?.characterId, '456');
+      expect(device.store.character(123), isNull);
+      final unused = device.secrets.values.keys.toSet().difference(retained);
+      expect(unused, hasLength(1));
+
+      device.secrets.failDelete = false;
+      await device.reopen();
+      expect(device.secrets.values.containsKey(unused.single), isFalse);
+      expect(device.store.character(123), isNull);
+      expect(server.reconciles, 1);
+    },
+  );
+
+  test('A pending recovery keeps the original proof', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer()
+      ..epoch = '3'
+      ..reply = () => http.Response('{"status":"pending"}', 202);
+    final session = await server.signIn();
+    expect(await device.account.take(session), AccountNotice.pending);
+    await device.reopen();
+    final pending = device.store.character(123)!;
+    final proof = await device.store.proof(pending);
+
+    server.recoveryReply = () => http.Response('{"status":"pending"}', 202);
+    expect(
+      await device.account.returnTo(session),
+      AccountNotice.takeUnconfirmed,
+    );
+    expect(await device.account.take(session), AccountNotice.takeUnconfirmed);
+    await device.reopen();
+    expect(await device.account.take(session), AccountNotice.takeUnconfirmed);
+    expect(device.store.character(123) == pending, isTrue);
+    expect((await device.store.proof(pending)) == proof, isTrue);
+
+    // A 202 that is not the exact pending envelope keeps its old notice.
+    for (final (body, notice) in [
+      ('{"status":"pending","sourceEpoch":"3"}', AccountNotice.pending),
+      ('{"status":"waiting"}', AccountNotice.pending),
+      ('not JSON', AccountNotice.unavailable),
+    ]) {
+      server.recoveryReply = () => http.Response(body, 202);
+      expect(await device.account.returnTo(session), notice);
+      expect(device.store.character(123) == pending, isTrue);
+    }
+    expect(server.sameProof, isTrue);
+    expect(server.reconciles, 6);
+    expect(server.takes, 1);
   });
 
   test('Uncertain reconciliation keeps the original proof', () async {
