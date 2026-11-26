@@ -40,6 +40,11 @@ Future<DesktopAccount?> openDesktopHolder() async {
   }
 }
 
+/// Adapts secure storage to exact-name operations for the desktop journal.
+///
+/// Windows cannot reliably confirm that a key is absent. Its legacy lookup
+/// can treat an inaccessible file as missing, so a failed delete stays
+/// tracked until a later delete succeeds.
 final class _Keyring implements DeviceSecrets {
   const _Keyring();
   static const _storage = FlutterSecureStorage();
@@ -56,8 +61,6 @@ final class _Keyring implements DeviceSecrets {
 
   @override
   Future<bool> contains(String name) async {
-    // The Windows legacy lookup can report an inaccessible file as absent.
-    // Leave a failed delete tracked and retry it on reopen instead.
     if (Platform.isWindows) {
       throw StateError('Cannot confirm secure storage entry is absent');
     }
