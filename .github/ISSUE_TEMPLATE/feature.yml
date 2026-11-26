@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest something Kaname should do.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. Only the first box is required.
+
+        Kaname must never automate the EVE client. Requests that need input broadcasting, synthetic input, focus cycling on keys, memory reading of the client, screen capture or OCR of the client, packet inspection, or global keyboard hooks can't be accepted, however they are configured. Hotkeys work only while Kaname's own window is focused. [CONTRIBUTING.md](https://github.com/sh1ny/kaname/blob/main/CONTRIBUTING.md#eula-boundary) explains why.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Optional. How you'd like it to work, if you have an idea.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional. Workarounds you use now, or other approaches you thought about.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Your best guess is fine.
+      options:
+        - App (web, desktop or mobile)
+        - EVE sign-in (SSO) and tokens
+        - ESI data and scheduling
+        - Static data (SDE)
+        - Server
+        - Self-host stack (deploy/)
+        - Translations
+        - Build and tooling
