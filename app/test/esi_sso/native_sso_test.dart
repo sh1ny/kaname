@@ -323,6 +323,7 @@ void main() {
     device.store.save(_character(456));
     device.store.setSetting('selected-character', '456');
     device.secrets.failDelete = true;
+    final retained = device.secrets.values.keys.toSet();
 
     expect(await device.account.take(session), AccountNotice.blocked);
     await device.reopen();
@@ -331,7 +332,242 @@ void main() {
     expect(device.store.character(123) == null, isTrue);
     expect(await device.account.returnTo(session), AccountNotice.blocked);
     expect(server.takes, 1);
+    final rejected = device.secrets.values.keys.toSet().difference(retained);
+    expect(rejected, hasLength(1));
+    device.secrets.failDelete = false;
+    await device.reopen();
+    expect(device.secrets.values.containsKey(rejected.single), isFalse);
+    expect(device.account.pilot?.characterId, '456');
+    expect(device.store.character(123), isNull);
+    expect(server.takes, 1);
   });
+
+  test('Reopen removes the obsolete proof after a take reservation', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer()
+      ..epoch = '3'
+      ..reply = () => http.Response('{"status":"pending"}', 202);
+    final session = await server.signIn();
+    final prior = _character(
+      123,
+      phase: DevicePhase.returned,
+      origin: session.origin,
+      proofDigest: await device.store.newProof(123),
+    );
+    device.store.save(prior);
+    expect(await device.account.take(session), AccountNotice.pending);
+    await device.reopenVersion(2);
+    expect(await device.store.proof(prior) != null, isTrue);
+    server.recoveryReply = () => http.Response(
+      jsonEncode({
+        'sourceEpoch': '3',
+        'generation': '2',
+        'ownerFingerprint': 'a' * 64,
+      }),
+      200,
+    );
+    expect(await device.account.take(session), AccountNotice.none);
+    final reserved = device.store.character(123)!;
+    final proof = await device.store.proof(reserved);
+
+    await device.reopen();
+
+    expect(await device.store.proof(prior) == null, isTrue);
+    expect(
+      proof != null && await device.store.proof(reserved) == proof,
+      isTrue,
+    );
+    expect(device.store.character(123) == reserved, isTrue);
+    expect(device.account.ownsReservationFor(session.origin, '123'), isTrue);
+    expect(device.account.pilot?.characterId, '123');
+    expect(server.takes, 1);
+    expect(server.reconciles, 1);
+  });
+
+  test('Cleanup preserves a prior proof needed by a pending take', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer()
+      ..epoch = '3'
+      ..reply = () => http.Response('{"status":"pending"}', 202);
+    final session = await server.signIn();
+    final prior = _character(
+      123,
+      phase: DevicePhase.returned,
+      origin: session.origin,
+      proofDigest: await device.store.newProof(123),
+    );
+    device.store.save(prior);
+    final priorProof = await device.store.proof(prior);
+    expect(await device.account.take(session), AccountNotice.pending);
+    final pending = device.store.character(123)!;
+    final pendingProof = await device.store.proof(pending);
+    final unused = _character(
+      456,
+      proofDigest: await device.store.newProof(456),
+    );
+
+    await device.reopenVersion(2);
+
+    expect(device.store.character(123) == pending, isTrue);
+    expect(
+      pendingProof != null && await device.store.proof(pending) == pendingProof,
+      isTrue,
+    );
+    server.recoveryReply = _notAccepted;
+    expect(await device.account.take(session), AccountNotice.blocked);
+    expect(device.store.character(123) == prior, isTrue);
+    expect(
+      priorProof != null && await device.store.proof(prior) == priorProof,
+      isTrue,
+    );
+    expect(await device.store.proof(pending) == null, isTrue);
+    expect(await device.store.proof(unused) != null, isTrue);
+    expect(server.sameProof, isTrue);
+  });
+
+  test(
+    'Upgrade tracks referenced proofs without touching old orphans',
+    () async {
+      final device = await _TakeDevice.open();
+      final oldOrphan = _character(
+        123,
+        proofDigest: await device.store.newProof(123),
+      );
+      final tracked = _character(
+        123,
+        proofDigest: await device.store.newProof(123),
+      );
+      device.store.save(tracked);
+      await device.secrets.write('other-setting', 'synthetic value');
+
+      await device.reopenVersion(1);
+      expect(await device.store.proof(tracked) != null, isTrue);
+      device.store.save(_character(123));
+      await device.reopen();
+
+      expect(await device.store.proof(tracked) == null, isTrue);
+      expect(await device.store.proof(oldOrphan) != null, isTrue);
+      expect(await device.secrets.read('other-setting') != null, isTrue);
+    },
+  );
+
+  for (final (label, invalidate) in <(String, void Function(Database))>[
+    (
+      'key mismatch',
+      (db) => db.execute(
+        "UPDATE setting SET value = 'not a verifier' WHERE name = 'key-verifier'",
+      ),
+    ),
+    ('unsupported schema', (db) => db.execute('PRAGMA user_version=99')),
+    (
+      'failed migration',
+      (db) => db.execute(
+        'PRAGMA user_version=2; CREATE TABLE IF NOT EXISTS handoff_proof (bad INTEGER)',
+      ),
+    ),
+  ]) {
+    test('A rejected journal does not run proof cleanup: $label', () async {
+      final device = await _TakeDevice.open();
+      await device.store.newProof(123);
+      final keys = device.secrets.values.keys.toSet();
+      await device.account.close();
+      device.alterJournal(invalidate);
+      device.secrets.deletes = 0;
+      await expectLater(device.reopen(), throwsA(anything));
+      expect(device.secrets.deletes, 0);
+      expect(device.secrets.values.keys.toSet(), keys);
+    });
+  }
+
+  test('Reopen removes a proof whose journal never committed', () async {
+    final device = await _TakeDevice.open();
+    final unused = _character(
+      123,
+      proofDigest: await device.store.newProof(123),
+    );
+    device.secrets.failWrite = true;
+    await expectLater(device.store.newProof(456), throwsStateError);
+    device.secrets.failWrite = false;
+    device.secrets.deletes = 0;
+
+    await device.reopen();
+
+    expect(await device.store.proof(unused) == null, isTrue);
+    expect(device.secrets.deletes, 2);
+    expect(device.store.character(123), isNull);
+    expect(device.store.character(456), isNull);
+    await device.reopen();
+    expect(device.secrets.deletes, 2);
+  });
+
+  test('Reopen acknowledges an already absent proof', () async {
+    final device = await _TakeDevice.open();
+    final unused = _character(
+      123,
+      proofDigest: await device.store.newProof(123),
+    );
+    device.alterJournal(
+      (db) => db.execute('''
+CREATE TRIGGER fail_proof_ack BEFORE DELETE ON handoff_proof
+BEGIN
+  SELECT RAISE(ABORT, 'synthetic acknowledgement failure');
+END
+'''),
+    );
+    await device.reopen();
+    expect(await device.store.proof(unused) == null, isTrue);
+    device.alterJournal((db) => db.execute('DROP TRIGGER fail_proof_ack'));
+    device.secrets.failDelete = true;
+    device.secrets.deletes = 0;
+
+    await device.reopen();
+    expect(device.secrets.deletes, 1);
+    expect(device.secrets.presenceChecks, 1);
+    await device.reopen();
+    expect(device.secrets.deletes, 1);
+  });
+
+  for (final disallowPresenceCheck in [false, true]) {
+    test('Reopen retains cleanup work when the keyring cannot establish '
+        'absence (throws: $disallowPresenceCheck)', () async {
+      final messages = <String>[];
+      final device = await _TakeDevice.open(
+        diagnostic: (message) {
+          messages.add(message);
+          if (disallowPresenceCheck) throw StateError('synthetic sink failure');
+        },
+      );
+      final unused = _character(
+        123,
+        proofDigest: await device.store.newProof(123),
+      );
+      final live = _character(
+        456,
+        phase: DevicePhase.returning,
+        proofDigest: await device.store.newProof(456),
+      );
+      device.store.save(live);
+      final liveProof = await device.store.proof(live);
+      device.secrets
+        ..failDelete = true
+        ..failPresenceCheck = disallowPresenceCheck;
+
+      await device.reopen();
+
+      expect(device.secrets.deletes, 1);
+      expect(device.secrets.presenceChecks, 1);
+      expect(device.store.character(456) == live, isTrue);
+      expect(
+        liveProof != null && await device.store.proof(live) == liveProof,
+        isTrue,
+      );
+      expect(messages, ['Desktop handoff proof cleanup did not finish.']);
+      device.secrets.failDelete = false;
+      await device.reopen();
+      expect(await device.store.proof(unused) == null, isTrue);
+      expect(device.secrets.deletes, 2);
+    });
+  }
 
   test('A refused take leaves the connected holder gate in place', () async {
     final device = await _TakeDevice.open();
@@ -918,21 +1154,30 @@ final class _TakeServer {
 }
 
 final class _TakeDevice {
-  _TakeDevice(this._directory, {required this.allowNativeRequest});
+  _TakeDevice(
+    this._directory, {
+    required this.allowNativeRequest,
+    required this.diagnostic,
+  });
 
   final Directory _directory;
   final bool allowNativeRequest;
+  final void Function(String)? diagnostic;
   final secrets = _MemoryKeyring();
   late DeviceStore store;
   late NativeAccount account;
   var nativeRequests = 0;
 
-  static Future<_TakeDevice> open({bool allowNativeRequest = false}) async {
+  static Future<_TakeDevice> open({
+    bool allowNativeRequest = false,
+    void Function(String)? diagnostic,
+  }) async {
     final directory = await Directory.systemTemp.createTemp('kaname-take-');
     addTearDown(() => directory.delete(recursive: true));
     final device = _TakeDevice(
       directory,
       allowNativeRequest: allowNativeRequest,
+      diagnostic: diagnostic,
     );
     await device._open();
     addTearDown(() => device.account.close());
@@ -945,15 +1190,25 @@ final class _TakeDevice {
     await _open();
   }
 
-  Future<void> reopenV1() async {
+  Future<void> reopenV1() => reopenVersion(1);
+
+  Future<void> reopenVersion(int version) async {
     await account.close();
+    alterJournal((db) {
+      db.execute('DROP TABLE IF EXISTS handoff_proof');
+      if (version == 1) db.execute('DROP TABLE take_recovery');
+      db.execute('PRAGMA user_version=$version');
+    });
+    await _open();
+  }
+
+  void alterJournal(void Function(Database) edit) {
     final db = sqlite3.open(p.join(_directory.path, 'esi-credentials.sqlite'));
     try {
-      db.execute('DROP TABLE IF EXISTS take_recovery; PRAGMA user_version=1;');
+      edit(db);
     } finally {
       db.close();
     }
-    await _open();
   }
 
   void allowSelectionRestore() {
@@ -981,7 +1236,7 @@ END
   }
 
   Future<void> _open() async {
-    store = await DeviceStore.open(_directory, secrets);
+    store = await DeviceStore.open(_directory, secrets, diagnostic: diagnostic);
     account = NativeAccount(
       store: store,
       httpClient: MockClient((_) async {
@@ -999,15 +1254,30 @@ END
 final class _MemoryKeyring implements DeviceSecrets {
   final values = <String, String>{};
   var failDelete = false;
+  var failWrite = false;
+  var failPresenceCheck = false;
+  var deletes = 0;
+  var presenceChecks = 0;
 
   @override
   Future<String?> read(String name) async => values[name];
 
   @override
-  Future<void> write(String name, String secret) async => values[name] = secret;
+  Future<void> write(String name, String secret) async {
+    if (failWrite) throw StateError('synthetic keyring write failure');
+    values[name] = secret;
+  }
+
+  @override
+  Future<bool> contains(String name) async {
+    presenceChecks++;
+    if (failPresenceCheck) throw StateError('synthetic presence check failure');
+    return values.containsKey(name);
+  }
 
   @override
   Future<void> delete(String name) async {
+    deletes++;
     if (failDelete) throw StateError('synthetic keyring delete failure');
     values.remove(name);
   }

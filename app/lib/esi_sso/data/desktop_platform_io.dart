@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -24,6 +25,7 @@ Future<DesktopAccount?> openDesktopHolder() async {
     store = await DeviceStore.open(
       Directory(p.join(support.path, 'esi-credentials')),
       const _Keyring(),
+      diagnostic: (message) => developer.log(message, name: 'kaname.esi_sso'),
     );
     client = http.Client();
     return NativeAccount(
@@ -51,4 +53,14 @@ final class _Keyring implements DeviceSecrets {
 
   @override
   Future<void> delete(String name) => _storage.delete(key: name);
+
+  @override
+  Future<bool> contains(String name) async {
+    // The Windows legacy lookup can report an inaccessible file as absent.
+    // Leave a failed delete tracked and retry it on reopen instead.
+    if (Platform.isWindows) {
+      throw StateError('Cannot confirm secure storage entry is absent');
+    }
+    return _storage.containsKey(key: name);
+  }
 }
