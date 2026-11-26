@@ -8,7 +8,10 @@ import 'package:kaname_esi_vault/kaname_esi_vault.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart';
 
-/// Desktop keyring boundary; SQLite never stores either of these secrets.
+/// Access to exact desktop keyring names, without enumerating the keyring.
+///
+/// A name alone does not prove journal ownership. Cleanup can acknowledge a
+/// failed [delete] only if [contains] independently confirms absence.
 abstract interface class DeviceSecrets {
   /// Returns a stored secret, or null when it has not been provisioned.
   Future<String?> read(String name);
@@ -18,6 +21,9 @@ abstract interface class DeviceSecrets {
 
   /// Removes a secret after the journal no longer references it.
   Future<void> delete(String name);
+
+  /// Reports presence without returning the secret, or throws if uncertain.
+  Future<bool> contains(String name);
 }
 
 /// Durable phase of a desktop authorization or transition (ADR 0017).
@@ -64,6 +70,11 @@ typedef DeviceCharacter = ({
 });
 
 /// The installation's exclusive credential database and device journal.
+///
+/// Tracks proof identities before keyring writes. Under the exclusive owner,
+/// cleanup deletes only after the last journal reference commits away and
+/// forgets the identity only after confirmed deletion. Cleanup errors do not
+/// change the journal outcome, and diagnostics contain no keyring data.
 final class DeviceStore implements VaultStore {
   DeviceStore._(
     this._db,
@@ -71,6 +82,7 @@ final class DeviceStore implements VaultStore {
     this._path,
     this._secrets,
     this.installKey,
+    this._diagnostic,
   );
 
   /// The setting that names the selected native character.
@@ -82,6 +94,7 @@ final class DeviceStore implements VaultStore {
   final RandomAccessFile _lock;
   final String _path;
   final DeviceSecrets _secrets;
+  final void Function(String)? _diagnostic;
   bool _writing = false;
   bool _closed = false;
 
@@ -93,8 +106,35 @@ CREATE TABLE take_recovery(
  owner TEXT, name TEXT, registration TEXT, opt_in INTEGER, grant_revision INTEGER,
  phase TEXT, origin TEXT, assignment INTEGER, proof_digest TEXT,
  vault_generation INTEGER, owner_fingerprint TEXT);
-PRAGMA user_version=2;
 ''';
+
+  static const _proofSchema = '''
+CREATE TABLE handoff_proof(
+ character INTEGER NOT NULL, digest TEXT NOT NULL,
+ PRIMARY KEY(character, digest));
+''';
+
+  static const _seedProofs = '''
+INSERT INTO handoff_proof(character, digest)
+SELECT character, proof_digest FROM character WHERE proof_digest IS NOT NULL
+UNION
+SELECT character, pending_digest FROM take_recovery
+UNION
+SELECT character, proof_digest FROM take_recovery WHERE proof_digest IS NOT NULL;
+''';
+
+  static const _unusedProofs = '''
+SELECT p.character, p.digest FROM handoff_proof p
+WHERE NOT EXISTS (
+ SELECT 1 FROM character c
+ WHERE c.character=p.character AND c.proof_digest=p.digest
+)
+AND NOT EXISTS (
+ SELECT 1 FROM take_recovery r
+ WHERE r.character=p.character AND (r.pending_digest=p.digest OR r.proof_digest=p.digest)
+)
+''';
+  static final _proofDigest = RegExp(r'^[0-9a-f]{64}$');
 
   /// The dedicated install key read from OS secure storage.
   final String installKey;
@@ -103,10 +143,14 @@ PRAGMA user_version=2;
   ///
   /// Missing keys for an existing database, unavailable storage, and a second
   /// process fail closed. A partially initialized database is never reset.
+  /// Only a verified, supported journal can authorize cleanup. Older
+  /// executables reject schema v3 without changing pending moves. Cleanup
+  /// awaits the keyring under the lock rather than timing out an active delete.
   static Future<DeviceStore> open(
     Directory directory,
-    DeviceSecrets secrets,
-  ) async {
+    DeviceSecrets secrets, {
+    void Function(String)? diagnostic,
+  }) async {
     await directory.create(recursive: true);
     final path = await directory.resolveSymbolicLinks();
     if (!_opened.add(path)) {
@@ -148,6 +192,8 @@ CREATE TABLE vault(character INTEGER PRIMARY KEY, holder TEXT NOT NULL,
  generation INTEGER NOT NULL, status TEXT NOT NULL, ciphertext TEXT,
  fence INTEGER NOT NULL, lease_ms INTEGER);
 $_takeRecoverySchema
+$_proofSchema
+PRAGMA user_version=3;
 ''');
         db.execute('INSERT INTO setting VALUES (?,?)', [
           'key-verifier',
@@ -156,18 +202,25 @@ $_takeRecoverySchema
         db.execute('COMMIT');
       }
       final version = db.select('PRAGMA user_version').single.values.single;
-      if ((version != 1 && version != 2) ||
+      if ((version != 1 && version != 2 && version != 3) ||
           db
                   .select("SELECT value FROM setting WHERE name='key-verifier'")
                   .single['value'] !=
               digest) {
         throw StateError('Device credential store does not match this key');
       }
-      if (version == 1) {
+      if (version != 3) {
         final opened = db;
-        _transaction(opened, () => opened.execute(_takeRecoverySchema));
+        _transaction(opened, () {
+          if (version == 1) opened.execute(_takeRecoverySchema);
+          opened.execute(_proofSchema);
+          opened.execute(_seedProofs);
+          opened.execute('PRAGMA user_version=3');
+        });
       }
-      return DeviceStore._(db, lock, path, secrets, key);
+      final store = DeviceStore._(db, lock, path, secrets, key, diagnostic);
+      if (existing) await store._removeUnusedProofs();
+      return store;
     } on Object {
       db?.close();
       await lock?.close();
@@ -347,10 +400,56 @@ FROM take_recovery WHERE character=?
       _deleteTakeRecovery(id);
     });
 
+    await _removeUnusedProofs(only: (character: id, digest: digest));
+  }
+
+  Future<void> _removeUnusedProofs({
+    ({int character, String digest})? only,
+  }) async {
+    var failed = false;
     try {
-      await _secrets.delete(_proofKey(id, digest));
+      final candidates = only == null
+          ? _db.select('$_unusedProofs ORDER BY p.character, p.digest')
+          : _db.select('$_unusedProofs AND p.character=? AND p.digest=?', [
+              only.character,
+              only.digest,
+            ]);
+      for (final row in candidates) {
+        try {
+          final id = row['character'];
+          final digest = row['digest'];
+          if (id is! int ||
+              id <= 0 ||
+              digest is! String ||
+              !_proofDigest.hasMatch(digest)) {
+            failed = true;
+            continue;
+          }
+          final key = _proofKey(id, digest);
+          try {
+            await _secrets.delete(key);
+          } on Object {
+            if (await _secrets.contains(key)) {
+              failed = true;
+              continue;
+            }
+          }
+          _db.execute(
+            'DELETE FROM handoff_proof WHERE character=? AND digest=?',
+            [id, digest],
+          );
+        } on Object {
+          failed = true;
+        }
+      }
     } on Object {
-      // The rollback committed. A keyring failure can only leave an unused proof.
+      failed = true;
+    }
+    if (!failed) return;
+    try {
+      _diagnostic?.call('Desktop handoff proof cleanup did not finish.');
+    } on Object {
+      // Diagnostics must not make a verified store or committed rollback fail.
     }
   }
 
@@ -378,6 +477,7 @@ FROM take_recovery WHERE character=?
     final proof = newOAuthProof();
     final digest = sha256.convert(utf8.encode(proof)).toString();
     final key = _proofKey(character, digest);
+    _db.execute('INSERT INTO handoff_proof VALUES (?,?)', [character, digest]);
     await _secrets.write(key, proof);
     if (await _secrets.read(key) != proof) {
       throw StateError('Cannot verify device proof');
