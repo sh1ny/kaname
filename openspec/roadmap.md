@@ -4,36 +4,33 @@ Strategy: [openspec/strategy.md](strategy.md) · Architecture: [openspec/archite
 
 Status is derived: a change is done when archived on `main`; a milestone is done when its changes are done and its exit criteria pass. Releases: 0.1 after M6, 0.2 after M8, 0.5 after M17, 1.0 after M27. Every milestone after M6 should ship on its own, so the project is useful wherever it stops.
 
-## Now: M2 - ESI platform and SSO
+## Now: M3 - Identity and access
 
-**Outcome:** a test character signs in on a self-hosted server and in native solo mode, then makes a scoped ESI call through the same generated client and scheduler policy. One holder owns the character's token (ADR 0005). The platform keeps ESI limits and token handling out of product modules (ADR 0007); call-log reads follow ADR 0006.
+**Outcome:** a member signs in with any of their characters and reaches one account that holds their main and alts. The install declares its organisation tree, and a scheduled affiliation check keeps every character's corp and alliance current. Rules turn affiliation into member states, and states and groups grant the capabilities that modules check on the server. A character that changes EVE account leaves its old Kaname account without exposing either owner's data.
 
 **Exit criteria:**
-- Kaname's generator reads the ESI spec at one pinned compatibility date and produces a reproducible typed client and route catalogue (rate group, scopes, roles and cache behavior). Recorded responses exercise the generated contract. (agent)
-- Every ESI call goes through the shared scheduler. Tests prove atomic budget reservation across server isolates and in solo, response-header correction, four governor tiers, priorities, shared negative caching and conditional polling with downtime handling. (agent)
-- Call logs retain route, status, cost, latency and bucket for seven days, distinguish refused calls from errors, and contain no tokens. Privacy-scoped reads return the viewer's own rows; admins also get route-level totals and errors under ADR 0006, never another member's rows in M2. (agent)
-- Refresh tokens are encrypted with an install key kept outside the database. Tests prove one holder per character, single-flight refresh and rotation recovery, and re-login when a rotated token is lost. (agent)
-- The server uses confidential SSO and maps the validated character to a Serverpod identity; native solo uses PKCE. Both validate JWT claims against CCP's JWKS and request only enabled-module scopes permitted by configured policy and, for optional classes, recorded opt-ins. Missing policy or required opt-in grants no scope. Full organisation sharing and consent stay in M4. (agent)
-- Signed-in callers with the required admin scope can run static-data admin actions; anonymous and non-admin callers cannot. No shared-key fallback remains, and public status stays readable (ADR 0015). (agent)
-- The owner signs in with a test character through both flows and sees a scoped ESI call succeed in each, without concurrent token holders for that character. Use an owner-provided native registration; the shared native client ID decision (R45) stays open. (user)
+- A member signs in with any linked character and reaches the same account. Linking an alt requires signing in with that alt while signed in. The member picks a main and can unlink a character. A character belongs to at most one account, and M2's per-character identities migrate into accounts. (agent)
+- When CCP reports a new owner hash for a character, Kaname detaches it from the old account, ends its sessions and drops its server vault token and opt-ins. The new owner gets the character only by signing in and never sees rows that belonged to the previous owner. A device that still holds the character keeps server ESI blocked until it parks, as ADR 0017 requires; verified reclaim stays in M7. (agent)
+- The install declares one corporation, one alliance or a coalition of alliances as its tree. A scheduled job refreshes every known character's corporation and alliance through the public affiliation route and the shared scheduler, without a token. (agent)
+- Admin rules map affiliation to member states (member, guest or none). An account's state follows its characters, and a character that leaves the tree loses member state at the next affiliation check. (agent)
+- Modules declare capabilities, and states and groups grant them. A delegated group manager can change only the groups they manage. Every capability check runs on the server through one check, and an architecture test fails on a bypass. Static-data administration becomes a capability; the configured admin characters remain only as the first admin. (agent)
+- On the local self-host stack, the owner signs in with a main from inside the tree, links an alt, and sees both characters' corporation and alliance and the account's member state from the real affiliation job. The owner creates a group that grants a capability to another test account and sees that account gain access, then lose it when removed. A character from outside the tree signs in and gets no member state. (user)
 
 **Changes** (in order; each about one PR):
-1. `esi-client-generator` - pinned ESI spec and compatibility date, typed client and route catalogue.
-2. `esi-request-scheduler` - atomic budgets (Redis on server, in-process in solo), bucket mirrors, four-tier governor, priorities, negative cache and conditional polling; prerequisite `esi-client-generator`.
-3. `esi-call-log` - scheduler outcomes, seven-day retention, secret-free logging and scoped own-row and admin aggregate reads; prerequisite `esi-request-scheduler`.
-4. `esi-token-vault` - install-key encryption, one token holder per ADR 0005, single-flight refresh and rotation recovery.
-5. `esi-sso` - confidential server flow and native PKCE, JWT/JWKS verification, Serverpod identity, configured policy and recorded opt-in inputs for scopes, a scoped ESI call, and the static-data admin key cutover; prerequisites `esi-call-log`, `esi-token-vault`.
-   `esi-sso` also exposes the call-log own-row and admin aggregate reads to the app once validated viewer identity is available. `esi-call-log` owns the scoped data-access interface, not client RPCs.
+1. `member-accounts` - one account per member with a main and alts, alt linking by signed-in SSO, unlinking, and migration of M2's per-character identities.
+2. `character-transfer` - owner-hash change detection, detaching the character from the old account, ending its sessions, dropping its server token and opt-ins, and keeping the previous owner's rows hidden, without clearing a device holder (ADR 0017); prerequisite `member-accounts`.
+3. `org-tree-affiliation` - the install's declared tree (corporation, alliance or coalition) and a scheduled, tokenless affiliation refresh through the shared scheduler.
+4. `member-states` - admin rules from affiliation to member states and an account state derived from its characters; prerequisites `member-accounts`, `org-tree-affiliation`.
+5. `groups-and-capabilities` - module-declared capabilities, grants from states and groups, delegated group managers, one server-side capability check with an architecture test, and static-data admin as a capability; prerequisite `member-states`.
 
-The vault enforces one active holder per character in its authoritative store, not across independent stores. `esi-sso` owns server↔device handoff and wiring; the general solo store choice remains in M4.
+Smart groups stay in M6 and in-game roles from role tokens in M5. Organisation sharing and consent stay in M4.
 
-## Next: M3 - Identity and access
+## Next: M4 - Privacy and sync
 
-Build on the character identity established in M2: model mains and alts, handle ownership transfers using the SSO owner hash, and represent member states, groups and capabilities. Model the organisation tree through corporations, alliances and coalitions so access can follow membership and delegated roles.
+Put the sharing policies and consent of ADR 0006 on top of M3's members and states, and route every privacy-classed read through the privacy scope. Define the sync protocol and settle field-edit ordering (R51). Run the local store spike (R32), build the solo engine skeleton, and add on-device SDE import and solo auto-update. Check CCP's developer terms for one shared native client ID (R45).
 
 ## Later
 
-- M4 - Privacy and sync: sharing policies and consent, privacy-scoped data paths, sync protocol (settles R51), local store spike (R32), solo engine skeleton, on-device SDE import and solo auto-update.
 - M5 - Character data and member audit: ingestion recipes, corp data from role tokens, audit and compliance.
 - M6 - Rules, notifications and Discord v1: rule engine, smart groups, notification bus, Discord linking and role sync, pings. Release 0.1.
 - M7 - Personal space: multi-character console, skill planner, assets, personal worklist, solo complete, solo to join, mobile push (settles R40).
@@ -65,3 +62,4 @@ Build on the character identity established in M2: model mains and alts, handle 
 - M0 - Walking skeleton - 2026-11-18 - The skeleton holds end to end on six targets and the self-host stack. The grid spike passes on skwasm but CanvasKit misses on scrolling (missed frames, on a software GPU), so M1 opens with `--wasm`. The owner's grid check ran on the development PC instead of a low-end laptop (R58).
 - M1 - Static data pipeline - 2026-11-23 - The self-hosted stack took SDE build `3720952` over `3714173` without rebuilding; the owner saw Settings and the change report and found a type and a system offline. All 30 declared industry and logistics fields were present in the SDE audit, so no overlay is needed unless a future audit finds a gap.
   [Static data settings decision S2](changes/archive/2026-11-23-static-data-settings/proposal.md#s2-meaning-of-the-solo-half-before-solo-mode-exists) kept the M1 app side to bundle status and Download now; on-device import and solo auto-update remain in M4.
+- M2 - ESI platform and SSO - 2026-11-26 - The owner signed in on the local stack and on a native desktop, read skills in each mode, and saw the server refuse a call while the desktop held the character. Moving the holder between server and device needed three follow-up fixes after `esi-sso` merged: a refused take, a lost viewer reply and an interrupted take. A fourth, `cleanup-handoff-proofs`, removes an unused proof that a crash or a failed keyring delete leaves behind. Each lost or refused reply between two installs needs its own regression test.
