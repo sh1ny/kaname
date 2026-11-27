@@ -129,7 +129,7 @@ When affiliation is enabled, the server SHALL enqueue one public affiliation loo
 
 ### Requirement: Last valid affiliation observation
 
-The server-only model and migration SHALL enforce one PostgreSQL affiliation row per identity via a unique foreign key with cascading deletion. Store corporation ID, optional alliance ID, observation time, and lookup order. No row means unknown; a null alliance means none. Among valid results, the greater order allocated before submission SHALL win. Future delivery SHALL use the viewer's privacy scope under ADR 0006.
+Public ESI affiliation SHALL stay available only to server readers in this change. The server-only model and migration SHALL enforce one observation per identity in PostgreSQL with a unique, cascading foreign key. Store corporation ID, optional alliance ID, observation time, and lookup order. No row means unknown; a null alliance means none. The greater order allocated before submission wins among valid results. Future delivery SHALL use the viewer's privacy scope under ADR 0006.
 
 #### Scenario: Character moves and leaves its alliance
 - **GIVEN** a stored observation has a corporation and an alliance

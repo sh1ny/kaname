@@ -1,11 +1,14 @@
 import 'dart:async';
 
 import 'package:kaname_esi/kaname_esi.dart';
+import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_server/server.dart' show configureKanameEsi;
 import 'package:kaname_server/src/affiliation/affiliation_runtime.dart';
 import 'package:kaname_server/src/affiliation/affiliation_store.dart';
 import 'package:kaname_server/src/affiliation/org_tree_config.dart';
+import 'package:kaname_server/src/esi/server_esi_runtime.dart';
 import 'package:kaname_server/src/esi/server_sso.dart';
+import 'package:kaname_server/src/generated/future_calls.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/kaname_serverpod.dart';
 import 'package:path/path.dart' as p;
@@ -13,6 +16,9 @@ import 'package:postgres/postgres.dart' as pg;
 import 'package:serverpod/protocol.dart'
     show FutureCallClaimEntry, FutureCallEntry;
 import 'package:serverpod/serverpod.dart';
+// ignore: implementation_imports
+import 'package:serverpod/src/server/log_manager/session_log.dart'
+    show sessionLog;
 // ignore: implementation_imports
 import 'package:serverpod/src/server/serverpod.dart'
     show ServerpodInternalMethods;
@@ -67,21 +73,35 @@ void main() {
   });
 
   test('refreshes known identities without a valid SSO registration', () async {
-    final pod = await _startComposed();
+    final sent = <String>[];
+    final runtime = _ControlledRuntime((request, bearer, _) async {
+      sent.add(request.operationId);
+      expect(bearer, isNull);
+      return jsonReply(200, [
+        {'character_id': 101, 'corporation_id': 42},
+      ]);
+    });
+    final pod = await _startComposed(openRuntime: () => runtime);
     expect(ServerSso.of(pod), isNull);
     await pod.withSession((s) async {
       final queued = await FutureCallEntry.db.find(s);
       expect(queued.single.identifier, startsWith('kaname-affiliation:'));
       expect(queued.single.identifier, endsWith(':0'));
-    });
-
-    final f = await AffiliationFixture.open();
-    // Exercise the queued operation with a controlled public ESI sender.
-    await f.pod.withSession((s) async {
-      await f.addIdentity(s, 101, blocked: true);
-      await f.pod.futureCallManager!.runScheduledFutureCalls();
+      await SsoIdentityRow.db.insertRow(
+        s,
+        SsoIdentityRow(
+          characterId: 101,
+          characterName: 'Known',
+          owner: 'verified-owner',
+          blocked: true,
+        ),
+      );
+      await pod.futureCallManager!.runScheduledFutureCalls();
       expect((await AffiliationStore(s).read(101))?.corporationId, 42);
+      expect(sent, ['PostCharactersAffiliation']);
     });
+    await pod.shutdown(exitProcess: false);
+    expect(runtime.closes, 1);
   });
 
   test(
@@ -112,14 +132,36 @@ void main() {
   test(
     'persisted sweep and first-known calls skip with no active runtime',
     () async {
-      final f = await AffiliationFixture.open(active: false);
+      final f = await AffiliationFixture.open(
+        active: false,
+        persistentLogs: true,
+      );
       await f.pod.withSession((s) async {
         final id = (await f.addIdentity(s, 101)).id!;
-        final sweep = await AffiliationRuntime.dispatchSweep(s, _startup);
-        final first = await AffiliationRuntime.dispatchFirstKnown(s, id);
-        expect(sweep, AffiliationDispatch.inactive);
-        expect(first, AffiliationDispatch.inactive);
-        expect(await AffiliationStore(s).read(101), isNull);
+        final store = AffiliationStore(s);
+        await store.save(1, f.now, [
+          (identityId: id, corporationId: 51, allianceId: null),
+        ]);
+        final before = await store.read(101);
+        final calls = f.pod.futureCalls;
+        await calls
+            .callWithDelay(Duration.zero)
+            .affiliationCall
+            .sweep(AffiliationSweepArgs(boot: 'previous', slot: 1));
+        await calls
+            .callWithDelay(Duration.zero)
+            .affiliationCall
+            .firstKnown(AffiliationFirstKnownArgs(identityId: id));
+        expect(await f.queue(s), hasLength(2));
+        await f.pod.futureCallManager!.runScheduledFutureCalls();
+        await sessionLog.flush();
+        expect(await f.queue(s), isEmpty);
+        final notices = await s.db.unsafeQuery('''
+          SELECT count(*) FROM serverpod_log
+          WHERE message = 'affiliation: no active runtime; skipped queued work'
+          ''');
+        expect(notices.single.single, 2);
+        expect(await store.read(101), before);
       });
       expect(f.wire, isEmpty);
     },
@@ -369,6 +411,7 @@ Future<KanameServerpod> _startComposed({
   bool hasSecret = true,
   bool futureCalls = true,
   bool execute = true,
+  ServerEsiRuntime Function()? openRuntime,
 }) async {
   final db = await ScratchDatabase.create();
   addTearDown(db.drop);
@@ -395,6 +438,7 @@ Future<KanameServerpod> _startComposed({
     pod,
     const {},
     serviceSecret: hasSecret ? pod.getPassword('serviceSecret')! : null,
+    createRuntime: openRuntime,
   );
   // Hold only the framework's periodic queue scan, not the product's
   // registration. Otherwise it can consume the row before this test reads it.
@@ -422,4 +466,32 @@ final class _ParkedScan implements Timer {
 
   @override
   void cancel() => _cancelled = true;
+}
+
+final class _ControlledRuntime implements ServerEsiRuntime {
+  _ControlledRuntime(EsiWireSend send)
+    : _scheduler = EsiScheduler(
+        state: MemorySchedulerState(),
+        key: const [1],
+        send: send,
+      );
+
+  final EsiScheduler _scheduler;
+  int closes = 0;
+
+  @override
+  EsiClient client(
+    EsiPriority priority, {
+    EsiPrincipal? principal,
+    bool poll = false,
+    int? corporation,
+  }) => _scheduler.client(
+    priority,
+    principal: principal,
+    poll: poll,
+    corporation: corporation,
+  );
+
+  @override
+  Future<void> close() async => closes++;
 }

@@ -10,7 +10,7 @@ import 'esi_call_log_store.dart';
 import 'redis_scheduler_state.dart';
 
 /// Owns an isolate's production ESI scheduler and Redis connection (ADR 0016).
-final class ServerEsiRuntime {
+interface class ServerEsiRuntime {
   ServerEsiRuntime._(this._redis, this._native);
 
   /// Composes a scheduler from the main isolate's resolved Serverpod settings.

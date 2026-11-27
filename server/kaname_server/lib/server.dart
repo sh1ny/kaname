@@ -48,17 +48,23 @@ Future<void> run(List<String> args) {
 ///
 /// [serviceSecret] is the resolved Serverpod password. Without a usable
 /// scheduler, affiliation does not register work; SSO keeps its own gate.
+/// [createRuntime] replaces the exchange port in integration tests without
+/// changing the startup gates, scheduler context, or shutdown ordering.
 void configureKanameEsi(
   Serverpod pod,
   Map<String, String> environment, {
   required String? serviceSecret,
+  ServerEsiRuntime Function()? createRuntime,
 }) {
   ServerEsiRuntime? esi;
-  ServerEsiRuntime openEsi() => esi ??= ServerEsiRuntime.forPod(
-    pod,
-    userAgent: 'Kaname/0.0.1 (+https://github.com/sh1ny/kaname)',
-    onStateFailure: () => stderr.writeln('esi: scheduler state unavailable'),
-  );
+  ServerEsiRuntime openEsi() => esi ??=
+      createRuntime?.call() ??
+      ServerEsiRuntime.forPod(
+        pod,
+        userAgent: 'Kaname/0.0.1 (+https://github.com/sh1ny/kaname)',
+        onStateFailure: () =>
+            stderr.writeln('esi: scheduler state unavailable'),
+      );
   final AffiliationRuntime? affiliation;
   switch (affiliationAvailability(pod.config, pod.runMode, serviceSecret)) {
     case AffiliationAvailability.inactive:

@@ -79,5 +79,5 @@
 
 ## Workflow follow-up
 
-- Run the pre-ship review at the completed code head. Ship and watch without merging.
-- Get owner archive approval, archive on the pull request branch and verify the archive head. The owner merges.
+- The shipping workflow covers pre-ship review of the code head and watching the PR.
+- The archive needs owner approval and stays on the PR branch. The owner merges after the archive head is verified.

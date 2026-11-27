@@ -32,7 +32,10 @@ final class AffiliationFixture {
         for (final id in ids) {'character_id': id, 'corporation_id': 42},
       ]);
 
-  static Future<AffiliationFixture> open({bool active = true}) async {
+  static Future<AffiliationFixture> open({
+    bool active = true,
+    bool persistentLogs = false,
+  }) async {
     final db = await ScratchDatabase.create();
     addTearDown(db.drop);
     final pod = KanameServerpod(
@@ -47,6 +50,9 @@ final class AffiliationFixture {
           scanInterval: Duration(milliseconds: 25),
         ),
         futureCallExecutionEnabled: false,
+        sessionLogs: config.sessionLogs.copyWith(
+          persistentEnabled: persistentLogs,
+        ),
       ),
     );
     final fixture = AffiliationFixture._(pod);
