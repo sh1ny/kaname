@@ -298,7 +298,7 @@ Kaname SHALL order connected browser attempts by their start and refuse a proof 
 
 ### Requirement: Transfer preserves a known device holder
 
-Transfer SHALL NOT change the holder assignment, generation or proof. The server SHALL keep ESI blocked while a device assignment remains or a move to that device is unresolved. A Take SHALL authorize only the ownership generation that initiated it. A completed reservation can be returned only through ordinary Return with a live character session and the original device's proof that it parked. There SHALL be no verified reclaim in this change.
+Transfer SHALL NOT change the holder assignment, generation or proof. The server SHALL keep ESI blocked while a device assignment remains or a move to that device is unresolved. A Take SHALL authorize only the ownership generation that initiated it. A completed reservation can be returned only through ordinary Return with a live character session and the original device's proof that it parked. Kaname SHALL NOT offer verified reclaim of these assignments before M7.
 
 #### Scenario: A transferred character signs in while the original device holds it
 
