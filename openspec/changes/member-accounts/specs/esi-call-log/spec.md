@@ -80,7 +80,7 @@ Each receipt SHALL keep the account, signing character and exclusion status from
 
 ### Requirement: Known membership splits do not qualify as independent accounts
 
-Unlinking SHALL retain detachment evidence. Accounts a detached character starts or joins SHALL stay excluded from private thresholds. New receipts SHALL stamp exclusion at admission. A window SHALL exclude an account if its receipts record exclusion in that window or durable evidence predates its fixed release cutoff. Evidence SHALL survive account retirement. M2 receipts SHALL keep their attribution without a detachment stamp. Changes at or after cutoff SHALL NOT alter that window.
+Unlinking SHALL retain detachment evidence. Accounts a detached character starts or joins SHALL have durable exclusion evidence that survives retirement. New receipts SHALL stamp exclusion at admission. A window SHALL apply an exclusion only when its durable time predates the fixed cutoff. A receipt stamp SHALL NOT override the cutoff. M2 receipts SHALL keep their attribution without a detachment stamp.
 
 #### Scenario: Alts split before any receipt for the original account
 - **WHEN** five distinct alts leave one account, each starts a new account, and only those new accounts contribute to a private route
@@ -115,6 +115,10 @@ Unlinking SHALL retain detachment evidence. Accounts a detached character starts
 #### Scenario: A join after cutoff leaves a released window unchanged
 - **WHEN** the first exclusion of an account takes effect after the fixed cutoff for a window and the account later retires
 - **THEN** an empty-cache recomputation leaves the previous window unchanged while its receipts remain retained
+
+#### Scenario: A stamped receipt lands in an older window after a clock step
+- **WHEN** an account is first excluded at or after cutoff before the window seals, and a backward clock step puts a later stamped receipt inside that window
+- **THEN** the first release does not disqualify the account for that exclusion, and later windows whose cutoff is after the recorded exclusion time still apply it
 
 #### Scenario: Recorded eligibility does not depend on live accounts
 - **WHEN** an account becomes excluded after it contributed eligible receipts, including M2 receipts, and the receipts in a previously released window do not record that exclusion
