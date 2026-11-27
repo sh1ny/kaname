@@ -27,6 +27,7 @@ import 'package:test/test.dart';
 import '../support/announcer_support.dart';
 import '../support/in_process_pod.dart';
 import '../support/migrated_database.dart';
+import '../support/observed_database_session.dart';
 import '../support/sde_bundle_support.dart';
 import '../support/static_data_test_auth.dart';
 import '../support/tcp_proxy.dart';
@@ -40,6 +41,7 @@ void main() {
   late int poolCalls;
   Future<void> Function(int call)? beforeSession;
   Future<void> Function(int call)? afterSession;
+  Future<void> Function()? beforeOperationLookup;
 
   Future<void> start({bool admin = false}) async {
     clock = FakeClock();
@@ -51,6 +53,7 @@ void main() {
     poolCalls = 0;
     beforeSession = null;
     afterSession = null;
+    beforeOperationLookup = null;
     settings = await server.pod.withSession(migratedDatabaseSettings);
     final scratch = sdeScratchRootFor(settings);
     addTearDown(() async {
@@ -63,8 +66,21 @@ void main() {
     });
     Future<T> pooled<T>(Future<T> Function(Session) action) async {
       final call = ++poolCalls;
+      final probe = beforeOperationLookup;
+      beforeOperationLookup = null;
       await beforeSession?.call(call);
-      final value = await server.pod.withSession(action);
+      final value = await server.pod.withSession((session) async {
+        if (probe == null) return action(session);
+        final observed = ObservedDatabaseSession(
+          session,
+          beforeFirstFind: probe,
+        );
+        try {
+          return await action(observed);
+        } finally {
+          await observed.close();
+        }
+      });
       await afterSession?.call(call);
       return value;
     }
@@ -404,75 +420,116 @@ void main() {
     }
   }, timeout: const Timeout(Duration(minutes: 3)));
 
-  test(
-    'a replay paused in authorization answers from the settled row',
-    () async {
-      await start(admin: true);
-      final worker = _ControlledWorker();
-      final settled = Completer<void>();
-      await runWorker(
-        controlled: worker,
-        settleLog: (_, message) {
-          if (message.contains(' ${_id(1)} settled ')) settled.complete();
-        },
-      );
-      final storageReached = Completer<void>();
-      final store = Completer<void>();
-      final authorizationReached = Completer<void>();
-      final authorize = Completer<void>();
-      addTearDown(() {
-        if (!store.isCompleted) store.complete();
-        if (!authorize.isCompleted) authorize.complete();
-      });
-      beforeSession = (call) async {
-        if (call == 2) {
-          storageReached.complete();
-          await store.future;
+  for (final revoke in [false, true]) {
+    test(
+      revoke
+          ? 'a replay rechecks revocation during its fallback lookup'
+          : 'a replay paused in authorization answers from the settled row',
+      () async {
+        await start(admin: true);
+        final worker = _ControlledWorker();
+        final settled = Completer<void>();
+        await runWorker(
+          controlled: worker,
+          settleLog: (_, message) {
+            if (message.contains(' ${_id(1)} settled ')) settled.complete();
+          },
+        );
+        final storageReached = Completer<void>();
+        final store = Completer<void>();
+        final authorizationReached = Completer<void>();
+        final authorize = Completer<void>();
+        final lookupReached = Completer<void>();
+        final finishLookup = Completer<void>();
+        addTearDown(() {
+          if (!store.isCompleted) store.complete();
+          if (!authorize.isCompleted) authorize.complete();
+          if (!finishLookup.isCompleted) finishLookup.complete();
+        });
+        beforeSession = (call) async {
+          if (call == 2) {
+            storageReached.complete();
+            await store.future;
+          }
+        };
+        final original = update(1);
+        await Future.any([
+          storageReached.future,
+          original.then(
+            (_) => fail('The operation skipped reservation storage.'),
+          ),
+        ]);
+        final auth = await server.pod.withSession(
+          (s) => staticDataTestAuthentication(s, staticDataTestBearer),
+        );
+        if (revoke) {
+          beforeOperationLookup = () async {
+            lookupReached.complete();
+            await finishLookup.future;
+          };
         }
-      };
-      final original = update(1);
-      await Future.any([
-        storageReached.future,
-        original.then(
-          (_) => fail('The operation skipped reservation storage.'),
-        ),
-      ]);
-      final auth = await server.pod.withSession(
-        (s) => staticDataTestAuthentication(s, staticDataTestBearer),
-      );
-      final replay = StaticDataAccess.forPod(server.pod).admission.request(
-        _id(1).toString(),
-        kind: SdeAdminOperationKind.updateNow,
-        authorize: (session) async {
-          authorizationReached.complete();
-          await authorize.future;
-          return SsoSessions.liveAdmin(session, auth);
-        },
-      );
-      await Future.any([
-        authorizationReached.future,
-        replay.then((_) => fail('The replay skipped live authorization.')),
-      ]);
-      store.complete();
-      final request = await worker.firstCheck.future;
-      worker.reply(BuildCheckStarted(requestId: request.requestId));
-      expect((await original).outcome, api.AdminAnswerOutcome.started);
-      worker.reply(
-        BuildCheckFinished(
-          requestId: request.requestId,
-          result: const BuildUpToDate(901),
-        ),
-      );
-      await settled.future;
-      expect((await operation(1))?.state, SdeAdminOperationState.ended);
-      authorize.complete();
-      final answer = await replay;
-      expect(answer.outcome, AdminAnswerOutcome.ended);
-      expect(answer.operation?.outcome, SdeAdminOperationOutcome.upToDate);
-      expect(worker.checks, hasLength(1));
-    },
-    timeout: const Timeout(Duration(minutes: 3)),
-  );
+        var checks = 0;
+        final replay = StaticDataAccess.forPod(server.pod).admission.request(
+          _id(1).toString(),
+          kind: SdeAdminOperationKind.updateNow,
+          authorize: (session) async {
+            final live = await SsoSessions.liveAdmin(session, auth);
+            if (++checks == 1) {
+              expect(live, isTrue);
+              authorizationReached.complete();
+              await authorize.future;
+            }
+            return live;
+          },
+        );
+        await Future.any([
+          authorizationReached.future,
+          replay.then((_) => fail('The replay skipped live authorization.')),
+        ]);
+        store.complete();
+        final request = await worker.firstCheck.future;
+        worker.reply(BuildCheckStarted(requestId: request.requestId));
+        expect((await original).outcome, api.AdminAnswerOutcome.started);
+        worker.reply(
+          BuildCheckFinished(
+            requestId: request.requestId,
+            result: const BuildUpToDate(901),
+          ),
+        );
+        await settled.future;
+        expect((await operation(1))?.state, SdeAdminOperationState.ended);
+        authorize.complete();
+        if (revoke) {
+          await Future.any<void>([
+            lookupReached.future,
+            replay.then((_) => fail('The replay skipped its fallback lookup.')),
+          ]);
+          try {
+            final id = int.parse(auth!.authId);
+            await server.pod.withSession(
+              (s) => SsoSessionRow.db.deleteWhere(
+                s,
+                where: (t) => t.id.equals(id),
+              ),
+            );
+          } finally {
+            finishLookup.complete();
+          }
+        }
+        final answer = await replay;
+        if (revoke) {
+          expect(answer.outcome, AdminAnswerOutcome.notAuthorized);
+          expect(answer.operation, isNull);
+        } else {
+          expect(answer.outcome, AdminAnswerOutcome.ended);
+          expect(answer.operation?.outcome, SdeAdminOperationOutcome.upToDate);
+        }
+        expect(checks, 2);
+        expect(worker.checks, hasLength(1));
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+  }
 
   test('two pending admin lookups exhaust only their own budget', () async {
     await start(admin: true);

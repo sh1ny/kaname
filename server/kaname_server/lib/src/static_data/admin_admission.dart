@@ -91,6 +91,9 @@ final class AdminAdmission {
         }
 
         final row = await readAdminOperation(session, key.id);
+        if (!await authorize(session)) {
+          return _answer(AdminAnswerOutcome.notAuthorized);
+        }
         if (row != null) return _fromRow(key, row);
         return switch (_inMemory) {
           final current? when current.key.id == key.id => _remembered(

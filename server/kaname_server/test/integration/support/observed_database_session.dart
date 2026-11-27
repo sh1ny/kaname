@@ -7,6 +7,7 @@ final class ObservedDatabaseSession extends Session {
     Session source, {
     this.beforeTransaction,
     this.afterBegin,
+    this.beforeFirstFind,
     this.unboundedFirstLock = false,
   }) : super(server: source.server, enableLogging: false, endpoint: 'Test') {
     updateAuthenticated(source.authenticated);
@@ -17,6 +18,10 @@ final class ObservedDatabaseSession extends Session {
 
   /// Pauses inside the first transaction before the caller runs queries.
   final Future<void> Function(Transaction)? afterBegin;
+
+  /// Pauses the first model lookup immediately before it reaches Postgres.
+  final Future<void> Function()? beforeFirstFind;
+  var _firstFindStarted = false;
 
   /// Runs the initial SQL lock request without wall-clock deadlines.
   ///
@@ -34,24 +39,38 @@ final class ObservedDatabaseSession extends Session {
     final opening = databaseAccesses++ == 0;
     final probe = opening && (beforeTransaction != null || afterBegin != null);
     final unbounded = unboundedFirstLock && !_firstQuerySent;
-    return probe || unbounded
+    final find = _firstFindStarted ? null : beforeFirstFind;
+    return probe || unbounded || find != null
         ? _ObservedTransaction(
             real,
             opening ? beforeTransaction : null,
             opening ? afterBegin : null,
             unbounded ? () => _firstQuerySent = true : null,
+            find == null
+                ? null
+                : () {
+                    _firstFindStarted = true;
+                    return find();
+                  },
           )
         : real;
   }
 }
 
 final class _ObservedTransaction implements Database {
-  _ObservedTransaction(this._real, this._before, this._after, this._onQuery);
+  _ObservedTransaction(
+    this._real,
+    this._before,
+    this._after,
+    this._onQuery,
+    this._beforeFind,
+  );
 
   final Database _real;
   final Future<void> Function()? _before;
   final Future<void> Function(Transaction)? _after;
   final void Function()? _onQuery;
+  final Future<void> Function()? _beforeFind;
 
   @override
   Future<R> transaction<R>(
@@ -68,6 +87,30 @@ final class _ObservedTransaction implements Database {
               return action(tx);
             },
       settings: settings,
+    );
+  }
+
+  @override
+  Future<T?> findFirstRow<T extends TableRow<dynamic>>({
+    Expression<dynamic>? where,
+    int? offset,
+    Column<dynamic>? orderBy,
+    List<Column<dynamic>>? orderByList,
+    Transaction? transaction,
+    Include? include,
+    LockMode? lockMode,
+    LockBehavior? lockBehavior,
+  }) async {
+    if (_beforeFind case final before?) await before();
+    return _real.findFirstRow<T>(
+      where: where,
+      offset: offset,
+      orderBy: orderBy,
+      orderByList: orderByList,
+      transaction: transaction,
+      include: include,
+      lockMode: lockMode,
+      lockBehavior: lockBehavior,
     );
   }
 
@@ -99,11 +142,12 @@ final class _ObservedTransaction implements Database {
     Transaction? transaction,
     QueryParameters? parameters,
   }) {
-    _onQuery?.call();
+    final startedLock = transaction == null ? null : _onQuery;
+    startedLock?.call();
     return _real.unsafeQuery(
       query,
       // The driver's mandatory timer must outlast the outer test hang guard.
-      timeoutInSeconds: _onQuery == null ? timeoutInSeconds : 600,
+      timeoutInSeconds: startedLock == null ? timeoutInSeconds : 600,
       transaction: transaction,
       parameters: parameters,
     );

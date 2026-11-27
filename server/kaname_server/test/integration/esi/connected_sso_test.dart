@@ -1003,51 +1003,67 @@ void main() {
     expect(rows.map((row) => row.single), [410, 411]);
   });
 
-  test('concurrent first sign-ins create only one account', () async {
-    final first = await begin();
-    final second = await begin();
-    expect((await callback(first)).statusCode, 200);
-    expect((await callback(second)).statusCode, 200);
+  Future<(http.Response, http.Response)> competeForCharacter(
+    int character, {
+    required Future<http.Response> Function() first,
+    required Future<http.Response> Function() second,
+    required void Function(Future<void> Function()? hold) installBarrier,
+  }) async {
     final held = Completer<void>();
     final release = Completer<void>();
-    afterCharacterLock = (_) async {
+    installBarrier(() async {
       held.complete();
       await release.future;
-    };
+    });
     unboundedCharacterLock = true;
-    final pendingFirst = complete(first);
+    final pendingFirst = first();
     Future<http.Response>? pendingSecond;
     late http.Response firstReply;
     http.Response? secondReply;
     try {
       await Future.any<void>([
         held.future,
-        pendingFirst.then((_) => fail('The first sign-in skipped its lock.')),
+        pendingFirst.then((_) => fail('The first request skipped its lock.')),
       ]);
-      afterCharacterLock = null;
+      installBarrier(null);
       final holder = await pod.pod.withSession((s) async {
         final rows = await s.db.unsafeQuery('''
           SELECT pid FROM pg_locks
           WHERE locktype = 'advisory' AND granted AND objsubid = 2
             AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
-            AND classid = 0 AND objid = 410
-        ''');
+            AND classid = 0 AND objid::bigint = @character::bigint
+        ''', parameters: QueryParameters.named({'character': character}));
         return rows.single.single as int;
       }, enableLogging: false);
       unboundedCharacterLock = true;
-      final competing = pendingSecond = complete(second);
+      final competing = pendingSecond = second();
       await pod.pod.withSession(
         (s) => observePostgresLock(s, holder, competing),
         enableLogging: false,
       );
     } finally {
-      afterCharacterLock = null;
+      installBarrier(null);
       unboundedCharacterLock = false;
       release.complete();
       firstReply = await pendingFirst;
       secondReply = await pendingSecond;
     }
-    final responses = [firstReply, secondReply!];
+    return (firstReply, secondReply!);
+  }
+
+  test('concurrent first sign-ins create only one account', () async {
+    final first = await begin();
+    final second = await begin();
+    expect((await callback(first)).statusCode, 200);
+    expect((await callback(second)).statusCode, 200);
+    final (firstReply, secondReply) = await competeForCharacter(
+      410,
+      first: () => complete(first),
+      second: () => complete(second),
+      installBarrier: (hold) =>
+          afterCharacterLock = hold == null ? null : (_) => hold(),
+    );
+    final responses = [firstReply, secondReply];
     final viewers = [
       for (final response in responses)
         jsonDecode(response.body) as Map<String, Object?>,
@@ -1365,14 +1381,29 @@ void main() {
     characterId = 411;
     expect((await callback(a)).statusCode, 200);
     expect((await callback(b)).statusCode, 200);
-    final results = await Future.wait([
-      complete(a, bearer: firstKey, link: true),
-      complete(b, bearer: secondKey, link: true),
-    ]);
-    expect(results.map((r) => r.statusCode), unorderedEquals([200, 403]));
-    final winner = results.first.statusCode == 200 ? first : second;
-    expect((await signIn())['memberId'], winner['memberId']);
-  });
+    final (firstReply, secondReply) = await competeForCharacter(
+      411,
+      first: () => complete(a, bearer: firstKey, link: true),
+      second: () => complete(b, bearer: secondKey, link: true),
+      installBarrier: (hold) => beforeLinkProofRecheck = hold,
+    );
+    expect(firstReply.statusCode, 200);
+    expect(secondReply.statusCode, 403);
+    expect((await signIn())['memberId'], first['memberId']);
+    final stillLive = await post('viewer', {}, bearer: secondKey);
+    expect(stillLive.statusCode, 200);
+    expect(
+      jsonDecode(stillLive.body),
+      containsPair('memberId', second['memberId']),
+    );
+    final page = await accountRpc(secondKey, 'page', {'after': null});
+    expect(page.statusCode, 200);
+    final roster = jsonDecode(page.body) as Map<String, Object?>;
+    expect(roster['accountId'], second['memberId']);
+    expect(roster['main'], containsPair('characterId', '412'));
+    final characters = roster['characters'] as List<Object?>;
+    expect(characters.single, containsPair('characterId', '412'));
+  }, timeout: const Timeout(Duration(minutes: 3)));
 
   test('unlink removes only the alt and its sessions', () async {
     final main = await signIn();
