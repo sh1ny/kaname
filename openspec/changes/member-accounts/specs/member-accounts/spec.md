@@ -56,7 +56,7 @@ The M2 upgrade SHALL seed one account per M2 identity with that character as mai
 
 ### Requirement: Linking requires fresh CCP proof and a live source session
 
-Kaname SHALL start a link only for a live connected session. It SHALL require the same live session, the app and browser proofs, and fresh verified CCP authorization for the alt at completion. A matching owner hash alone SHALL NOT link a character. Linking SHALL keep the source session and character, request no ESI scopes, issue no alt session and change no holder authorization.
+Kaname SHALL start a link only for a live connected session. It SHALL require the same live session, the app and browser proofs, and fresh verified CCP authorization for the alt at completion. A matching owner hash alone SHALL NOT link a character. Linking SHALL keep the source session and character and request no ESI scopes. It SHALL NOT issue a bearer, install an ESI grant, or change holder authorization.
 
 #### Scenario: A signed-in member links an unlinked alt
 

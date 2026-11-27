@@ -313,10 +313,18 @@ void main() {
 
     test('an unsealed cutoff crossing does not freeze eligibility', () async {
       await independent(5);
+      await rejectSeal();
+      await expectLater(
+        store.routeCounts(session, admin),
+        throwsA(isA<EsiCallLogUnavailable>()),
+      );
       expect(await sealedEnd(), isNull);
       clock = day;
-      await exclusion(5, clock);
+      await session.db.transaction(
+        (tx) => store.excludeAccount(session, tx, 5),
+      );
       expect(await sealedEnd(), isNull);
+      await allowSeal();
       clock = grace;
       expect(await store.routeCounts(session, admin), isEmpty);
       expect(await sealedEnd(), day);

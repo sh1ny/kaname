@@ -142,8 +142,7 @@ final class ServerSso {
     Session session,
     String bearer,
   ) async {
-    final request = session.request;
-    if (request == null || !route.acceptsOrigin(request)) return null;
+    if (!route.acceptsRpcSession(session)) return null;
     return sessions.authenticate(session, bearer);
   }
 

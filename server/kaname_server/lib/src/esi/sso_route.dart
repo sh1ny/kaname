@@ -555,6 +555,19 @@ final class SsoRoute {
     return _failure(400);
   }
 
+  /// Validates Serverpod's RPC transport and origin before bearer lookup.
+  ///
+  /// The roster has only HTTP RPCs. Serverpod initializes stream-session
+  /// authentication before rejecting an unsupported method, outside the
+  /// roster's HTTP admission limit.
+  bool acceptsRpcSession(Session session) {
+    if (session case MethodStreamSession(endpoint: 'memberRoster')) {
+      return false;
+    }
+    final request = session.request;
+    return request != null && acceptsOrigin(request);
+  }
+
   /// Checks the request's effective origin without trusting client headers.
   bool acceptsOrigin(Request request) {
     final configured = _registration.redirectUri;

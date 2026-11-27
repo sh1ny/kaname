@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show WebSocket;
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -173,8 +174,7 @@ void main() {
         MemberRosterIngress().middleware,
       ],
       authenticationHandler: (session, bearer) async {
-        final request = session.request;
-        if (request == null || !route.acceptsOrigin(request)) return null;
+        if (!route.acceptsRpcSession(session)) return null;
         final beforeAuth = beforeRpcAuth;
         if (beforeAuth != null) await beforeAuth(bearer);
         final current = await sessions.authenticate(session, bearer);
@@ -1236,6 +1236,48 @@ void main() {
         everyElement(401),
       );
       expect((await native(key)).statusCode, 200);
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
+  test(
+    'roster streaming is refused before the bearer database lookup',
+    () async {
+      final key = (await signIn())['session'] as String;
+      var lookups = 0;
+      beforeRpcAuth = (_) async => lookups++;
+      final socket = await WebSocket.connect(
+        'ws://127.0.0.1:${pod.port}/v1/websocket',
+        headers: headers(),
+      );
+      addTearDown(socket.close);
+      final connection = UuidValueJsonExtension.fromJson(
+        '9f1f6a67-12cd-4ed2-866e-a3b5fd024164',
+      );
+      final protocol = Protocol();
+      final response = socket
+          .cast<String>()
+          .map((message) => WebSocketMessage.fromJsonString(message, protocol))
+          .firstWhere((message) => message is OpenMethodStreamResponse);
+      socket.add(
+        OpenMethodStreamCommand.buildMessage(
+          endpoint: 'memberRoster',
+          method: 'page',
+          args: {'after': null},
+          connectionId: connection,
+          inputStreams: [],
+          authentication: 'Bearer $key',
+        ),
+      );
+      final refused = await response as OpenMethodStreamResponse;
+      expect(lookups, 0);
+      expect(refused.connectionId, connection);
+      expect(
+        refused.responseType,
+        OpenMethodStreamResponseType.authenticationFailed,
+      );
+      expect((await accountRpc(key, 'page', {'after': null})).statusCode, 200);
+      expect(lookups, 1);
     },
     timeout: const Timeout(Duration(minutes: 3)),
   );
