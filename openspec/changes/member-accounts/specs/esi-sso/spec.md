@@ -44,7 +44,8 @@ Both modes SHALL accept only a correctly signed CCP access JWT verified against 
 #### Scenario: Definitive refresh verification rejection
 
 - **WHEN** CCP returns a refreshed grant that definitively fails verification for the current authorization
-- **THEN** the old authorization cannot supply a bearer or refresh again, re-login is required, and a signed owner conflict blocks the mismatched identity
+- **THEN** the old authorization cannot supply a bearer or refresh again and requires re-login, even if the server cannot commit an identity block
+- **AND** a signed owner conflict blocks the mismatched identity only if the proof is still fresh at commit admission and the block transaction commits
 
 ## ADDED Requirements
 
@@ -105,4 +106,5 @@ Connected admissions SHALL require a live signing session. Expired, revoked, blo
 #### Scenario: An admitted refresh observes a signed owner conflict after unlink
 
 - **WHEN** a refresh begun before unlink later returns verified claims for a different owner
-- **THEN** the identity is blocked without restoring its former membership, changing its holder assignment or giving either owner the old account
+- **THEN** the server rejects the grant. It blocks the identity only if the proof is still fresh at commit admission and the block transaction commits
+- **AND** neither outcome restores former membership, changes the holder assignment or gives either owner the old account
