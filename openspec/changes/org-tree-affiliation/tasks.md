@@ -30,21 +30,21 @@
 | Affiliation sweep registration | Persisted dispatch has no runtime | `runtime` | persisted sweep and first-known calls skip with no active runtime | red |
 | Affiliation sweep registration | Shutdown interrupts a sweep between batches | `runtime` | shutdown saves the active batch and closes the runtime without another send | red |
 | Scheduled public character affiliation refresh | Sweep the known characters on both triggers | `runtime` | startup and hourly calls send bounded anonymous batches for the whole registry | red |
-| Scheduled public character affiliation refresh | An identity commits behind the sweep cursor | `refresh` | the next sweep sees an identity that committed behind the cursor | red |
-| Scheduled public character affiliation refresh | No registered characters | `refresh` | an empty registry sends no affiliation request | red |
-| Scheduled public character affiliation refresh | Scheduler refuses a batch | `refresh` | a scheduler refusal leaves the batch unchanged without a retry | red |
+| Scheduled public character affiliation refresh | An identity commits behind the sweep cursor | `refresh` | the next sweep sees an identity that committed behind the cursor | green |
+| Scheduled public character affiliation refresh | No registered characters | `refresh` | an empty registry sends no affiliation request | green |
+| Scheduled public character affiliation refresh | Scheduler refuses a batch | `refresh` | a scheduler refusal leaves the batch unchanged without a retry | green |
 | Scheduled public character affiliation refresh | Shared scheduler pauses for downtime | `runtime` | paused affiliation preserves the observation until a later scheduled call | red |
 | First-known character lookup | A first sign-in or link registers a character | `identity` | first sign-in and link commit before the one-off; auth does not wait for ESI | red |
 | First-known character lookup | Existing or uncommitted identity | `identity` | known or rolled-back identities cannot enqueue a one-off | red |
 | First-known character lookup | One-off work fails | `identity` | failed enqueue or lookup leaves auth successful and the next sweep covers the identity | red |
 | First-known character lookup | An identity commits during shutdown | `identity` | a successful identity commit during shutdown cannot enqueue | red |
-| Last valid affiliation observation | Character moves and leaves its alliance | `refresh` | replaces the corporation and clears the alliance on a valid move | red |
-| Last valid affiliation observation | Reply omits a character | `refresh` | saves valid returned rows and preserves omitted observations | red |
-| Last valid affiliation observation | Invalid or failed response | `refresh` | malformed, duplicate, foreign or invalid responses change no observation | red |
-| Last valid affiliation observation | Lookup results finish out of order | `refresh` | a lower-order valid result cannot replace the higher-order row | red |
-| Last valid affiliation observation | The later lookup fails | `refresh` | a failed higher-order lookup does not block an earlier valid result | red |
-| Last valid affiliation observation | No observation yet | `refresh` | an unknown character is distinct from one with no alliance | red |
-| Last valid affiliation observation | An identity is removed | `refresh` | deleting an identity removes its unique observation | red |
+| Last valid affiliation observation | Character moves and leaves its alliance | `refresh` | replaces the corporation and clears the alliance on a valid move | green |
+| Last valid affiliation observation | Reply omits a character | `refresh` | saves valid returned rows and preserves omitted observations | green |
+| Last valid affiliation observation | Invalid or failed response | `refresh` | malformed, duplicate, foreign or invalid responses change no observation | green |
+| Last valid affiliation observation | Lookup results finish out of order | `refresh` | a lower-order valid result cannot replace the higher-order row | green |
+| Last valid affiliation observation | The later lookup fails | `refresh` | a failed higher-order lookup does not block an earlier valid result | green |
+| Last valid affiliation observation | No observation yet | `refresh` | an unknown character is distinct from one with no alliance | green |
+| Last valid affiliation observation | An identity is removed | `refresh` | deleting an identity removes its unique observation | green |
 | Conditional polling and downtime | Unchanged page | `scheduler` | forwards retained page validator and wire 304 | green |
 | Conditional polling and downtime | Response body is incomplete or malformed | `scheduler` | incomplete body does not mark a retained poll fresh; malformed body does not mark a retained poll fresh | green |
 | Conditional polling and downtime | Tranquility is unreachable | `scheduler`, `Redis` | grants one shared status probe per retry opportunity | green |
@@ -67,8 +67,8 @@
 
 ## 3. Store and refresh affiliation observations
 
-- [ ] 3.1 Write the `refresh` tests before adding the job and store. Exercise PostgreSQL for ordering, migration constraints, cursor visibility and alliance clearing. Use deterministic upstream replies and a barrier for out-of-order lookups. Add a restored-sequence fixture that starts with a high stored order and a matching sequence position, and assert a new valid result advances it.
-- [ ] 3.2 Add the server-only model and migration, then the pure-Dart job, bounded registry queries, typed observation read and order-checked upsert. Carry C2, C4, C5, and C9 into the spec and implementation. Verify no client model is generated, the unique identity foreign key cascades, the additive migration preserves known identities, and the `refresh` tests pass. Mark the covered tests green.
+- [x] 3.1 Write the `refresh` tests before adding the job and store. Exercise PostgreSQL for ordering, migration constraints, cursor visibility and alliance clearing. Use deterministic upstream replies and a barrier for out-of-order lookups. Add a restored-sequence fixture that starts with a high stored order and a matching sequence position, and assert a new valid result advances it.
+- [x] 3.2 Add the server-only model and migration, then the pure-Dart job, bounded registry queries, typed observation read and order-checked upsert. Carry C2, C4, C5, and C9 into the spec and implementation. Verify no client model is generated, the unique identity foreign key cascades, the additive migration preserves known identities, and the `refresh` tests pass. Mark the covered tests green.
 
 ## 4. Configure and run affiliation on the server
 
