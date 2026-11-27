@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:serverpod/serverpod.dart';
 
 import '../generated/protocol.dart';
@@ -96,6 +100,9 @@ final class MemberRosterEndpoint extends Endpoint {
 
 /// Reserves a server-wide slot before Serverpod begins bearer DB lookup.
 final class MemberRosterIngress {
+  static const _envelopeSize = 2048;
+  static const _envelopeTime = Duration(seconds: 10);
+
   int _active = 0;
 
   /// Shares one slot across bearer authentication and page work.
@@ -107,21 +114,89 @@ final class MemberRosterIngress {
             first != 'memberRoster' && !first.startsWith('memberRoster/')) {
           return next(request);
         }
-        if (_active == 4) {
-          return Response(
-            429,
-            body: Body.fromString('{"status":"busy"}'),
-            headers: Headers.build((headers) {
-              headers['content-type'] = ['application/json'];
-              headers['cache-control'] = ['no-store'];
-            }),
-          );
-        }
+        final validated = await _validate(request);
+        if (validated == null) return _rejected(400, 'badRequest');
+        if (_active == 4) return _rejected(429, 'busy');
         ++_active;
         try {
-          return await next(request);
+          return await next(
+            request.copyWith(
+              body: Body.fromData(validated, mimeType: MimeType.json),
+            ),
+          );
         } finally {
           --_active;
         }
       };
+
+  static Future<Uint8List?> _validate(Request request) async {
+    // Serverpod's generated web client sends JSON as text/plain.
+    final mediaType = request.headers['content-type']?.singleOrNull
+        ?.split(';')
+        .first
+        .trim()
+        .toLowerCase();
+    if (request.method != Method.post ||
+        (mediaType != 'application/json' && mediaType != 'text/plain') ||
+        request.url.query.length > _envelopeSize) {
+      return null;
+    }
+    final path = request.url.pathSegments.join('/');
+    if (path != 'memberRoster' && path != 'memberRoster/page') return null;
+    final body = await _readEnvelope(request);
+    if (body == null) return null;
+    try {
+      final Object? decoded = body.isEmpty
+          ? <String, Object?>{}
+          : jsonDecode(utf8.decode(body));
+      if (decoded is! Map<String, Object?> ||
+          decoded.keys.any((key) => key != 'method' && key != 'after')) {
+        return null;
+      }
+      for (final entry in request.url.queryParametersAll.entries) {
+        if ((entry.key != 'method' && entry.key != 'after') ||
+            entry.value.length != 1) {
+          return null;
+        }
+        decoded[entry.key] = entry.value.single;
+      }
+      final method = decoded['method'];
+      if (method != 'page' && (method != null || path == 'memberRoster')) {
+        return null;
+      }
+      final after = decoded['after'];
+      if (after != null && (after is! String || memberWireId(after) == null)) {
+        return null;
+      }
+      return body;
+    } on FormatException {
+      return null;
+    }
+  }
+
+  static Future<Uint8List?> _readEnvelope(Request request) async {
+    try {
+      final input = StreamIterator(request.read(maxLength: _envelopeSize));
+      final budget = Stopwatch()..start();
+      final body = BytesBuilder(copy: false);
+      try {
+        while (await input.moveNext().timeout(_envelopeTime - budget.elapsed)) {
+          body.add(input.current);
+        }
+        return body.takeBytes();
+      } finally {
+        await input.cancel();
+      }
+    } on Exception {
+      return null;
+    }
+  }
+
+  static Response _rejected(int status, String outcome) => Response(
+    status,
+    body: Body.fromString('{"status":"$outcome"}', mimeType: MimeType.json),
+    headers: Headers.build((headers) {
+      headers['cache-control'] = ['no-store'];
+    }),
+  );
 }

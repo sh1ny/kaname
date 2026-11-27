@@ -48,6 +48,8 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
     final local = desktop?.pilot;
     final nativeReady = desktop?.clientId != null;
     final idle = state is AccountIdle;
+    final action = state is AccountUnlinkRecovery ? state.desktopAction : state;
+    final canUseDesktop = action is AccountIdle;
     final mayReturn =
         local != null &&
         connected?.characterId == local.characterId &&
@@ -71,7 +73,7 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
       'deviceReserved' => l10n.esiHolderReserved,
       _ => null,
     };
-    final notice = switch (state) {
+    final notice = switch (action) {
       AccountIdle(:final notice) => notice,
       AccountBrowser(:final notice) => notice,
       AccountWorking() || AccountUnlinkRecovery() => AccountNotice.none,
@@ -189,7 +191,7 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
           ),
         ],
         if (connected != null) MemberRosterPanel(canEdit: idle),
-        if (state case AccountWorking(:final native)) ...[
+        if (action case AccountWorking(:final native)) ...[
           const LinearProgressIndicator(),
           if (native)
             _buttons([
@@ -206,7 +208,7 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
           ],
           TextField(
             controller: _clientId,
-            enabled: idle,
+            enabled: canUseDesktop,
             enableSuggestions: false,
             autocorrect: false,
             decoration: InputDecoration(
@@ -216,30 +218,32 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
           ),
           _buttons([
             OutlinedButton(
-              onPressed: idle
+              onPressed: canUseDesktop
                   ? () => account.configureDesktop(_clientId.text)
                   : null,
               child: Text(l10n.esiSaveRegistration),
             ),
             if (nativeReady)
               OutlinedButton(
-                onPressed: idle ? account.identifyDesktop : null,
+                onPressed: canUseDesktop ? account.identifyDesktop : null,
                 child: Text(l10n.esiNativeIdentify),
               ),
             if (nativeReady && local != null) ...[
               FilledButton.tonal(
-                onPressed: idle ? account.authorizeDesktop : null,
+                onPressed: canUseDesktop ? account.authorizeDesktop : null,
                 child: Text(l10n.esiNativeAuthorize),
               ),
               OutlinedButton(
-                onPressed: idle && local.holder == 'solo'
+                onPressed: canUseDesktop && local.holder == 'solo'
                     ? () => account.readSkills(solo: true)
                     : null,
                 child: Text(l10n.esiReadNativeSkills),
               ),
               if (local.holder == 'solo')
                 TextButton(
-                  onPressed: idle ? account.disableDesktopSkills : null,
+                  onPressed: canUseDesktop
+                      ? account.disableDesktopSkills
+                      : null,
                   child: Text(l10n.esiNativeDisable),
                 ),
             ],
@@ -268,7 +272,7 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
               AccountNotice.memberRefused => l10n.esiRosterRefused,
             }),
           ),
-        if (state case AccountIdle(refusal: final refusal?))
+        if (action case AccountIdle(refusal: final refusal?))
           Semantics(
             liveRegion: true,
             child: Column(
@@ -300,7 +304,7 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
               ],
             ),
           ),
-        if (state case AccountIdle(skills: (:final count, :final totalSp)))
+        if (action case AccountIdle(skills: (:final count, :final totalSp)))
           Semantics(
             liveRegion: true,
             child: Text(l10n.esiSkillsResult(count, totalSp)),

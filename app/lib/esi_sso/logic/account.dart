@@ -63,13 +63,21 @@ final class AccountWorking extends AccountState {
 /// The previous unlink may have committed. Only exact revocation can leave
 /// this state; [AccountState.connected] never exposes the former session.
 final class AccountUnlinkRecovery extends AccountState {
-  const AccountUnlinkRecovery._(this._former, {this.revoking = false})
-    : super(null);
+  const AccountUnlinkRecovery._(
+    this._former, {
+    this.revoking = false,
+    this._desktopAction,
+  }) : super(null);
 
   final ConnectedSession _former;
 
   /// Prevents concurrent revocation requests for the same session.
   final bool revoking;
+
+  final AccountState? _desktopAction;
+
+  /// Native actions remain independent of the connected revocation result.
+  AccountState get desktopAction => _desktopAction ?? const AccountIdle();
 }
 
 /// The current app must complete the same CCP attempt with the browser proof.
@@ -309,12 +317,22 @@ final class AccountNotifier extends Notifier<AccountState> {
     final before = state;
     if (before is! AccountUnlinkRecovery || before.revoking) return;
     final epoch = ++_epoch;
-    state = AccountUnlinkRecovery._(before._former, revoking: true);
+    state = AccountUnlinkRecovery._(
+      before._former,
+      revoking: true,
+      desktopAction: before._desktopAction,
+    );
     final revoked = await before._former.revoke();
     if (!_current(epoch)) return;
-    state = revoked
-        ? const AccountIdle(notice: AccountNotice.signedOut)
-        : before;
+    if (state case final AccountUnlinkRecovery current) {
+      state = revoked
+          ? current._desktopAction ??
+                const AccountIdle(notice: AccountNotice.signedOut)
+          : AccountUnlinkRecovery._(
+              current._former,
+              desktopAction: current._desktopAction,
+            );
+    }
   }
 
   /// Releases this app's browser attempt or asks the native listener to stop.
@@ -325,7 +343,7 @@ final class AccountNotifier extends Notifier<AccountState> {
         connected: state.connected,
         notice: AccountNotice.cancelled,
       );
-    } else if (state case AccountWorking(native: true)) {
+    } else if (_nativeState case AccountWorking(native: true)) {
       ref.read(desktopAccountProvider).value?.cancel();
     }
   }
@@ -367,16 +385,32 @@ final class AccountNotifier extends Notifier<AccountState> {
 
   /// Reads skills from the mode the user explicitly selected.
   Future<void> readSkills({required bool solo}) async {
+    if (solo) {
+      return _runNative(
+        (desktop, connected) async => _skillsState(
+          connected,
+          await desktop?.skills() ?? (AccountNotice.unavailable, null, null),
+          solo: true,
+        ),
+      );
+    }
     if (state is! AccountIdle) return;
     final connected = state.connected;
     final epoch = ++_epoch;
     state = AccountWorking(connected);
-    final (notice, stats, refusal) = solo
-        ? await ref.read(desktopAccountProvider).value?.skills() ??
-              (AccountNotice.unavailable, null, null)
-        : await connected?.skills() ?? (AccountNotice.signedOut, null, null);
+    final result =
+        await connected?.skills() ?? (AccountNotice.signedOut, null, null);
     if (!_current(epoch)) return;
-    state = AccountIdle(
+    state = _skillsState(connected, result, solo: false);
+  }
+
+  static AccountIdle _skillsState(
+    ConnectedSession? connected,
+    SkillsRead result, {
+    required bool solo,
+  }) {
+    final (notice, stats, refusal) = result;
+    return AccountIdle(
       connected: notice == AccountNotice.signedOut ? null : connected,
       notice: stats == null && refusal == null && notice == AccountNotice.none
           ? AccountNotice.unavailable
@@ -389,56 +423,107 @@ final class AccountNotifier extends Notifier<AccountState> {
 
   /// Configures the public desktop client without contacting a server.
   void configureDesktop(String value) {
-    if (state is! AccountIdle) return;
+    if (_nativeState is! AccountIdle) return;
     final desktop = ref.read(desktopAccountProvider).value;
     final notice =
         desktop?.configure(value.trim()) ?? AccountNotice.unavailable;
-    state = AccountIdle(connected: state.connected, notice: notice);
+    _showNative(AccountIdle(connected: state.connected, notice: notice));
   }
 
   /// Identifies a desktop character without requesting skills scope.
   Future<void> identifyDesktop() =>
-      _desktop((account, _) => account.identify());
+      _localAction((account) => account.identify());
 
   /// Records native consent, then runs a separate PKCE authorization.
-  Future<void> authorizeDesktop() => _desktop((account, session) async {
-    final pilot = account.pilot;
-    if (pilot != null &&
-        session != null &&
-        pilot.characterId == session.pilot.characterId &&
-        session.pilot.holder != null &&
-        !account.ownsReservationFor(session.origin, pilot.characterId)) {
-      return AccountNotice.blocked;
-    }
-    return account.authorizeSkills();
-  });
+  Future<void> authorizeDesktop() {
+    final current = state;
+    // Preserve the holder conflict check without passing the old bearer to
+    // any native operation or returning it to the connected view.
+    final binding = current is AccountUnlinkRecovery
+        ? current._former
+        : current.connected;
+    final signing = binding?.pilot;
+    final origin = binding?.origin;
+    return _localAction((account) async {
+      final local = account.pilot;
+      if (local != null &&
+          signing != null &&
+          origin != null &&
+          signing.characterId == local.characterId &&
+          signing.holder != null &&
+          !account.ownsReservationFor(origin, local.characterId)) {
+        return AccountNotice.blocked;
+      }
+      return account.authorizeSkills();
+    });
+  }
 
   /// Revokes local scope without handing a linked character to another holder.
   Future<void> disableDesktopSkills() =>
-      _desktop((account, _) => account.disableSkills());
+      _localAction((account) => account.disableSkills());
 
   /// Reserves the current connected viewer to the original desktop.
-  Future<void> takeDesktop() => _desktop(
-    (account, session) => session == null
-        ? Future.value(AccountNotice.signedOut)
-        : account.take(session),
-    refresh: true,
-  );
+  Future<void> takeDesktop() =>
+      _handoff((account, session) => account.take(session));
 
   /// Parks the desktop and requests a return to the current connected server.
-  Future<void> returnDesktop() => _desktop(
-    (account, session) => session == null
-        ? Future.value(AccountNotice.signedOut)
-        : account.returnTo(session),
-    refresh: true,
+  Future<void> returnDesktop() =>
+      _handoff((account, session) => account.returnTo(session));
+
+  AccountState get _nativeState {
+    final current = state;
+    return current is AccountUnlinkRecovery ? current.desktopAction : current;
+  }
+
+  void _showNative(AccountState action) {
+    final current = state;
+    state = current is AccountUnlinkRecovery
+        ? AccountUnlinkRecovery._(
+            current._former,
+            revoking: current.revoking,
+            desktopAction: action,
+          )
+        : action;
+  }
+
+  Future<void> _localAction(
+    Future<AccountNotice> Function(DesktopAccount) action,
+  ) => _runNative(
+    (desktop, connected) async => AccountIdle(
+      connected: connected,
+      notice: desktop == null
+          ? AccountNotice.unavailable
+          : await action(desktop),
+    ),
+    cancellable: true,
   );
 
-  Future<void> _desktop(
-    Future<AccountNotice> Function(DesktopAccount, ConnectedSession?) action, {
-    bool refresh = false,
+  Future<void> _runNative(
+    Future<AccountIdle> Function(DesktopAccount?, ConnectedSession?) action, {
+    bool cancellable = false,
   }) async {
+    final before = _nativeState;
+    if (before is! AccountIdle) return;
+    final target = _target;
+    final running = AccountWorking(before.connected, native: cancellable);
+    _showNative(running);
+    final answer = await action(
+      ref.read(desktopAccountProvider).value,
+      before.connected,
+    );
+    if (ref.mounted &&
+        identical(target, ref.read(serverTargetProvider)) &&
+        identical(_nativeState, running)) {
+      _showNative(answer);
+    }
+  }
+
+  Future<void> _handoff(
+    Future<AccountNotice> Function(DesktopAccount, ConnectedSession) action,
+  ) async {
     if (state is! AccountIdle) return;
     final connected = state.connected;
+    if (connected == null) return;
     final desktop = ref.read(desktopAccountProvider).value;
     if (desktop == null) {
       state = AccountIdle(
@@ -451,10 +536,6 @@ final class AccountNotifier extends Notifier<AccountState> {
     state = AccountWorking(connected, native: true);
     final notice = await action(desktop, connected);
     if (!_current(epoch)) return;
-    if (!refresh || connected == null) {
-      state = AccountIdle(connected: connected, notice: notice);
-      return;
-    }
     final updated = await connected.refresh();
     if (!_current(epoch)) return;
     final handoffNotice = notice == AccountNotice.signedOut

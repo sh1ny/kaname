@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:kaname_app/esi_sso/data/account_types.dart';
 import 'package:kaname_app/esi_sso/data/call_log_client.dart';
+import 'package:kaname_app/esi_sso/data/desktop_platform.dart';
 import 'package:kaname_app/esi_sso/logic/account.dart';
 import 'package:kaname_app/esi_sso/logic/call_log.dart';
 import 'package:kaname_app/esi_sso/ui/call_log_panel.dart';
@@ -169,6 +171,36 @@ void main() {
     },
   );
 
+  testWidgets('solo skills remain available while unlink recovery is pending', (
+    tester,
+  ) async {
+    final server = _Server(ambiguous: true, loseRevoke: true);
+    final desktop = _Solo();
+    await http.runWithClient(() async {
+      await _open(tester, desktop: desktop);
+      await _signIn(tester);
+      await _tap(tester, _unlink);
+      await _tap(tester, _recover);
+      await _tap(tester, 'Read skills in solo mode', settle: false);
+      expect(desktop.reads, 1);
+      expect(find.text('My calls'), findsNothing);
+      expect(find.text('Linked characters'), findsNothing);
+
+      // Exact revocation can finish while the unrelated local read is pending.
+      await _tap(tester, _recover, settle: false);
+      desktop.result.complete((
+        AccountNotice.none,
+        (count: 12, totalSp: 345),
+        null,
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('12 skills, 345 skill points'), findsOneWidget);
+      expect(find.text('Sign in to server'), findsOneWidget);
+      expect(find.text('My calls'), findsNothing);
+      expect(server.revocations, List.filled(2, 'Bearer ${'b' * 43}'));
+    }, () => MockClient(server.call));
+  }, skip: !hasDesktopHolder);
+
   for (final ambiguous in [false, true]) {
     testWidgets(
       ambiguous
@@ -215,11 +247,12 @@ final class _Target extends Notifier<ServerTarget> {
 Future<ProviderContainer> _open(
   WidgetTester tester, {
   _History? history,
+  DesktopAccount? desktop,
 }) async {
   final scope = ProviderContainer(
     overrides: [
       serverTargetProvider.overrideWith((ref) => ref.watch(_target)),
-      desktopAccountProvider.overrideWith((_) async => null),
+      desktopAccountProvider.overrideWith((_) async => desktop),
       if (history != null) callLogAccessProvider.overrideWithValue(history),
     ],
   );
@@ -396,4 +429,56 @@ final class _History implements CallLogAccess {
 
   @override
   Future<EsiRouteCountPage> totals() async => fail('not an administrator');
+}
+
+final class _Solo implements DesktopAccount {
+  final result = Completer<SkillsRead>();
+  var reads = 0;
+
+  @override
+  final clientId = 'solo-fixture';
+
+  @override
+  final pilot = const AccountPilot(
+    characterId: '999',
+    name: 'Solo Pilot',
+    holder: 'solo',
+  );
+
+  @override
+  Future<SkillsRead> skills() {
+    reads++;
+    return result.future;
+  }
+
+  @override
+  bool permitsServerGrant(String characterId) => true;
+
+  @override
+  bool ownsReservationFor(String origin, String characterId) => false;
+
+  @override
+  AccountNotice configure(String clientId) => fail('unexpected configure');
+
+  @override
+  Future<AccountNotice> identify() => fail('unexpected identify');
+
+  @override
+  Future<AccountNotice> authorizeSkills() => fail('unexpected authorize');
+
+  @override
+  Future<AccountNotice> disableSkills() => fail('unexpected disable');
+
+  @override
+  Future<AccountNotice> take(HolderRemote remote) => fail('unexpected take');
+
+  @override
+  Future<AccountNotice> returnTo(HolderRemote remote) =>
+      fail('unexpected return');
+
+  @override
+  void cancel() {}
+
+  @override
+  Future<void> close() async {}
 }

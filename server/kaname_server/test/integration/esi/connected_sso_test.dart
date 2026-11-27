@@ -1200,10 +1200,16 @@ void main() {
       Future<http.Response> native(
         String bearer, {
         String endpoint = 'memberRoster',
+        String body = '{"method":"page","after":null}',
+        String contentType = 'application/json',
       }) => browser.post(
         Uri.parse('${pod.baseUrl}$endpoint'),
-        headers: {...headers(), 'authorization': 'Bearer $bearer'},
-        body: jsonEncode({'method': 'page', 'after': null}),
+        headers: {
+          ...headers(),
+          'content-type': contentType,
+          'authorization': 'Bearer $bearer',
+        },
+        body: body,
       );
       final pending = [
         for (var i = 0; i < 4; i++)
@@ -1226,6 +1232,16 @@ void main() {
           (await accountRpc(key, 'page', {'after': null})).statusCode,
           429,
         );
+        for (final (endpoint, body) in [
+          ('memberRoster', '{'),
+          ('memberRoster', '{"method":"notPage","after":null}'),
+          ('memberRoster/page', '{"after":42}'),
+          ('memberRoster/unknown', '{}'),
+          ('memberRoster/page', '${' ' * 2049}{}'),
+        ]) {
+          final invalid = await native(key, endpoint: endpoint, body: body);
+          expect(invalid.statusCode, 400, reason: endpoint);
+        }
         expect(lookups, 4);
       } finally {
         held.complete();
@@ -1236,6 +1252,22 @@ void main() {
         everyElement(401),
       );
       expect((await native(key)).statusCode, 200);
+      expect(
+        (await native(
+          key,
+          endpoint: 'memberRoster?method=page',
+          body: '',
+        )).statusCode,
+        200,
+      );
+      expect(
+        (await native(
+          key,
+          endpoint: 'memberRoster/page',
+          contentType: 'text/plain; charset=utf-8',
+        )).statusCode,
+        200,
+      );
     },
     timeout: const Timeout(Duration(minutes: 3)),
   );
@@ -1428,8 +1460,12 @@ void main() {
       settle.complete();
       expect(await write, MemberAccountStatus.unlinked);
     }
-    expect(jsonDecode((await revocation).body), {'status': 'signedOut'});
+    // The caller never sees the first acknowledgment.
+    await revocation;
     expect((await post('viewer', {}, bearer: retained)).statusCode, 401);
+    final retried = await post('sign-out', {}, bearer: retained);
+    expect(retried.statusCode, 200);
+    expect(jsonDecode(retried.body), {'status': 'signedOut'});
     expect(
       (await post('viewer', {}, bearer: alt['session'] as String)).statusCode,
       401,

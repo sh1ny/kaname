@@ -161,7 +161,7 @@ Connected ESI settings on web and native SHALL show the main, signing character 
 
 ### Requirement: An ambiguous unlink requires session recovery
 
-On ambiguous unlink, the app SHALL clear the roster, cursor and own history. It SHALL use the old bearer only to revoke that exact session at the original server. It SHALL keep the views uncertain until that server confirms committed deletion or absence and the user signs in again. Auth, database or transport failures do not confirm revocation. The app SHALL allow a revocation retry with the same bearer after a lost acknowledgment, but SHALL NOT automatically retry unlink.
+As in **Connected Settings shows the account and its characters**, local changes SHALL fence old roster replies and cursors. After ambiguous unlink, clear and withhold roster and own history. Use the old bearer only for exact revocation at its original server. Resume after confirmed committed deletion or absence and fresh sign-in. Auth, database and transport failures do not confirm revocation. Permit retry after lost revocation acknowledgment. Do not retry unlink automatically.
 
 #### Scenario: An old page arrives during ambiguous unlink recovery
 
