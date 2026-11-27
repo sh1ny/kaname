@@ -12,6 +12,7 @@ fields:
   bucket: String?
   memberId: int?
   characterId: int?
+  accountExcluded: bool?
 indexes:
   esi_call_log_retention_idx:
     fields: recordedAt, id

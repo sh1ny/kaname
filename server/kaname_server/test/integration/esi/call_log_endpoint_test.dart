@@ -8,33 +8,61 @@ import '../test_tools/serverpod_test_tools.dart';
 
 const _operation = 'GetCharactersCharacterIdSkills';
 
+typedef _Pilot = ({int account, int character, int session});
+
 void main() {
   withServerpod('Scoped ESI receipt projections', (sessions, endpoints) {
     late Session session;
-    late SsoIdentityRow first;
-    late SsoIdentityRow second;
+    late _Pilot first;
+    late _Pilot second;
     late DateTime now;
 
-    TestSessionBuilder signed(SsoIdentityRow viewer, {bool admin = false}) =>
+    TestSessionBuilder signed(_Pilot viewer, {bool admin = false}) =>
         sessions.copyWith(
           authentication: AuthenticationOverride.authenticationInfo(
-            viewer.id!.toString(),
+            viewer.account.toString(),
             {if (admin) Scope.admin},
+            authId: viewer.session.toString(),
           ),
         );
 
-    Future<SsoIdentityRow> addPilot(int character) =>
-        SsoIdentityRow.db.insertRow(
-          session,
-          SsoIdentityRow(
-            characterId: character,
-            owner: 'b3duZXI=',
-            characterName: 'Pilot',
-            blocked: false,
-          ),
-        );
+    Future<_Pilot> addPilot(int character) => session.db.transaction((
+      transaction,
+    ) async {
+      final identity = await SsoIdentityRow.db.insertRow(
+        session,
+        SsoIdentityRow(
+          characterId: character,
+          owner: 'b3duZXI=',
+          characterName: 'Pilot',
+          blocked: false,
+        ),
+        transaction: transaction,
+      );
+      final account = await MemberAccountRow.db.insertRow(
+        session,
+        MemberAccountRow(mainIdentityId: identity.id!),
+        transaction: transaction,
+      );
+      await SsoIdentityRow.db.updateRow(
+        session,
+        identity.copyWith(accountId: account.id),
+        transaction: transaction,
+      );
+      final signed = await SsoSessionRow.db.insertRow(
+        session,
+        SsoSessionRow(
+          digest: 'test-session-$character',
+          accountId: account.id!,
+          identityId: identity.id!,
+          expiresAt: now.add(const Duration(days: 1)),
+        ),
+        transaction: transaction,
+      );
+      return (account: account.id!, character: character, session: signed.id!);
+    });
 
-    Future<void> receipt(SsoIdentityRow viewer, DateTime at) async {
+    Future<void> receipt(_Pilot viewer, DateTime at) async {
       await EsiCallLogRow.db.insertRow(
         session,
         EsiCallLogRow(
@@ -44,8 +72,8 @@ void main() {
           status: 200,
           cost: 2,
           latencyMicros: 10,
-          memberId: viewer.id,
-          characterId: viewer.characterId,
+          memberId: viewer.account,
+          characterId: viewer.character,
         ),
       );
     }
@@ -63,6 +91,18 @@ void main() {
             cleanup,
             where: (t) => t.characterId.between(511, 516),
           );
+          await cleanup.db.unsafeExecute('''
+            DELETE FROM esi_session WHERE "identityId" IN
+              (SELECT id FROM esi_identity WHERE "characterId" BETWEEN 511 AND 516)
+          ''');
+          await cleanup.db.unsafeExecute('''
+            UPDATE esi_identity SET "accountId" = NULL
+            WHERE "characterId" BETWEEN 511 AND 516
+          ''');
+          await cleanup.db.unsafeExecute('''
+            DELETE FROM member_account WHERE "mainIdentityId" IN
+              (SELECT id FROM esi_identity WHERE "characterId" BETWEEN 511 AND 516)
+          ''');
           await SsoIdentityRow.db.deleteWhere(
             cleanup,
             where: (t) => t.characterId.between(511, 516),

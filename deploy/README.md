@@ -106,6 +106,14 @@ and headers at any reverse proxy.
 The browser must keep Kaname's short-lived attempt cookie. Other cookies on
 the same host do not affect the sign-in check.
 
+### Upgrading M2 sign-ins to member accounts
+
+Back up Postgres and stop the app server before running the stack's `migrate`
+service. The upgrade makes each existing character the main of a separate
+account. It preserves valid Kaname sessions and their signing characters,
+and leaves the ESI grant, scope opt-ins and holder assignment where they are.
+It does not link characters based on matching owner hashes.
+
 ### Test both sign-in modes locally
 
 1. In the [EVE developers portal](https://developers.eveonline.com/), register

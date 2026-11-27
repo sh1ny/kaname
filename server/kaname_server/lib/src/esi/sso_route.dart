@@ -350,9 +350,8 @@ final class SsoRoute {
               ? _json(200, {'status': 'authorized'})
               : _failure(403);
         }
-        final result = await _sessions.gate.run(
-          identity.characterId,
-          () => _withSession((session) => _sessions.signIn(session, identity)),
+        final result = await _withSession(
+          (session) => _sessions.signIn(session, identity),
         );
         return result == null ? _failure(403) : _json(200, result);
       }
@@ -373,7 +372,7 @@ final class SsoRoute {
     });
     if (viewer == null) return _failure(401);
     return _json(200, {
-      'memberId': viewer.identity.id!.toString(),
+      'memberId': viewer.accountId.toString(),
       'characterId': viewer.identity.characterId.toString(),
       'characterName': viewer.identity.characterName,
       'admin': viewer.admin,

@@ -6,8 +6,13 @@ import 'package:serverpod/serverpod.dart';
 
 import '../generated/protocol.dart';
 
-/// The current Kaname authority, derived from a session and pinned CCP owner.
-typedef SsoViewer = ({SsoIdentityRow identity, bool admin, int sessionId});
+/// Live account and signing character. ESI and admin authority follow the signer.
+typedef SsoViewer = ({
+  int accountId,
+  SsoIdentityRow identity,
+  bool admin,
+  int sessionId,
+});
 
 /// One admitted activity per character in the server main isolate (ADR 0017).
 final class SsoCharacterGate {
@@ -74,7 +79,7 @@ final class SsoSessions {
   ) async {
     final current = await viewer(session, bearer);
     if (current == null) return null;
-    return AuthenticationInfo(current.identity.id!.toString(), {
+    return AuthenticationInfo(current.accountId.toString(), {
       if (current.admin) Scope.admin,
     }, authId: current.sessionId.toString());
   }
@@ -95,18 +100,72 @@ final class SsoSessions {
   /// use [viewer] to keep their existing failure handling.
   Future<SsoViewer?> viewerForRefresh(Session session, String bearer) async {
     if (!_bearerShape.hasMatch(bearer)) return null;
-    final now = _now();
-    final row = await SsoSessionRow.db.findFirstRow(
-      session,
-      where: (t) => t.digest.equals(ssoDigest(bearer)) & (t.expiresAt > now),
+    return _live(session, digest: ssoDigest(bearer));
+  }
+
+  /// Rechecks the exact session and account selected by Serverpod authentication.
+  Future<SsoViewer?> viewerById(
+    Session session,
+    int sessionId,
+    int accountId,
+  ) => _live(session, sessionId: sessionId, accountId: accountId);
+
+  Future<SsoViewer?> _live(
+    Session session, {
+    String? digest,
+    int? sessionId,
+    int? accountId,
+  }) async {
+    final rows = await session.db.unsafeQuery(
+      '''
+      SELECT s.id, s."accountId", i.id, i."characterId", i.owner,
+             i."characterName", i."wasDetached"
+      FROM esi_session AS s JOIN esi_identity AS i ON i.id = s."identityId"
+      WHERE ${digest != null ? 's.digest = @digest' : 's.id = @id AND s."accountId" = @account'}
+        AND s."expiresAt" > @now::timestamp AND NOT i.blocked
+        AND i."accountId" = s."accountId"
+      ''',
+      parameters: QueryParameters.named({
+        if (digest != null) 'digest': digest,
+        if (sessionId != null) 'id': sessionId,
+        if (accountId != null) 'account': accountId,
+        'now': _now(),
+      }),
     );
-    if (row == null) return null;
-    final identity = await SsoIdentityRow.db.findById(session, row.memberId);
-    if (identity == null || identity.blocked) return null;
+    if (rows.isEmpty) return null;
+    final row = rows.single;
+    final account = row[1] as int;
+    final character = row[3] as int;
     return (
-      identity: identity,
-      admin: _admins.contains(identity.characterId),
-      sessionId: row.id!,
+      accountId: account,
+      identity: SsoIdentityRow(
+        id: row[2] as int,
+        characterId: character,
+        owner: row[4] as String,
+        characterName: row[5] as String,
+        blocked: false,
+        accountId: account,
+        wasDetached: row[6] as bool,
+      ),
+      admin: _admins.contains(character),
+      sessionId: row[0] as int,
+    );
+  }
+
+  /// Locks the identity key even before its row exists. Multi-character writes
+  /// acquire these locks in ascending CCP character ID order (ADR 0019).
+  static Future<void> lockCharacter(
+    Session session,
+    Transaction transaction,
+    int character,
+  ) async {
+    await session.db.unsafeQuery(
+      'SELECT pg_advisory_xact_lock(\$1::int,\$2::int)',
+      parameters: QueryParameters.positional([
+        character >>> 32,
+        character.toSigned(32),
+      ]),
+      transaction: transaction,
     );
   }
 
@@ -116,14 +175,7 @@ final class SsoSessions {
     Session session,
     CcpVerifiedIdentity claims,
   ) => session.db.transaction((transaction) async {
-    await session.db.unsafeQuery(
-      'SELECT pg_advisory_xact_lock(\$1::int,\$2::int)',
-      parameters: QueryParameters.positional([
-        claims.characterId >>> 32,
-        claims.characterId.toSigned(32),
-      ]),
-      transaction: transaction,
-    );
+    await lockCharacter(session, transaction, claims.characterId);
     final stored = await SsoIdentityRow.db.findFirstRow(
       session,
       where: (t) => t.characterId.equals(claims.characterId),
@@ -131,16 +183,7 @@ final class SsoSessions {
     );
     if (stored != null && (stored.blocked || stored.owner != claims.owner)) {
       if (!stored.blocked) {
-        await SsoIdentityRow.db.updateRow(
-          session,
-          stored.copyWith(blocked: true),
-          transaction: transaction,
-        );
-        await SsoSessionRow.db.deleteWhere(
-          session,
-          where: (t) => t.memberId.equals(stored.id!),
-          transaction: transaction,
-        );
+        await _blockIdentity(session, transaction, stored);
       }
       return null;
     }
@@ -160,16 +203,32 @@ final class SsoSessions {
       identity = await SsoIdentityRow.db.updateRow(
         session,
         stored.copyWith(characterName: claims.name),
+        columns: (t) => [t.characterName],
         transaction: transaction,
       );
     } else {
       identity = stored;
     }
-    final member = identity.id!;
+    final signer = identity.id!;
+    var member = identity.accountId;
+    if (member == null) {
+      final account = await MemberAccountRow.db.insertRow(
+        session,
+        MemberAccountRow(mainIdentityId: signer),
+        transaction: transaction,
+      );
+      member = account.id!;
+      await SsoIdentityRow.db.updateRow(
+        session,
+        identity.copyWith(accountId: member),
+        columns: (t) => [t.accountId],
+        transaction: transaction,
+      );
+    }
     final now = _now();
     final existing = await SsoSessionRow.db.find(
       session,
-      where: (t) => t.memberId.equals(member) & (t.expiresAt > now),
+      where: (t) => t.identityId.equals(signer) & (t.expiresAt > now),
       orderBy: (t) => t.id,
       limit: 8,
       transaction: transaction,
@@ -186,7 +245,8 @@ final class SsoSessions {
       session,
       SsoSessionRow(
         digest: ssoDigest(bearer),
-        memberId: member,
+        identityId: signer,
+        accountId: member,
         expiresAt: now.add(const Duration(hours: 24)),
       ),
       transaction: transaction,
@@ -216,6 +276,7 @@ final class SsoSessions {
     String previousOwner,
   ) async {
     await session.db.transaction((transaction) async {
+      await lockCharacter(session, transaction, characterId);
       final stored = await SsoIdentityRow.db.findFirstRow(
         session,
         where: (t) =>
@@ -223,17 +284,26 @@ final class SsoSessions {
         transaction: transaction,
       );
       if (stored == null || stored.blocked) return;
-      await SsoIdentityRow.db.updateRow(
-        session,
-        stored.copyWith(blocked: true),
-        transaction: transaction,
-      );
-      await SsoSessionRow.db.deleteWhere(
-        session,
-        where: (t) => t.memberId.equals(stored.id!),
-        transaction: transaction,
-      );
+      await _blockIdentity(session, transaction, stored);
     });
+  }
+
+  static Future<void> _blockIdentity(
+    Session session,
+    Transaction transaction,
+    SsoIdentityRow identity,
+  ) async {
+    await SsoIdentityRow.db.updateRow(
+      session,
+      identity.copyWith(blocked: true),
+      columns: (t) => [t.blocked],
+      transaction: transaction,
+    );
+    await SsoSessionRow.db.deleteWhere(
+      session,
+      where: (t) => t.identityId.equals(identity.id!),
+      transaction: transaction,
+    );
   }
 
   /// Removes a bounded batch of expired session verifiers.

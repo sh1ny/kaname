@@ -47,6 +47,7 @@ void main() {
   late bool rateLimited;
   late bool failViewerLookup;
   late String owner;
+  late int characterId;
   late JsonWebKey signing;
 
   setUpAll(() => signing = JsonWebKey.generate('RS256', keyBitLength: 2048));
@@ -60,6 +61,7 @@ void main() {
     issued = [];
     receipts = [];
     owner = 'VEVTVCBPTkxZ';
+    characterId = 410;
     final upstream = MockClient((request) async {
       if (request.url.path.startsWith('/.well-known/')) {
         return http.Response(
@@ -110,7 +112,7 @@ void main() {
         ..stringContent = jsonEncode({
           'iss': 'login.eveonline.com',
           'aud': [_serverId, 'EVE Online'],
-          'sub': 'CHARACTER:EVE:410',
+          'sub': 'CHARACTER:EVE:$characterId',
           'name': 'Synthetic <Pilot>',
           'owner': owner,
           'exp': clock.millisecondsSinceEpoch ~/ 1000 + 1200,
@@ -744,6 +746,65 @@ void main() {
     final body = {'proofDigest': 'a' * 64, 'native': true};
     expect((await post('begin', body)).statusCode, 429);
     expect((await post('begin', body, ip: '192.0.2.2')).statusCode, 200);
+  });
+
+  test(
+    'first sign-in creates one account with the character as main',
+    () async {
+      final viewer = await signIn();
+      final rows = await pod.pod.withSession(
+        (session) => session.db.unsafeQuery('''
+        SELECT a.id, main."characterId", i."characterId"
+        FROM member_account AS a
+        JOIN esi_identity AS main ON main.id = a."mainIdentityId"
+        JOIN esi_identity AS i ON i."accountId" = a.id
+      '''),
+        enableLogging: false,
+      );
+      expect(rows.map((row) => row.toList()), [
+        [int.parse(viewer['memberId'] as String), characterId, characterId],
+      ]);
+    },
+  );
+
+  test('matching owner hashes do not link characters', () async {
+    final main = await signIn();
+    characterId++;
+    final other = await signIn();
+    expect(other['memberId'], isNot(main['memberId']));
+    final rows = await pod.pod.withSession(
+      (session) => session.db.unsafeQuery('''
+        SELECT main."characterId" FROM member_account AS a
+        JOIN esi_identity AS main ON main.id = a."mainIdentityId"
+        ORDER BY main."characterId"
+      '''),
+      enableLogging: false,
+    );
+    expect(rows.map((row) => row.single), [410, 411]);
+  });
+
+  test('concurrent first sign-ins create only one account', () async {
+    final first = await begin();
+    final second = await begin();
+    expect((await callback(first)).statusCode, 200);
+    expect((await callback(second)).statusCode, 200);
+    final responses = await Future.wait([complete(first), complete(second)]);
+    final viewers = [
+      for (final response in responses)
+        jsonDecode(response.body) as Map<String, Object?>,
+    ];
+    expect(responses.map((response) => response.statusCode), [200, 200]);
+    expect(viewers.first['memberId'], viewers.last['memberId']);
+    expect(viewers.first['session'], isNot(viewers.last['session']));
+    final rows = await pod.pod.withSession(
+      (session) => session.db.unsafeQuery('''
+        SELECT (SELECT count(*) FROM member_account),
+               (SELECT count(*) FROM esi_identity),
+               (SELECT count(*) FROM esi_session)
+      '''),
+      enableLogging: false,
+    );
+    expect(rows.single.toList(), [1, 1, 2]);
   });
 
   test('Valid identity signs in again', () async {

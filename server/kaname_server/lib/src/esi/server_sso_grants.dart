@@ -73,7 +73,7 @@ final class ServerSsoGrants implements SsoGrantAuthority {
     final row = await SsoOptInRow.db.findFirstRow(
       session,
       where: (t) =>
-          t.memberId.equals(identity.id!) &
+          t.identityId.equals(identity.id!) &
           t.scopeClass.equals(ScopeClass.characterSkills.name),
     );
     if (row == null) return null;
@@ -104,11 +104,12 @@ final class ServerSsoGrants implements SsoGrantAuthority {
         final key = await SsoSessionRow.db.findById(session, viewer.sessionId);
         if (identity == null || identity.blocked || key == null) return false;
         final characterSkills = ScopeClass.characterSkills.name;
-        final member = identity.id!;
+        final signer = identity.id!;
         final existing = await SsoOptInRow.db.findFirstRow(
           session,
           where: (t) =>
-              t.memberId.equals(member) & t.scopeClass.equals(characterSkills),
+              t.identityId.equals(signer) &
+              t.scopeClass.equals(characterSkills),
         );
         if (!enabled) {
           if (existing != null) {
@@ -120,7 +121,7 @@ final class ServerSsoGrants implements SsoGrantAuthority {
           await SsoOptInRow.db.insertRow(
             session,
             SsoOptInRow(
-              memberId: member,
+              identityId: signer,
               owner: identity.owner,
               scopeClass: characterSkills,
               policyFingerprint: policy.fingerprint,

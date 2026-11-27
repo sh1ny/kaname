@@ -1,0 +1,7 @@
+### The immutable first exclusion of an account from private route qualification.
+### The primary key is the account ID; it remains after account retirement.
+class: EsiCallLogExclusionRow
+table: esi_call_log_exclusion
+serverOnly: true
+fields:
+  excludedAt: DateTime

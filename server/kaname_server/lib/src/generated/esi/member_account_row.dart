@@ -1,0 +1,618 @@
+/* AUTOMATICALLY GENERATED CODE DO NOT MODIFY */
+/*   To generate run: "serverpod generate"    */
+
+// ignore_for_file: implementation_imports
+// ignore_for_file: library_private_types_in_public_api
+// ignore_for_file: non_constant_identifier_names
+// ignore_for_file: public_member_api_docs
+// ignore_for_file: type_literal_in_constant_pattern
+// ignore_for_file: use_super_parameters
+// ignore_for_file: invalid_use_of_internal_member
+
+// ignore_for_file: no_leading_underscores_for_library_prefixes
+import 'dart:async' as _ida;
+
+import 'package:serverpod/serverpod.dart' as _is;
+
+/// The stable Kaname account, independent of the current signing character.
+abstract class MemberAccountRow
+    implements _is.TableRow<int?>, _is.ProtocolSerialization {
+  MemberAccountRow._({this.id, required this.mainIdentityId});
+
+  factory MemberAccountRow({int? id, required int mainIdentityId}) =
+      _MemberAccountRowImpl;
+
+  factory MemberAccountRow.fromJson(Map<String, dynamic> jsonSerialization) {
+    return MemberAccountRow(
+      id: jsonSerialization['id'] as int?,
+      mainIdentityId: jsonSerialization['mainIdentityId'] as int,
+    );
+  }
+
+  static final t = MemberAccountRowTable();
+
+  static const db = MemberAccountRowRepository._();
+
+  @override
+  int? id;
+
+  int mainIdentityId;
+
+  @override
+  _is.Table<int?> get table => t;
+
+  /// Returns a shallow copy of this [MemberAccountRow]
+  /// with some or all fields replaced by the given arguments.
+  @_is.useResult
+  MemberAccountRow copyWith({int? id, int? mainIdentityId});
+  @override
+  Map<String, dynamic> toJson() {
+    return {
+      '__className__': 'MemberAccountRow',
+      if (id != null) 'id': id,
+      'mainIdentityId': mainIdentityId,
+    };
+  }
+
+  @override
+  Map<String, dynamic> toJsonForProtocol() {
+    return {};
+  }
+
+  static MemberAccountRowInclude include() {
+    return MemberAccountRowInclude._();
+  }
+
+  static MemberAccountRowIncludeList includeList({
+    _is.WhereExpressionBuilder<MemberAccountRowTable>? where,
+    int? limit,
+    int? offset,
+    _is.OrderByBuilder<MemberAccountRowTable>? orderBy,
+    _is.OrderByListBuilder<MemberAccountRowTable>? orderByList,
+    MemberAccountRowInclude? include,
+  }) {
+    return MemberAccountRowIncludeList._(
+      where: where,
+      limit: limit,
+      offset: offset,
+      orderBy: orderBy?.call(MemberAccountRow.t),
+      orderByList: orderByList?.call(MemberAccountRow.t),
+      include: include,
+    );
+  }
+
+  @override
+  String toString() {
+    return _is.SerializationManager.encode(this);
+  }
+}
+
+class _Undefined {}
+
+class _MemberAccountRowImpl extends MemberAccountRow {
+  _MemberAccountRowImpl({int? id, required int mainIdentityId})
+    : super._(id: id, mainIdentityId: mainIdentityId);
+
+  /// Returns a shallow copy of this [MemberAccountRow]
+  /// with some or all fields replaced by the given arguments.
+  @_is.useResult
+  @override
+  MemberAccountRow copyWith({Object? id = _Undefined, int? mainIdentityId}) {
+    return MemberAccountRow(
+      id: id is int? ? id : this.id,
+      mainIdentityId: mainIdentityId ?? this.mainIdentityId,
+    );
+  }
+}
+
+class MemberAccountRowUpdateTable
+    extends _is.UpdateTable<MemberAccountRowTable> {
+  MemberAccountRowUpdateTable(super.table);
+
+  _is.ColumnValue<int, int> mainIdentityId(int value) =>
+      _is.ColumnValue(table.mainIdentityId, value);
+}
+
+class MemberAccountRowTable extends _is.Table<int?> {
+  MemberAccountRowTable({super.tableRelation})
+    : super(tableName: 'member_account') {
+    updateTable = MemberAccountRowUpdateTable(this);
+    mainIdentityId = _is.ColumnInt('mainIdentityId', this);
+  }
+
+  late final MemberAccountRowUpdateTable updateTable;
+
+  late final _is.ColumnInt mainIdentityId;
+
+  @override
+  List<_is.Column> get columns => [id, mainIdentityId];
+}
+
+class MemberAccountRowInclude extends _is.IncludeObject {
+  MemberAccountRowInclude._();
+
+  @override
+  Map<String, _is.Include?> get includes => {};
+
+  @override
+  _is.Table<int?> get table => MemberAccountRow.t;
+}
+
+class MemberAccountRowIncludeList extends _is.IncludeList {
+  MemberAccountRowIncludeList._({
+    _is.WhereExpressionBuilder<MemberAccountRowTable>? where,
+    super.limit,
+    super.offset,
+    super.orderBy,
+    super.orderByList,
+    super.include,
+  }) {
+    super.where = where?.call(MemberAccountRow.t);
+  }
+
+  @override
+  Map<String, _is.Include?> get includes => include?.includes ?? {};
+
+  @override
+  _is.Table<int?> get table => MemberAccountRow.t;
+}
+
+class MemberAccountRowRepository {
+  const MemberAccountRowRepository._();
+
+  /// Returns a list of [MemberAccountRow]s matching the given query parameters.
+  ///
+  /// Use [where] to specify which items to include in the return value.
+  /// If none is specified, all items will be returned.
+  ///
+  /// To specify the order of the items use [orderBy] or [orderByList]
+  /// when sorting by multiple columns.
+  ///
+  /// The maximum number of items can be set by [limit]. If no limit is set,
+  /// all items matching the query will be returned.
+  ///
+  /// [offset] defines how many items to skip, after which [limit] (or all)
+  /// items are read from the database.
+  ///
+  /// ```dart
+  /// var persons = await Persons.db.find(
+  ///   session,
+  ///   where: (t) => t.lastName.equals('Jones'),
+  ///   orderBy: (t) => t.firstName,
+  ///   limit: 100,
+  /// );
+  /// ```
+  Future<List<MemberAccountRow>> find(
+    _is.DatabaseSession session, {
+    _is.WhereExpressionBuilder<MemberAccountRowTable>? where,
+    int? limit,
+    int? offset,
+    _is.OrderByBuilder<MemberAccountRowTable>? orderBy,
+    _is.OrderByListBuilder<MemberAccountRowTable>? orderByList,
+    _is.Transaction? transaction,
+    _is.LockMode? lockMode,
+    _is.LockBehavior? lockBehavior,
+  }) async {
+    return session.db.find<MemberAccountRow>(
+      where: where?.call(MemberAccountRow.t),
+      orderBy: orderBy?.call(MemberAccountRow.t),
+      orderByList: orderByList?.call(MemberAccountRow.t),
+      limit: limit,
+      offset: offset,
+      transaction: transaction,
+      lockMode: lockMode,
+      lockBehavior: lockBehavior,
+    );
+  }
+
+  /// Emits [MemberAccountRow]s matching the given query parameters every time the
+  /// source tables are modified.
+  ///
+  /// Use [where] to specify which items to include in the return value.
+  /// If none is specified, all items will be returned.
+  ///
+  /// To specify the order of the items use [orderBy] or [orderByList]
+  /// when sorting by multiple columns.
+  ///
+  /// The maximum number of items can be set by [limit]. If no limit is set,
+  /// all items matching the query will be returned.
+  ///
+  /// [offset] defines how many items to skip, after which [limit] (or all)
+  /// items are read from the database.
+  ///
+  /// Use [throttle] to specify the minimum interval between queries. It can
+  /// also be set to `null`, in which case the stream will only be throttled
+  /// when its subscription is paused.
+  ///
+  /// Source tables are collected from the queried table, [where], [orderBy],
+  /// [orderByList], and the [include] graph. [alsoTriggerOnTables] is added
+  /// to that set. Pass [Table] instances such as `MemberAccountRow.t`.
+  ///
+  /// Raw [Expression] SQL is not inspected. Tables referenced only in raw
+  /// SQL must be passed via [alsoTriggerOnTables].
+  ///
+  /// The stream always reads committed state and never joins an ambient
+  /// [Transaction]. Emissions for a write fire after that write commits.
+  ///
+  /// Currently only supported on SQLite. Calling this method on PostgreSQL
+  /// throws an [UnsupportedError].
+  ///
+  /// ```dart
+  /// var subscription = Persons.db.watch(
+  ///   session,
+  ///   where: (t) => t.lastName.equals('Jones'),
+  ///   orderBy: (t) => t.firstName,
+  ///   limit: 100,
+  /// ).listen((persons) {
+  ///   // Handle the latest matching rows.
+  /// });
+  /// ```
+  _ida.Stream<List<MemberAccountRow>> watch(
+    _is.DatabaseSession session, {
+    _is.WhereExpressionBuilder<MemberAccountRowTable>? where,
+    int? limit,
+    int? offset,
+    _is.OrderByBuilder<MemberAccountRowTable>? orderBy,
+    _is.OrderByListBuilder<MemberAccountRowTable>? orderByList,
+    Duration? throttle = const Duration(milliseconds: 30),
+    Iterable<_is.Table>? alsoTriggerOnTables,
+  }) {
+    return session.db.watch<MemberAccountRow>(
+      where: where?.call(MemberAccountRow.t),
+      orderBy: orderBy?.call(MemberAccountRow.t),
+      orderByList: orderByList?.call(MemberAccountRow.t),
+      limit: limit,
+      offset: offset,
+      throttle: throttle,
+      alsoTriggerOnTables: alsoTriggerOnTables,
+    );
+  }
+
+  /// Returns the first matching [MemberAccountRow] matching the given query parameters.
+  ///
+  /// Use [where] to specify which items to include in the return value.
+  /// If none is specified, all items will be returned.
+  ///
+  /// To specify the order use [orderBy] or [orderByList]
+  /// when sorting by multiple columns.
+  ///
+  /// [offset] defines how many items to skip, after which the next one will be picked.
+  ///
+  /// ```dart
+  /// var youngestPerson = await Persons.db.findFirstRow(
+  ///   session,
+  ///   where: (t) => t.lastName.equals('Jones'),
+  ///   orderBy: (t) => t.age,
+  /// );
+  /// ```
+  Future<MemberAccountRow?> findFirstRow(
+    _is.DatabaseSession session, {
+    _is.WhereExpressionBuilder<MemberAccountRowTable>? where,
+    int? offset,
+    _is.OrderByBuilder<MemberAccountRowTable>? orderBy,
+    _is.OrderByListBuilder<MemberAccountRowTable>? orderByList,
+    _is.Transaction? transaction,
+    _is.LockMode? lockMode,
+    _is.LockBehavior? lockBehavior,
+  }) async {
+    return session.db.findFirstRow<MemberAccountRow>(
+      where: where?.call(MemberAccountRow.t),
+      orderBy: orderBy?.call(MemberAccountRow.t),
+      orderByList: orderByList?.call(MemberAccountRow.t),
+      offset: offset,
+      transaction: transaction,
+      lockMode: lockMode,
+      lockBehavior: lockBehavior,
+    );
+  }
+
+  /// Finds a single [MemberAccountRow] by its [id] or null if no such row exists.
+  Future<MemberAccountRow?> findById(
+    _is.DatabaseSession session,
+    int id, {
+    _is.Transaction? transaction,
+    _is.LockMode? lockMode,
+    _is.LockBehavior? lockBehavior,
+  }) async {
+    return session.db.findById<MemberAccountRow>(
+      id,
+      transaction: transaction,
+      lockMode: lockMode,
+      lockBehavior: lockBehavior,
+    );
+  }
+
+  /// Inserts all [MemberAccountRow]s in the list and returns the inserted rows.
+  ///
+  /// The returned [MemberAccountRow]s will have their `id` fields set.
+  ///
+  /// This is an atomic operation, meaning that if one of the rows fails to
+  /// insert, none of the rows will be inserted.
+  ///
+  /// If [ignoreConflicts] is set to `true`, rows that conflict with existing
+  /// rows are silently skipped, and only the successfully inserted rows are
+  /// returned.
+  ///
+  /// If [noReturn] is set to `true`, the inserted rows are not read back from
+  /// the database and an empty list is returned. This avoids the overhead of
+  /// transferring and deserializing the rows when the result is not needed.
+  Future<List<MemberAccountRow>> insert(
+    _is.DatabaseSession session,
+    List<MemberAccountRow> rows, {
+    _is.Transaction? transaction,
+    bool ignoreConflicts = false,
+    bool noReturn = false,
+  }) async {
+    return session.db.insert<MemberAccountRow>(
+      rows,
+      transaction: transaction,
+      ignoreConflicts: ignoreConflicts,
+      noReturn: noReturn,
+    );
+  }
+
+  /// Inserts a single [MemberAccountRow] and returns the inserted row.
+  ///
+  /// The returned [MemberAccountRow] will have its `id` field set.
+  Future<MemberAccountRow> insertRow(
+    _is.DatabaseSession session,
+    MemberAccountRow row, {
+    _is.Transaction? transaction,
+  }) async {
+    return session.db.insertRow<MemberAccountRow>(
+      row,
+      transaction: transaction,
+    );
+  }
+
+  /// Upserts all [MemberAccountRow]s in the list and returns the resulting rows.
+  ///
+  /// If a row conflicts on the given [conflictColumns], the existing row is
+  /// updated with the new values. Otherwise, a new row is inserted.
+  ///
+  /// If [updateColumns] is provided, only those columns will be updated on
+  /// conflict. If null, all non-conflict, non-id columns are updated.
+  ///
+  /// If [updateWhere] is provided, the update only applies to rows matching the
+  /// given expression. Conflicting rows that don't match are skipped and not
+  /// returned, so the resulting list may be shorter than [rows].
+  ///
+  /// The returned [MemberAccountRow]s will have their `id` fields set.
+  ///
+  /// This is an atomic operation, meaning that if one of the rows fails,
+  /// none of the rows will be affected.
+  ///
+  /// If [noReturn] is set to `true`, the resulting rows are not read back from
+  /// the database and an empty list is returned. This avoids the overhead of
+  /// transferring and deserializing the rows when the result is not needed.
+  Future<List<MemberAccountRow>> upsert(
+    _is.DatabaseSession session,
+    List<MemberAccountRow> rows, {
+    required _is.ColumnSelections<MemberAccountRowTable> conflictColumns,
+    _is.ColumnSelections<MemberAccountRowTable>? updateColumns,
+    _is.WhereExpressionBuilder<MemberAccountRowTable>? updateWhere,
+    _is.Transaction? transaction,
+    bool noReturn = false,
+  }) async {
+    return session.db.upsert<MemberAccountRow>(
+      rows,
+      conflictColumns: conflictColumns(MemberAccountRow.t),
+      updateColumns: updateColumns?.call(MemberAccountRow.t),
+      updateWhere: updateWhere?.call(MemberAccountRow.t),
+      transaction: transaction,
+      noReturn: noReturn,
+    );
+  }
+
+  /// Upserts a single [MemberAccountRow] and returns the resulting row.
+  ///
+  /// If the row conflicts on the given [conflictColumns], the existing row is
+  /// updated. Otherwise, a new row is inserted.
+  ///
+  /// If [updateColumns] is provided, only those columns will be updated on
+  /// conflict. If null, all non-conflict, non-id columns are updated.
+  ///
+  /// If [updateWhere] is provided, the update only applies when the existing
+  /// row matches the expression. Returns `null` if no row was affected — for
+  /// example when [updateWhere] does not match the conflicting row.
+  ///
+  /// The returned [MemberAccountRow] will have its `id` field set.
+  Future<MemberAccountRow?> upsertRow(
+    _is.DatabaseSession session,
+    MemberAccountRow row, {
+    required _is.ColumnSelections<MemberAccountRowTable> conflictColumns,
+    _is.ColumnSelections<MemberAccountRowTable>? updateColumns,
+    _is.WhereExpressionBuilder<MemberAccountRowTable>? updateWhere,
+    _is.Transaction? transaction,
+  }) async {
+    return session.db.upsertRow<MemberAccountRow>(
+      row,
+      conflictColumns: conflictColumns(MemberAccountRow.t),
+      updateColumns: updateColumns?.call(MemberAccountRow.t),
+      updateWhere: updateWhere?.call(MemberAccountRow.t),
+      transaction: transaction,
+    );
+  }
+
+  /// Updates all [MemberAccountRow]s in the list and returns the updated rows. If
+  /// [columns] is provided, only those columns will be updated. Defaults to
+  /// all columns.
+  /// This is an atomic operation, meaning that if one of the rows fails to
+  /// update, none of the rows will be updated.
+  ///
+  /// If [noReturn] is set to `true`, the updated rows are not read back from
+  /// the database and an empty list is returned. This avoids the overhead of
+  /// transferring and deserializing the rows when the result is not needed.
+  Future<List<MemberAccountRow>> update(
+    _is.DatabaseSession session,
+    List<MemberAccountRow> rows, {
+    _is.ColumnSelections<MemberAccountRowTable>? columns,
+    _is.Transaction? transaction,
+    bool noReturn = false,
+  }) async {
+    return session.db.update<MemberAccountRow>(
+      rows,
+      columns: columns?.call(MemberAccountRow.t),
+      transaction: transaction,
+      noReturn: noReturn,
+    );
+  }
+
+  /// Updates a single [MemberAccountRow]. The row needs to have its id set.
+  /// Optionally, a list of [columns] can be provided to only update those
+  /// columns. Defaults to all columns.
+  Future<MemberAccountRow> updateRow(
+    _is.DatabaseSession session,
+    MemberAccountRow row, {
+    _is.ColumnSelections<MemberAccountRowTable>? columns,
+    _is.Transaction? transaction,
+  }) async {
+    return session.db.updateRow<MemberAccountRow>(
+      row,
+      columns: columns?.call(MemberAccountRow.t),
+      transaction: transaction,
+    );
+  }
+
+  /// Updates a single [MemberAccountRow] by its [id] with the specified [columnValues].
+  /// Returns the updated row or null if no row with the given id exists.
+  Future<MemberAccountRow?> updateById(
+    _is.DatabaseSession session,
+    int id, {
+    required _is.ColumnValueListBuilder<MemberAccountRowUpdateTable>
+    columnValues,
+    _is.Transaction? transaction,
+  }) async {
+    return session.db.updateById<MemberAccountRow>(
+      id,
+      columnValues: columnValues(MemberAccountRow.t.updateTable),
+      transaction: transaction,
+    );
+  }
+
+  /// Updates all [MemberAccountRow]s matching the [where] expression with the specified [columnValues].
+  /// Returns the list of updated rows.
+  ///
+  /// If [noReturn] is set to `true`, the updated rows are not read back from
+  /// the database and an empty list is returned. This avoids the overhead of
+  /// transferring and deserializing the rows when the result is not needed.
+  Future<List<MemberAccountRow>> updateWhere(
+    _is.DatabaseSession session, {
+    required _is.ColumnValueListBuilder<MemberAccountRowUpdateTable>
+    columnValues,
+    required _is.WhereExpressionBuilder<MemberAccountRowTable> where,
+    int? limit,
+    int? offset,
+    _is.OrderByBuilder<MemberAccountRowTable>? orderBy,
+    _is.OrderByListBuilder<MemberAccountRowTable>? orderByList,
+    _is.Transaction? transaction,
+    bool noReturn = false,
+  }) async {
+    return session.db.updateWhere<MemberAccountRow>(
+      columnValues: columnValues(MemberAccountRow.t.updateTable),
+      where: where(MemberAccountRow.t),
+      limit: limit,
+      offset: offset,
+      orderBy: orderBy?.call(MemberAccountRow.t),
+      orderByList: orderByList?.call(MemberAccountRow.t),
+      transaction: transaction,
+      noReturn: noReturn,
+    );
+  }
+
+  /// Deletes all [MemberAccountRow]s in the list and returns the deleted rows.
+  ///
+  /// To specify the order of the returned rows use [orderBy] or [orderByList]
+  /// when sorting by multiple columns.
+  ///
+  /// This is an atomic operation, meaning that if one of the rows fail to
+  /// be deleted, none of the rows will be deleted.
+  ///
+  /// If [noReturn] is set to `true`, the deleted rows are not read back from
+  /// the database and an empty list is returned. This avoids the overhead of
+  /// transferring and deserializing the rows when the result is not needed.
+  Future<List<MemberAccountRow>> delete(
+    _is.DatabaseSession session,
+    List<MemberAccountRow> rows, {
+    _is.OrderByBuilder<MemberAccountRowTable>? orderBy,
+    _is.OrderByListBuilder<MemberAccountRowTable>? orderByList,
+    _is.Transaction? transaction,
+    bool noReturn = false,
+  }) async {
+    return session.db.delete<MemberAccountRow>(
+      rows,
+      orderBy: orderBy?.call(MemberAccountRow.t),
+      orderByList: orderByList?.call(MemberAccountRow.t),
+      transaction: transaction,
+      noReturn: noReturn,
+    );
+  }
+
+  /// Deletes a single [MemberAccountRow].
+  Future<MemberAccountRow> deleteRow(
+    _is.DatabaseSession session,
+    MemberAccountRow row, {
+    _is.Transaction? transaction,
+  }) async {
+    return session.db.deleteRow<MemberAccountRow>(
+      row,
+      transaction: transaction,
+    );
+  }
+
+  /// Deletes all rows matching the [where] expression.
+  ///
+  /// To specify the order of the returned rows use [orderBy] or [orderByList]
+  /// when sorting by multiple columns.
+  ///
+  /// If [noReturn] is set to `true`, the deleted rows are not read back from
+  /// the database and an empty list is returned. This avoids the overhead of
+  /// transferring and deserializing the rows when the result is not needed.
+  Future<List<MemberAccountRow>> deleteWhere(
+    _is.DatabaseSession session, {
+    required _is.WhereExpressionBuilder<MemberAccountRowTable> where,
+    _is.OrderByBuilder<MemberAccountRowTable>? orderBy,
+    _is.OrderByListBuilder<MemberAccountRowTable>? orderByList,
+    _is.Transaction? transaction,
+    bool noReturn = false,
+  }) async {
+    return session.db.deleteWhere<MemberAccountRow>(
+      where: where(MemberAccountRow.t),
+      orderBy: orderBy?.call(MemberAccountRow.t),
+      orderByList: orderByList?.call(MemberAccountRow.t),
+      transaction: transaction,
+      noReturn: noReturn,
+    );
+  }
+
+  /// Counts the number of rows matching the [where] expression. If omitted,
+  /// will return the count of all rows in the table.
+  Future<int> count(
+    _is.DatabaseSession session, {
+    _is.WhereExpressionBuilder<MemberAccountRowTable>? where,
+    int? limit,
+    _is.Transaction? transaction,
+  }) async {
+    return session.db.count<MemberAccountRow>(
+      where: where?.call(MemberAccountRow.t),
+      limit: limit,
+      transaction: transaction,
+    );
+  }
+
+  /// Acquires row-level locks on [MemberAccountRow] rows matching the [where] expression.
+  Future<void> lockRows(
+    _is.DatabaseSession session, {
+    required _is.WhereExpressionBuilder<MemberAccountRowTable> where,
+    required _is.LockMode lockMode,
+    required _is.Transaction transaction,
+    _is.LockBehavior lockBehavior = _is.LockBehavior.wait,
+  }) async {
+    return session.db.lockRows<MemberAccountRow>(
+      where: where(MemberAccountRow.t),
+      lockMode: lockMode,
+      lockBehavior: lockBehavior,
+      transaction: transaction,
+    );
+  }
+}

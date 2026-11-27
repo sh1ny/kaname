@@ -4,14 +4,14 @@
 
 | Requirement | Scenario | Test file | Test name | State |
 |---|---|---|---|---|
-| Any linked character signs in to the same account | First sign-in makes the signing character main | `server/kaname_server/test/integration/esi/member_accounts_sign_in_test.dart` | `first sign-in creates one account with the character as main` | red |
+| Any linked character signs in to the same account | First sign-in makes the signing character main | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `first sign-in creates one account with the character as main` | green |
 | Any linked character signs in to the same account | Main and alt resolve one account | `server/kaname_server/test/integration/esi/member_accounts_link_test.dart` | `main and linked alt sign in to the same account` | red |
-| Any linked character signs in to the same account | Matching owner hash does not link another character | `server/kaname_server/test/integration/esi/member_accounts_sign_in_test.dart` | `matching owner hashes do not link characters` | red |
-| Any linked character signs in to the same account | Concurrent first sign-ins converge | `server/kaname_server/test/integration/esi/member_accounts_sign_in_test.dart` | `concurrent first sign-ins create only one account` | red |
-| An upgrade preserves M2 character identities and live sessions | Upgrading multiple M2 characters | `server/kaname_server/test/integration/migrations_test.dart` | `M2 identities become independent accounts and keep their authority` | red |
-| An upgrade preserves M2 character identities and live sessions | Preserving blocked and expired authority during upgrade | `server/kaname_server/test/integration/migrations_test.dart` | `M2 upgrade preserves blocked identities and expired bearers` | red |
-| An upgrade preserves M2 character identities and live sessions | An invalid legacy bearer points to a missing identity | `server/kaname_server/test/integration/migrations_test.dart` | `M2 upgrade removes an orphan session without restoring access` | red |
-| An upgrade preserves M2 character identities and live sessions | The upgrade stops partway through | `server/kaname_server/test/integration/migrations_test.dart` | `interrupted M2 upgrade rolls back schema and backfill` | red |
+| Any linked character signs in to the same account | Matching owner hash does not link another character | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `matching owner hashes do not link characters` | green |
+| Any linked character signs in to the same account | Concurrent first sign-ins converge | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `concurrent first sign-ins create only one account` | green |
+| An upgrade preserves M2 character identities and live sessions | Upgrading multiple M2 characters | `server/kaname_server/test/integration/migrations_test.dart` | `M2 identities become independent accounts and keep their authority` | green |
+| An upgrade preserves M2 character identities and live sessions | Preserving blocked and expired authority during upgrade | `server/kaname_server/test/integration/migrations_test.dart` | `M2 upgrade preserves blocked identities and expired bearers` | green |
+| An upgrade preserves M2 character identities and live sessions | An invalid legacy bearer points to a missing identity | `server/kaname_server/test/integration/migrations_test.dart` | `M2 upgrade removes an orphan session without restoring access` | green |
+| An upgrade preserves M2 character identities and live sessions | The upgrade stops partway through | `server/kaname_server/test/integration/migrations_test.dart` | `interrupted M2 upgrade rolls back schema and backfill` | green |
 | Linking requires fresh CCP proof and a live source session | A signed-in member links an unlinked alt | `server/kaname_server/test/integration/esi/member_accounts_link_test.dart` | `signed-in browser proof adds an alt without a bearer or grant` | red |
 | Linking requires fresh CCP proof and a live source session | A canceled, stale or mismatched attempt makes no link | `server/kaname_server/test/integration/esi/member_accounts_link_test.dart` | `canceled stale revoked or mismatched link makes no change` | red |
 | Linking requires fresh CCP proof and a live source session | An authorization for a link cannot be used for another purpose | `server/kaname_server/test/integration/esi/member_accounts_link_test.dart` | `sign-in and link proofs cannot cross purposes` | red |
@@ -88,8 +88,8 @@
 
 ## 2. M2 upgrade, first sign-in and live sessions
 
-- [ ] 2.1 Add the failing M2 migration and first-sign-in tests from the map. Seed multiple identities, current/blocked/expired/orphan bearers, receipt attribution and ESI opt-ins; fail the migration between data and constraint work, then verify the old schema is intact and upgrade can proceed.
-- [ ] 2.2 Generate the Serverpod models, client and migrations for stable account membership, exact signing-session identity and durable detachment, exclusion and seal fields. Preserve M2 diagnostic attribution without inferring links. Use short transactions and column-scoped writes. Verify 2.1 through the real migration and SSO routes, including the documented maintenance command against a scratch database. Rerun the five unchanged CCP verification scenarios. Run the repository server drift check when permitted by the machine rule. Document upgrade and old-bearer behavior in the deployment SSO section.
+- [x] 2.1 Add the failing M2 migration and first-sign-in tests from the map. Seed multiple identities, current/blocked/expired/orphan bearers, receipt attribution and ESI opt-ins; fail the migration between data and constraint work, then verify the old schema is intact and upgrade can proceed.
+- [x] 2.2 Generate the Serverpod models, client and migrations for stable account membership, exact signing-session identity and durable detachment, exclusion and seal fields. Preserve M2 diagnostic attribution without inferring links. Use short transactions and column-scoped writes. Verify 2.1 through the real migration and SSO routes, including the documented maintenance command against a scratch database. Rerun the five unchanged CCP verification scenarios. Run the repository server drift check when permitted by the machine rule. Document upgrade and old-bearer behavior in the deployment SSO section.
 
 ## 3. Release and receipt persistence
 

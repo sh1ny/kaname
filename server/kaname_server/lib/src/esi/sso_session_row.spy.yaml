@@ -4,10 +4,13 @@ table: esi_session
 serverOnly: true
 fields:
   digest: String, unique
-  memberId: int
+  identityId: int, relation(parent=esi_identity, onDelete=Restrict)
+  accountId: int, relation(parent=member_account, onDelete=Restrict)
   expiresAt: DateTime
 indexes:
   esi_session_identity_idx:
-    fields: memberId, expiresAt, id
+    fields: identityId, expiresAt, id
+  esi_session_account_idx:
+    fields: accountId
   esi_session_expiry_idx:
     fields: expiresAt, id

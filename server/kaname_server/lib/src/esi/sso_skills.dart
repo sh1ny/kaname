@@ -62,7 +62,7 @@ final class ServerSsoSkills {
                 vault: _vault,
                 authorization: authorization,
                 application: _clientId,
-                member: current.identity.id!,
+                member: current.accountId,
                 client: client,
               );
               if (vaultFailure == VaultFailureReason.reLoginRequired) {

@@ -3,6 +3,7 @@ import 'package:serverpod/serverpod.dart';
 import '../generated/protocol.dart';
 import 'esi_call_log_store.dart'
     show EsiCallLogDenied, EsiCallLogStore, EsiCallLogViewer;
+import 'sso_sessions.dart';
 
 /// Viewer-only receipts and fixed-window totals. Callers cannot choose a viewer.
 final class EsiCallLogEndpoint extends Endpoint {
@@ -30,6 +31,7 @@ final class EsiCallLogReads {
   final _reading = <int>{};
   ({DateTime window, EsiRouteCountPage page})? _cached;
   ({DateTime window, Future<EsiRouteCountPage> page})? _computing;
+  static final _sessions = SsoSessions(now: DateTime.now);
   static final _number = RegExp(r'^[1-9][0-9]{0,18}$');
 
   static int? _id(String value) =>
@@ -38,14 +40,17 @@ final class EsiCallLogReads {
   static Future<EsiCallLogViewer?> _viewer(
     Session session,
     int member,
+    String authId,
     bool admin,
   ) async {
-    final identity = await SsoIdentityRow.db.findById(session, member);
-    return identity == null || identity.blocked
+    final id = _id(authId);
+    if (id == null) return null;
+    final current = await _sessions.viewerById(session, id, member);
+    return current == null
         ? null
         : EsiCallLogViewer(
             member: member,
-            characters: {identity.characterId},
+            characters: {current.identity.characterId},
             admin: admin,
           );
   }
@@ -64,7 +69,8 @@ final class EsiCallLogReads {
       final viewer = await _viewer(
         session,
         member,
-        auth!.scopes.contains(Scope.admin),
+        auth!.authId,
+        auth.scopes.contains(Scope.admin),
       );
       final rows = await _store.ownRows(
         session,
@@ -116,7 +122,7 @@ final class EsiCallLogReads {
     if (member == null) return failure('denied');
     if (_reading.length >= 4 || !_reading.add(member)) return failure('busy');
     try {
-      final viewer = await _viewer(session, member, true);
+      final viewer = await _viewer(session, member, auth.authId, true);
       if (viewer == null) return failure('denied');
       final window = _store.releasedWindow;
       final cached = _cached;

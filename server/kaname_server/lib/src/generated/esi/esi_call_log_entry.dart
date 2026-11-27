@@ -28,6 +28,7 @@ abstract class EsiCallLogRow
     this.bucket,
     this.memberId,
     this.characterId,
+    this.accountExcluded,
   });
 
   factory EsiCallLogRow({
@@ -41,6 +42,7 @@ abstract class EsiCallLogRow
     String? bucket,
     int? memberId,
     int? characterId,
+    bool? accountExcluded,
   }) = _EsiCallLogRowImpl;
 
   factory EsiCallLogRow.fromJson(Map<String, dynamic> jsonSerialization) {
@@ -57,6 +59,11 @@ abstract class EsiCallLogRow
       bucket: jsonSerialization['bucket'] as String?,
       memberId: jsonSerialization['memberId'] as int?,
       characterId: jsonSerialization['characterId'] as int?,
+      accountExcluded: jsonSerialization['accountExcluded'] == null
+          ? null
+          : _is.BoolJsonExtension.fromJson(
+              jsonSerialization['accountExcluded'],
+            ),
     );
   }
 
@@ -85,6 +92,8 @@ abstract class EsiCallLogRow
 
   int? characterId;
 
+  bool? accountExcluded;
+
   @override
   _is.Table<int?> get table => t;
 
@@ -102,6 +111,7 @@ abstract class EsiCallLogRow
     String? bucket,
     int? memberId,
     int? characterId,
+    bool? accountExcluded,
   });
   @override
   Map<String, dynamic> toJson() {
@@ -117,6 +127,7 @@ abstract class EsiCallLogRow
       if (bucket != null) 'bucket': bucket,
       if (memberId != null) 'memberId': memberId,
       if (characterId != null) 'characterId': characterId,
+      if (accountExcluded != null) 'accountExcluded': accountExcluded,
     };
   }
 
@@ -167,6 +178,7 @@ class _EsiCallLogRowImpl extends EsiCallLogRow {
     String? bucket,
     int? memberId,
     int? characterId,
+    bool? accountExcluded,
   }) : super._(
          id: id,
          recordedAt: recordedAt,
@@ -178,6 +190,7 @@ class _EsiCallLogRowImpl extends EsiCallLogRow {
          bucket: bucket,
          memberId: memberId,
          characterId: characterId,
+         accountExcluded: accountExcluded,
        );
 
   /// Returns a shallow copy of this [EsiCallLogRow]
@@ -195,6 +208,7 @@ class _EsiCallLogRowImpl extends EsiCallLogRow {
     Object? bucket = _Undefined,
     Object? memberId = _Undefined,
     Object? characterId = _Undefined,
+    Object? accountExcluded = _Undefined,
   }) {
     return EsiCallLogRow(
       id: id is int? ? id : this.id,
@@ -207,6 +221,9 @@ class _EsiCallLogRowImpl extends EsiCallLogRow {
       bucket: bucket is String? ? bucket : this.bucket,
       memberId: memberId is int? ? memberId : this.memberId,
       characterId: characterId is int? ? characterId : this.characterId,
+      accountExcluded: accountExcluded is bool?
+          ? accountExcluded
+          : this.accountExcluded,
     );
   }
 }
@@ -240,6 +257,9 @@ class EsiCallLogRowUpdateTable extends _is.UpdateTable<EsiCallLogRowTable> {
 
   _is.ColumnValue<int, int> characterId(int? value) =>
       _is.ColumnValue(table.characterId, value);
+
+  _is.ColumnValue<bool, bool> accountExcluded(bool? value) =>
+      _is.ColumnValue(table.accountExcluded, value);
 }
 
 class EsiCallLogRowTable extends _is.Table<int?> {
@@ -255,6 +275,7 @@ class EsiCallLogRowTable extends _is.Table<int?> {
     bucket = _is.ColumnString('bucket', this);
     memberId = _is.ColumnInt('memberId', this);
     characterId = _is.ColumnInt('characterId', this);
+    accountExcluded = _is.ColumnBool('accountExcluded', this);
   }
 
   late final EsiCallLogRowUpdateTable updateTable;
@@ -277,6 +298,8 @@ class EsiCallLogRowTable extends _is.Table<int?> {
 
   late final _is.ColumnInt characterId;
 
+  late final _is.ColumnBool accountExcluded;
+
   @override
   List<_is.Column> get columns => [
     id,
@@ -289,6 +312,7 @@ class EsiCallLogRowTable extends _is.Table<int?> {
     bucket,
     memberId,
     characterId,
+    accountExcluded,
   ];
 }
 

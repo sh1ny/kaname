@@ -17,11 +17,14 @@ import 'package:serverpod/serverpod.dart' as _is;
 
 import 'esi/esi_call_log_cursor.dart' as _iqs4md3s;
 import 'esi/esi_call_log_entry.dart' as _ifsmg7bk;
+import 'esi/esi_call_log_exclusion_row.dart' as _ilr2byja;
 import 'esi/esi_call_log_item.dart' as _iuknwcy9;
 import 'esi/esi_call_log_page.dart' as _iiojdgzp;
+import 'esi/esi_call_log_seal_row.dart' as _iot6nyup;
 import 'esi/esi_route_count_item.dart' as _iy73o4xt;
 import 'esi/esi_route_count_page.dart' as _ikoz4zoy;
 import 'esi/esi_token_vault_row.dart' as _iynhzf32;
+import 'esi/member_account_row.dart' as _ix3luxw6;
 import 'esi/sso_holder_row.dart' as _idzz7lja;
 import 'esi/sso_identity_row.dart' as _i5h09tn7;
 import 'esi/sso_opt_in_row.dart' as _iach3bls;
@@ -86,11 +89,14 @@ import 'static_data/tables/sde_type.dart' as _i19vm38w;
 import 'static_data/tables/sde_type_dogma.dart' as _ib14m8bx;
 export 'esi/esi_call_log_cursor.dart';
 export 'esi/esi_call_log_entry.dart';
+export 'esi/esi_call_log_exclusion_row.dart';
 export 'esi/esi_call_log_item.dart';
 export 'esi/esi_call_log_page.dart';
+export 'esi/esi_call_log_seal_row.dart';
 export 'esi/esi_route_count_item.dart';
 export 'esi/esi_route_count_page.dart';
 export 'esi/esi_token_vault_row.dart';
+export 'esi/member_account_row.dart';
 export 'esi/sso_holder_row.dart';
 export 'esi/sso_identity_row.dart';
 export 'esi/sso_opt_in_row.dart';
@@ -169,11 +175,14 @@ class Protocol extends _is.DatabaseSerializationManager
         types: const [
           _is.getType<_iqs4md3s.EsiCallLogCursor>,
           _is.getType<_ifsmg7bk.EsiCallLogRow>,
+          _is.getType<_ilr2byja.EsiCallLogExclusionRow>,
           _is.getType<_iuknwcy9.EsiCallLogReceipt>,
           _is.getType<_iiojdgzp.EsiCallLogPage>,
+          _is.getType<_iot6nyup.EsiCallLogSealRow>,
           _is.getType<_iy73o4xt.EsiRouteCount>,
           _is.getType<_ikoz4zoy.EsiRouteCountPage>,
           _is.getType<_iynhzf32.EsiTokenVaultRow>,
+          _is.getType<_ix3luxw6.MemberAccountRow>,
           _is.getType<_idzz7lja.SsoHolderRow>,
           _is.getType<_i5h09tn7.SsoIdentityRow>,
           _is.getType<_iach3bls.SsoOptInRow>,
@@ -240,11 +249,14 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_ib14m8bx.SdeTypeDogma>,
           _is.getType<_iqs4md3s.EsiCallLogCursor?>,
           _is.getType<_ifsmg7bk.EsiCallLogRow?>,
+          _is.getType<_ilr2byja.EsiCallLogExclusionRow?>,
           _is.getType<_iuknwcy9.EsiCallLogReceipt?>,
           _is.getType<_iiojdgzp.EsiCallLogPage?>,
+          _is.getType<_iot6nyup.EsiCallLogSealRow?>,
           _is.getType<_iy73o4xt.EsiRouteCount?>,
           _is.getType<_ikoz4zoy.EsiRouteCountPage?>,
           _is.getType<_iynhzf32.EsiTokenVaultRow?>,
+          _is.getType<_ix3luxw6.MemberAccountRow?>,
           _is.getType<_idzz7lja.SsoHolderRow?>,
           _is.getType<_i5h09tn7.SsoIdentityRow?>,
           _is.getType<_iach3bls.SsoOptInRow?>,
@@ -326,11 +338,14 @@ class Protocol extends _is.DatabaseSerializationManager
           'SdeJson',
           'EsiCallLogCursor',
           'EsiCallLogRow',
+          'EsiCallLogExclusionRow',
           'EsiCallLogReceipt',
           'EsiCallLogPage',
+          'EsiCallLogSealRow',
           'EsiRouteCount',
           'EsiRouteCountPage',
           'EsiTokenVaultRow',
+          'MemberAccountRow',
           'SsoHolderRow',
           'SsoIdentityRow',
           'SsoOptInRow',
@@ -471,6 +486,12 @@ class Protocol extends _is.DatabaseSerializationManager
           isNullable: true,
           dartType: 'int?',
         ),
+        _isp.ColumnDefinition(
+          name: 'accountExcluded',
+          columnType: _isp.ColumnType.boolean,
+          isNullable: true,
+          dartType: 'bool?',
+        ),
       ],
       foreignKeys: [],
       indexes: [
@@ -513,6 +534,54 @@ class Protocol extends _is.DatabaseSerializationManager
           isPrimary: false,
         ),
       ],
+      managed: true,
+    ),
+    _isp.TableDefinition(
+      name: 'esi_call_log_exclusion',
+      dartName: 'EsiCallLogExclusionRow',
+      schema: 'public',
+      module: 'kaname',
+      columns: [
+        _isp.ColumnDefinition(
+          name: 'id',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'serial',
+        ),
+        _isp.ColumnDefinition(
+          name: 'excludedAt',
+          columnType: _isp.ColumnType.timestampWithoutTimeZone,
+          isNullable: false,
+          dartType: 'DateTime',
+        ),
+      ],
+      foreignKeys: [],
+      indexes: [],
+      managed: true,
+    ),
+    _isp.TableDefinition(
+      name: 'esi_call_log_seal',
+      dartName: 'EsiCallLogSealRow',
+      schema: 'public',
+      module: 'kaname',
+      columns: [
+        _isp.ColumnDefinition(
+          name: 'id',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'serial',
+        ),
+        _isp.ColumnDefinition(
+          name: 'windowEnd',
+          columnType: _isp.ColumnType.timestampWithoutTimeZone,
+          isNullable: false,
+          dartType: 'DateTime',
+        ),
+      ],
+      foreignKeys: [],
+      indexes: [],
       managed: true,
     ),
     _isp.TableDefinition(
@@ -638,8 +707,32 @@ class Protocol extends _is.DatabaseSerializationManager
           isNullable: false,
           dartType: 'bool',
         ),
+        _isp.ColumnDefinition(
+          name: 'accountId',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: true,
+          dartType: 'int?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'wasDetached',
+          columnType: _isp.ColumnType.boolean,
+          isNullable: false,
+          dartType: 'bool',
+          columnDefault: 'false',
+        ),
       ],
-      foreignKeys: [],
+      foreignKeys: [
+        _isp.ForeignKeyDefinition(
+          constraintName: 'esi_identity_fk_0',
+          columns: ['accountId'],
+          referenceTable: 'member_account',
+          referenceTableSchema: 'public',
+          referenceColumns: ['id'],
+          onUpdate: _isp.ForeignKeyAction.noAction,
+          onDelete: _isp.ForeignKeyAction.restrict,
+          matchType: null,
+        ),
+      ],
       indexes: [
         _isp.IndexDefinition(
           indexName: 'esi_identity__characterId__unique_idx',
@@ -652,6 +745,23 @@ class Protocol extends _is.DatabaseSerializationManager
           ],
           type: 'btree',
           isUnique: true,
+          isPrimary: false,
+        ),
+        _isp.IndexDefinition(
+          indexName: 'esi_identity_account_character_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'accountId',
+            ),
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'characterId',
+            ),
+          ],
+          type: 'btree',
+          isUnique: false,
           isPrimary: false,
         ),
       ],
@@ -671,7 +781,7 @@ class Protocol extends _is.DatabaseSerializationManager
           columnDefault: 'serial',
         ),
         _isp.ColumnDefinition(
-          name: 'memberId',
+          name: 'identityId',
           columnType: _isp.ColumnType.bigint,
           isNullable: false,
           dartType: 'int',
@@ -703,7 +813,7 @@ class Protocol extends _is.DatabaseSerializationManager
           elements: [
             _isp.IndexElementDefinition(
               type: _isp.IndexElementDefinitionType.column,
-              definition: 'memberId',
+              definition: 'identityId',
             ),
             _isp.IndexElementDefinition(
               type: _isp.IndexElementDefinitionType.column,
@@ -737,7 +847,13 @@ class Protocol extends _is.DatabaseSerializationManager
           dartType: 'String',
         ),
         _isp.ColumnDefinition(
-          name: 'memberId',
+          name: 'identityId',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'accountId',
           columnType: _isp.ColumnType.bigint,
           isNullable: false,
           dartType: 'int',
@@ -749,7 +865,28 @@ class Protocol extends _is.DatabaseSerializationManager
           dartType: 'DateTime',
         ),
       ],
-      foreignKeys: [],
+      foreignKeys: [
+        _isp.ForeignKeyDefinition(
+          constraintName: 'esi_session_fk_0',
+          columns: ['identityId'],
+          referenceTable: 'esi_identity',
+          referenceTableSchema: 'public',
+          referenceColumns: ['id'],
+          onUpdate: _isp.ForeignKeyAction.noAction,
+          onDelete: _isp.ForeignKeyAction.restrict,
+          matchType: null,
+        ),
+        _isp.ForeignKeyDefinition(
+          constraintName: 'esi_session_fk_1',
+          columns: ['accountId'],
+          referenceTable: 'member_account',
+          referenceTableSchema: 'public',
+          referenceColumns: ['id'],
+          onUpdate: _isp.ForeignKeyAction.noAction,
+          onDelete: _isp.ForeignKeyAction.restrict,
+          matchType: null,
+        ),
+      ],
       indexes: [
         _isp.IndexDefinition(
           indexName: 'esi_session__digest__unique_idx',
@@ -770,7 +907,7 @@ class Protocol extends _is.DatabaseSerializationManager
           elements: [
             _isp.IndexElementDefinition(
               type: _isp.IndexElementDefinitionType.column,
-              definition: 'memberId',
+              definition: 'identityId',
             ),
             _isp.IndexElementDefinition(
               type: _isp.IndexElementDefinitionType.column,
@@ -779,6 +916,19 @@ class Protocol extends _is.DatabaseSerializationManager
             _isp.IndexElementDefinition(
               type: _isp.IndexElementDefinitionType.column,
               definition: 'id',
+            ),
+          ],
+          type: 'btree',
+          isUnique: false,
+          isPrimary: false,
+        ),
+        _isp.IndexDefinition(
+          indexName: 'esi_session_account_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'accountId',
             ),
           ],
           type: 'btree',
@@ -883,6 +1033,41 @@ class Protocol extends _is.DatabaseSerializationManager
           isPrimary: false,
         ),
       ],
+      managed: true,
+    ),
+    _isp.TableDefinition(
+      name: 'member_account',
+      dartName: 'MemberAccountRow',
+      schema: 'public',
+      module: 'kaname',
+      columns: [
+        _isp.ColumnDefinition(
+          name: 'id',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'serial',
+        ),
+        _isp.ColumnDefinition(
+          name: 'mainIdentityId',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+      ],
+      foreignKeys: [
+        _isp.ForeignKeyDefinition(
+          constraintName: 'member_account_fk_0',
+          columns: ['mainIdentityId'],
+          referenceTable: 'esi_identity',
+          referenceTableSchema: 'public',
+          referenceColumns: ['id'],
+          onUpdate: _isp.ForeignKeyAction.noAction,
+          onDelete: _isp.ForeignKeyAction.restrict,
+          matchType: null,
+        ),
+      ],
+      indexes: [],
       managed: true,
     ),
     _isp.TableDefinition(
@@ -2697,11 +2882,17 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _ifsmg7bk.EsiCallLogRow) {
       return _ifsmg7bk.EsiCallLogRow.fromJson(data) as T;
     }
+    if (t == _ilr2byja.EsiCallLogExclusionRow) {
+      return _ilr2byja.EsiCallLogExclusionRow.fromJson(data) as T;
+    }
     if (t == _iuknwcy9.EsiCallLogReceipt) {
       return _iuknwcy9.EsiCallLogReceipt.fromJson(data) as T;
     }
     if (t == _iiojdgzp.EsiCallLogPage) {
       return _iiojdgzp.EsiCallLogPage.fromJson(data) as T;
+    }
+    if (t == _iot6nyup.EsiCallLogSealRow) {
+      return _iot6nyup.EsiCallLogSealRow.fromJson(data) as T;
     }
     if (t == _iy73o4xt.EsiRouteCount) {
       return _iy73o4xt.EsiRouteCount.fromJson(data) as T;
@@ -2711,6 +2902,9 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (t == _iynhzf32.EsiTokenVaultRow) {
       return _iynhzf32.EsiTokenVaultRow.fromJson(data) as T;
+    }
+    if (t == _ix3luxw6.MemberAccountRow) {
+      return _ix3luxw6.MemberAccountRow.fromJson(data) as T;
     }
     if (t == _idzz7lja.SsoHolderRow) {
       return _idzz7lja.SsoHolderRow.fromJson(data) as T;
@@ -2912,12 +3106,22 @@ class Protocol extends _is.DatabaseSerializationManager
       return (data != null ? _ifsmg7bk.EsiCallLogRow.fromJson(data) : null)
           as T;
     }
+    if (t == _is.getType<_ilr2byja.EsiCallLogExclusionRow?>()) {
+      return (data != null
+              ? _ilr2byja.EsiCallLogExclusionRow.fromJson(data)
+              : null)
+          as T;
+    }
     if (t == _is.getType<_iuknwcy9.EsiCallLogReceipt?>()) {
       return (data != null ? _iuknwcy9.EsiCallLogReceipt.fromJson(data) : null)
           as T;
     }
     if (t == _is.getType<_iiojdgzp.EsiCallLogPage?>()) {
       return (data != null ? _iiojdgzp.EsiCallLogPage.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_iot6nyup.EsiCallLogSealRow?>()) {
+      return (data != null ? _iot6nyup.EsiCallLogSealRow.fromJson(data) : null)
           as T;
     }
     if (t == _is.getType<_iy73o4xt.EsiRouteCount?>()) {
@@ -2930,6 +3134,10 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (t == _is.getType<_iynhzf32.EsiTokenVaultRow?>()) {
       return (data != null ? _iynhzf32.EsiTokenVaultRow.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_ix3luxw6.MemberAccountRow?>()) {
+      return (data != null ? _ix3luxw6.MemberAccountRow.fromJson(data) : null)
           as T;
     }
     if (t == _is.getType<_idzz7lja.SsoHolderRow?>()) {
@@ -3284,11 +3492,14 @@ class Protocol extends _is.DatabaseSerializationManager
       _idp9h2tz.SdeJson => 'SdeJson',
       _iqs4md3s.EsiCallLogCursor => 'EsiCallLogCursor',
       _ifsmg7bk.EsiCallLogRow => 'EsiCallLogRow',
+      _ilr2byja.EsiCallLogExclusionRow => 'EsiCallLogExclusionRow',
       _iuknwcy9.EsiCallLogReceipt => 'EsiCallLogReceipt',
       _iiojdgzp.EsiCallLogPage => 'EsiCallLogPage',
+      _iot6nyup.EsiCallLogSealRow => 'EsiCallLogSealRow',
       _iy73o4xt.EsiRouteCount => 'EsiRouteCount',
       _ikoz4zoy.EsiRouteCountPage => 'EsiRouteCountPage',
       _iynhzf32.EsiTokenVaultRow => 'EsiTokenVaultRow',
+      _ix3luxw6.MemberAccountRow => 'MemberAccountRow',
       _idzz7lja.SsoHolderRow => 'SsoHolderRow',
       _i5h09tn7.SsoIdentityRow => 'SsoIdentityRow',
       _iach3bls.SsoOptInRow => 'SsoOptInRow',
@@ -3373,16 +3584,22 @@ class Protocol extends _is.DatabaseSerializationManager
         return 'EsiCallLogCursor';
       case _ifsmg7bk.EsiCallLogRow():
         return 'EsiCallLogRow';
+      case _ilr2byja.EsiCallLogExclusionRow():
+        return 'EsiCallLogExclusionRow';
       case _iuknwcy9.EsiCallLogReceipt():
         return 'EsiCallLogReceipt';
       case _iiojdgzp.EsiCallLogPage():
         return 'EsiCallLogPage';
+      case _iot6nyup.EsiCallLogSealRow():
+        return 'EsiCallLogSealRow';
       case _iy73o4xt.EsiRouteCount():
         return 'EsiRouteCount';
       case _ikoz4zoy.EsiRouteCountPage():
         return 'EsiRouteCountPage';
       case _iynhzf32.EsiTokenVaultRow():
         return 'EsiTokenVaultRow';
+      case _ix3luxw6.MemberAccountRow():
+        return 'MemberAccountRow';
       case _idzz7lja.SsoHolderRow():
         return 'SsoHolderRow';
       case _i5h09tn7.SsoIdentityRow():
@@ -3534,11 +3751,17 @@ class Protocol extends _is.DatabaseSerializationManager
     if (dataClassName == 'EsiCallLogRow') {
       return deserialize<_ifsmg7bk.EsiCallLogRow>(data['data']);
     }
+    if (dataClassName == 'EsiCallLogExclusionRow') {
+      return deserialize<_ilr2byja.EsiCallLogExclusionRow>(data['data']);
+    }
     if (dataClassName == 'EsiCallLogReceipt') {
       return deserialize<_iuknwcy9.EsiCallLogReceipt>(data['data']);
     }
     if (dataClassName == 'EsiCallLogPage') {
       return deserialize<_iiojdgzp.EsiCallLogPage>(data['data']);
+    }
+    if (dataClassName == 'EsiCallLogSealRow') {
+      return deserialize<_iot6nyup.EsiCallLogSealRow>(data['data']);
     }
     if (dataClassName == 'EsiRouteCount') {
       return deserialize<_iy73o4xt.EsiRouteCount>(data['data']);
@@ -3548,6 +3771,9 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (dataClassName == 'EsiTokenVaultRow') {
       return deserialize<_iynhzf32.EsiTokenVaultRow>(data['data']);
+    }
+    if (dataClassName == 'MemberAccountRow') {
+      return deserialize<_ix3luxw6.MemberAccountRow>(data['data']);
     }
     if (dataClassName == 'SsoHolderRow') {
       return deserialize<_idzz7lja.SsoHolderRow>(data['data']);
@@ -3761,8 +3987,14 @@ class Protocol extends _is.DatabaseSerializationManager
     switch (t) {
       case _ifsmg7bk.EsiCallLogRow:
         return _ifsmg7bk.EsiCallLogRow.t;
+      case _ilr2byja.EsiCallLogExclusionRow:
+        return _ilr2byja.EsiCallLogExclusionRow.t;
+      case _iot6nyup.EsiCallLogSealRow:
+        return _iot6nyup.EsiCallLogSealRow.t;
       case _iynhzf32.EsiTokenVaultRow:
         return _iynhzf32.EsiTokenVaultRow.t;
+      case _ix3luxw6.MemberAccountRow:
+        return _ix3luxw6.MemberAccountRow.t;
       case _idzz7lja.SsoHolderRow:
         return _idzz7lja.SsoHolderRow.t;
       case _i5h09tn7.SsoIdentityRow:

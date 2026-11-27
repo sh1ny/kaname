@@ -20,14 +20,16 @@ abstract class SsoSessionRow
   SsoSessionRow._({
     this.id,
     required this.digest,
-    required this.memberId,
+    required this.identityId,
+    required this.accountId,
     required this.expiresAt,
   });
 
   factory SsoSessionRow({
     int? id,
     required String digest,
-    required int memberId,
+    required int identityId,
+    required int accountId,
     required DateTime expiresAt,
   }) = _SsoSessionRowImpl;
 
@@ -35,7 +37,8 @@ abstract class SsoSessionRow
     return SsoSessionRow(
       id: jsonSerialization['id'] as int?,
       digest: jsonSerialization['digest'] as String,
-      memberId: jsonSerialization['memberId'] as int,
+      identityId: jsonSerialization['identityId'] as int,
+      accountId: jsonSerialization['accountId'] as int,
       expiresAt: _is.DateTimeJsonExtension.fromJson(
         jsonSerialization['expiresAt'],
       ),
@@ -51,7 +54,9 @@ abstract class SsoSessionRow
 
   String digest;
 
-  int memberId;
+  int identityId;
+
+  int accountId;
 
   DateTime expiresAt;
 
@@ -64,7 +69,8 @@ abstract class SsoSessionRow
   SsoSessionRow copyWith({
     int? id,
     String? digest,
-    int? memberId,
+    int? identityId,
+    int? accountId,
     DateTime? expiresAt,
   });
   @override
@@ -73,7 +79,8 @@ abstract class SsoSessionRow
       '__className__': 'SsoSessionRow',
       if (id != null) 'id': id,
       'digest': digest,
-      'memberId': memberId,
+      'identityId': identityId,
+      'accountId': accountId,
       'expiresAt': expiresAt.toJson(),
     };
   }
@@ -117,12 +124,14 @@ class _SsoSessionRowImpl extends SsoSessionRow {
   _SsoSessionRowImpl({
     int? id,
     required String digest,
-    required int memberId,
+    required int identityId,
+    required int accountId,
     required DateTime expiresAt,
   }) : super._(
          id: id,
          digest: digest,
-         memberId: memberId,
+         identityId: identityId,
+         accountId: accountId,
          expiresAt: expiresAt,
        );
 
@@ -133,13 +142,15 @@ class _SsoSessionRowImpl extends SsoSessionRow {
   SsoSessionRow copyWith({
     Object? id = _Undefined,
     String? digest,
-    int? memberId,
+    int? identityId,
+    int? accountId,
     DateTime? expiresAt,
   }) {
     return SsoSessionRow(
       id: id is int? ? id : this.id,
       digest: digest ?? this.digest,
-      memberId: memberId ?? this.memberId,
+      identityId: identityId ?? this.identityId,
+      accountId: accountId ?? this.accountId,
       expiresAt: expiresAt ?? this.expiresAt,
     );
   }
@@ -151,8 +162,11 @@ class SsoSessionRowUpdateTable extends _is.UpdateTable<SsoSessionRowTable> {
   _is.ColumnValue<String, String> digest(String value) =>
       _is.ColumnValue(table.digest, value);
 
-  _is.ColumnValue<int, int> memberId(int value) =>
-      _is.ColumnValue(table.memberId, value);
+  _is.ColumnValue<int, int> identityId(int value) =>
+      _is.ColumnValue(table.identityId, value);
+
+  _is.ColumnValue<int, int> accountId(int value) =>
+      _is.ColumnValue(table.accountId, value);
 
   _is.ColumnValue<DateTime, DateTime> expiresAt(DateTime value) =>
       _is.ColumnValue(table.expiresAt, value);
@@ -162,7 +176,8 @@ class SsoSessionRowTable extends _is.Table<int?> {
   SsoSessionRowTable({super.tableRelation}) : super(tableName: 'esi_session') {
     updateTable = SsoSessionRowUpdateTable(this);
     digest = _is.ColumnString('digest', this);
-    memberId = _is.ColumnInt('memberId', this);
+    identityId = _is.ColumnInt('identityId', this);
+    accountId = _is.ColumnInt('accountId', this);
     expiresAt = _is.ColumnDateTime('expiresAt', this);
   }
 
@@ -170,12 +185,20 @@ class SsoSessionRowTable extends _is.Table<int?> {
 
   late final _is.ColumnString digest;
 
-  late final _is.ColumnInt memberId;
+  late final _is.ColumnInt identityId;
+
+  late final _is.ColumnInt accountId;
 
   late final _is.ColumnDateTime expiresAt;
 
   @override
-  List<_is.Column> get columns => [id, digest, memberId, expiresAt];
+  List<_is.Column> get columns => [
+    id,
+    digest,
+    identityId,
+    accountId,
+    expiresAt,
+  ];
 }
 
 class SsoSessionRowInclude extends _is.IncludeObject {

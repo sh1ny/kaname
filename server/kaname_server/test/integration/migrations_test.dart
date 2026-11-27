@@ -20,11 +20,12 @@ const _previousStaticDataMigration = '20261120083015689-sde-bundle';
 // The static-data upgrade cases apply this specific data migration, not
 // whichever unrelated schema migration was added most recently.
 const _staticDataSettingsMigration = '20261123085740775-static-data-settings';
+const _m2Migration = '20261126115602678-bound-take-closures';
 
 Future<String> _migrationSql(String version, String file) =>
     File(p.join('migrations', version, file)).readAsString();
 
-Future<pg.Connection> _seedLegacyReports(Session session) async {
+Future<pg.Connection> _connectScratch(Session session) async {
   final scratch = await ScratchDatabase.create();
   addTearDown(scratch.drop);
   final database = await migratedDatabaseSettings(session);
@@ -40,6 +41,11 @@ Future<pg.Connection> _seedLegacyReports(Session session) async {
     settings: const pg.ConnectionSettings(sslMode: pg.SslMode.disable),
   );
   addTearDown(connection.close);
+  return connection;
+}
+
+Future<pg.Connection> _seedLegacyReports(Session session) async {
+  final connection = await _connectScratch(session);
   await connection.execute(
     await _migrationSql(_previousStaticDataMigration, 'definition.sql'),
     queryMode: pg.QueryMode.simple,
@@ -56,6 +62,44 @@ VALUES
   (11, 12, '2026-11-01', 'succeeded', '{}');
 ''', queryMode: pg.QueryMode.simple);
   return connection;
+}
+
+Future<pg.Connection> _seedM2Identities(Session session) async {
+  final db = await _connectScratch(session);
+  await db.execute(
+    await _migrationSql(_m2Migration, 'definition.sql'),
+    queryMode: pg.QueryMode.simple,
+  );
+  await db.execute('''
+    INSERT INTO esi_identity (id, "characterId", owner, "characterName", blocked)
+    VALUES (10, 410, 'shared-owner', 'Main', false),
+           (11, 411, 'shared-owner', 'Alt', false),
+           (12, 412, 'other-owner', 'Blocked', true);
+    INSERT INTO esi_session (id, digest, "memberId", "expiresAt")
+    VALUES (20, 'main-digest', 10, '2030-01-01'),
+           (21, 'alt-digest', 11, '2030-01-01'),
+           (22, 'blocked-digest', 12, '2030-01-01'),
+           (23, 'expired-digest', 11, '2020-01-01'),
+           (24, 'orphan-digest', 99, '2030-01-01');
+    INSERT INTO esi_scope_opt_in ("memberId", owner, "scopeClass", "policyFingerprint")
+    VALUES (11, 'shared-owner', 'characterSkills', 'old-policy');
+    INSERT INTO esi_call_log_entry ("recordedAt", operation, outcome,
+                                    "latencyMicros", "memberId", "characterId")
+    VALUES ('2026-11-26', 'GetCharactersCharacterIdSkills', 'success', 1, 11, 411);
+  ''', queryMode: pg.QueryMode.simple);
+  return db;
+}
+
+Future<String> _memberAccountsUpgrade() {
+  final version = Directory('migrations')
+      .listSync()
+      .whereType<Directory>()
+      .map((directory) => p.basename(directory.path))
+      .firstWhere(
+        (name) => name.endsWith('-member-accounts'),
+        orElse: () => throw StateError('Missing member-accounts migration'),
+      );
+  return _migrationSql(version, 'migration.sql');
 }
 
 Future<String> _postgresMigrationVersion(pg.Connection db) async =>
@@ -257,5 +301,149 @@ FOR EACH STATEMENT EXECUTE FUNCTION fail_report_upgrade();
         },
       );
     }
+  }, rollbackDatabase: RollbackDatabase.disabled);
+
+  withServerpod('Upgrading M2 accounts', (sessions, _) {
+    late pg.Connection db;
+    late String upgrade;
+    setUp(() async {
+      final session = sessions.build();
+      addTearDown(session.close);
+      db = await _seedM2Identities(session);
+      upgrade = await _memberAccountsUpgrade();
+    });
+
+    Future<void> migrate() async {
+      await db.execute(upgrade, queryMode: pg.QueryMode.simple);
+    }
+
+    test(
+      'M2 identities become independent accounts and keep their authority',
+      () async {
+        await migrate();
+        expect(
+          (await db.execute('''
+          SELECT a.id, a."mainIdentityId", i."accountId" FROM member_account AS a
+          JOIN esi_identity AS i ON i.id = a."mainIdentityId" ORDER BY a.id
+        ''')).map((row) => row.toList()),
+          [
+            [10, 10, 10],
+            [11, 11, 11],
+            [12, 12, 12],
+          ],
+        );
+        expect(
+          (await db.execute('''
+          SELECT s.id, s.digest, s."accountId", s."identityId"
+          FROM esi_session AS s JOIN esi_identity AS i ON i.id = s."identityId"
+          WHERE NOT i.blocked AND s."expiresAt" > TIMESTAMP '2026-11-27'
+          ORDER BY s.id
+        ''')).map((row) => row.toList()),
+          [
+            [20, 'main-digest', 10, 10],
+            [21, 'alt-digest', 11, 11],
+          ],
+        );
+        expect(
+          (await db.execute('''
+          SELECT "identityId", owner, "scopeClass", "policyFingerprint"
+          FROM esi_scope_opt_in
+        ''')).single.toList(),
+          [11, 'shared-owner', 'characterSkills', 'old-policy'],
+        );
+        expect(
+          (await db.execute(
+            'SELECT "memberId", "characterId" FROM esi_call_log_entry',
+          )).single.toList(),
+          [11, 411],
+        );
+        expect(
+          (await db.execute('''
+          SELECT nextval(pg_get_serial_sequence('member_account', 'id'))
+        ''')).single.single
+              as int,
+          greaterThan(12),
+        );
+      },
+    );
+
+    test(
+      'M2 upgrade preserves blocked identities and expired bearers',
+      () async {
+        await migrate();
+        expect(
+          (await db.execute('''
+          SELECT digest, i.blocked, s."expiresAt" < TIMESTAMP '2026-11-27'
+          FROM esi_session AS s JOIN esi_identity AS i ON i.id = s."identityId"
+          WHERE s.id IN (22, 23) ORDER BY s.id
+        ''')).map((row) => row.toList()),
+          [
+            ['blocked-digest', true, false],
+            ['expired-digest', false, true],
+          ],
+        );
+      },
+    );
+
+    test(
+      'M2 upgrade removes an orphan session without restoring access',
+      () async {
+        await migrate();
+        expect(
+          await db.execute(
+            "SELECT id FROM esi_session WHERE digest = 'orphan-digest'",
+          ),
+          isEmpty,
+        );
+        await expectLater(
+          db.execute('''
+          INSERT INTO esi_session (digest, "accountId", "identityId", "expiresAt")
+          VALUES ('still-an-orphan', 10, 99, '2030-01-01')
+        '''),
+          throwsA(
+            isA<pg.ServerException>().having((e) => e.code, 'code', '23503'),
+          ),
+        );
+      },
+    );
+
+    test('interrupted M2 upgrade rolls back schema and backfill', () async {
+      await db.execute('''
+        CREATE FUNCTION fail_account_backfill() RETURNS trigger LANGUAGE plpgsql AS \$\$
+        BEGIN RAISE EXCEPTION 'intentional account backfill failure'; END;
+        \$\$;
+        CREATE TRIGGER fail_account_backfill BEFORE UPDATE ON esi_identity
+        FOR EACH STATEMENT EXECUTE FUNCTION fail_account_backfill();
+      ''', queryMode: pg.QueryMode.simple);
+      await expectLater(
+        migrate(),
+        throwsA(
+          isA<pg.ServerException>().having(
+            (error) => error.message,
+            'message',
+            'intentional account backfill failure',
+          ),
+        ),
+      );
+      await db.execute('ROLLBACK');
+      expect(
+        (await db.execute("SELECT to_regclass('member_account')"))
+            .single
+            .single,
+        isNull,
+      );
+      expect(
+        (await db.execute('SELECT "memberId" FROM esi_session ORDER BY id'))
+            .map((row) => row.single),
+        [10, 11, 12, 11, 99],
+      );
+      expect(await _postgresMigrationVersion(db), _m2Migration);
+      await db.execute('DROP TRIGGER fail_account_backfill ON esi_identity');
+      await migrate();
+      expect(
+        (await db.execute('SELECT count(*) FROM member_account')).single.single,
+        3,
+      );
+    });
   }, rollbackDatabase: RollbackDatabase.disabled);
 }
