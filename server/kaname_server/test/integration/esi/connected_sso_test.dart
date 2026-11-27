@@ -79,6 +79,7 @@ void main() {
   Future<void> Function()? beforeReservation;
   Future<void> Function()? beforeTakeReply;
   late ServerSsoGrants grants;
+  late EsiTokenVault vault;
 
   setUpAll(() => signing = JsonWebKey.generate('RS256', keyBitLength: 2048));
 
@@ -269,7 +270,7 @@ void main() {
         (session) => grants.refresh(session, authorization, token),
       ),
     );
-    final vault = serverVault.vault;
+    vault = serverVault.vault;
     grants = ServerSsoGrants(
       sessions: sessions,
       gate: sessions.gate,
@@ -2878,6 +2879,7 @@ void main() {
         final old = await signIn();
         final bearer = old['session'] as String;
         await authorize(bearer);
+        clock = clock.add(const Duration(minutes: 21));
         final original = owner;
         final reached = Completer<void>();
         final settle = Completer<void>();
@@ -2889,19 +2891,27 @@ void main() {
           final current = (await SsoSessions.forPod(s.serverpod)!
               .viewer(s, bearer))!;
           final grant = (await grants.liveAuthorization(s, current.identity))!;
-          return grants.refresh(s, grant, _refresh);
+          return vault.bearer(grant);
         }, enableLogging: false);
         late List<String> after;
+        late final String active;
         try {
           await Future.any([
             reached.future,
             refresh.then((_) => fail('CCP refresh skipped')),
           ]);
           if (kind == 'superseded grant') {
+            // Supersede the grant only after the actual vault lease expires.
+            final lease = await rows(
+              'SELECT "leaseUntil" FROM esi_token_vault',
+            );
+            clock = (lease.single.single as DateTime).toUtc();
+            active = bearer;
             await authorize(bearer);
           } else {
             owner = _newOwner;
-            await authorize((await signIn())['session'] as String);
+            active = (await signIn())['session'] as String;
+            await authorize(active);
           }
           after = await authoritySnapshot();
           owner = kind == 'former owner' ? original : _newOwner;
@@ -2910,12 +2920,69 @@ void main() {
           settle.complete();
           await refresh;
         }
-        expect(await refresh, isA<VaultRefreshUnverifiedGrant>());
+        expect(
+          await refresh,
+          isA<VaultFailure<VaultBearer>>().having(
+            (failure) => failure.reason,
+            'reason',
+            VaultFailureReason.notHolder,
+          ),
+        );
         expect(await authoritySnapshot(), after);
+        expect((await post('skills', {}, bearer: active)).statusCode, 200);
       },
       timeout: const Timeout(Duration(minutes: 3)),
     );
   }
+
+  test('scoped transfer cannot use a signer that signs out during the account lock wait', () async {
+    final signed = await signIn();
+    final actor = signed['session'] as String;
+    final remaining = (await signIn())['session'] as String;
+    await authorize(actor);
+    owner = _newOwner;
+    final proof = await scopedAttempt(actor);
+    final reached = Completer<int>();
+    final release = Completer<void>();
+    final accountLock = pod.pod.withSession(
+      (s) => s.db.transaction((tx) async {
+        final locked = await s.db.unsafeQuery(
+          'SELECT pg_backend_pid() FROM member_account WHERE id = @id::bigint FOR UPDATE',
+          parameters: QueryParameters.named({
+            'id': int.parse(signed['memberId'] as String),
+          }),
+          transaction: tx,
+        );
+        reached.complete(locked.single.single as int);
+        await release.future;
+      }),
+      enableLogging: false,
+    );
+    Future<http.Response>? completion;
+    late List<String> before;
+    try {
+      final holder = await Future.any([
+        reached.future,
+        accountLock.then((_) => fail('Account lock skipped')),
+      ]);
+      unboundedCharacterLock = true;
+      extendDriverWait = true;
+      completion = complete(proof, bearer: actor);
+      await pod.pod.withSession(
+        (s) => observePostgresLock(s, holder, completion!),
+        enableLogging: false,
+      );
+      expect((await post('sign-out', {}, bearer: actor)).statusCode, 200);
+      before = await authoritySnapshot();
+    } finally {
+      release.complete();
+      await accountLock;
+      await completion;
+    }
+    expect((await completion).statusCode, 403);
+    expect(await authoritySnapshot(), before);
+    expect((await post('skills', {}, bearer: remaining)).statusCode, 200);
+  }, timeout: const Timeout(Duration(minutes: 3)));
 
   test('failed transfer commit rolls back account and authorization', () async {
     final old = (await signIn())['session'] as String;

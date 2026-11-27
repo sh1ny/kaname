@@ -223,6 +223,22 @@ final class ServerSsoGrants implements SsoGrantAuthority {
                   tx,
                   current.accountId,
                 );
+                if (mains.actor == null ||
+                    !await SsoSessions.lockSession(
+                      session,
+                      tx,
+                      current.sessionId,
+                    ) ||
+                    await _sessions.viewerById(
+                          session,
+                          current.sessionId,
+                          current.accountId,
+                          transaction: tx,
+                        ) ==
+                        null ||
+                    !admit()) {
+                  return false;
+                }
                 final moved = (await SsoSessions.transferLocked(
                   session,
                   tx,

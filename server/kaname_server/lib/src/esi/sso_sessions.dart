@@ -534,6 +534,20 @@ final class SsoSessions {
     return (actor: actorMain, previous: previousMain);
   }
 
+  /// Locks the exact session before a membership write. Recheck it afterward.
+  static Future<bool> lockSession(
+    Session session,
+    Transaction tx,
+    int id,
+  ) async {
+    final rows = await session.db.unsafeQuery(
+      'SELECT id FROM esi_session WHERE id = @id::bigint FOR UPDATE',
+      parameters: QueryParameters.named({'id': id}),
+      transaction: tx,
+    );
+    return rows.isNotEmpty;
+  }
+
   /// Applies a signed refresh mismatch only to its still-current generations.
   Future<void> transferRefresh(
     Session session,

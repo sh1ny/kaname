@@ -215,12 +215,9 @@ final class MemberAccounts {
     Transaction tx,
     MemberActor actor,
   ) async {
-    final rows = await session.db.unsafeQuery(
-      'SELECT id FROM esi_session WHERE id = @id::bigint FOR UPDATE',
-      parameters: QueryParameters.named({'id': actor.session}),
-      transaction: tx,
-    );
-    if (rows.isEmpty) return false;
+    if (!await SsoSessions.lockSession(session, tx, actor.session)) {
+      return false;
+    }
     final barrier = _afterActorLock;
     if (barrier != null) await barrier(session, tx);
     final live = await _sessions.viewerById(
