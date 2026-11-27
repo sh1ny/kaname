@@ -463,19 +463,39 @@ FOR EACH STATEMENT EXECUTE FUNCTION fail_report_upgrade();
     );
 
     test(
-      'M2 upgrade preserves blocked identities and expired bearers',
+      'M2 cutover expiry stays terminal after a backward clock step',
       () async {
+        final expiry =
+            (await db.execute('''
+              UPDATE esi_session
+              SET "expiresAt" = clock_timestamp() AT TIME ZONE 'UTC'
+              WHERE id = 23 RETURNING "expiresAt"
+            ''')).single.single
+                as DateTime;
         await migrate();
+
+        final pod = await _openMigratedM2(db);
+        final authority = SsoSessions(
+          now: () => expiry.toUtc().subtract(const Duration(microseconds: 1)),
+        );
+        await pod.withSession((session) async {
+          expect(await authority.viewerForRefresh(session, _m2Expired), isNull);
+          final live = await authority.viewerForRefresh(session, _m2Alt);
+          expect(
+            (live?.accountId, live?.sessionId, live?.identity.characterId),
+            (11, 21, 411),
+          );
+          expect(await authority.viewerForRefresh(session, _m2Blocked), isNull);
+        }, enableLogging: false);
         expect(
-          (await db.execute('''
-          SELECT digest, i.blocked, s."expiresAt" < TIMESTAMP '2026-11-27'
-          FROM esi_session AS s JOIN esi_identity AS i ON i.id = s."identityId"
-          WHERE s.id IN (22, 23) ORDER BY s.id
-        ''')).map((row) => row.toList()),
-          [
-            [ssoDigest(_m2Blocked), true, false],
-            [ssoDigest(_m2Expired), false, true],
-          ],
+          await db.execute('SELECT id FROM esi_session WHERE id = 23'),
+          isEmpty,
+        );
+        expect(
+          (await db.execute('SELECT blocked FROM esi_identity WHERE id = 12'))
+              .single
+              .single,
+          isTrue,
         );
       },
     );
@@ -500,11 +520,17 @@ FOR EACH STATEMENT EXECUTE FUNCTION fail_report_upgrade();
     });
 
     test('interrupted M2 upgrade rolls back schema and backfill', () async {
+      Future<List<List<Object?>>> legacySessions() async =>
+          (await db.execute('''
+            SELECT id, digest, "memberId", "expiresAt" FROM esi_session ORDER BY id
+          ''')).map((row) => row.toList()).toList();
+
+      final before = await legacySessions();
       await db.execute('''
         CREATE FUNCTION fail_account_backfill() RETURNS trigger LANGUAGE plpgsql AS \$\$
         BEGIN RAISE EXCEPTION 'intentional account backfill failure'; END;
         \$\$;
-        CREATE TRIGGER fail_account_backfill BEFORE UPDATE ON esi_identity
+        CREATE TRIGGER fail_account_backfill BEFORE UPDATE ON esi_session
         FOR EACH STATEMENT EXECUTE FUNCTION fail_account_backfill();
       ''', queryMode: pg.QueryMode.simple);
       await expectLater(
@@ -524,13 +550,9 @@ FOR EACH STATEMENT EXECUTE FUNCTION fail_report_upgrade();
             .single,
         isNull,
       );
-      expect(
-        (await db.execute('SELECT "memberId" FROM esi_session ORDER BY id'))
-            .map((row) => row.single),
-        [10, 11, 12, 11, 99],
-      );
+      expect(await legacySessions(), before);
       expect(await _postgresMigrationVersion(db), _m2Migration);
-      await db.execute('DROP TRIGGER fail_account_backfill ON esi_identity');
+      await db.execute('DROP TRIGGER fail_account_backfill ON esi_session');
       await migrate();
       expect(
         (await db.execute('SELECT count(*) FROM member_account')).single.single,

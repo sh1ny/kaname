@@ -116,6 +116,8 @@ service. The upgrade makes each existing character the main of a separate
 account. It preserves valid Kaname sessions and their signing characters,
 and leaves the ESI grant, scope opt-ins and holder assignment where they are.
 It does not link characters based on matching owner hashes.
+It removes sessions that have already expired by Postgres UTC and sessions
+with no signing identity.
 
 In connected ESI Settings, sign in and choose **Link character**. Complete
 CCP sign-in with the alt and finish the link in Kaname. You can select a

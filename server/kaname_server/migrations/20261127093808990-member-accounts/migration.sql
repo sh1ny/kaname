@@ -27,8 +27,8 @@ ALTER TABLE "esi_identity" ADD COLUMN "accountId" bigint;
 ALTER TABLE "esi_identity" ADD COLUMN "wasDetached" boolean NOT NULL DEFAULT false;
 CREATE INDEX "esi_identity_account_character_idx" ON "esi_identity" USING btree ("accountId", "characterId");
 --
--- Keep old opt-ins and bearer digests, as well as the existing primary keys
--- and indexes. The old member ID is the signing identity ID, not the account.
+-- Keep old opt-ins and live bearer digests, along with existing keys and
+-- indexes. The old member ID is the signing identity ID, not the account.
 ALTER TABLE "esi_scope_opt_in" RENAME COLUMN "memberId" TO "identityId";
 ALTER TABLE "esi_session" RENAME COLUMN "memberId" TO "identityId";
 ALTER TABLE "esi_session" ADD COLUMN "accountId" bigint;
@@ -53,8 +53,11 @@ SELECT setval(
 FROM "member_account";
 UPDATE "esi_identity" SET "accountId" = "id";
 
+-- Sample database UTC once at cutover. A later clock step must not restore
+-- a bearer that was already expired when we migrated it.
 DELETE FROM "esi_session" AS s
-    WHERE NOT EXISTS (SELECT 1 FROM "esi_identity" AS i
+    WHERE s."expiresAt" <= (SELECT clock_timestamp() AT TIME ZONE 'UTC')
+       OR NOT EXISTS (SELECT 1 FROM "esi_identity" AS i
                       WHERE i."id" = s."identityId");
 UPDATE "esi_session" SET "accountId" = "identityId";
 ALTER TABLE "esi_session" ALTER COLUMN "accountId" SET NOT NULL;
