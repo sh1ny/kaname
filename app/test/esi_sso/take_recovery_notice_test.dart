@@ -218,7 +218,8 @@ final class _RecoveringDesktop implements DesktopAccount {
   Future<AccountNotice> identify() => fail('unexpected identify');
 
   @override
-  Future<AccountNotice> authorizeSkills() => fail('unexpected authorize');
+  Future<AccountNotice> authorizeSkills({SavedTakeSource? source}) =>
+      fail('unexpected authorize');
 
   @override
   Future<AccountNotice> disableSkills() => fail('unexpected disable');

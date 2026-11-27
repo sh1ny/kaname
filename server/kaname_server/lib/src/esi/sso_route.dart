@@ -513,6 +513,30 @@ final class SsoRoute {
     final handoff = _handoff;
     if (bearer == null) return _failure(401);
     if (handoff == null) return _failure(503);
+    if (input
+        case {
+              'action': 'confirm',
+              'generation': final String encoded,
+              'proof': final String proof,
+              'ownerFingerprint': final String fingerprint,
+            } &&
+            Map(length: 4)
+        when _proof.hasMatch(proof) && _digest.hasMatch(fingerprint)) {
+      final generation = int.tryParse(encoded, radix: 10);
+      if (generation == null || generation <= 0 || '$generation' != encoded) {
+        return _failure(400);
+      }
+      final confirmed = await _withSession(
+        (session) => handoff.confirmTake(
+          session,
+          bearer,
+          proof,
+          generation,
+          fingerprint,
+        ),
+      );
+      return confirmed ? _json(200, {'status': 'confirmed'}) : _failure(403);
+    }
     return _withSession((session) async {
       final viewer = await _sessions.viewer(session, bearer);
       if (viewer == null) return _failure(403);

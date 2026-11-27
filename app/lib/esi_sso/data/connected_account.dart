@@ -269,6 +269,26 @@ final class ConnectedSession implements HolderRemote {
   }
 
   @override
+  Future<AccountNotice> confirmTake(
+    String proof,
+    String generation,
+    String ownerFingerprint,
+  ) async {
+    final reply = await _api._request('take-intent', {
+      'action': 'confirm',
+      'proof': proof,
+      'generation': generation,
+      'ownerFingerprint': ownerFingerprint,
+    }, bearer: _bearer);
+    return switch ((reply.code, reply.body)) {
+      (200, {'status': 'confirmed'} && Map(length: 1)) => AccountNotice.none,
+      (403, {'status': 'notAuthorized'} && Map(length: 1)) =>
+        AccountNotice.blocked,
+      _ => AccountNotice.unavailable,
+    };
+  }
+
+  @override
   Future<AccountNotice> release(String proof, String generation) async =>
       _notice(
         await _api._request('release', {

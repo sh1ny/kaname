@@ -3208,6 +3208,64 @@ void main() {
     );
   }
 
+  test(
+    'saved Take confirmation requires current assignment and ownership',
+    () async {
+      final originalOwner = owner;
+      final old = (await signIn())['session'] as String;
+      await authorize(old);
+      final proof = newOAuthProof();
+      final taken = await intent('start', old, await prepare(old), proof);
+      expect(taken.statusCode, 200);
+      final assignment = await holderRow();
+      final request = {
+        'action': 'confirm',
+        'proof': proof,
+        'generation': '${assignment.generation}',
+        'ownerFingerprint': ssoDigest('410:$originalOwner'),
+      };
+      final before = await authoritySnapshot();
+      final confirmed = await post('take-intent', request, bearer: old);
+      expect(confirmed.statusCode, 200);
+      expect(jsonDecode(confirmed.body), {'status': 'confirmed'});
+      for (final field in [
+        {'proof': newOAuthProof()},
+        {'generation': '${assignment.generation + 1}'},
+        {'ownerFingerprint': ssoDigest('410:$_newOwner')},
+      ]) {
+        expect(
+          (await post('take-intent', {
+            ...request,
+            ...field,
+          }, bearer: old)).statusCode,
+          403,
+        );
+      }
+      expect(await authoritySnapshot(), before);
+
+      owner = _newOwner;
+      final next = (await signIn())['session'] as String;
+      expect((await post('take-intent', request, bearer: old)).statusCode, 403);
+      expect(
+        (await post('take-intent', request, bearer: next)).statusCode,
+        403,
+      );
+      owner = originalOwner;
+      final again = (await signIn())['session'] as String;
+      expect(
+        (await post('take-intent', request, bearer: again)).statusCode,
+        403,
+      );
+      expect((await holderRow()).toJson(), assignment.toJson());
+      final returned = await post('release', {
+        'proof': proof,
+        'generation': '${assignment.generation}',
+      }, bearer: again);
+      expect(returned.statusCode, 200);
+      expect(jsonDecode(returned.body), {'status': 'released'});
+    },
+  );
+
   test('transfer before final Take leaves no returnable reservation', () async {
     final old = (await signIn())['session'] as String;
     await authorize(old);

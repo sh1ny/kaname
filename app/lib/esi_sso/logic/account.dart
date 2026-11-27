@@ -507,6 +507,8 @@ final class AccountNotifier extends Notifier<AccountState> {
   /// Records native consent, then runs a separate PKCE authorization.
   Future<void> authorizeDesktop() {
     final current = state;
+    final connected = current.connected;
+    final target = _target;
     // Preserve the holder conflict check without passing the old bearer to
     // any native operation or returning it to the connected view.
     final binding = current is AccountUnlinkRecovery
@@ -524,7 +526,17 @@ final class AccountNotifier extends Notifier<AccountState> {
           !account.ownsReservationFor(origin, local.characterId)) {
         return AccountNotice.blocked;
       }
-      return account.authorizeSkills();
+      return account.authorizeSkills(
+        source: connected == null
+            ? null
+            : (
+                remote: connected,
+                isCurrent: () =>
+                    ref.mounted &&
+                    identical(state.connected, connected) &&
+                    identical(target, ref.read(serverTargetProvider)),
+              ),
+      );
     });
   }
 

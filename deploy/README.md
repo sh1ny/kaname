@@ -141,6 +141,14 @@ authorize a fresh grant. An unfinished Take cannot complete ordinary Return.
 If the desktop cannot return the holder, there is no operator reset in this
 release.
 
+Upgrade the server before the desktop. To authorize native skills from a
+completed Take, sign in to the originating server so the desktop can confirm
+the saved reservation. An older or unreachable server cannot confirm it. If
+the original device can park and reach the server, ordinary Return still works
+with the saved proof. Standalone authorization and native token refresh do not
+need a Kaname server connection. Older desktop builds do not enforce the new
+check before activation.
+
 ### Test both sign-in modes locally
 
 1. In the [EVE developers portal](https://developers.eveonline.com/), register

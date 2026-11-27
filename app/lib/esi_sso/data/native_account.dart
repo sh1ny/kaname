@@ -26,28 +26,29 @@ final class NativeAccount implements DesktopAccount {
     int testPort = 48175,
     DateTime Function()? now,
   }) : _store = store,
-       _http = httpClient {
-    final clock = now ?? DateTime.now;
-    _oauth = CcpOAuth(_http, now: clock);
-    _verifier = CcpJwtVerifier(now: clock, loadKeys: _oauth.loadSigningKeys);
+       _http = httpClient,
+       _now = now ?? DateTime.now {
+    _oauth = CcpOAuth(_http, now: _now);
+    _verifier = CcpJwtVerifier(now: _now, loadKeys: _oauth.loadSigningKeys);
     _pkce = NativePkce(oauth: _oauth, verifier: _verifier, port: testPort);
     _vault = EsiTokenVault(
       store: store,
       base64Key: store.installKey,
       refresh: _refresh,
-      now: clock,
+      now: _now,
     );
     _esi = NativeEsiRuntime.solo(
       key: base64Decode(store.installKey),
       userAgent: 'Kaname/0.0.1 (+https://github.com/sh1ny/kaname)',
       testOrigin: testEsiOrigin,
-      now: clock,
+      now: _now,
     );
   }
 
   final DeviceStore _store;
   final http.Client _http;
   final Future<bool> Function(Uri) _launch;
+  final DateTime Function() _now;
   late final CcpOAuth _oauth;
   late final CcpJwtVerifier _verifier;
   late final NativePkce _pkce;
@@ -55,6 +56,7 @@ final class NativeAccount implements DesktopAccount {
   late final NativeEsiRuntime _esi;
   Future<Object?>? _running;
   bool _closing = false;
+  bool _authorizationCancelled = false;
   static final _registration = RegExp(r'^[A-Za-z0-9_-]{1,128}$');
   static final _hash = RegExp(r'^[0-9a-f]{64}$');
   static const _holder = (kind: VaultHolderKind.device, id: 'native');
@@ -196,7 +198,10 @@ final class NativeAccount implements DesktopAccount {
   });
 
   @override
-  Future<AccountNotice> authorizeSkills() => _act(() async {
+  Future<AccountNotice> authorizeSkills({
+    SavedTakeSource? source,
+  }) => _act(() async {
+    _authorizationCancelled = false;
     final row = _selected;
     if (row == null ||
         row.owner.isEmpty ||
@@ -208,9 +213,22 @@ final class NativeAccount implements DesktopAccount {
         }.contains(row.phase)) {
       return AccountNotice.blocked;
     }
-    if (row.serverOrigin != null &&
-        (row.assignment == null || await _store.proof(row) == null)) {
-      return AccountNotice.blocked;
+    ({SavedTakeSource source, String proof, int generation})? reservation;
+    if (row.serverOrigin case final origin?) {
+      final generation = row.assignment;
+      if (source == null ||
+          generation == null ||
+          source.remote.origin != origin ||
+          source.remote.pilot.characterId != row.characterId.toString() ||
+          !source.isCurrent()) {
+        return AccountNotice.blocked;
+      }
+      final proof = await _store.proof(row);
+      if (proof == null) return AccountNotice.blocked;
+      if (_authorizationCancelled || !source.isCurrent()) {
+        return AccountNotice.cancelled;
+      }
+      reservation = (source: source, proof: proof, generation: generation);
     }
     final opted = _change(
       row,
@@ -233,6 +251,28 @@ final class NativeAccount implements DesktopAccount {
       return AccountNotice.blocked;
     }
     final current = await _store.read(row.characterId);
+    if (reservation case (
+      source: final origin,
+      :final proof,
+      :final generation,
+    )) {
+      if (_authorizationCancelled || !origin.isCurrent()) {
+        return AccountNotice.cancelled;
+      }
+      final fingerprint = _owner(identity.characterId, identity.owner);
+      if (fingerprint != row.ownerFingerprint) return AccountNotice.blocked;
+      final notice = await origin.remote.confirmTake(
+        proof,
+        '$generation',
+        fingerprint,
+      );
+      // Confirmation is the final await before submitting the vault write.
+      if (_authorizationCancelled || !origin.isCurrent()) {
+        return AccountNotice.cancelled;
+      }
+      if (notice != AccountNotice.none) return notice;
+      if (!identity.expiresAt.isAfter(_now())) return AccountNotice.reauthorize;
+    }
     final active = await _vault.activate(
       character: row.characterId,
       holder: _holder,
@@ -568,13 +608,16 @@ final class NativeAccount implements DesktopAccount {
   }
 
   @override
-  void cancel() => _pkce.cancel();
+  void cancel() {
+    _authorizationCancelled = true;
+    _pkce.cancel();
+  }
 
   @override
   Future<void> close() async {
     if (_closing) return;
     _closing = true;
-    _pkce.cancel();
+    cancel();
     _esi.close();
     _http.close();
     try {

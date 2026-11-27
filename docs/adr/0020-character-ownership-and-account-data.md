@@ -20,6 +20,8 @@ Postgres commits detachment, the new owner and ownership generation, signing-ses
 
 A transfer never changes a durable device assignment. An unfinished Take cannot resume across owners or release as a device reservation. A completed reservation can use ordinary Return only when the original device kept its proof and generation and can park. If the desktop lost the reply before saving the reservation, its pending journal cannot recover the reservation by replay after transfer. The current owner must authorize a fresh server grant after Return. Verified reclaim remains in M7.
 
+Fresh authorization from a completed Take requires confirmation from its originating server after fresh native CCP proof. The server checks the original proof and assignment against its current ownership generation. A repeated owner hash does not renew an earlier reservation. Standalone authorization and native refresh stay local. Losing the ability to activate a new grant does not take away ordinary Return.
+
 ### Write order and account retirement
 
 A short membership transaction locks the affected CCP character IDs in ascending order, the affected account IDs in ascending order, then the acting session when the operation has one. Take the vault and receipt release locks after these when needed. Identity writers recheck under the character lock and update only the fields they own. No external calls run inside a membership transaction. Work already admitted can finish under its existing rules; a revoked session cannot admit new work.

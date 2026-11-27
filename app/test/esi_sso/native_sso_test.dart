@@ -35,6 +35,7 @@ void main() {
   late Set<String> authorizedScopes;
   late List<http.Request> posts;
   late String owner;
+  late DateTime grantTime;
   late http.Client upstream;
 
   setUpAll(() => key = JsonWebKey.generate('RS256', keyBitLength: 2048));
@@ -42,6 +43,7 @@ void main() {
     authorizedScopes = {};
     posts = [];
     owner = 'VEVTVCBPTkxZ';
+    grantTime = _now;
     final signed = JsonWebKey.fromJson({
       ...key.toJson(),
       'kid': 'offline-fixture',
@@ -82,7 +84,7 @@ void main() {
               'sub': 'CHARACTER:EVE:123',
               'owner': owner,
               'name': 'Native Pilot',
-              'exp': _now.millisecondsSinceEpoch ~/ 1000 + 900,
+              'exp': grantTime.millisecondsSinceEpoch ~/ 1000 + 900,
               'scp': authorizedScopes.length == 1
                   ? authorizedScopes.single
                   : authorizedScopes.toList(),
@@ -878,7 +880,13 @@ END
     );
     expect(await device.account.identify(), AccountNotice.none);
     owner = 'TkVXIE9XTkVS';
-    expect(await device.account.authorizeSkills(), AccountNotice.blocked);
+    final current = await server.signIn();
+    expect(
+      await device.account.authorizeSkills(
+        source: (remote: current, isCurrent: () => true),
+      ),
+      AccountNotice.blocked,
+    );
     expect(device.account.pilot?.holder, 'blocked');
     expect((await device.account.skills()).$1, AccountNotice.blocked);
     expect(posts, hasLength(2));
@@ -896,6 +904,190 @@ END
     expect(server.releaseRequests.single, {'proof': proof, 'generation': '2'});
     expect(server.reconciles, 0);
   });
+
+  Future<Map<String, String>> saveTake(
+    AccountNotifier account,
+    _TakeServer server,
+    _TakeDevice device,
+  ) async {
+    final fingerprint = sha256.convert(utf8.encode('123:$owner')).toString();
+    server
+      ..epoch = '3'
+      ..reply = () => http.Response(
+        jsonEncode({
+          'sourceEpoch': '3',
+          'generation': '2',
+          'ownerFingerprint': fingerprint,
+        }),
+        200,
+      );
+    await account.takeDesktop();
+    final reserved = device.store.character(123)!;
+    expect(reserved.phase, DevicePhase.deviceReserved);
+    expect(await device.account.identify(), AccountNotice.none);
+    return {
+      'proof': (await device.store.proof(reserved))!,
+      'generation': '2',
+      'ownerFingerprint': fingerprint,
+    };
+  }
+
+  NativeAccount nativeForConfirmation(
+    DeviceStore store, {
+    DateTime Function()? now,
+    Uri? esi,
+  }) => NativeAccount(
+    store: store,
+    httpClient: upstream,
+    launch: approve,
+    testPort: 0,
+    now: now ?? () => _now,
+    testEsiOrigin: esi,
+  );
+
+  test('fresh native grant checks the saved Take after CCP proof', () async {
+    var clock = _now;
+    final esi = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => esi.close(force: true));
+    esi.listen((request) async {
+      request.response.headers.contentType = ContentType.json;
+      request.response.write('{"skills":[],"total_sp":1200}');
+      await request.response.close();
+    });
+    await _withConnectedDesktop(
+      (container, server, device) async {
+        final account = container.read(accountProvider.notifier);
+        final reservation = await saveTake(account, server, device);
+        expect(await device.account.authorizeSkills(), AccountNotice.blocked);
+        server.confirmReply = () async {
+          expect(authorizedScopes, {_skills});
+          expect(posts, hasLength(2));
+          expect(await device.store.read(123), isNull);
+          return _confirmedTake();
+        };
+        await account.authorizeDesktop();
+        expect(
+          (container.read(accountProvider) as AccountIdle).notice,
+          AccountNotice.none,
+        );
+        expect(server.confirmRequests.single, {
+          'action': 'confirm',
+          ...reservation,
+        });
+        expect((await device.store.read(123))?.status, VaultStatus.active);
+        expect(device.store.character(123)?.phase, DevicePhase.solo);
+
+        await account.signOut();
+        clock = grantTime = _now.add(const Duration(minutes: 16));
+        expect(await device.account.skills(), (
+          AccountNotice.none,
+          (count: 0, totalSp: 1200),
+          null,
+        ));
+        expect(posts.last.bodyFields['grant_type'], 'refresh_token');
+        expect(server.confirmRequests, hasLength(1));
+      },
+      createAccount: (store) => nativeForConfirmation(
+        store,
+        now: () => clock,
+        esi: Uri(scheme: 'http', host: '127.0.0.1', port: esi.port),
+      ),
+    );
+  });
+
+  for (final (label, reply, notice)
+      in <(String, http.Response Function(), AccountNotice)>[
+        ('old server', _unsupportedTake, AccountNotice.unavailable),
+        ('stale ownership', _refusedTake, AccountNotice.blocked),
+        ('unexpected 200', _notAccepted, AccountNotice.unavailable),
+        (
+          'lost reply',
+          () => throw http.RequestAbortedException(),
+          AccountNotice.unavailable,
+        ),
+      ]) {
+    test('unconfirmed saved Take cannot activate skills: $label', () async {
+      await _withConnectedDesktop((container, server, device) async {
+        final account = container.read(accountProvider.notifier);
+        final reservation = await saveTake(account, server, device);
+        server.confirmReply = reply;
+        await account.authorizeDesktop();
+        expect((container.read(accountProvider) as AccountIdle).notice, notice);
+        expect(server.confirmRequests.single, {
+          'action': 'confirm',
+          ...reservation,
+        });
+        expect(await device.store.read(123), isNull);
+        await account.returnDesktop();
+        expect(server.releaseRequests.single, {
+          'proof': reservation['proof'],
+          'generation': reservation['generation'],
+        });
+        expect(device.store.character(123)?.phase, DevicePhase.returned);
+      }, createAccount: nativeForConfirmation);
+    });
+  }
+
+  for (final stop in ['cancel', 'sign-out', 'session loss']) {
+    test(
+      'invalidating a pending Take confirmation prevents native activation: $stop',
+      () async {
+        await _withConnectedDesktop((container, server, device) async {
+          final account = container.read(accountProvider.notifier);
+          final reservation = await saveTake(account, server, device);
+          final confirmStarted = Completer<void>();
+          final confirmReply = Completer<http.Response>();
+          server.confirmReply = () {
+            confirmStarted.complete();
+            return confirmReply.future;
+          };
+          final activation = account.authorizeDesktop();
+          try {
+            await Future.any([
+              confirmStarted.future,
+              activation.then(
+                (_) => fail(
+                  'Activation settled without waiting for confirmation.',
+                ),
+              ),
+            ]);
+            switch (stop) {
+              case 'cancel':
+                account.cancel();
+              case 'sign-out':
+                await account.signOut();
+              case 'session loss':
+                account.rejectConnected(
+                  container.read(accountProvider).connected!,
+                );
+              default:
+                fail('Unexpected invalidation method: $stop');
+            }
+          } finally {
+            confirmReply.complete(_confirmedTake());
+            await activation;
+          }
+          expect(await device.store.read(123), isNull);
+          if (stop != 'cancel') {
+            await account.start();
+            await account.complete();
+          } else {
+            expect(
+              (container.read(accountProvider) as AccountIdle).notice,
+              AccountNotice.cancelled,
+            );
+          }
+          await account.returnDesktop();
+          expect(server.releaseRequests.single, {
+            'proof': reservation['proof'],
+            'generation': reservation['generation'],
+          });
+          expect(device.store.character(123)?.phase, DevicePhase.returned);
+        }, createAccount: nativeForConfirmation);
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+  }
 
   test('A pre-upgrade take cannot fabricate prior state', () async {
     final device = await _TakeDevice.open();
@@ -1158,8 +1350,12 @@ END
 Future<void> _withConnectedDesktop(
   Future<void> Function(ProviderContainer, _TakeServer, _TakeDevice) exercise, {
   bool allowNativeRequest = false,
+  NativeAccount Function(DeviceStore)? createAccount,
 }) async {
-  final device = await _TakeDevice.open(allowNativeRequest: allowNativeRequest);
+  final device = await _TakeDevice.open(
+    allowNativeRequest: allowNativeRequest,
+    createAccount: createAccount,
+  );
   final server = _TakeServer()..reply = _refusedTake;
   device.store.save(_character(123));
   device.store.setSetting('selected-character', '123');
@@ -1222,6 +1418,8 @@ http.Response _unsupportedTake() =>
 http.Response _notAccepted() =>
     http.Response('{"status":"notAccepted","sourceEpoch":"3"}', 200);
 
+http.Response _confirmedTake() => http.Response('{"status":"confirmed"}', 200);
+
 DeviceCharacter _character(
   int id, {
   DevicePhase phase = DevicePhase.identified,
@@ -1263,6 +1461,8 @@ final class _TakeServer {
   var reconciles = 0;
   String memberId = 'fixture-member';
   final releaseRequests = <Map<String, Object?>>[];
+  FutureOr<http.Response> Function()? confirmReply;
+  final confirmRequests = <Map<String, Object?>>[];
 
   void _observeProof(Object? proof) {
     if (proof is! String) fail('expected a device proof');
@@ -1319,6 +1519,11 @@ final class _TakeServer {
           return prepareReply?.call() ??
               http.Response(jsonEncode({'sourceEpoch': epoch}), 200);
         }
+        if (body['action'] == 'confirm') {
+          _observeProof(body['proof']);
+          confirmRequests.add(body);
+          return await confirmReply!();
+        }
         expect(body['sourceEpoch'], epoch);
         _observeProof(body['proof']);
         switch (body['action']) {
@@ -1355,6 +1560,7 @@ final class _TakeDevice {
   static Future<_TakeDevice> open({
     bool allowNativeRequest = false,
     void Function(String)? diagnostic,
+    NativeAccount Function(DeviceStore)? createAccount,
   }) async {
     final directory = await Directory.systemTemp.createTemp('kaname-take-');
     addTearDown(() => directory.delete(recursive: true));
@@ -1363,7 +1569,7 @@ final class _TakeDevice {
       allowNativeRequest: allowNativeRequest,
       diagnostic: diagnostic,
     );
-    await device._open();
+    await device._open(createAccount: createAccount);
     addTearDown(() => device.account.close());
     expect(device.account.configure(_clientId), AccountNotice.none);
     return device;
@@ -1495,6 +1701,12 @@ final class _JoiningServer implements HolderRemote {
   @override
   Future<AccountNotice> release(String proof, String generation) async =>
       fail('standalone cannot release a reservation');
+  @override
+  Future<AccountNotice> confirmTake(
+    String proof,
+    String generation,
+    String ownerFingerprint,
+  ) async => fail('standalone join does not confirm a saved Take');
 
   @override
   Future<DeviceTakeResult> take(String proof) async =>

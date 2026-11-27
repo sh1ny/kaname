@@ -94,6 +94,51 @@ final class SsoHandoff {
         ),
       );
 
+  /// Confirms fresh activation from the exact current, completed Take.
+  ///
+  /// Session and holder checks share one snapshot. Earlier ownership cannot
+  /// activate even if the owner hash matches again. Return does not use this
+  /// check; a denial leaves the assignment and proof unchanged.
+  Future<bool> confirmTake(
+    Session session,
+    String bearer,
+    String proof,
+    int generation,
+    String ownerFingerprint,
+  ) => session.db.transaction(
+    (tx) async {
+      await session.db.unsafeExecute(
+        "SET LOCAL statement_timeout = '10s'",
+        transaction: tx,
+      );
+      final viewer = await _sessions.viewerForRefresh(
+        session,
+        bearer,
+        transaction: tx,
+      );
+      if (viewer == null ||
+          !ssoDigestMatches(
+            ownerFingerprint,
+            _ownerFingerprint(viewer.identity),
+          )) {
+        return false;
+      }
+      final row = await ServerSsoGrants.assignment(
+        session,
+        viewer.identity.characterId,
+        transaction: tx,
+      );
+      return row != null &&
+          row.phase == 'deviceReserved' &&
+          row.generation == generation &&
+          row.takeOwnershipGeneration == viewer.identity.ownershipGeneration &&
+          _matches(row, ssoDigest(proof));
+    },
+    settings: const TransactionSettings(
+      isolationLevel: IsolationLevel.repeatableRead,
+    ),
+  );
+
   /// Starts or reconciles a take within the epoch captured before first send.
   ///
   /// Acceptance advances the holder generation and records the digest.
