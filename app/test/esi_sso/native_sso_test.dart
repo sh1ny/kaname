@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -33,12 +34,14 @@ void main() {
   late JsonWebKey key;
   late Set<String> authorizedScopes;
   late List<http.Request> posts;
+  late String owner;
   late http.Client upstream;
 
   setUpAll(() => key = JsonWebKey.generate('RS256', keyBitLength: 2048));
   setUp(() {
     authorizedScopes = {};
     posts = [];
+    owner = 'VEVTVCBPTkxZ';
     final signed = JsonWebKey.fromJson({
       ...key.toJson(),
       'kid': 'offline-fixture',
@@ -77,7 +80,7 @@ void main() {
               'iss': 'login.eveonline.com',
               'aud': [_clientId, 'EVE Online'],
               'sub': 'CHARACTER:EVE:123',
-              'owner': 'VEVTVCBPTkxZ',
+              'owner': owner,
               'name': 'Native Pilot',
               'exp': _now.millisecondsSinceEpoch ~/ 1000 + 900,
               'scp': authorizedScopes.length == 1
@@ -844,40 +847,55 @@ END
     },
   );
 
-  test(
-    'original desktop returns using the saved reservation after transfer',
-    () async {
-      final device = await _TakeDevice.open();
-      final server = _TakeServer()
-        ..epoch = '3'
-        ..reply = () => http.Response(
-          jsonEncode({
-            'sourceEpoch': '3',
-            'generation': '2',
-            'ownerFingerprint': 'a' * 64,
-          }),
-          200,
-        );
-      expect(
-        await device.account.take(await server.signIn()),
-        AccountNotice.none,
+  test('original desktop returns using the saved reservation after a native owner mismatch', () async {
+    final device = await _TakeDevice.open();
+    final server = _TakeServer()
+      ..epoch = '3'
+      ..reply = () => http.Response(
+        jsonEncode({
+          'sourceEpoch': '3',
+          'generation': '2',
+          'ownerFingerprint': sha256
+              .convert(utf8.encode('123:$owner'))
+              .toString(),
+        }),
+        200,
       );
-      final reserved = device.store.character(123)!;
-      final proof = await device.store.proof(reserved);
-      server.memberId = 'new-owner';
-      await device.reopen();
-      expect(
-        await device.account.returnTo(await server.signIn()),
-        AccountNotice.none,
-      );
-      expect(device.store.character(123)?.phase, DevicePhase.returned);
-      expect(server.releaseRequests.single, {
-        'proof': proof,
-        'generation': '2',
-      });
-      expect(server.reconciles, 0);
-    },
-  );
+    expect(
+      await device.account.take(await server.signIn()),
+      AccountNotice.none,
+    );
+    final reserved = device.store.character(123)!;
+    final proof = await device.store.proof(reserved);
+    await device.reopen(
+      createAccount: (store) => NativeAccount(
+        store: store,
+        httpClient: upstream,
+        launch: approve,
+        testPort: 0,
+        now: () => _now,
+      ),
+    );
+    expect(await device.account.identify(), AccountNotice.none);
+    owner = 'TkVXIE9XTkVS';
+    expect(await device.account.authorizeSkills(), AccountNotice.blocked);
+    expect(device.account.pilot?.holder, 'blocked');
+    expect((await device.account.skills()).$1, AccountNotice.blocked);
+    expect(posts, hasLength(2));
+    server.memberId = 'new-owner';
+    await device.reopen();
+    expect(
+      device.account.ownsReservationFor('${server.origin}', '123'),
+      isTrue,
+    );
+    expect(
+      await device.account.returnTo(await server.signIn()),
+      AccountNotice.none,
+    );
+    expect(device.store.character(123)?.phase, DevicePhase.returned);
+    expect(server.releaseRequests.single, {'proof': proof, 'generation': '2'});
+    expect(server.reconciles, 0);
+  });
 
   test('A pre-upgrade take cannot fabricate prior state', () async {
     final device = await _TakeDevice.open();
@@ -1351,9 +1369,11 @@ final class _TakeDevice {
     return device;
   }
 
-  Future<void> reopen() async {
+  Future<void> reopen({
+    NativeAccount Function(DeviceStore)? createAccount,
+  }) async {
     await account.close();
-    await _open();
+    await _open(createAccount: createAccount);
   }
 
   Future<void> reopenV1() => reopenVersion(1);
@@ -1401,19 +1421,23 @@ END
     }
   }
 
-  Future<void> _open() async {
+  Future<void> _open({
+    NativeAccount Function(DeviceStore)? createAccount,
+  }) async {
     store = await DeviceStore.open(_directory, secrets, diagnostic: diagnostic);
-    account = NativeAccount(
-      store: store,
-      httpClient: MockClient((_) async {
-        nativeRequests++;
-        if (allowNativeRequest) return http.Response('', 503);
-        fail('native authorization must not start');
-      }),
-      launch: (_) => fail('native browser must not open'),
-      testPort: 0,
-      now: () => _now,
-    );
+    account =
+        createAccount?.call(store) ??
+        NativeAccount(
+          store: store,
+          httpClient: MockClient((_) async {
+            nativeRequests++;
+            if (allowNativeRequest) return http.Response('', 503);
+            fail('native authorization must not start');
+          }),
+          launch: (_) => fail('native browser must not open'),
+          testPort: 0,
+          now: () => _now,
+        );
   }
 }
 

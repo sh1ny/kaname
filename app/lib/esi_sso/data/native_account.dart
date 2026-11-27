@@ -91,15 +91,19 @@ final class NativeAccount implements DesktopAccount {
     try {
       final id = int.tryParse(characterId, radix: 10);
       final row = id == null ? null : _store.character(id);
-      return row != null &&
-          row.serverOrigin == origin &&
-          row.assignment != null &&
-          (row.phase == DevicePhase.deviceReserved ||
-              row.phase == DevicePhase.solo);
+      return row != null && _holdsReservationFor(row, origin);
     } on Object {
       return false;
     }
   }
+
+  static bool _holdsReservationFor(DeviceCharacter row, String origin) =>
+      row.serverOrigin == origin &&
+      row.assignment != null &&
+      row.proofDigest != null &&
+      (row.phase == DevicePhase.deviceReserved ||
+          row.phase == DevicePhase.solo ||
+          row.phase == DevicePhase.blocked);
 
   @override
   AccountPilot? get pilot {
@@ -355,7 +359,7 @@ final class NativeAccount implements DesktopAccount {
     final id = int.tryParse(remote.pilot.characterId, radix: 10);
     if (id == null) return AccountNotice.blocked;
     var row = _store.character(id);
-    if (row == null || row.phase == DevicePhase.blocked) {
+    if (row == null) {
       return AccountNotice.blocked;
     }
     if (row.phase == DevicePhase.taking) {
@@ -372,9 +376,7 @@ final class NativeAccount implements DesktopAccount {
         proofDigest: digest,
       );
       _select(row);
-    } else if (row.serverOrigin == remote.origin &&
-        (row.phase == DevicePhase.solo ||
-            row.phase == DevicePhase.deviceReserved)) {
+    } else if (_holdsReservationFor(row, remote.origin)) {
       row = _change(row, phase: DevicePhase.returning);
       _select(row);
     }

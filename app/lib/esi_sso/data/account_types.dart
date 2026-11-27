@@ -221,7 +221,8 @@ abstract interface class DesktopAccount {
   /// Whether this app can request a new server grant without a local overlap.
   bool permitsServerGrant(String characterId);
 
-  /// Whether the original device holds a confirmed reservation or grant.
+  /// Whether this device has a confirmed reservation for this server.
+  /// A blocked credential may still have a reservation it can return.
   bool ownsReservationFor(String origin, String characterId);
 
   /// The current native identity and visible journal state.
