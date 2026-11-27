@@ -16,10 +16,15 @@ Both modes SHALL accept only a correctly signed CCP access JWT verified against 
 - **WHEN** a token has an invalid signature, an unsupported algorithm, an unknown key after a bounded JWKS update, an invalid issuer, wrong or missing audience, expired validity, malformed subject or missing owner identity
 - **THEN** neither mode establishes identity, activates a credential or sends ESI work using it
 
-#### Scenario: Connected proof expires at an identity or release lock
+#### Scenario: Connected proof expires before committing a mutation
 
-- **WHEN** a sign-in or scope attempt, or the CCP identity it proved, expires before its mutation can complete under the required locks
-- **THEN** the server refuses it and commits no session, account, membership, exclusion or newly activated grant
+- **WHEN** a sign-in or scope attempt, or the CCP identity it proved, expires before admission to commit
+- **THEN** the server refuses it and leaves the session, account, membership, exclusion, grant and holder assignment unchanged
+
+#### Scenario: Fresh scoped authorization commits the grant and holder together
+
+- **WHEN** a valid scoped attempt matches the live signer and policy, and its proof is still fresh at commit admission
+- **THEN** the encrypted grant and matching holder assignment commit together, or neither changes
 
 #### Scenario: Owner conflict proof expires before the identity can be blocked
 

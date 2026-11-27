@@ -3,6 +3,7 @@ import 'package:kaname_esi_vault/kaname_esi_vault.dart';
 import 'package:serverpod/serverpod.dart';
 
 import '../generated/protocol.dart';
+import 'server_esi_vault.dart';
 import 'sso_route.dart';
 import 'sso_sessions.dart';
 
@@ -22,7 +23,7 @@ final class ServerSsoGrants implements SsoGrantAuthority {
   final SsoSessions _sessions;
   final SsoCharacterGate _gate;
   final ScopePolicy? _policy;
-  final EsiTokenVault _vault;
+  final ServerEsiVault _vault;
   final CcpOAuth _oauth;
   final CcpJwtVerifier _verifier;
   final CcpConfidential _registration;
@@ -182,7 +183,7 @@ final class ServerSsoGrants implements SsoGrantAuthority {
           return false;
         }
         final observed = await assignment(session, identity.characterId);
-        final vaultStatus = await _vault.inspect(identity.characterId);
+        final vaultStatus = await _vault.vault.inspect(identity.characterId);
         if (vaultStatus
             is! VaultSuccess<
               ({VaultAuthorization authorization, VaultStatus status})?
@@ -196,43 +197,61 @@ final class ServerSsoGrants implements SsoGrantAuthority {
           return false;
         }
         if (!_sessions.proofIsFresh(proofDeadline)) return false;
-        final activation = await _vault.activate(
+        return _vault.activateScoped(
+          session,
           character: identity.characterId,
           holder: holder,
           expectedGeneration: former?.authorization.generation ?? 0,
           refreshToken: grant.refreshToken,
           bearer: VaultBearer(grant.accessToken, identity.expiresAt),
+          admit: () => _sessions.proofIsFresh(proofDeadline),
+          writeHolder: (tx, authorization) => _writeHolder(
+            session,
+            tx,
+            identity,
+            authorization,
+            permitted.fingerprint,
+            observed,
+          ),
         );
-        if (activation is! VaultSuccess<VaultAuthorization>) return false;
-        // A failed assignment write leaves no matching grant generation.
-        // Dispatch stays blocked until fresh authorization replaces it.
-        final scopeList = identity.scopes.toList()..sort();
-        if (observed == null) {
-          await SsoHolderRow.db.insertRow(
-            session,
-            SsoHolderRow(
-              characterId: identity.characterId,
-              phase: 'serverHeld',
-              generation: 1,
-              vaultGeneration: activation.value.generation,
-              grantFingerprint: permitted.fingerprint,
-              requestedScopes: scopeList,
-            ),
-          );
-        } else {
-          await SsoHolderRow.db.updateRow(
-            session,
-            observed.copyWith(
-              phase: 'serverHeld',
-              vaultGeneration: activation.value.generation,
-              grantFingerprint: permitted.fingerprint,
-              requestedScopes: scopeList,
-            ),
-          );
-        }
-        return true;
       }) ??
       false;
+
+  static Future<void> _writeHolder(
+    Session session,
+    Transaction tx,
+    CcpVerifiedIdentity identity,
+    VaultAuthorization authorization,
+    String fingerprint,
+    SsoHolderRow? observed,
+  ) async {
+    final scopeList = identity.scopes.toList()..sort();
+    if (observed == null) {
+      await SsoHolderRow.db.insertRow(
+        session,
+        SsoHolderRow(
+          characterId: identity.characterId,
+          phase: 'serverHeld',
+          generation: 1,
+          vaultGeneration: authorization.generation,
+          grantFingerprint: fingerprint,
+          requestedScopes: scopeList,
+        ),
+        transaction: tx,
+      );
+    } else {
+      await SsoHolderRow.db.updateRow(
+        session,
+        observed.copyWith(
+          phase: 'serverHeld',
+          vaultGeneration: authorization.generation,
+          grantFingerprint: fingerprint,
+          requestedScopes: scopeList,
+        ),
+        transaction: tx,
+      );
+    }
+  }
 
   /// Ensures a credential can still be used under its recorded policy.
   Future<VaultAuthorization?> liveAuthorization(

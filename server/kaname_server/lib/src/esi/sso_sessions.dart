@@ -336,6 +336,7 @@ final class SsoSessions {
   ) async {
     bool admit() => proofIsFresh(proofDeadline);
 
+    if (!admit()) return null;
     await _lockIdentityWrite(session, transaction, claims.characterId);
     if (!admit()) return null;
     final stored = await SsoIdentityRow.db.findFirstRow(
@@ -457,6 +458,7 @@ final class SsoSessions {
     bool admit() => proofIsFresh(proofDeadline);
     try {
       await session.db.transaction((transaction) async {
+        if (!admit()) return;
         await _lockIdentityWrite(session, transaction, characterId);
         final stored = await SsoIdentityRow.db.findFirstRow(
           session,

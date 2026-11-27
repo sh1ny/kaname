@@ -62,6 +62,9 @@ void main() {
   late Future<void> Function()? beforeRefresh;
   late Future<void> Function()? beforeLinkProofRecheck;
   Future<void> Function(int)? afterCharacterLock;
+  Future<void> Function()? afterVaultLock;
+  Future<void> Function()? afterVaultWrite;
+  Future<void> Function()? beforeGrantCommit;
   DateTime Function()? exclusionClock;
   Future<void> Function(Session, Transaction)? beforeViewerRead;
   Future<void> Function()? beforeViewerReply;
@@ -87,6 +90,9 @@ void main() {
     beforeRefresh = null;
     beforeLinkProofRecheck = null;
     afterCharacterLock = null;
+    afterVaultLock = null;
+    afterVaultWrite = null;
+    beforeGrantCommit = null;
     exclusionClock = null;
     beforeViewerRead = null;
     beforeViewerReply = null;
@@ -222,21 +228,25 @@ void main() {
           }
         }, enableLogging: false);
     late final ServerSsoGrants grants;
-    final vault = createServerEsiVault(
+    final serverVault = createServerEsiVault(
       pod.pod,
       now: () => clock,
       readKey: () => _key,
+      afterLock: () async => await afterVaultLock?.call(),
+      afterWrite: () async => await afterVaultWrite?.call(),
+      beforeGrantCommit: () async => await beforeGrantCommit?.call(),
       refresh: (authorization, token) => withSession(
         (session) => grants.refresh(session, authorization, token),
       ),
     );
+    final vault = serverVault.vault;
     grants = ServerSsoGrants(
       sessions: sessions,
       gate: sessions.gate,
       policy: ScopePolicy.parse(
         '{"revision":1,"enabledModules":["personalSkills"],"classes":{"characterSkills":"optional"}}',
       ),
-      vault: vault,
+      vault: serverVault,
       oauth: oauth,
       verifier: verifier,
       registration: registration,
@@ -414,6 +424,83 @@ void main() {
       200,
     );
     expect((await complete(attempt, bearer: session)).statusCode, 200);
+  }
+
+  for (final phase in ['vault lock', 'vault write', 'holder write']) {
+    test(
+      'scope authorization expires at the $phase without replacing authority',
+      () async {
+        final bearer = (await signIn())['session'] as String;
+        await authorize(bearer);
+
+        Future<List<String>> persisted() => pod.pod.withSession((s) async {
+          final rows = await s.db.unsafeQuery('''
+          SELECT to_jsonb(v)::text FROM esi_token_vault v
+          UNION ALL SELECT to_jsonb(h)::text FROM esi_holder_assignment h
+          ORDER BY 1
+        ''');
+          return rows.map((row) => row.single as String).toList();
+        }, enableLogging: false);
+
+        final original = await persisted();
+        expect(original, hasLength(2));
+        final deadline = clock.add(const Duration(minutes: 5));
+        final attempt = await begin(bearer: bearer);
+        expect(
+          (await callback(
+            attempt,
+            query: 'code=$_scopedCode&state=${attempt.state}',
+          )).statusCode,
+          200,
+        );
+        final reached = Completer<void>();
+        final resume = Completer<void>();
+        Future<void> barrier() async {
+          reached.complete();
+          await resume.future;
+        }
+
+        switch (phase) {
+          case 'vault lock':
+            afterVaultLock = barrier;
+          case 'vault write':
+            afterVaultWrite = barrier;
+          case 'holder write':
+            beforeGrantCommit = barrier;
+        }
+        final pending = complete(attempt, bearer: bearer);
+        late http.Response reply;
+        try {
+          await Future.any<void>([
+            reached.future,
+            pending.then(
+              (_) => fail('Scope activation did not reach the $phase.'),
+            ),
+          ]);
+          final lock = await pod.pod.withSession(
+            (s) => s.db.unsafeQuery(
+              'SELECT pg_try_advisory_xact_lock(-2147483648, 410)',
+            ),
+            enableLogging: false,
+          );
+          expect(lock.single.single, isFalse);
+          expect(await persisted(), original);
+          clock = deadline;
+        } finally {
+          afterVaultLock = null;
+          afterVaultWrite = null;
+          beforeGrantCommit = null;
+          resume.complete();
+          reply = await pending;
+        }
+        expect(reply.statusCode, 403);
+        expect(await persisted(), original);
+        await authorize(bearer);
+        expect(await persisted(), isNot(original));
+        expect((await post('skills', {}, bearer: bearer)).statusCode, 200);
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
   }
 
   Future<String> prepare(String session) async {

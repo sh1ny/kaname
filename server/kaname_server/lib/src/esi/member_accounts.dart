@@ -35,8 +35,10 @@ final class MemberAccounts {
 
     try {
       return await session.db.transaction((tx) async {
+        if (!fresh()) return false;
         await _lockCharacters(session, tx, actor.character, claims.characterId);
         final target = await _character(session, tx, claims.characterId);
+        if (!fresh()) return false;
         final previous = target?.accountId;
         final account = await _lockAccounts(
           session,

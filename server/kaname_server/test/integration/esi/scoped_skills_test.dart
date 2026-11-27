@@ -26,7 +26,7 @@ void main() {
       now: () => now,
       readKey: () => base64Encode(List.filled(32, 47)),
       refresh: (_, _) async => fail('unexpected refresh'),
-    );
+    ).vault;
     const holder = (kind: VaultHolderKind.server, id: 'fixture');
     auth = (await vault.activate(
       character: 415,

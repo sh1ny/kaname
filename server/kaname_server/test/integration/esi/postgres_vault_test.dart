@@ -33,7 +33,7 @@ void main() {
         readKey: () => key,
         refresh: refresh,
         now: () => now,
-      );
+      ).vault;
 
       test('first activations contend across Postgres sessions', () async {
         final calls = <String>[];

@@ -71,9 +71,9 @@ final class ServerSso {
     final oauth = CcpOAuth(client, now: now);
     final verifier = CcpJwtVerifier(now: now, loadKeys: oauth.loadSigningKeys);
     late final ServerSsoGrants grants;
-    final EsiTokenVault vault;
+    final ServerEsiVault serverVault;
     try {
-      vault = createServerEsiVault(
+      serverVault = createServerEsiVault(
         pod,
         readKey: () => env['KANAME_ESI_VAULT_KEY'],
         now: now,
@@ -91,11 +91,12 @@ final class ServerSso {
       sessions: sessions,
       gate: sessions.gate,
       policy: ScopePolicy.parse(env['KANAME_ESI_SCOPE_POLICY']),
-      vault: vault,
+      vault: serverVault,
       oauth: oauth,
       verifier: verifier,
       registration: registration,
     );
+    final vault = serverVault.vault;
     final esi =
         pod.config.redis?.enabled == true &&
             (pod.getPassword('serviceSecret')?.isNotEmpty ?? false)

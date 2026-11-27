@@ -74,7 +74,7 @@ void main() {
       pod.pod,
       readKey: () => base64Encode(List.filled(32, 19)),
       refresh: (_, _) async => fail('handoff must not send refresh'),
-    );
+    ).vault;
     final sessions = SsoSessions(now: () => clock);
     gate = sessions.gate;
     handoff = SsoHandoff(sessions: sessions, vault: vault, now: () => clock);

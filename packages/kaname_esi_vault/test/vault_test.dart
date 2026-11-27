@@ -183,6 +183,30 @@ void main() {
       expect(h.exchange.calls, [_r0]);
     });
 
+    test('a bearer reused under the lock must still be fresh after the transaction', () async {
+      final auth = await h.install();
+      final read = Completer<void>();
+      final resume = Completer<void>();
+      h.store.afterSnapshot = () async {
+        read.complete();
+        await resume.future;
+      };
+      final waiting = h.vault.bearer(auth);
+      await read.future;
+      try {
+        final refresh = h.vault.bearer(auth);
+        (await h.exchange.next()).reply.complete(
+          h.success('newly-committed', _r1),
+        );
+        expect(_success(await refresh).token, 'newly-committed');
+        h.store.afterReadOnly = () => h.advance(60);
+      } finally {
+        resume.complete();
+      }
+      expect(await waiting, _failure(VaultFailureReason.refreshRequired));
+      expect(h.exchange.calls, [_r0]);
+    });
+
     test('dispatch threshold refuses and refreshes near expiry', () async {
       final auth = await h.install(bearer: h.fresh('old'));
       h.advance(55);
@@ -403,12 +427,18 @@ final class _Store implements VaultStore {
   Object? readError;
   FutureOr<void> Function()? beforeWrite;
   void Function()? afterWrite;
+  Future<void> Function()? afterSnapshot;
+  void Function()? afterReadOnly;
 
   @override
   Future<VaultRecord?> read(int character) async {
     reads++;
     if (readError case final error?) throw error;
-    return rows[character];
+    final snapshot = rows[character];
+    final after = afterSnapshot;
+    afterSnapshot = null;
+    if (after != null) await after();
+    return snapshot;
   }
 
   @override
@@ -432,6 +462,9 @@ final class _Store implements VaultStore {
         final after = afterWrite;
         afterWrite = null;
         after?.call();
+      } else {
+        afterReadOnly?.call();
+        afterReadOnly = null;
       }
       return value;
     } finally {
