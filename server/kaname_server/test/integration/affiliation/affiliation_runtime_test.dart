@@ -289,23 +289,17 @@ void main() {
     final f = await AffiliationFixture.open();
     await f.pod.withSession((s) async {
       await _seedRegistry(s);
-      expect(
-        await AffiliationRuntime.dispatchSweep(s, _startup),
-        AffiliationDispatch.completed,
-      );
-      await f.clock.advance(_hour);
-      expect(
-        await AffiliationRuntime.dispatchSweep(s, _hourly),
-        AffiliationDispatch.completed,
-      );
-      for (final start in [0, 2]) {
-        final calls = f.wire.sublist(start, start + 2);
-        expect(calls.map((call) => call.ids.length), [1000, 1]);
+      final expected = List.generate(1001, (i) => 101 + i);
+      for (final slot in [_startup, _hourly]) {
+        if (slot == _hourly) await f.clock.advance(_hour);
         expect(
-          calls.expand((call) => call.ids),
-          List.generate(1001, (i) => 101 + i),
+          await AffiliationRuntime.dispatchSweep(s, slot),
+          AffiliationDispatch.completed,
         );
-        expect(calls.map((call) => call.token), [null, null]);
+        expect(f.wire.map((call) => call.ids.length), [1000, 1]);
+        expect(f.wire.expand((call) => call.ids), expected);
+        expect(f.wire.map((call) => call.token), [null, null]);
+        f.wire.clear();
       }
       expect((await AffiliationStore(s).read(101))?.corporationId, 42);
       expect((await AffiliationStore(s).read(1101))?.corporationId, 42);
