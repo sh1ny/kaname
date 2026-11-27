@@ -57,7 +57,7 @@ Own reads, even for admins, SHALL require a live viewer, the receipt's account, 
 
 ### Requirement: A transfer keeps past owners' individual receipts private
 
-Kaname SHALL advance the character's ownership generation on transfer and stamp it on every attributed receipt at ESI admission. Pre-upgrade identities and receipts SHALL start at generation zero. Transfer SHALL NOT rewrite, reattribute or prune older receipts. Transfer detachment SHALL follow the existing first-exclusion rule for accounts a detached character starts or joins. Ownership generation SHALL NOT change aggregate qualification or a sealed window.
+Kaname SHALL advance ownership generation on transfer and stamp every attributed receipt at ESI admission. Own reads SHALL also match the character's current generation. Existing identities and receipts SHALL start at zero. Transfer SHALL NOT rewrite, reattribute or prune receipts or change aggregate qualification or sealed windows. The existing first-exclusion rule SHALL apply to accounts the detached character starts or joins.
 
 #### Scenario: New ownership records a readable receipt without carrying history over
 - **WHEN** the transferred character completes ordinary sign-in, gets a new scoped grant and makes an ESI call
