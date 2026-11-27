@@ -16,6 +16,12 @@ typedef SsoViewer = ({
   int sessionId,
 });
 
+/// Aborts a proof-authorized transaction that outlived the proof while writing.
+final class SsoProofExpired implements Exception {
+  /// The caller maps a rolled-back mutation to the usual proof refusal.
+  const SsoProofExpired();
+}
+
 /// One admitted activity per character in the server main isolate (ADR 0017).
 final class SsoCharacterGate {
   final _busy = <int, bool>{};
@@ -62,11 +68,20 @@ final class SsoCharacterGate {
 final class SsoSessions {
   /// [adminCharacters] contains only operator-approved CCP character IDs.
   /// Without a test clock, live reads check expiry against the database clock.
-  SsoSessions({this._now, Set<int> adminCharacters = const {}})
-    : _admins = Set.unmodifiable(adminCharacters);
+  /// [afterCharacterLock] and [callLog] let integration tests advance proof
+  /// time at the character or release lock without waiting for a deadline.
+  SsoSessions({
+    this._now,
+    Set<int> adminCharacters = const {},
+    EsiCallLogStore? callLog,
+    this._afterCharacterLock,
+  }) : _admins = Set.unmodifiable(adminCharacters),
+       _callLog = callLog ?? _defaultCallLog;
 
   static final _bound = Expando<SsoSessions>();
-  static final _callLog = EsiCallLogStore();
+  static final _defaultCallLog = EsiCallLogStore();
+  final EsiCallLogStore _callLog;
+  final Future<void> Function(int character)? _afterCharacterLock;
 
   /// Associates generated RPCs with this install's exact session authority.
   void bind(Serverpod pod) => _bound[pod] = this;
@@ -284,15 +299,45 @@ final class SsoSessions {
     );
   }
 
+  Future<void> _lockIdentityWrite(
+    Session session,
+    Transaction transaction,
+    int character,
+  ) async {
+    await _boundIdentityWrite(session, transaction);
+    await lockCharacter(session, transaction, character);
+    await _afterCharacterLock?.call(character);
+  }
+
+  /// Checks the deadline of a verified identity or a consumed browser attempt.
+  bool proofIsFresh(DateTime deadline) => _wallNow().isBefore(deadline);
+
   /// Creates a session only after the caller proves browser and app possession.
-  /// Returns null after marking a signed owner conflict as blocked.
+  /// Returns null for expiry or a signed owner conflict.
   Future<Map<String, Object?>?> signIn(
     Session session,
     CcpVerifiedIdentity claims,
-  ) => session.db.transaction((transaction) async {
-    await _boundIdentityWrite(session, transaction);
-    await lockCharacter(session, transaction, claims.characterId);
-    if (!_wallNow().isBefore(claims.expiresAt)) return null;
+    DateTime proofDeadline,
+  ) async {
+    try {
+      return await session.db.transaction(
+        (tx) => _signIn(session, tx, claims, proofDeadline),
+      );
+    } on SsoProofExpired {
+      return null;
+    }
+  }
+
+  Future<Map<String, Object?>?> _signIn(
+    Session session,
+    Transaction transaction,
+    CcpVerifiedIdentity claims,
+    DateTime proofDeadline,
+  ) async {
+    bool admit() => proofIsFresh(proofDeadline);
+
+    await _lockIdentityWrite(session, transaction, claims.characterId);
+    if (!admit()) return null;
     final stored = await SsoIdentityRow.db.findFirstRow(
       session,
       where: (t) => t.characterId.equals(claims.characterId),
@@ -300,7 +345,7 @@ final class SsoSessions {
     );
     if (stored != null && (stored.blocked || stored.owner != claims.owner)) {
       if (!stored.blocked) {
-        await blockIdentity(session, transaction, stored);
+        await blockIdentity(session, transaction, stored, admit: admit);
       }
       return null;
     }
@@ -341,8 +386,14 @@ final class SsoSessions {
         columns: (t) => [t.accountId],
         transaction: transaction,
       );
-      if (identity.wasDetached) {
-        await _callLog.excludeAccount(session, transaction, member);
+      if (identity.wasDetached &&
+          !await _callLog.excludeAccount(
+            session,
+            transaction,
+            member,
+            admit: admit,
+          )) {
+        throw const SsoProofExpired();
       }
     }
     final time = await session.db.unsafeQuery(
@@ -365,6 +416,7 @@ final class SsoSessions {
         transaction: transaction,
       );
     }
+    if (!admit()) throw const SsoProofExpired();
     final bearer = newOAuthProof();
     await SsoSessionRow.db.insertRow(
       session,
@@ -376,6 +428,7 @@ final class SsoSessions {
       ),
       transaction: transaction,
     );
+    if (!admit()) throw const SsoProofExpired();
     return {
       'session': bearer,
       'memberId': member.toString(),
@@ -383,7 +436,7 @@ final class SsoSessions {
       'characterName': identity.characterName,
       'admin': _admins.contains(identity.characterId),
     };
-  });
+  }
 
   /// Removes a current session; an unknown token has no effect.
   Future<void> signOut(Session session, String bearer) async {
@@ -398,28 +451,36 @@ final class SsoSessions {
   Future<void> block(
     Session session,
     int characterId,
-    String previousOwner,
-  ) async {
-    await session.db.transaction((transaction) async {
-      await _boundIdentityWrite(session, transaction);
-      await lockCharacter(session, transaction, characterId);
-      final stored = await SsoIdentityRow.db.findFirstRow(
-        session,
-        where: (t) =>
-            t.characterId.equals(characterId) & t.owner.equals(previousOwner),
-        transaction: transaction,
-      );
-      if (stored == null || stored.blocked) return;
-      await blockIdentity(session, transaction, stored);
-    });
+    String previousOwner, {
+    required DateTime proofDeadline,
+  }) async {
+    bool admit() => proofIsFresh(proofDeadline);
+    try {
+      await session.db.transaction((transaction) async {
+        await _lockIdentityWrite(session, transaction, characterId);
+        final stored = await SsoIdentityRow.db.findFirstRow(
+          session,
+          where: (t) =>
+              t.characterId.equals(characterId) & t.owner.equals(previousOwner),
+          transaction: transaction,
+        );
+        if (stored == null || stored.blocked) return;
+        await blockIdentity(session, transaction, stored, admit: admit);
+      });
+    } on SsoProofExpired {
+      return;
+    }
   }
 
   /// Blocks a verified conflict under the caller's character transaction lock.
+  /// Rolls back if [admit] fails before or after any write wait.
   static Future<void> blockIdentity(
     Session session,
     Transaction transaction,
-    SsoIdentityRow identity,
-  ) async {
+    SsoIdentityRow identity, {
+    required bool Function() admit,
+  }) async {
+    if (!admit()) throw const SsoProofExpired();
     await SsoIdentityRow.db.updateRow(
       session,
       identity.copyWith(blocked: true),
@@ -431,6 +492,7 @@ final class SsoSessions {
       where: (t) => t.identityId.equals(identity.id!),
       transaction: transaction,
     );
+    if (!admit()) throw const SsoProofExpired();
   }
 
   /// Removes a bounded batch of expired session verifiers.

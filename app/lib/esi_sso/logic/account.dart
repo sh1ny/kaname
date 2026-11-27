@@ -217,16 +217,38 @@ final class AccountNotifier extends Notifier<AccountState> {
     }
     final epoch = ++_epoch;
     state = AccountWorking(connected);
-    final (notice, attempt) = await api.start(
+    final (outcome, attempt) = await api.start(
       session: scoped || link ? connected : null,
       link: link,
     );
     if (!_current(epoch)) return;
     _nextComplete = null;
+    var notice = outcome;
+    if (link && attempt == null && connected != null && _linkRefused(outcome)) {
+      notice = await _checkLinkViewer(connected, outcome);
+      if (!_current(epoch)) return;
+    }
     state = attempt == null
-        ? AccountIdle(connected: connected, notice: notice)
+        ? AccountIdle(
+            connected: link && notice == AccountNotice.signedOut
+                ? null
+                : connected,
+            notice: notice,
+          )
         : AccountBrowser(connected, attempt);
   }
+
+  static bool _linkRefused(AccountNotice notice) =>
+      notice == AccountNotice.blocked || notice == AccountNotice.signedOut;
+
+  static Future<AccountNotice> _checkLinkViewer(
+    ConnectedSession session,
+    AccountNotice outcome,
+  ) async => switch (await session.refresh()) {
+    ViewerRefreshInvalid() => AccountNotice.signedOut,
+    _ when outcome == AccountNotice.signedOut => AccountNotice.unavailable,
+    _ => outcome,
+  };
 
   /// Completes the active browser attempt. Early requests never start a poll loop.
   Future<void> complete({String? code}) async {
@@ -245,17 +267,9 @@ final class AccountNotifier extends Notifier<AccountState> {
     if (!_current(epoch)) return;
     var notice = outcome;
     final session = before.connected;
-    if (before.attempt.linking &&
-        session != null &&
-        (outcome == AccountNotice.blocked ||
-            outcome == AccountNotice.signedOut)) {
-      final check = await session.refresh();
+    if (before.attempt.linking && session != null && _linkRefused(outcome)) {
+      notice = await _checkLinkViewer(session, outcome);
       if (!_current(epoch)) return;
-      if (check is ViewerRefreshInvalid) {
-        notice = AccountNotice.signedOut;
-      } else if (outcome == AccountNotice.signedOut) {
-        notice = AccountNotice.unavailable;
-      }
     }
     if (notice == AccountNotice.memberLinked) {
       ref.read(membershipEpochProvider.notifier).advance();

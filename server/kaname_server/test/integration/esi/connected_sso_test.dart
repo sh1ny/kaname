@@ -45,6 +45,7 @@ typedef _Started = ({String id, String state, String? cookie, String proof});
 void main() {
   late InProcessPod pod;
   late DateTime clock;
+  late Duration identityLifetime;
   late http.Client browser;
   late int exchanges;
   late int refreshes;
@@ -60,6 +61,7 @@ void main() {
   late Future<void> Function()? beforeSkillsWire;
   late Future<void> Function()? beforeRefresh;
   late Future<void> Function()? beforeLinkProofRecheck;
+  Future<void> Function(int)? afterCharacterLock;
   DateTime Function()? exclusionClock;
   Future<void> Function(Session, Transaction)? beforeViewerRead;
   Future<void> Function()? beforeViewerReply;
@@ -70,6 +72,7 @@ void main() {
 
   setUp(() async {
     clock = DateTime.utc(2026, 11, 25, 10);
+    identityLifetime = const Duration(minutes: 20);
     exchanges = 0;
     refreshes = 0;
     rateLimited = false;
@@ -83,6 +86,7 @@ void main() {
     beforeSkillsWire = null;
     beforeRefresh = null;
     beforeLinkProofRecheck = null;
+    afterCharacterLock = null;
     exclusionClock = null;
     beforeViewerRead = null;
     beforeViewerReply = null;
@@ -142,7 +146,7 @@ void main() {
           'sub': 'CHARACTER:EVE:$characterId',
           'name': 'Synthetic <Pilot>',
           'owner': owner,
-          'exp': clock.millisecondsSinceEpoch ~/ 1000 + 1200,
+          'exp': clock.add(identityLifetime).millisecondsSinceEpoch ~/ 1000,
           if (scoped) 'scp': [_skills],
         })
         ..addRecipient(key, algorithm: 'RS256');
@@ -161,8 +165,11 @@ void main() {
     addTearDown(browser.close);
     addTearDown(upstream.close);
     final oauth = CcpOAuth(upstream, now: () => clock);
+    final callLog = EsiCallLogStore(now: () => exclusionClock?.call() ?? clock);
     final sessions = SsoSessions(
       adminCharacters: {409},
+      callLog: callLog,
+      afterCharacterLock: (id) async => await afterCharacterLock?.call(id),
       now: () {
         if (failViewerLookup) {
           throw const FormatException('synthetic lookup failure');
@@ -275,7 +282,7 @@ void main() {
       sessions: sessions,
       memberAccounts: MemberAccounts(
         sessions,
-        EsiCallLogStore(now: () => exclusionClock?.call() ?? clock),
+        callLog,
         afterActorLock: (_, _) async => await beforeLinkProofRecheck?.call(),
       ),
       now: () => clock,
@@ -1663,6 +1670,166 @@ void main() {
     },
   );
 
+  Future<http.Response> expireAtCharacterLock(
+    Future<http.Response> Function() send,
+    DateTime deadline,
+  ) async {
+    final locked = Completer<int>();
+    final resume = Completer<void>();
+    afterCharacterLock = (id) async {
+      locked.complete(id);
+      await resume.future;
+    };
+    final pending = send();
+    late http.Response response;
+    try {
+      final character = await Future.any<int>([
+        locked.future,
+        pending.then(
+          (_) => fail('The request did not take the character lock.'),
+        ),
+      ]);
+      final rows = await pod.pod.withSession(
+        (s) => s.db.unsafeQuery(
+          'SELECT pg_try_advisory_xact_lock(0, @character::int)',
+          parameters: QueryParameters.named({'character': character}),
+        ),
+        enableLogging: false,
+      );
+      expect(rows.single.single, isFalse);
+      clock = deadline;
+    } finally {
+      afterCharacterLock = null;
+      resume.complete();
+      response = await pending;
+    }
+    return response;
+  }
+
+  test(
+    'sign-in checks the attempt deadline after the character lock',
+    () async {
+      final original = await signIn();
+      final attempt = await begin();
+      final deadline = clock.add(const Duration(minutes: 5));
+      expect((await callback(attempt)).statusCode, 200);
+      final response = await expireAtCharacterLock(
+        () => complete(attempt),
+        deadline,
+      );
+      expect(response.statusCode, 403);
+      final bearer = original['session'] as String;
+      expect((await post('viewer', {}, bearer: bearer)).statusCode, 200);
+      final sessions = await pod.pod.withSession(
+        (s) => SsoSessionRow.db.count(s),
+        enableLogging: false,
+      );
+      expect(sessions, 1);
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
+  for (final refreshing in [false, true]) {
+    final operation = refreshing ? 'refresh' : 'scope activation';
+    test(
+      '$operation does not block an identity on expired conflict proof',
+      () async {
+        final bearer = (await signIn())['session'] as String;
+        if (refreshing) {
+          await authorize(bearer);
+          clock = clock.add(const Duration(minutes: 21));
+        } else {
+          expect(
+            (await post('opt-in', {
+              'enabled': true,
+            }, bearer: bearer)).statusCode,
+            200,
+          );
+        }
+        identityLifetime = const Duration(minutes: 2);
+        owner = 'RElGRkVSRU5U';
+        final deadline = clock.add(identityLifetime);
+        final http.Response refused;
+        if (refreshing) {
+          refused = await expireAtCharacterLock(
+            () => post('skills', {}, bearer: bearer),
+            deadline,
+          );
+        } else {
+          final attempt = await begin(bearer: bearer);
+          expect(
+            (await callback(
+              attempt,
+              query: 'code=$_scopedCode&state=${attempt.state}',
+            )).statusCode,
+            200,
+          );
+          refused = await expireAtCharacterLock(
+            () => complete(attempt, bearer: bearer),
+            deadline,
+          );
+        }
+        expect(refused.statusCode, 403);
+        expect((await post('viewer', {}, bearer: bearer)).statusCode, 200);
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+  }
+
+  test(
+    'detached sign-in rolls back when CCP proof expires at release',
+    () async {
+      final main = await signIn();
+      final bearer = main['session'] as String;
+      expect((await linkAlt(bearer, 411)).statusCode, 200);
+      final unlink = await accountRpc(bearer, 'unlink', {'characterId': '411'});
+      expect(jsonDecode(unlink.body), containsPair('status', 'unlinked'));
+
+      Future<List<Object?>> persisted() => pod.pod.withSession((s) async {
+        final rows = await s.db.unsafeQuery('''
+        SELECT
+          (SELECT "accountId" FROM esi_identity WHERE "characterId" = 411),
+          (SELECT count(*) FROM member_account),
+          (SELECT count(*) FROM esi_session),
+          (SELECT count(*) FROM esi_call_log_exclusion)
+      ''');
+        return rows.single.toList();
+      }, enableLogging: false);
+
+      identityLifetime = const Duration(minutes: 2);
+      final deadline = clock.add(identityLifetime);
+      final attempt = await begin();
+      expect((await callback(attempt)).statusCode, 200);
+      var reachedReleaseLock = false;
+      exclusionClock = () {
+        reachedReleaseLock = true;
+        return clock = deadline;
+      };
+      final reply = await complete(attempt);
+      expect(reachedReleaseLock, isTrue);
+      expect(reply.statusCode, 403);
+      expect(await persisted(), [null, 1, 1, 0]);
+
+      exclusionClock = null;
+      final retry = await signIn();
+      expect(retry['memberId'], isNot(main['memberId']));
+      expect(
+        (await post(
+          'viewer',
+          {},
+          bearer: retry['session'] as String,
+        )).statusCode,
+        200,
+      );
+      expect(await persisted(), [
+        int.parse(retry['memberId'] as String),
+        2,
+        2,
+        1,
+      ]);
+    },
+  );
+
   test('exact revocation orders with unlink in either lock order', () async {
     final main = await signIn();
     final acting = main['session'] as String;
@@ -2078,7 +2245,8 @@ void main() {
         ON esi_identity FOR EACH ROW WHEN (NEW.blocked AND NOT OLD.blocked)
         EXECUTE FUNCTION require_block_deadlines()
       ''');
-        await SsoSessions.forPod(s.serverpod)!.block(s, 410, owner);
+        await SsoSessions.forPod(s.serverpod)!
+            .block(s, 410, owner, proofDeadline: clock.add(identityLifetime));
       }, enableLogging: false);
       expect((await post('viewer', {}, bearer: bearer)).statusCode, 401);
     },

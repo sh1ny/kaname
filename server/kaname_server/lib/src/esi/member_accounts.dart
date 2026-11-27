@@ -52,7 +52,7 @@ final class MemberAccounts {
         if (target != null &&
             (target.blocked || target.owner != claims.owner)) {
           if (!target.blocked) {
-            await SsoSessions.blockIdentity(session, tx, target);
+            await SsoSessions.blockIdentity(session, tx, target, admit: fresh);
           }
           return false;
         }
@@ -116,9 +116,12 @@ final class MemberAccounts {
             transaction: tx,
           );
         }
+        if (!fresh()) throw const SsoProofExpired();
         return true;
       });
     } on DatabaseForeignKeyViolationException {
+      return false;
+    } on SsoProofExpired {
       return false;
     }
   }

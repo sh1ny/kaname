@@ -78,6 +78,12 @@ Kaname SHALL start a link only for a live connected session. It SHALL require th
 - **WHEN** a sign-in or scope authorization proof is submitted as a link, a link proof is submitted for sign-in or scope authorization, or a link attempt arrives with another session or unrequested scopes
 - **THEN** Kaname refuses the mismatched operation without giving the caller a session, membership change or ESI grant
 
+#### Scenario: A link start or completion is refused for the current viewer
+
+- **WHEN** the link route denies authorization to start or complete a link
+- **THEN** the app rechecks the same connected session and clears its roster and own history only if the viewer check confirms the session ended
+- **AND** a live or temporarily unavailable viewer check leaves the connected session in place
+
 ### Requirement: Only an eligible standalone account can supply an already linked alt
 
 Fresh link proof for a character already on the source account SHALL leave membership unchanged. A character on another account SHALL move only if it is the sole linked character and the account has no durable account-owned product data, including data added by later features. Diagnostic receipts SHALL stay with their original account and SHALL NOT prevent linking. The move SHALL end the old account's sessions atomically. Refusal SHALL NOT expose information about the other account.

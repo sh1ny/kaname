@@ -62,6 +62,7 @@ abstract interface class SsoGrantAuthority {
     SsoRequestedGrant expected,
     CcpVerifiedIdentity identity,
     CcpGrant grant,
+    DateTime proofDeadline,
   );
 
   /// Records or cancels the optional personal class for the current policy.
@@ -394,6 +395,9 @@ final class SsoRoute {
           });
           return linked ? _json(200, {'status': 'linked'}) : _failure(403);
         }
+        final proofDeadline = identity.expiresAt.isBefore(attempt.expires)
+            ? identity.expiresAt
+            : attempt.expires;
         if (scoped != null) {
           final activated = await _withSession(
             (session) => _grants!.activate(
@@ -402,6 +406,7 @@ final class SsoRoute {
               scoped,
               identity,
               attempt.scopedGrant!,
+              proofDeadline,
             ),
           );
           return activated
@@ -409,7 +414,7 @@ final class SsoRoute {
               : _failure(403);
         }
         final result = await _withSession(
-          (session) => _sessions.signIn(session, identity),
+          (session) => _sessions.signIn(session, identity, proofDeadline),
         );
         return result == null ? _failure(403) : _json(200, result);
       }

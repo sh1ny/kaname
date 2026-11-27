@@ -16,6 +16,16 @@ Both modes SHALL accept only a correctly signed CCP access JWT verified against 
 - **WHEN** a token has an invalid signature, an unsupported algorithm, an unknown key after a bounded JWKS update, an invalid issuer, wrong or missing audience, expired validity, malformed subject or missing owner identity
 - **THEN** neither mode establishes identity, activates a credential or sends ESI work using it
 
+#### Scenario: Connected proof expires at an identity or release lock
+
+- **WHEN** a sign-in or scope attempt, or the CCP identity it proved, expires before its mutation can complete under the required locks
+- **THEN** the server refuses it and commits no session, account, membership, exclusion or newly activated grant
+
+#### Scenario: Owner conflict proof expires before the identity can be blocked
+
+- **WHEN** a verified owner conflict from sign-in, linking, scope authorization or refresh expires before the server can finish the block transaction
+- **THEN** the attempt is refused, but that proof does not block the identity or revoke its connected sessions
+
 #### Scenario: CCP rotates its signing key
 
 - **WHEN** a valid token uses a new key that CCP publishes in its JWKS

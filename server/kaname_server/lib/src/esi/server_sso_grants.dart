@@ -152,6 +152,7 @@ final class ServerSsoGrants implements SsoGrantAuthority {
     SsoRequestedGrant expected,
     CcpVerifiedIdentity identity,
     CcpGrant grant,
+    DateTime proofDeadline,
   ) async =>
       await _gate.run(expected.characterId, () async {
         final current = await _sessions.viewer(session, bearer);
@@ -163,7 +164,12 @@ final class ServerSsoGrants implements SsoGrantAuthority {
           return false;
         }
         if (identity.owner != expected.owner) {
-          await _sessions.block(session, identity.characterId, expected.owner);
+          await _sessions.block(
+            session,
+            identity.characterId,
+            expected.owner,
+            proofDeadline: proofDeadline,
+          );
           return false;
         }
         final permitted = await request(session, current);
@@ -189,6 +195,7 @@ final class ServerSsoGrants implements SsoGrantAuthority {
             former.status != VaultStatus.parked) {
           return false;
         }
+        if (!_sessions.proofIsFresh(proofDeadline)) return false;
         final activation = await _vault.activate(
           character: identity.characterId,
           holder: holder,
@@ -289,7 +296,12 @@ final class ServerSsoGrants implements SsoGrantAuthority {
           case CcpVerifiedIdentity():
             if (result.characterId == pinned.characterId &&
                 result.owner != pinned.owner) {
-              await _sessions.block(session, pinned.characterId, pinned.owner);
+              await _sessions.block(
+                session,
+                pinned.characterId,
+                pinned.owner,
+                proofDeadline: result.expiresAt,
+              );
               return const VaultRefreshUnverifiedGrant();
             }
             final permitted = _policy == null

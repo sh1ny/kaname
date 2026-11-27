@@ -318,51 +318,61 @@ void main() {
     }, () => MockClient(server.call));
   });
 
-  for (final status in [401, 200, 503]) {
-    testWidgets('refused link checks the original viewer: HTTP $status', (
-      tester,
-    ) async {
-      final history = _HistoryRequests();
-      final viewerReply = Completer<void>();
-      final server = _Server()..refuseLink = true;
-      await http.runWithClient(() async {
-        await _open(tester, history: history);
-        await _signIn(tester);
-        await _tap(tester, 'My calls', settle: false);
-        history.pages.single.complete(
-          _historyPage('1', 'Original receipt', next: true),
-        );
-        await tester.pumpAndSettle();
-        expect(find.text('Original receipt'), findsOneWidget);
-        await _tap(tester, 'Older calls', settle: false);
+  for (final atStart in [false, true]) {
+    for (final status in [401, 200, 503]) {
+      final phase = atStart ? 'start' : 'completion';
+      testWidgets(
+        'refused link $phase checks the original viewer: HTTP $status',
+        (tester) async {
+          final history = _HistoryRequests();
+          final viewerReply = Completer<void>();
+          final server = _Server()
+            ..refuseLinkStart = atStart
+            ..refuseLink = !atStart;
+          await http.runWithClient(() async {
+            await _open(tester, history: history);
+            await _signIn(tester);
+            await _tap(tester, 'My calls', settle: false);
+            history.pages.single.complete(
+              _historyPage('1', 'Original receipt', next: true),
+            );
+            await tester.pumpAndSettle();
+            expect(find.text('Original receipt'), findsOneWidget);
+            await _tap(tester, 'Older calls', settle: false);
 
-        await _tap(tester, 'Link character', settle: false);
-        server
-          ..viewerBearers.clear()
-          ..viewerReply = viewerReply
-          ..viewerFailure = status == 200 ? null : status;
-        await _tap(tester, 'Finish linking', settle: false);
-        expect(server.viewerBearers, ['Bearer ${'b' * 43}']);
-        expect(find.text('Sign in to server'), findsNothing);
-        viewerReply.complete();
-        await tester.pump();
-        history.pages.last.complete(_historyPage('2', 'Delayed receipt'));
-        await tester.pumpAndSettle();
+            if (!atStart) await _tap(tester, 'Link character', settle: false);
+            server
+              ..viewerBearers.clear()
+              ..viewerReply = viewerReply
+              ..viewerFailure = status == 200 ? null : status;
+            await _tap(
+              tester,
+              atStart ? 'Link character' : 'Finish linking',
+              settle: false,
+            );
+            expect(server.viewerBearers, ['Bearer ${'b' * 43}']);
+            expect(find.text('Sign in to server'), findsNothing);
+            viewerReply.complete();
+            await tester.pump();
+            history.pages.last.complete(_historyPage('2', 'Delayed receipt'));
+            await tester.pumpAndSettle();
 
-        final invalid = status == 401;
-        expect(
-          find.text('Sign in to server'),
-          invalid ? findsOneWidget : findsNothing,
-        );
-        for (final label in [
-          'Linked characters',
-          'My calls',
-          'Delayed receipt',
-        ]) {
-          expect(find.text(label), invalid ? findsNothing : findsOneWidget);
-        }
-      }, () => MockClient(server.call));
-    });
+            final invalid = status == 401;
+            expect(
+              find.text('Sign in to server'),
+              invalid ? findsOneWidget : findsNothing,
+            );
+            for (final label in [
+              'Linked characters',
+              'My calls',
+              'Delayed receipt',
+            ]) {
+              expect(find.text(label), invalid ? findsNothing : findsOneWidget);
+            }
+          }, () => MockClient(server.call));
+        },
+      );
+    }
   }
 
   for (final viewerStatus in [503, 401]) {
@@ -701,6 +711,7 @@ final class _Server {
   bool rosterDenied = false;
   MemberAccountStatus? unlinkStatus;
   bool refuseLink = false;
+  bool refuseLinkStart = false;
   Completer<void>? viewerReply;
   final viewerBearers = <String>[];
   int? viewerFailure;
@@ -768,6 +779,7 @@ final class _Server {
         if ((jsonDecode(request.body) as Map<String, Object?>)['link'] ==
             true) {
           linkRequests.add(request);
+          if (refuseLinkStart) return _json({'status': 'blocked'}, 403);
         }
         return _json({
           'attemptId': 'a' * 43,
