@@ -26,11 +26,17 @@ final class EsiCallLogEndpoint extends Endpoint {
 final class EsiCallLogReads {
   /// Uses the same durable release boundary for query and response admission.
   /// [readSeal] defaults to a fresh read from the store.
-  EsiCallLogReads(this._store, {Future<DateTime?> Function(Session)? readSeal})
-    : _readSeal = readSeal ?? _store.currentSeal;
+  /// [beforeAggregate] lets tests hold a calculation and observe a waiter
+  /// joining it without a timing assumption.
+  EsiCallLogReads(
+    this._store, {
+    Future<DateTime?> Function(Session)? readSeal,
+    this._beforeAggregate,
+  }) : _readSeal = readSeal ?? _store.currentSeal;
 
   final EsiCallLogStore _store;
   final Future<DateTime?> Function(Session) _readSeal;
+  final Future<void> Function({required bool joining})? _beforeAggregate;
   final _reading = <int>{};
   ({DateTime window, EsiRouteCountPage page})? _cached;
   ({DateTime window, Future<EsiRouteCountPage> page})? _computing;
@@ -128,7 +134,11 @@ final class EsiCallLogReads {
     final cached = _cached;
     if (cached?.window == window) return cached!.page;
     final active = _computing;
-    if (active?.window == window) return active!.page;
+    if (active?.window == window) {
+      final before = _beforeAggregate;
+      if (before != null) await before(joining: true);
+      return active!.page;
+    }
     final future = _compute(session, viewer, window);
     if (active == null || active.window.isBefore(window)) {
       _computing = (window: window, page: future);
@@ -145,6 +155,8 @@ final class EsiCallLogReads {
     EsiCallLogViewer viewer,
     DateTime window,
   ) async {
+    final before = _beforeAggregate;
+    if (before != null) await before(joining: false);
     final rows = await _store.countsForSeal(session, viewer, window);
     final page = EsiRouteCountPage(
       status: 'ok',

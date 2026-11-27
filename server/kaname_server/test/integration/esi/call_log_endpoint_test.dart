@@ -312,11 +312,24 @@ void main() {
       for (final warmCache in [false, true]) {
         final paused = Completer<void>();
         final resume = Completer<void>();
+        final calculating = Completer<void>();
+        final joined = Completer<void>();
+        final releaseCalculation = Completer<void>();
+        var calculations = 0;
         final expected = warmCache ? 1 : 2;
         var checks = 0;
         var fence = !warmCache;
         final reader = EsiCallLogReads(
           store,
+          beforeAggregate: ({required joining}) async {
+            if (joining) {
+              joined.complete();
+            } else {
+              expect(++calculations, 1);
+              calculating.complete();
+              if (!warmCache) await releaseCalculation.future;
+            }
+          },
           readSeal: (admitting) async {
             if (fence) {
               if (++checks == expected) paused.complete();
@@ -325,16 +338,30 @@ void main() {
             return store.currentSeal(admitting);
           },
         );
-        if (warmCache) {
-          final admitted = await reader.totals(owner);
-          expect(admitted.rows.single.total, 5);
-          fence = true;
-        }
-        final responses = [
-          reader.totals(owner),
-          if (!warmCache) reader.totals(waiter),
-        ];
+        final responses = <Future<EsiRouteCountPage>>[];
         try {
+          if (warmCache) {
+            final admitted = await reader.totals(owner);
+            expect(admitted.rows.single.total, 5);
+            fence = true;
+            responses.add(reader.totals(owner));
+          } else {
+            final original = reader.totals(owner);
+            responses.add(original);
+            await Future.any([
+              calculating.future,
+              original.then(
+                (_) => fail('the original request did not calculate'),
+              ),
+            ]);
+            final waiting = reader.totals(waiter);
+            responses.add(waiting);
+            await Future.any([
+              joined.future,
+              waiting.then((_) => fail('the second request did not join')),
+            ]);
+            releaseCalculation.complete();
+          }
           await Future.any([
             paused.future,
             for (final response in responses)
@@ -343,12 +370,14 @@ void main() {
           clock = clock.add(const Duration(days: 1));
           await store.sealWindow(session);
         } finally {
+          if (!releaseCalculation.isCompleted) releaseCalculation.complete();
           resume.complete();
         }
         for (final page in await Future.wait(responses)) {
           expect(page.status, 'unavailable');
           expect(page.rows, isEmpty);
         }
+        expect(calculations, 1);
       }
     }, timeout: const Timeout(Duration(minutes: 3)));
   }, rollbackDatabase: RollbackDatabase.disabled);

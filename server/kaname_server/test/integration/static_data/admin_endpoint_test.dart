@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:kaname_client/kaname_client.dart' as api;
+import 'package:kaname_server/src/esi/sso_sessions.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/static_data/admin_operation_settler.dart';
 import 'package:kaname_server/src/static_data/admission_connection_attempt.dart';
@@ -85,6 +86,7 @@ void main() {
     WorkerProcess? controlled,
     bool recover = true,
     Future<pg.Connection> Function()? settleOpen,
+    void Function()? afterFailedSettle,
     WorkerLogSink? settleLog,
     PostgresConnectionSettings? workerSettings,
     void Function()? onBuildChange,
@@ -109,6 +111,7 @@ void main() {
           ),
       clock: clock,
       log: settleLog ?? (_, _) {},
+      afterFailedAttempt: afterFailedSettle,
       onBuildChange: onBuildChange ?? () {},
     );
     final recovery = runtime.recovery = AdmissionRecovery(
@@ -360,23 +363,34 @@ void main() {
     await runWorker(controlled: worker);
     final reached = Completer<void>();
     final resume = Completer<void>();
-    var first = true;
-    beforeSession = (_) async {
-      if (!first) return;
-      first = false;
-      reached.complete();
-      await resume.future;
-    };
-    final delayed = update(41);
+    final admission = StaticDataAccess.forPod(server.pod).admission;
+    final auth = await server.pod.withSession(
+      (s) => staticDataTestAuthentication(s, staticDataTestBearer),
+    );
+    var checks = 0;
+    final delayed = admission.request(
+      _id(41).toString(),
+      kind: SdeAdminOperationKind.updateNow,
+      authorize: (session) async {
+        if (++checks == 1) {
+          reached.complete();
+          await resume.future;
+        }
+        return SsoSessions.liveAdmin(session, auth);
+      },
+    );
     try {
       await Future.any([
         reached.future,
-        delayed.then((_) => fail('lookup skipped')),
+        delayed.then((_) => fail('admission skipped live authorization')),
       ]);
       final winner = update(42);
-      final launched = await worker.firstCheck.future;
+      final launched = await Future.any([
+        worker.firstCheck.future,
+        winner.then((_) => fail('the competing request did not dispatch')),
+      ]);
       resume.complete();
-      expect((await delayed).outcome, api.AdminAnswerOutcome.importRunning);
+      expect((await delayed).outcome, AdminAnswerOutcome.importRunning);
       expect(await operation(41), isNull);
       worker.reply(
         BuildCheckFinished(
@@ -762,11 +776,18 @@ void main() {
         final unavailable = await postgresProxy();
         final port = unavailable.port;
         await unavailable.close();
+        final failures = List.generate(5, (_) => Completer<void>());
+        final settled = Completer<void>();
         var failedAttempts = 0;
         await runWorker(
           controlled: worker,
+          afterFailedSettle: () {
+            if (failedAttempts < failures.length) {
+              failures[failedAttempts++].complete();
+            }
+          },
           settleLog: (_, message) {
-            if (message.contains('attempt failed')) failedAttempts++;
+            if (message.contains(' ${_id(1)} settled ')) settled.complete();
           },
           settleOpen: () {
             return openAdmissionConnection(
@@ -795,11 +816,9 @@ void main() {
         };
         final original = update(1);
         await stored.future;
+        final beforeStoredReplay = poolCalls;
         expect((await update(1)).outcome, api.AdminAnswerOutcome.noAnswerYet);
-        expect(
-          poolCalls,
-          2,
-        ); // The same-id replay consulted memory, not Postgres.
+        expect(poolCalls, beforeStoredReplay + 1);
         expect(
           (await client.staticData.operation(_id(1).toString())).state,
           api.AdminOperationReadState.waiting,
@@ -810,21 +829,23 @@ void main() {
           clock.elapse(const Duration(seconds: 5));
         }
         expect((await original).outcome, api.AdminAnswerOutcome.noAnswerYet);
-        await _until(() async => failedAttempts == 1 ? true : null);
+        await failures[0].future;
         final beforeReplay = poolCalls;
         expect((await update(1)).outcome, api.AdminAnswerOutcome.noAnswerYet);
-        expect(poolCalls, beforeReplay);
+        expect(poolCalls, beforeReplay + 1);
         expect(runtime.settler!.activeOperationId, _id(1).toString());
-        for (var attempt = 2; attempt <= 5; attempt++) {
+        for (final failure in failures.skip(1)) {
           clock.elapse(const Duration(seconds: 30));
-          await _until(() async => failedAttempts == attempt ? true : null);
+          await failure.future;
         }
         final healed = await postgresProxy(port: port);
         addTearDown(healed.close);
         clock.elapse(const Duration(seconds: 30));
-        final row = await ended(1);
+        await settled.future;
+        final row = (await operation(1))!;
+        expect(row.state, SdeAdminOperationState.ended);
         expect(row.failureReason, 'Postgres unreachable');
-        await waitForFreeSlot();
+        expect(runtime.settler!.activeOperationId, isNull);
         if (!release.isCompleted) release.complete();
         final replayed = await update(1);
         expect(replayed.outcome, api.AdminAnswerOutcome.ended);
@@ -832,8 +853,13 @@ void main() {
           replayed.operation?.reason,
           api.PublicReason.postgresUnreachable,
         );
+        final operations = await server.pod.withSession(
+          (session) => SdeAdminOperation.db.count(session),
+        );
+        expect(operations, 1);
         expect(worker.checks, isEmpty);
       },
+      timeout: const Timeout(Duration(minutes: 3)),
     );
   }
 

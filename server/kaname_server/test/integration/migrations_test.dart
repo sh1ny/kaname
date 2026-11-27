@@ -91,6 +91,14 @@ Future<pg.Connection> _seedM2Identities(Session session) async {
            (24, '${ssoDigest(_m2Orphan)}', 99, '2030-01-01');
     INSERT INTO esi_scope_opt_in ("memberId", owner, "scopeClass", "policyFingerprint")
     VALUES (11, 'shared-owner', 'characterSkills', 'old-policy');
+    INSERT INTO esi_token_vault
+      ("characterId", "holderKind", "holderId", generation, status, "sealedCredential", fence)
+    VALUES (410, 'server', 'fixture-install', 7, 'active', 'fixture-main-sealed', 3),
+           (411, 'server', 'fixture-install', 13, 'active', 'fixture-alt-sealed', 8);
+    INSERT INTO esi_holder_assignment
+      ("characterId", phase, generation, "vaultGeneration", "grantFingerprint")
+    VALUES (410, 'serverHeld', 5, 7, 'fixture-main-grant'),
+           (411, 'serverHeld', 9, 13, 'fixture-alt-grant');
     INSERT INTO esi_call_log_entry ("recordedAt", operation, outcome,
                                     "latencyMicros", "memberId", "characterId")
     VALUES ('2026-11-26', 'GetCharactersCharacterIdSkills', 'success', 1, 11, 411);
@@ -374,6 +382,48 @@ FOR EACH STATEMENT EXECUTE FUNCTION fail_report_upgrade();
           FROM esi_scope_opt_in
         ''')).single.toList(),
           [11, 'shared-owner', 'characterSkills', 'old-policy'],
+        );
+        expect(
+          (await db.execute('''
+          SELECT v."characterId", i.owner, v."holderKind", v."holderId",
+                 v.generation, v.status, v."sealedCredential", v.fence
+          FROM esi_token_vault v JOIN esi_identity i USING ("characterId")
+          ORDER BY v."characterId"
+        ''')).map((row) => row.toList()),
+          [
+            [
+              410,
+              'shared-owner',
+              'server',
+              'fixture-install',
+              7,
+              'active',
+              'fixture-main-sealed',
+              3,
+            ],
+            [
+              411,
+              'shared-owner',
+              'server',
+              'fixture-install',
+              13,
+              'active',
+              'fixture-alt-sealed',
+              8,
+            ],
+          ],
+        );
+        expect(
+          (await db.execute('''
+          SELECT h."characterId", i.owner, h.phase, h.generation,
+                 h."vaultGeneration", h."grantFingerprint"
+          FROM esi_holder_assignment h JOIN esi_identity i USING ("characterId")
+          ORDER BY h."characterId"
+        ''')).map((row) => row.toList()),
+          [
+            [410, 'shared-owner', 'serverHeld', 5, 7, 'fixture-main-grant'],
+            [411, 'shared-owner', 'serverHeld', 9, 13, 'fixture-alt-grant'],
+          ],
         );
         expect(
           (await db.execute(
