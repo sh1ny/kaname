@@ -1716,7 +1716,8 @@ void main() {
         character: viewer.identity.characterId,
       ), 411);
     }, enableLogging: false);
-    Future<http.Response>? revocation;
+    late final Future<http.Response> revocation;
+    var replied = false;
     try {
       final holder = await Future.any<int>([
         locked.future,
@@ -1724,21 +1725,22 @@ void main() {
           (_) => fail('Unlink settled before taking the acting lock.'),
         ),
       ]);
-      final pendingRevocation = revocation = post(
-        'sign-out',
-        {},
-        bearer: retained,
-      );
+      revocation = post('sign-out', {}, bearer: retained).whenComplete(() {
+        replied = true;
+      });
       await pod.pod.withSession(
-        (s) => observePostgresLock(s, holder, pendingRevocation),
+        (s) => observePostgresLock(s, holder, revocation),
         enableLogging: false,
       );
+      expect(replied, isFalse, reason: 'Unlink still holds the session lock.');
     } finally {
       settle.complete();
       expect(await write, MemberAccountStatus.unlinked);
     }
-    // The caller never sees the first acknowledgment.
-    await revocation;
+    final first = await revocation;
+    expect(first.statusCode, 200);
+    expect(jsonDecode(first.body), {'status': 'signedOut'});
+    // Simulate losing that acknowledgment before retrying the same bearer.
     expect((await post('viewer', {}, bearer: retained)).statusCode, 401);
     final retried = await post('sign-out', {}, bearer: retained);
     expect(retried.statusCode, 200);
