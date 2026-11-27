@@ -24,10 +24,13 @@ final class EsiCallLogEndpoint extends Endpoint {
 
 /// Per-server admission and one cached result for the current release window.
 final class EsiCallLogReads {
-  /// Uses the same release boundary for the query and for cache admission.
-  EsiCallLogReads(this._store);
+  /// Uses the same durable release boundary for query and response admission.
+  /// [readSeal] defaults to a fresh read from the store.
+  EsiCallLogReads(this._store, {Future<DateTime?> Function(Session)? readSeal})
+    : _readSeal = readSeal ?? _store.currentSeal;
 
   final EsiCallLogStore _store;
+  final Future<DateTime?> Function(Session) _readSeal;
   final _reading = <int>{};
   ({DateTime window, EsiRouteCountPage page})? _cached;
   ({DateTime window, Future<EsiRouteCountPage> page})? _computing;
@@ -124,18 +127,9 @@ final class EsiCallLogReads {
     try {
       final viewer = await _viewer(session, member, auth.authId, true);
       if (viewer == null) return failure('denied');
-      final window = _store.releasedWindow;
-      final cached = _cached;
-      if (cached?.window == window) return cached!.page;
-      final active = _computing;
-      if (active?.window == window) return await active!.page;
-      final future = _compute(session, viewer);
-      _computing = (window: window, page: future);
-      try {
-        return await future;
-      } finally {
-        if (identical(_computing?.page, future)) _computing = null;
-      }
+      final window = await _store.sealWindow(session);
+      final page = await _pageForSeal(session, viewer, window);
+      return await _readSeal(session) == window ? page : failure('unavailable');
     } on EsiCallLogDenied {
       return failure('denied');
     } on Object {
@@ -145,15 +139,36 @@ final class EsiCallLogReads {
     }
   }
 
+  Future<EsiRouteCountPage> _pageForSeal(
+    Session session,
+    EsiCallLogViewer viewer,
+    DateTime window,
+  ) async {
+    final cached = _cached;
+    if (cached?.window == window) return cached!.page;
+    final active = _computing;
+    if (active?.window == window) return active!.page;
+    final future = _compute(session, viewer, window);
+    if (active == null || active.window.isBefore(window)) {
+      _computing = (window: window, page: future);
+    }
+    try {
+      return await future;
+    } finally {
+      if (identical(_computing?.page, future)) _computing = null;
+    }
+  }
+
   Future<EsiRouteCountPage> _compute(
     Session session,
     EsiCallLogViewer viewer,
+    DateTime window,
   ) async {
-    final computed = await _store.routeCountsWithWindow(session, viewer);
+    final rows = await _store.countsForSeal(session, viewer, window);
     final page = EsiRouteCountPage(
       status: 'ok',
       rows: List.unmodifiable([
-        for (final row in computed.rows)
+        for (final row in rows)
           EsiRouteCount(
             operation: row.operation,
             total: row.total,
@@ -161,8 +176,9 @@ final class EsiCallLogReads {
           ),
       ]),
     );
-    if (_store.releasedWindow == computed.window) {
-      _cached = (window: computed.window, page: page);
+    final cached = _cached;
+    if (cached == null || cached.window.isBefore(window)) {
+      _cached = (window: window, page: page);
     }
     return page;
   }

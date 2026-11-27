@@ -56,7 +56,9 @@ void main() {
     setUp(() async {
       session = builder.build();
       addTearDown(session.close);
-      await session.db.unsafeExecute('DELETE FROM esi_call_log_entry');
+      await session.db.unsafeExecute(
+        'TRUNCATE esi_call_log_entry, esi_call_log_seal',
+      );
       now = day.add(const Duration(minutes: 2));
       store = EsiCallLogStore(now: () => now);
     });
@@ -133,6 +135,7 @@ void main() {
             'bucket',
             'memberId',
             'characterId',
+            'accountExcluded',
           ]),
         );
         expect(row.single, isNot(contains(secret)));
@@ -194,7 +197,13 @@ void main() {
         for (var owner = 1; owner <= 5; owner++) {
           await seed(session, recent, owner: owner, character: owner * 10);
           if (owner != 5) {
-            await seed(session, recent, route: other, owner: owner);
+            await seed(
+              session,
+              recent,
+              route: other,
+              owner: owner,
+              character: owner * 10,
+            );
           }
         }
         await seed(session, recent, outcome: 'notSent');
@@ -253,7 +262,7 @@ void main() {
 
     test('no trusted member excludes a private row', () async {
       for (var owner = 1; owner <= 4; owner++) {
-        await seed(session, recent, owner: owner);
+        await seed(session, recent, owner: owner, character: owner * 10);
       }
       await seed(session, recent, owner: null);
       expect((await store.ownRows(session, member)).single.character, 10);
@@ -303,7 +312,10 @@ void main() {
       try {
         await Future.any([locked.future, held]);
         await expectLater(
-          store.routeCounts(session, admin),
+          EsiCallLogStore(
+            now: () => now,
+            waitForReleaseLock: false,
+          ).routeCounts(session, admin),
           throwsA(isA<EsiCallLogUnavailable>()),
         );
       } finally {

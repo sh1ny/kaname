@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:kaname_server/src/esi/esi_call_log_endpoint.dart';
 import 'package:kaname_server/src/esi/esi_call_log_store.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
@@ -82,6 +84,7 @@ void main() {
       now = DateTime.now().toUtc();
       session = sessions.build();
       addTearDown(session.close);
+      await session.db.unsafeExecute('DELETE FROM esi_call_log_seal');
       first = await addPilot(511);
       second = await addPilot(512);
       addTearDown(() async {
@@ -226,10 +229,70 @@ void main() {
       }
       final before = await reader.totals(admin);
       expect(before.rows.single.total, 5);
-      await receipt(second, at.subtract(const Duration(days: 2)));
+      await receipt(second, at);
       expect((await reader.totals(other)).rows.single.total, 5);
       clock = at.add(const Duration(days: 1));
       expect((await reader.totals(other)).rows.single.total, 6);
     });
+
+    test('newer seal refuses prior results for owners waiters and cache hits before admission', () async {
+      var clock = DateTime.utc(2026, 11, 25, 9);
+      final store = EsiCallLogStore(now: () => clock);
+      final owner = signed(first, admin: true).build();
+      final waiter = signed(second, admin: true).build();
+      addTearDown(owner.close);
+      addTearDown(waiter.close);
+      for (final pilot in [
+        first,
+        second,
+        await addPilot(513),
+        await addPilot(514),
+        await addPilot(515),
+      ]) {
+        await receipt(pilot, clock.subtract(const Duration(days: 2)));
+      }
+
+      for (final warmCache in [false, true]) {
+        final paused = Completer<void>();
+        final resume = Completer<void>();
+        final expected = warmCache ? 1 : 2;
+        var checks = 0;
+        var fence = !warmCache;
+        final reader = EsiCallLogReads(
+          store,
+          readSeal: (admitting) async {
+            if (fence) {
+              if (++checks == expected) paused.complete();
+              await resume.future;
+            }
+            return store.currentSeal(admitting);
+          },
+        );
+        if (warmCache) {
+          final admitted = await reader.totals(owner);
+          expect(admitted.rows.single.total, 5);
+          fence = true;
+        }
+        final responses = [
+          reader.totals(owner),
+          if (!warmCache) reader.totals(waiter),
+        ];
+        try {
+          await Future.any([
+            paused.future,
+            for (final response in responses)
+              response.then((_) => fail('response did not await admission')),
+          ]);
+          clock = clock.add(const Duration(days: 1));
+          await store.sealWindow(session);
+        } finally {
+          resume.complete();
+        }
+        for (final page in await Future.wait(responses)) {
+          expect(page.status, 'unavailable');
+          expect(page.rows, isEmpty);
+        }
+      }
+    }, timeout: const Timeout(Duration(minutes: 3)));
   }, rollbackDatabase: RollbackDatabase.disabled);
 }

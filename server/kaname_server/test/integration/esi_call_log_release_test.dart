@@ -1,0 +1,346 @@
+import 'dart:async';
+
+import 'package:kaname_esi/kaname_esi.dart';
+import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
+import 'package:kaname_server/src/esi/esi_call_log_store.dart';
+import 'package:serverpod/serverpod.dart';
+import 'package:test/test.dart';
+
+import 'esi_call_log_test.dart' show admin, assets, other, probe, seed;
+import 'test_tools/serverpod_test_tools.dart';
+
+void main() {
+  withServerpod('ESI call-log release', (sessions, _) {
+    final day = DateTime.utc(2090, 1, 15);
+    final grace = day.add(const Duration(minutes: 1));
+    final recent = day.subtract(const Duration(hours: 1));
+    late Session session;
+    late DateTime clock;
+    late EsiCallLogStore store;
+
+    setUp(() async {
+      session = sessions.build();
+      addTearDown(session.close);
+      await session.db.unsafeExecute('''
+        TRUNCATE esi_call_log_entry, esi_call_log_exclusion, esi_call_log_seal
+      ''');
+      clock = grace;
+      store = EsiCallLogStore(now: () => clock);
+    });
+
+    Future<void> independent(int size) async {
+      for (var id = 1; id <= size; id++) {
+        await seed(session, recent, owner: id, character: id * 10);
+      }
+    }
+
+    Future<void> exclusion(
+      int account,
+      DateTime at, {
+      Transaction? transaction,
+    }) async {
+      await session.db.unsafeExecute(
+        'INSERT INTO esi_call_log_exclusion (id, "excludedAt") '
+        'VALUES (@id::bigint, @at::timestamp)',
+        parameters: QueryParameters.named({'id': account, 'at': at}),
+        transaction: transaction,
+      );
+    }
+
+    Future<void> rejectSeal() async {
+      await session.db.unsafeExecute('''
+        CREATE OR REPLACE FUNCTION fail_test_call_log_seal() RETURNS trigger
+        LANGUAGE plpgsql AS \$\$
+        BEGIN RAISE EXCEPTION 'intentional seal failure'; END;
+        \$\$
+      ''');
+      await session.db.unsafeExecute('''
+        CREATE TRIGGER fail_test_call_log_seal BEFORE INSERT OR UPDATE
+        ON esi_call_log_seal FOR EACH STATEMENT
+        EXECUTE FUNCTION fail_test_call_log_seal()
+      ''');
+      addTearDown(() async {
+        await session.db.unsafeExecute('''
+          DROP TRIGGER IF EXISTS fail_test_call_log_seal ON esi_call_log_seal
+        ''');
+      });
+    }
+
+    Future<void> allowSeal() async {
+      await session.db.unsafeExecute('''
+        DROP TRIGGER fail_test_call_log_seal ON esi_call_log_seal
+      ''');
+    }
+
+    Future<DateTime?> sealedEnd() async {
+      final rows = await session.db.unsafeQuery('''
+        SELECT "windowEnd" FROM esi_call_log_seal WHERE id = 1
+      ''');
+      return rows.isEmpty ? null : (rows.single.single as DateTime).toUtc();
+    }
+
+    test(
+      'next window is not published before its UTC grace and committed seal',
+      () async {
+        clock = day;
+        await seed(session, recent, route: probe, owner: null, character: null);
+        expect(await store.routeCounts(session, admin), isEmpty);
+        expect(await sealedEnd(), day.subtract(const Duration(days: 1)));
+        clock = grace;
+        await rejectSeal();
+        await expectLater(
+          store.routeCounts(session, admin),
+          throwsA(isA<EsiCallLogUnavailable>()),
+        );
+        await allowSeal();
+        expect((await store.routeCounts(session, admin)).single.total, 1);
+        expect(await sealedEnd(), day);
+      },
+    );
+
+    test(
+      'eligible accounts qualify totals including ineligible calls',
+      () async {
+        await independent(5);
+        for (final id in [6, 7]) {
+          await seed(
+            session,
+            recent,
+            owner: id,
+            character: 70,
+            outcome: 'error',
+          );
+        }
+        expect(await store.routeCounts(session, admin), [
+          (operation: assets, total: 7, errors: 2),
+        ]);
+      },
+    );
+
+    test(
+      'one character across several accounts cannot qualify a private route',
+      () async {
+        for (var id = 1; id <= 5; id++) {
+          await seed(session, recent, owner: id, character: 10);
+        }
+        expect(await store.routeCounts(session, admin), isEmpty);
+      },
+    );
+
+    test(
+      'overlap on another route disqualifies accounts for the window',
+      () async {
+        await independent(5);
+        await seed(session, recent, route: other, owner: 6, character: 10);
+        expect(await store.routeCounts(session, admin), isEmpty);
+      },
+    );
+
+    test(
+      'pre-cutoff join disqualifies retained receipts without a new append',
+      () async {
+        await independent(5);
+        await exclusion(5, grace.subtract(const Duration(microseconds: 1)));
+        expect(await store.routeCounts(session, admin), isEmpty);
+      },
+    );
+
+    for (final commit in [true, false]) {
+      test(
+        commit
+            ? 'release includes committed exclusion stamped before cutoff'
+            : 'rolled-back exclusion does not disqualify contributors',
+        () async {
+          await independent(5);
+          final wrote = Completer<void>();
+          final settle = Completer<void>();
+          final aborted = StateError('intentional transaction rollback');
+          final holding = session.db.transaction((tx) async {
+            await session.db.unsafeQuery(
+              'SELECT pg_advisory_xact_lock_shared(682997614)',
+              transaction: tx,
+            );
+            await exclusion(
+              5,
+              grace.subtract(const Duration(seconds: 1)),
+              transaction: tx,
+            );
+            wrote.complete();
+            await settle.future;
+            if (!commit) throw aborted;
+          });
+          final settled = commit
+              ? holding
+              : expectLater(holding, throwsA(same(aborted)));
+          await Future.any([wrote.future, holding]);
+          final read = store.routeCounts(session, admin);
+          settle.complete();
+          await settled;
+          final rows = await read;
+          if (commit) {
+            expect(rows, isEmpty);
+          } else {
+            expect(rows.single.total, 5);
+          }
+        },
+      );
+    }
+
+    test(
+      'release with an unresolved pre-cutoff write is unavailable',
+      () async {
+        await independent(5);
+        final wrote = Completer<void>();
+        final settle = Completer<void>();
+        final holding = session.db.transaction((tx) async {
+          await session.db.unsafeQuery(
+            'SELECT pg_advisory_xact_lock_shared(682997614)',
+            transaction: tx,
+          );
+          await exclusion(
+            5,
+            grace.subtract(const Duration(seconds: 1)),
+            transaction: tx,
+          );
+          wrote.complete();
+          await settle.future;
+        });
+        try {
+          await Future.any([wrote.future, holding]);
+          await expectLater(
+            EsiCallLogStore(
+              now: () => clock,
+              waitForReleaseLock: false,
+            ).routeCounts(session, admin),
+            throwsA(isA<EsiCallLogUnavailable>()),
+          );
+          expect(await sealedEnd(), isNull);
+        } finally {
+          settle.complete();
+          await holding;
+        }
+        expect(await store.routeCounts(session, admin), isEmpty);
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+
+    test('exclusion at the exact cutoff affects only later windows', () async {
+      await independent(5);
+      await exclusion(5, grace);
+      expect((await store.routeCounts(session, admin)).single.total, 5);
+      clock = grace.add(const Duration(days: 1));
+      expect(await store.routeCounts(session, admin), isEmpty);
+    });
+
+    test(
+      'post-cutoff exclusion leaves the same totals with a cold cache',
+      () async {
+        await independent(5);
+        final prior = await store.routeCounts(session, admin);
+        await exclusion(5, grace.add(const Duration(microseconds: 1)));
+        clock = grace.add(const Duration(minutes: 1));
+        expect(
+          await EsiCallLogStore(now: () => clock).routeCounts(session, admin),
+          prior,
+        );
+      },
+    );
+
+    test(
+      'retiring an account does not change its receipt eligibility',
+      () async {
+        await independent(5);
+        // Diagnostic account 5 has no live account row after retirement.
+        await exclusion(5, grace.subtract(const Duration(seconds: 1)));
+        expect(await store.routeCounts(session, admin), isEmpty);
+      },
+    );
+
+    test('sealed range rejects late input and retains totals across a clock step and restart', () async {
+      await independent(5);
+      final prior = await store.routeCountsWithWindow(session, admin);
+      expect(prior.rows.single.total, 5);
+      clock = day.subtract(const Duration(seconds: 3));
+      final restarted = EsiCallLogStore(now: () => clock);
+      await session.db.transaction(
+        (tx) => restarted.excludeAccount(session, tx, 5),
+      );
+      final excluded = await session.db.unsafeQuery('''
+        SELECT "excludedAt" FROM esi_call_log_exclusion WHERE id = 5
+      ''');
+      expect((excluded.single.single as DateTime).toUtc(), grace);
+      final scheduler = EsiScheduler(
+        state: MemorySchedulerState(),
+        key: const [1],
+        now: () => clock,
+        callLog: (receipt) => restarted.append(session, receipt),
+        send: (_, _, _) async => WireResponse(EsiResponse(status: 304)),
+      );
+      await scheduler.client(EsiPriority.interactive).getStatus();
+      await scheduler.drainCallLog();
+      final rows = await session.db.unsafeQuery(
+        'SELECT count(*) FROM esi_call_log_entry',
+      );
+      expect(rows.single.single, 5);
+      final after = await restarted.routeCountsWithWindow(session, admin);
+      expect(after.window, prior.window);
+      expect(after.rows, prior.rows);
+    });
+
+    test('an unsealed cutoff crossing does not freeze eligibility', () async {
+      await independent(5);
+      expect(await sealedEnd(), isNull);
+      clock = day;
+      await exclusion(5, clock);
+      expect(await sealedEnd(), isNull);
+      clock = grace;
+      expect(await store.routeCounts(session, admin), isEmpty);
+      expect(await sealedEnd(), day);
+    });
+
+    test('seal failure yields no page and recovery cannot regress', () async {
+      await independent(5);
+      await rejectSeal();
+      await expectLater(
+        store.routeCounts(session, admin),
+        throwsA(isA<EsiCallLogUnavailable>()),
+      );
+      expect(await sealedEnd(), isNull);
+      await allowSeal();
+      expect((await store.routeCounts(session, admin)).single.total, 5);
+      clock = day;
+      expect(
+        (await EsiCallLogStore(
+          now: () => clock,
+        ).routeCountsWithWindow(session, admin)).window,
+        day,
+      );
+    });
+
+    test('prune and replacement seal commit or roll back together', () async {
+      await seed(session, day.subtract(const Duration(days: 5)), route: probe);
+      await seed(session, day.add(const Duration(days: 1)), route: probe);
+      expect((await store.routeCounts(session, admin)).single.total, 1);
+      await rejectSeal();
+      clock = grace.add(const Duration(days: 3));
+      await expectLater(
+        store.prune(session),
+        throwsA(isA<EsiCallLogUnavailable>()),
+      );
+      expect(await sealedEnd(), day);
+      expect(
+        (await session.db.unsafeQuery(
+          'SELECT count(*) FROM esi_call_log_entry',
+        )).single.single,
+        2,
+      );
+      await allowSeal();
+      expect(await store.prune(session), 1);
+      clock = grace;
+      final after = await EsiCallLogStore(now: () => clock)
+          .routeCountsWithWindow(session, admin);
+      expect(after.window, day.add(const Duration(days: 3)));
+      expect(after.rows.single.total, 1);
+    });
+  }, rollbackDatabase: RollbackDatabase.disabled);
+}
