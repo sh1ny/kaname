@@ -7,6 +7,8 @@ import 'package:kaname_app/esi_sso/data/call_log_client.dart';
 import 'package:kaname_app/esi_sso/logic/call_log.dart';
 import 'package:kaname_app/esi_sso/ui/call_log_panel.dart';
 import 'package:kaname_app/l10n/generated/app_localizations.dart';
+import 'package:kaname_app/server/data/server_address.dart';
+import 'package:kaname_app/server/logic/server_status.dart';
 import 'package:kaname_client/kaname_client.dart';
 import 'package:kaname_ember_ui/kaname_ember_ui.dart';
 
@@ -38,6 +40,7 @@ void main() {
     final current = _Reader();
     final container = ProviderContainer(
       overrides: [
+        serverTargetProvider.overrideWithValue(const NoServer()),
         callLogAccessProvider.overrideWith((ref) => ref.watch(_fixture)),
       ],
     );
@@ -66,6 +69,7 @@ void main() {
       final reader = _Reader();
       final container = ProviderContainer.test(
         overrides: [
+          serverTargetProvider.overrideWithValue(const NoServer()),
           callLogAccessProvider.overrideWith((ref) => ref.watch(_fixture)),
         ],
       );

@@ -10,6 +10,7 @@ import '../../settings/ui/settings_section.dart';
 import '../data/account_types.dart';
 import '../data/desktop_platform.dart';
 import '../logic/account.dart';
+import 'member_roster_panel.dart';
 
 /// Connected and solo account actions, with separate dispatch buttons.
 final class EsiAccountSection extends ConsumerStatefulWidget {
@@ -73,7 +74,7 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
     final notice = switch (state) {
       AccountIdle(:final notice) => notice,
       AccountBrowser(:final notice) => notice,
-      AccountWorking() => AccountNotice.none,
+      AccountWorking() || AccountUnlinkRecovery() => AccountNotice.none,
     };
     ref.listen(accountProvider, (before, after) {
       if (after is AccountIdle) _code.clear();
@@ -86,7 +87,11 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
           if (serverHolder != null) Text(serverHolder),
         ],
         if (state case AccountBrowser(:final attempt)) ...[
-          Text(l10n.esiBrowserInstruction),
+          Text(
+            attempt.linking
+                ? l10n.esiRosterLinkInstruction
+                : l10n.esiBrowserInstruction,
+          ),
           _buttons([
             FilledButton(
               onPressed: () => _open(attempt.url),
@@ -108,7 +113,9 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
               onPressed: () =>
                   account.complete(code: kIsWeb ? null : _code.text.trim()),
               child: Text(
-                attempt.scoped
+                attempt.linking
+                    ? l10n.esiRosterFinishLink
+                    : attempt.scoped
                     ? l10n.esiFinishAuthorization
                     : l10n.esiFinishSignIn,
               ),
@@ -126,6 +133,10 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
             Text(l10n.esiSecureConnection),
         ] else if (idle && connected != null) ...[
           _buttons([
+            FilledButton.tonal(
+              onPressed: account.linkCharacter,
+              child: Text(l10n.esiRosterLink),
+            ),
             FilledButton.tonal(
               onPressed: () => account.start(scoped: true),
               child: Text(l10n.esiAuthorizeServer),
@@ -165,6 +176,19 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
               ),
           ]),
         ],
+        if (state case AccountUnlinkRecovery(:final revoking)) ...[
+          Semantics(liveRegion: true, child: Text(l10n.esiRosterRecovery)),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonal(
+              onPressed: revoking ? null : account.recoverUnlink,
+              child: Text(
+                revoking ? l10n.esiRosterRevoking : l10n.esiRosterRevoke,
+              ),
+            ),
+          ),
+        ],
+        if (connected != null) MemberRosterPanel(canEdit: idle),
         if (state case AccountWorking(:final native)) ...[
           const LinearProgressIndicator(),
           if (native)
@@ -239,6 +263,9 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
               AccountNotice.reauthorize => l10n.esiReauthorize,
               AccountNotice.takeNotAccepted => l10n.esiTakeNotAccepted,
               AccountNotice.takeUnconfirmed => l10n.esiTakeUnconfirmed,
+              AccountNotice.memberLinked => l10n.esiRosterLinked,
+              AccountNotice.memberMainRequired => l10n.esiRosterMainRequired,
+              AccountNotice.memberRefused => l10n.esiRosterRefused,
             }),
           ),
         if (state case AccountIdle(refusal: final refusal?))

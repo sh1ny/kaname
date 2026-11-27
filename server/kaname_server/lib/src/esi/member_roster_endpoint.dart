@@ -101,7 +101,10 @@ final class MemberRosterIngress {
   /// Shares one slot across bearer authentication and page work.
   Middleware get middleware =>
       (next) => (request) async {
-        if (request.url.pathSegments.firstOrNull != 'memberRoster') {
+        // Serverpod joins decoded segments before splitting endpoint and method.
+        final first = request.url.pathSegments.firstOrNull;
+        if (first == null ||
+            first != 'memberRoster' && !first.startsWith('memberRoster/')) {
           return next(request);
         }
         if (_active == 4) {

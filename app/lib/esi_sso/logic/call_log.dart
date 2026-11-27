@@ -78,7 +78,10 @@ final class CallLogNotifier extends Notifier<CallLogState> {
   @override
   CallLogState build() {
     _epoch++;
-    _source = ref.watch(callLogAccessProvider);
+    ref.watch(membershipEpochProvider);
+    final suspended = ref.watch(membershipReadSuspendedProvider);
+    final source = ref.watch(callLogAccessProvider);
+    _source = suspended ? null : source;
     return _source == null ? const CallLogHidden() : const CallLogIdle();
   }
 
@@ -86,7 +89,11 @@ final class CallLogNotifier extends Notifier<CallLogState> {
   Future<void> own({bool older = false}) async {
     final source = _source;
     final before = state;
-    if (source == null || before is CallLogLoading) return;
+    if (source == null ||
+        before is CallLogLoading ||
+        ref.read(membershipReadSuspendedProvider)) {
+      return;
+    }
     final after = older && before is CallLogOwn ? before.page.next : null;
     if (older && after == null) return;
     await _load(source, () async {
@@ -100,7 +107,12 @@ final class CallLogNotifier extends Notifier<CallLogState> {
   /// Requests the fixed-window admin comparison without caller filters.
   Future<void> totals() async {
     final source = _source;
-    if (source == null || !source.admin || state is CallLogLoading) return;
+    if (source == null ||
+        !source.admin ||
+        state is CallLogLoading ||
+        ref.read(membershipReadSuspendedProvider)) {
+      return;
+    }
     await _load(source, () async {
       final answer = await source.totals();
       return answer.status == 'ok'
@@ -114,6 +126,7 @@ final class CallLogNotifier extends Notifier<CallLogState> {
     Future<CallLogState> Function() load,
   ) async {
     final epoch = ++_epoch;
+    final revision = ref.read(membershipEpochProvider);
     state = const CallLogLoading();
     CallLogState result;
     try {
@@ -123,6 +136,8 @@ final class CallLogNotifier extends Notifier<CallLogState> {
     }
     if (!ref.mounted ||
         epoch != _epoch ||
+        revision != ref.read(membershipEpochProvider) ||
+        ref.read(membershipReadSuspendedProvider) ||
         !identical(ref.read(callLogAccessProvider), source)) {
       return;
     }

@@ -862,6 +862,72 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get esiRosterTitle => 'Linked characters';
+
+  @override
+  String esiRosterMain(String name) {
+    return 'Main: $name';
+  }
+
+  @override
+  String esiRosterSigner(String name) {
+    return 'Signed in as: $name';
+  }
+
+  @override
+  String esiRosterBlocked(String name) {
+    return '$name (blocked)';
+  }
+
+  @override
+  String get esiRosterLink => 'Link character';
+
+  @override
+  String get esiRosterLinkInstruction =>
+      'Use EVE sign-in for the character you want to link, then return here.';
+
+  @override
+  String get esiRosterFinishLink => 'Finish linking';
+
+  @override
+  String get esiRosterLinked => 'Character linked.';
+
+  @override
+  String get esiRosterMakeMain => 'Make main';
+
+  @override
+  String get esiRosterUnlink => 'Unlink';
+
+  @override
+  String get esiRosterMainRequired =>
+      'Select a new main before unlinking this character.';
+
+  @override
+  String get esiRosterRefused => 'Kaname did not change the linked characters.';
+
+  @override
+  String get esiRosterNext => 'Next characters';
+
+  @override
+  String get esiRosterRefresh => 'Refresh characters';
+
+  @override
+  String get esiRosterBusy => 'The character list is busy. Try again.';
+
+  @override
+  String get esiRosterUnavailable => 'The character list is unavailable.';
+
+  @override
+  String get esiRosterRecovery =>
+      'Kaname could not confirm the unlink. Revoke the old session, then sign in again to see your characters and call history.';
+
+  @override
+  String get esiRosterRevoke => 'Revoke old session';
+
+  @override
+  String get esiRosterRevoking => 'Revoking the old session…';
+
+  @override
   String get esiCallLogTitle => 'ESI call log';
 
   @override

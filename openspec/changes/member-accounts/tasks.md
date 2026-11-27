@@ -25,13 +25,13 @@
 | Unlinking ends the removed character's account access | The member unlinks the alt they signed in with | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `self-unlink revokes the old bearer and a later sign-in is standalone` | green |
 | Unlinking ends the removed character's account access | Unlinking leaves existing ESI authorization with the character | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `unlink retains held grant opt-ins and holder assignment` | green |
 | Unlinking ends the removed character's account access | The member tries to unlink the main | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `unlink refuses the main without changing membership` | green |
-| Connected Settings shows the account and its characters | A linked alt opens Settings | `app/test/esi_sso/member_accounts_settings_test.dart` | `connected Settings shows account main and signing alt` | red |
+| Connected Settings shows the account and its characters | A linked alt opens Settings | `app/test/esi_sso/member_accounts_settings_test.dart` | `connected Settings shows account main and signing alt` | green |
 | Connected Settings shows the account and its characters | The roster spans more than one page | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `roster pages resume in display order without hiding main or signer` | green |
-| Connected Settings shows the account and its characters | A late account reply crosses sign-out or server change | `app/test/esi_sso/member_accounts_settings_test.dart` | `old roster reply cannot cross sign-out or an origin change` | red |
-| Connected Settings shows the account and its characters | An old page reply arrives after unlink on the same session | `app/test/esi_sso/member_accounts_settings_test.dart` | `confirmed unlink drops an older second page on the same bearer` | red |
-| An ambiguous unlink requires session recovery | An old page arrives during ambiguous unlink recovery | `app/test/esi_sso/member_accounts_settings_test.dart` | `ambiguous unlink fences roster replies until fresh sign-in` | red |
+| Connected Settings shows the account and its characters | A late account reply crosses sign-out or server change | `app/test/esi_sso/member_accounts_settings_test.dart` | `old roster reply cannot cross sign-out`; `old roster reply cannot cross an origin change` | green |
+| Connected Settings shows the account and its characters | An old page reply arrives after unlink on the same session | `app/test/esi_sso/member_accounts_settings_test.dart` | `confirmed unlink drops an older second page on the same bearer` | green |
+| An ambiguous unlink requires session recovery | An old page arrives during ambiguous unlink recovery | `app/test/esi_sso/member_accounts_settings_test.dart` | `ambiguous unlink fences roster replies until fresh sign-in` | green |
 | An ambiguous unlink requires session recovery | Revocation orders with an unsettled unlink | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `exact revocation orders with unlink in either lock order` | green |
-| An ambiguous unlink requires session recovery | Revocation commits but its acknowledgment is lost | `app/test/esi_sso/member_accounts_settings_test.dart` | `lost revocation acknowledgment requires same-session retry then fresh sign-in` | red |
+| An ambiguous unlink requires session recovery | Revocation commits but its acknowledgment is lost | `app/test/esi_sso/member_accounts_settings_test.dart` | `lost revocation acknowledgment requires same-session retry then fresh sign-in` | green |
 | Roster reads do not queue | A remaining slot admits a roster page | `server/kaname_server/test/integration/esi/member_accounts_roster_test.dart` | `free slots admit the next bounded page` | green |
 | Roster reads do not queue | The global ingress limit refuses before bearer authentication | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `fifth roster RPC makes no bearer lookup on native or proxied web ingress` | green |
 | Roster reads do not queue | The same account cannot occupy multiple page slots | `server/kaname_server/test/integration/esi/member_accounts_roster_test.dart` | `second session of one account gets busy without blocking another account` | green |
@@ -78,8 +78,8 @@
 | Released aggregate windows cannot go backward | A seal cannot be confirmed | `server/kaname_server/test/integration/esi_call_log_release_test.dart` | `seal failure yields no page and recovery cannot regress` | green |
 | Released aggregate windows cannot go backward | Pruning advances beyond the previously sealed input | `server/kaname_server/test/integration/esi_call_log_release_test.dart` | `prune and replacement seal commit or roll back together` | green |
 | Account changes invalidate affected call-log access | The remaining member reads history again after unlink | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `membership changes neither move receipts nor grant prior-account reads` | green |
-| Account changes invalidate affected call-log access | A late response cannot restore a locally removed character's history | `app/test/esi_sso/call_log_notifier_test.dart` | `unlink fences a pending old own-history reply` | red |
-| Account changes invalidate affected call-log access | The app loses an unlink reply | `app/test/esi_sso/call_log_notifier_test.dart` | `lost unlink keeps own history empty until fresh sign-in` | red |
+| Account changes invalidate affected call-log access | A late response cannot restore a locally removed character's history | `app/test/esi_sso/member_accounts_settings_test.dart` | `unlink fences a pending old own-history reply` | green |
+| Account changes invalidate affected call-log access | The app loses an unlink reply | `app/test/esi_sso/member_accounts_settings_test.dart` | `lost unlink keeps own history empty until fresh sign-in` | green |
 | Account changes invalidate affected call-log access | A revoked admin cannot read cached totals | `server/kaname_server/test/integration/esi/call_log_endpoint_test.dart` | `revoked allowlisted alt cannot use cached route totals` | green |
 
 ## 1. Account and authority contract
@@ -108,8 +108,8 @@
 
 ## 6. Connected ESI Settings
 
-- [ ] 6.1 Add failing Settings widget and call-log notifier tests from the map. Exercise same-origin live roster, solo absence, page and viewer epochs, unlink in flight, confirmed self-unlink, and ambiguous recovery. Use a deferred reply for the old page and verify neither history nor roster returns on failed revocation; a retry uses only the exact original-origin bearer until the server confirms absence.
-- [ ] 6.2 Wire the in-memory connected Settings view and generated RPC adapter. Restart paging after confirmed changes; revoke and require fresh sign-in after ambiguous unlink. Fence both roster and history and preserve the existing browser and native connected flows. Verify 6.1 and existing connected SSO tests, and inspect the Settings surface. Verify C14 in the call-log spec, and both parts of C18 in the connected Settings and session recovery requirements.
+- [x] 6.1 Add failing Settings widget and call-log notifier tests from the map. Exercise same-origin live roster, solo absence, page and viewer epochs, unlink in flight, confirmed self-unlink, and ambiguous recovery. Use a deferred reply for the old page and verify neither history nor roster returns on failed revocation; a retry uses only the exact original-origin bearer until the server confirms absence.
+- [x] 6.2 Wire the in-memory connected Settings view and generated RPC adapter. Restart paging after confirmed changes; revoke and require fresh sign-in after ambiguous unlink. Fence both roster and history and preserve the existing browser and native connected flows. Verify 6.1 and existing connected SSO tests, and inspect the Settings surface. Verify C14 in the call-log spec, and both parts of C18 in the connected Settings and session recovery requirements.
 
 ## Workflow follow-up
 

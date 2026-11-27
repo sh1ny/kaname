@@ -1165,11 +1165,15 @@ void main() {
       final arrived = Completer<void>();
       var lookups = 0;
       beforeRpcAuth = (_) async {
-        if (++lookups == 4) arrived.complete();
-        await held.future;
+        final position = ++lookups;
+        if (position == 4) arrived.complete();
+        if (position <= 4) await held.future;
       };
-      Future<http.Response> native(String bearer) => browser.post(
-        Uri.parse('${pod.baseUrl}memberRoster'),
+      Future<http.Response> native(
+        String bearer, {
+        String endpoint = 'memberRoster',
+      }) => browser.post(
+        Uri.parse('${pod.baseUrl}$endpoint'),
         headers: {...headers(), 'authorization': 'Bearer $bearer'},
         body: jsonEncode({'method': 'page', 'after': null}),
       );
@@ -1186,6 +1190,10 @@ void main() {
             response.then((_) => fail('auth did not hold')),
         ]);
         expect((await native(key)).statusCode, 429);
+        expect(
+          (await native(key, endpoint: 'memberRoster%2Fpage')).statusCode,
+          429,
+        );
         expect(
           (await accountRpc(key, 'page', {'after': null})).statusCode,
           429,
