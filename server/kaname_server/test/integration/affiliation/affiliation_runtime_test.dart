@@ -7,6 +7,7 @@ import 'package:kaname_server/src/affiliation/affiliation_store.dart';
 import 'package:kaname_server/src/affiliation/org_tree_config.dart';
 import 'package:kaname_server/src/esi/server_esi_runtime.dart';
 import 'package:kaname_server/src/esi/server_sso.dart';
+import 'package:kaname_server/src/esi/sso_sessions.dart' show ssoDigest;
 import 'package:kaname_server/src/generated/future_calls.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/kaname_serverpod.dart';
@@ -355,8 +356,8 @@ void main() {
 
 Future<void> _seedRegistry(Session s) async {
   await s.db.unsafeExecute('''
-    INSERT INTO esi_identity ("characterId", "characterName", owner, blocked)
-    SELECT n, 'Character ' || n, 'verified-owner', n = 103
+    INSERT INTO esi_identity ("characterId", "characterName", owner, blocked, "wasDetached")
+    SELECT n, 'Character ' || n, 'verified-owner', n = 103, n = 104
     FROM generate_series(101, 1101) AS n ORDER BY n
     ''');
   final linked = (await SsoIdentityRow.db.findFirstRow(
@@ -370,7 +371,26 @@ Future<void> _seedRegistry(Session s) async {
   await SsoIdentityRow.db.updateRow(s, linked.copyWith(accountId: account.id));
   await SsoHolderRow.db.insertRow(
     s,
-    SsoHolderRow(characterId: 102, phase: 'deviceHeld', generation: 1),
+    SsoHolderRow(
+      characterId: 102,
+      phase: 'deviceReserved',
+      generation: 2,
+      vaultGeneration: 1,
+      proofDigest: ssoDigest('fixture-device-claim'),
+      grantFingerprint: 'fixture-grant',
+      requestedScopes: ['esi-skills.read_skills.v1'],
+    ),
+  );
+  await EsiTokenVaultRow.db.insertRow(
+    s,
+    EsiTokenVaultRow(
+      characterId: 102,
+      holderKind: 'server',
+      holderId: 'server',
+      generation: 2,
+      status: 'parked',
+      fence: 0,
+    ),
   );
 }
 
