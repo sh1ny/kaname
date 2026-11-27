@@ -815,6 +815,70 @@ END
     expect(server.legacyTakes, 0);
   });
 
+  test(
+    'reopened taking journal after transfer retains proof and sends no release',
+    () async {
+      final device = await _TakeDevice.open();
+      final server = _TakeServer()
+        ..epoch = '3'
+        ..reply = (() => throw http.RequestAbortedException())
+        ..recoveryReply = () => http.Response('{"status":"pending"}', 202);
+      expect(
+        await device.account.take(await server.signIn()),
+        AccountNotice.unavailable,
+      );
+      final pending = device.store.character(123)!;
+      final proof = await device.store.proof(pending);
+      server.memberId = 'new-owner';
+      await device.reopen();
+      final current = await server.signIn();
+      expect(
+        await device.account.returnTo(current),
+        AccountNotice.takeUnconfirmed,
+      );
+      expect(device.store.character(123), pending);
+      expect(await device.store.proof(pending), proof);
+      expect(server.reconciles, 1);
+      expect(server.sameProof, isTrue);
+      expect(server.releaseRequests, isEmpty);
+    },
+  );
+
+  test(
+    'original desktop returns using the saved reservation after transfer',
+    () async {
+      final device = await _TakeDevice.open();
+      final server = _TakeServer()
+        ..epoch = '3'
+        ..reply = () => http.Response(
+          jsonEncode({
+            'sourceEpoch': '3',
+            'generation': '2',
+            'ownerFingerprint': 'a' * 64,
+          }),
+          200,
+        );
+      expect(
+        await device.account.take(await server.signIn()),
+        AccountNotice.none,
+      );
+      final reserved = device.store.character(123)!;
+      final proof = await device.store.proof(reserved);
+      server.memberId = 'new-owner';
+      await device.reopen();
+      expect(
+        await device.account.returnTo(await server.signIn()),
+        AccountNotice.none,
+      );
+      expect(device.store.character(123)?.phase, DevicePhase.returned);
+      expect(server.releaseRequests.single, {
+        'proof': proof,
+        'generation': '2',
+      });
+      expect(server.reconciles, 0);
+    },
+  );
+
   test('A pre-upgrade take cannot fabricate prior state', () async {
     final device = await _TakeDevice.open();
     final server = _TakeServer()
@@ -1179,6 +1243,8 @@ final class _TakeServer {
   var takes = 0;
   var legacyTakes = 0;
   var reconciles = 0;
+  String memberId = 'fixture-member';
+  final releaseRequests = <Map<String, Object?>>[];
 
   void _observeProof(Object? proof) {
     if (proof is! String) fail('expected a device proof');
@@ -1205,13 +1271,23 @@ final class _TakeServer {
         );
       case 'complete':
         return http.Response(
-          jsonEncode({..._viewerPilot, 'session': 'b' * 43}),
+          jsonEncode({
+            ..._viewerPilot,
+            'memberId': memberId,
+            'session': 'b' * 43,
+          }),
           200,
         );
       case 'viewer':
-        return viewerReply?.call() ?? _viewerResponse(_viewerPilot);
+        return viewerReply?.call() ??
+            _viewerResponse({..._viewerPilot, 'memberId': memberId});
       case 'sign-out':
         return http.Response('{"status":"signedOut"}', 200);
+      case 'release':
+        final body = jsonDecode(request.body) as Map<String, Object?>;
+        _observeProof(body['proof']);
+        releaseRequests.add(body);
+        return http.Response('{"status":"released"}', 200);
       case 'take':
         final body = jsonDecode(request.body) as Map<String, Object?>;
         _observeProof(body['proof']);

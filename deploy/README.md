@@ -129,6 +129,16 @@ sessions but leaves its ESI grants, opt-ins and holder assignment in place.
 Switching the main does not grant another character's ESI scopes or
 administrator access. The server checks the character that signed in.
 
+When a verified CCP proof shows a different owner, Kaname ends that
+character's old sessions and removes its server ESI grant and opt-ins. The
+new owner must use ordinary connected sign-in first. Kaname creates a new
+account without moving or revealing the former owner's private history.
+Sign-in does not clear a desktop holder. Server ESI stays blocked until the
+original desktop completes ordinary Return with its saved reservation proof
+and generation, then the current owner authorizes a fresh grant. If the
+original desktop cannot complete Return, there is no operator reset in this
+release.
+
 ### Test both sign-in modes locally
 
 1. In the [EVE developers portal](https://developers.eveonline.com/), register

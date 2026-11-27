@@ -10,6 +10,7 @@ import 'package:jose/jose.dart';
 import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
+import 'package:kaname_esi_vault/kaname_esi_vault.dart';
 import 'package:kaname_server/src/esi/esi_call_log_store.dart';
 import 'package:kaname_server/src/esi/member_accounts.dart';
 import 'package:kaname_server/src/esi/member_roster_endpoint.dart';
@@ -37,6 +38,7 @@ const _identityCode = 'fixture-identity-code';
 const _scopedCode = 'fixture-skills-code';
 const _refresh = 'fixture-refresh-secret';
 const _rotated = 'fixture-rotated-refresh-secret';
+const _newOwner = 'RElGRkVSRU5U';
 final _key = base64Encode(List.filled(32, 123));
 final _redirect = Uri.parse('$_origin/auth/esi/callback');
 
@@ -73,6 +75,10 @@ void main() {
   Future<void> Function()? beforeViewerReply;
   late bool persistReceipts;
   late JsonWebKey signing;
+  Future<void> Function()? beforeSession;
+  Future<void> Function()? beforeReservation;
+  Future<void> Function()? beforeTakeReply;
+  late ServerSsoGrants grants;
 
   setUpAll(() => signing = JsonWebKey.generate('RS256', keyBitLength: 2048));
 
@@ -102,6 +108,9 @@ void main() {
     beforeViewerRead = null;
     beforeViewerHolder = null;
     beforeViewerReply = null;
+    beforeSession = null;
+    beforeReservation = null;
+    beforeTakeReply = null;
     persistReceipts = false;
     final upstream = MockClient((request) async {
       if (request.url.path.startsWith('/.well-known/')) {
@@ -202,6 +211,9 @@ void main() {
           if (request.url.path == '/auth/esi/viewer') {
             await beforeViewerReply?.call();
           }
+          if (request.url.path == '/auth/esi/take-intent') {
+            await beforeTakeReply?.call();
+          }
           return response;
         },
         MemberRosterIngress().middleware,
@@ -220,6 +232,7 @@ void main() {
     addTearDown(pod.stop);
     Future<T> withSession<T>(Future<T> Function(Session) action) =>
         pod.pod.withSession<T>((session) async {
+          await beforeSession?.call();
           final probe = beforeViewerRead;
           final holder = beforeViewerHolder;
           final unbounded = unboundedCharacterLock;
@@ -245,7 +258,6 @@ void main() {
             await observed.close();
           }
         }, enableLogging: false);
-    late final ServerSsoGrants grants;
     final serverVault = createServerEsiVault(
       pod.pod,
       now: () => clock,
@@ -315,7 +327,12 @@ void main() {
       ),
       now: () => clock,
       grants: grants,
-      handoff: SsoHandoff(sessions: sessions, vault: vault, now: () => clock),
+      handoff: SsoHandoff(
+        sessions: sessions,
+        vault: vault,
+        now: () => clock,
+        beforeReservation: () async => await beforeReservation?.call(),
+      ),
       skills: ServerSsoSkills(
         sessions: sessions,
         grants: grants,
@@ -356,13 +373,19 @@ void main() {
     bool native = false,
     String? bearer,
     bool link = false,
+    String ip = '192.0.2.1',
   }) async {
     final proof = newOAuthProof();
-    final response = await post('begin', {
-      'proofDigest': sha256.convert(utf8.encode(proof)).toString(),
-      'native': native,
-      if (link) 'link': true else if (bearer != null) 'scoped': true,
-    }, bearer: bearer);
+    final response = await post(
+      'begin',
+      {
+        'proofDigest': sha256.convert(utf8.encode(proof)).toString(),
+        'native': native,
+        if (link) 'link': true else if (bearer != null) 'scoped': true,
+      },
+      bearer: bearer,
+      ip: ip,
+    );
     expect(response.statusCode, 200);
     final data = jsonDecode(response.body) as Map<String, Object?>;
     final url = Uri.parse(data['authorizationUrl'] as String);
@@ -981,6 +1004,53 @@ void main() {
     expect((await post('begin', body)).statusCode, 429);
     expect((await post('begin', body, ip: '192.0.2.2')).statusCode, 200);
   });
+
+  for (final global in [false, true]) {
+    test(global ? 'expired completions hold global slots through settlement' : 'consumed completions hold per-client slots without blocking another client', () async {
+      final starts = <_Started>[];
+      for (var i = 0; i < (global ? 128 : 4); i++) {
+        final attempt = await begin(ip: '192.0.2.${1 + i ~/ 4}');
+        expect((await callback(attempt)).statusCode, 200);
+        starts.add(attempt);
+      }
+      final entered = Completer<void>();
+      final settle = Completer<void>();
+      var completions = 0;
+      beforeSession = () async {
+        if (++completions == starts.length) entered.complete();
+        await settle.future;
+      };
+      final pending = Future.wait(starts.map((start) => complete(start)));
+      final beginBody = {'proofDigest': 'a' * 64, 'native': true};
+      try {
+        await Future.any([
+          entered.future,
+          pending.then((_) => fail('A completion settled before admission.')),
+        ]);
+        expect((await complete(starts.first)).statusCode, 400);
+        final blockedIp = global ? '192.0.2.200' : '192.0.2.1';
+        expect((await post('begin', beginBody, ip: blockedIp)).statusCode, 429);
+        if (!global) {
+          expect(
+            (await post('begin', beginBody, ip: '192.0.2.200')).statusCode,
+            200,
+          );
+        }
+        clock = clock.add(const Duration(minutes: 5));
+        expect((await post('begin', beginBody, ip: blockedIp)).statusCode, 429);
+      } finally {
+        beforeSession = null;
+        clock = clock.add(const Duration(minutes: 5));
+        settle.complete();
+        await pending;
+      }
+      expect(
+        (await pending).map((reply) => reply.statusCode),
+        everyElement(403),
+      );
+      expect((await post('begin', beginBody)).statusCode, 200);
+    }, timeout: const Timeout(Duration(minutes: 4)));
+  }
 
   test(
     'first sign-in creates one account with the character as main',
@@ -2299,64 +2369,68 @@ void main() {
     timeout: const Timeout(Duration(minutes: 3)),
   );
 
-  test('delayed signed owner conflict blocks the detached identity without reattaching it', () async {
-    final (main, alt) = await mainAndSkillsAlt();
-    clock = clock.add(const Duration(minutes: 21));
-    final entered = Completer<void>();
-    final finish = Completer<void>();
-    beforeRefresh = () async {
-      entered.complete();
-      await finish.future;
-    };
-    final pending = post('skills', {}, bearer: alt);
-    try {
-      await Future.any([
-        entered.future,
-        pending.then((_) => fail('refresh skipped')),
-      ]);
-      final unlink = await accountRpc(main, 'unlink', {'characterId': '410'});
-      expect(
-        (jsonDecode(unlink.body) as Map<String, Object?>)['status'],
-        'unlinked',
-      );
-      owner = 'RElGRkVSRU5U';
-    } finally {
-      finish.complete();
-    }
-    expect((await pending).statusCode, 403);
-    final status = await pod.pod.withSession(
-      (s) => s.db.unsafeQuery('''
-      SELECT blocked, "accountId", "wasDetached" FROM esi_identity
-      WHERE "characterId" = 410
+  test(
+    'a delayed refresh transfers a detached character without reattaching it',
+    () async {
+      final (main, alt) = await mainAndSkillsAlt();
+      clock = clock.add(const Duration(minutes: 21));
+      final entered = Completer<void>();
+      final finish = Completer<void>();
+      beforeRefresh = () async {
+        entered.complete();
+        await finish.future;
+      };
+      final pending = post('skills', {}, bearer: alt);
+      try {
+        await Future.any([
+          entered.future,
+          pending.then((_) => fail('refresh skipped')),
+        ]);
+        final unlink = await accountRpc(main, 'unlink', {'characterId': '410'});
+        expect(
+          (jsonDecode(unlink.body) as Map<String, Object?>)['status'],
+          'unlinked',
+        );
+        owner = 'RElGRkVSRU5U';
+      } finally {
+        finish.complete();
+      }
+      expect((await pending).statusCode, 403);
+      final status = await pod.pod.withSession(
+        (s) => s.db.unsafeQuery('''
+      SELECT owner, blocked, "accountId", "wasDetached", "awaitingSignIn",
+             "ownershipGeneration" FROM esi_identity WHERE "characterId" = 410
     '''),
-      enableLogging: false,
-    );
-    expect(status.single.toList(), [true, null, true]);
-    expect((await post('viewer', {}, bearer: main)).statusCode, 200);
-  }, timeout: const Timeout(Duration(minutes: 3)));
+        enableLogging: false,
+      );
+      expect(status.single.toList(), [_newOwner, false, null, true, true, 1]);
+      expect((await post('viewer', {}, bearer: main)).statusCode, 200);
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
 
   test(
-    'a failed owner block still retires the rejected refresh credential',
+    'failed transfer commit still retires a definitively rejected refresh',
     () async {
       final bearer = (await signIn())['session'] as String;
       await authorize(bearer);
       await pod.pod.withSession((s) async {
-        await s.db.unsafeExecute('CREATE SEQUENCE owner_block_attempt');
+        await s.db.unsafeExecute('CREATE SEQUENCE transfer_attempt');
         await s.db.unsafeExecute(r'''
-        CREATE FUNCTION refuse_owner_block_commit()
+        CREATE FUNCTION refuse_transfer_commit()
         RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN
-          PERFORM nextval('owner_block_attempt');
-          RAISE EXCEPTION 'Intentional owner block commit failure';
+          PERFORM nextval('transfer_attempt');
+          RAISE EXCEPTION 'Intentional transfer commit failure';
         END
         $$
       ''');
         await s.db.unsafeExecute('''
-        CREATE CONSTRAINT TRIGGER refuse_owner_block_commit
-        AFTER UPDATE OF blocked ON esi_identity
+        CREATE CONSTRAINT TRIGGER refuse_transfer_commit
+        AFTER UPDATE OF owner ON esi_identity
         DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
-        WHEN (NEW.blocked AND NOT OLD.blocked)
-        EXECUTE FUNCTION refuse_owner_block_commit()
+        WHEN (NEW.owner <> OLD.owner)
+        EXECUTE FUNCTION refuse_transfer_commit()
       ''');
       }, enableLogging: false);
 
@@ -2369,14 +2443,14 @@ void main() {
       final rows = await pod.pod.withSession(
         (s) => s.db.unsafeQuery('''
         SELECT
-          (SELECT is_called FROM owner_block_attempt),
-          (SELECT blocked FROM esi_identity WHERE "characterId" = 410),
+          (SELECT is_called FROM transfer_attempt),
+          (SELECT "ownershipGeneration" FROM esi_identity WHERE "characterId" = 410),
           status, "sealedCredential" IS NULL
         FROM esi_token_vault WHERE "characterId" = 410
       '''),
         enableLogging: false,
       );
-      expect(rows.single.toList(), [true, false, 'dead', true]);
+      expect(rows.single.toList(), [true, 0, 'dead', true]);
 
       final repeated = await post('skills', {}, bearer: bearer);
       expect(repeated.statusCode, 403);
@@ -2399,7 +2473,12 @@ void main() {
     owner = 'RElGRkVSRU5U';
     final next = await begin();
     expect((await callback(next)).statusCode, 200);
-    expect((await complete(next)).statusCode, 403);
+    final reply = await complete(next);
+    expect(reply.statusCode, 200);
+    final current = jsonDecode(reply.body) as Map<String, Object?>;
+    expect(current['memberId'], isNot(first['memberId']));
+    expect(current['characterId'], first['characterId']);
+    expect((await signIn())['memberId'], current['memberId']);
     final old = first['session'] as String;
     expect(
       await pod.pod.withSession(
@@ -2410,7 +2489,7 @@ void main() {
   });
 
   test(
-    'link refuses another verified owner and revokes only the target sessions',
+    'link detects transfer but cannot claim before ordinary sign-in',
     () async {
       final initiating = await signIn();
       final actor = initiating['session'] as String;
@@ -2425,15 +2504,15 @@ void main() {
       expect((await linkAlt(actor, 411)).statusCode, 403);
       final evidence = await pod.pod.withSession(
         (s) => s.db.unsafeQuery('''
-      SELECT i."characterId", i."accountId", i.blocked,
+      SELECT i."characterId", i."accountId", i.owner, i.blocked, i."awaitingSignIn",
              (SELECT count(*) FROM esi_session s WHERE s."identityId" = i.id)
       FROM esi_identity i ORDER BY i."characterId"
     '''),
         enableLogging: false,
       );
       expect(evidence.map((row) => row.toList()), [
-        [410, originalAccount, false, 1],
-        [411, targetAccount, true, 0],
+        [410, originalAccount, 'VEVTVCBPTkxZ', false, false, 1],
+        [411, null, _newOwner, false, true, 0],
       ]);
       for (final before in [target, second]) {
         expect(
@@ -2451,38 +2530,75 @@ void main() {
         jsonDecode(retained.body),
         containsPair('memberId', initiating['memberId']),
       );
+      final claimed = await signIn();
+      expect(claimed['memberId'], isNot(targetAccount.toString()));
+      expect(claimed['memberId'], isNot(initiating['memberId']));
+      expect((await linkAlt(actor, 411)).statusCode, 200);
     },
   );
 
-  test(
-    'owner-conflict blocking revokes the session with both database deadlines',
-    () async {
-      final signed = await signIn();
-      final bearer = signed['session'] as String;
-      await pod.pod.withSession((s) async {
-        await s.db.unsafeExecute(r'''
-        CREATE FUNCTION require_block_deadlines() RETURNS trigger LANGUAGE plpgsql AS $$
+  test('transfer revokes the session with both database deadlines', () async {
+    final signed = await signIn();
+    final bearer = signed['session'] as String;
+    await pod.pod.withSession((s) async {
+      await s.db.unsafeExecute(r'''
+        CREATE FUNCTION require_transfer_deadlines() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN
           IF current_setting('lock_timeout')::interval <> interval '1 second'
              OR current_setting('statement_timeout')::interval <> interval '10 seconds'
           THEN
-            RAISE EXCEPTION 'Owner-conflict update lacks its database deadlines';
+            RAISE EXCEPTION 'Transfer update lacks its database deadlines';
           END IF;
           RETURN NEW;
         END
         $$
       ''');
-        await s.db.unsafeExecute('''
-        CREATE TRIGGER require_block_deadlines BEFORE UPDATE OF blocked
-        ON esi_identity FOR EACH ROW WHEN (NEW.blocked AND NOT OLD.blocked)
-        EXECUTE FUNCTION require_block_deadlines()
+      await s.db.unsafeExecute('''
+        CREATE TRIGGER require_transfer_deadlines BEFORE UPDATE OF owner
+        ON esi_identity FOR EACH ROW WHEN (NEW.owner <> OLD.owner)
+        EXECUTE FUNCTION require_transfer_deadlines()
       ''');
-        await SsoSessions.forPod(s.serverpod)!
-            .block(s, 410, owner, proofDeadline: clock.add(identityLifetime));
-      }, enableLogging: false);
-      expect((await post('viewer', {}, bearer: bearer)).statusCode, 401);
-    },
+    }, enableLogging: false);
+    owner = _newOwner;
+    expect((await signIn())['memberId'], isNot(signed['memberId']));
+    expect((await post('viewer', {}, bearer: bearer)).statusCode, 401);
+  });
+
+  Future<DatabaseResult> rows(String sql) =>
+      pod.pod.withSession((s) => s.db.unsafeQuery(sql), enableLogging: false);
+
+  Future<SsoHolderRow> holderRow() => pod.pod.withSession(
+    (s) async => (await ServerSsoGrants.assignment(s, 410))!,
+    enableLogging: false,
   );
+
+  Future<List<Object?>> ownership() async => (await rows('''
+    SELECT owner, "ownershipGeneration", "accountId", "awaitingSignIn"
+    FROM esi_identity WHERE "characterId" = 410
+  ''')).single.toList();
+
+  Future<List<String>> authoritySnapshot() async => (await rows('''
+    SELECT 'identity:' || to_jsonb(i)::text FROM esi_identity i
+    UNION ALL SELECT 'account:' || to_jsonb(a)::text FROM member_account a
+    UNION ALL SELECT 'session:' || to_jsonb(s)::text FROM esi_session s
+    UNION ALL SELECT 'opt-in:' || to_jsonb(o)::text FROM esi_scope_opt_in o
+    UNION ALL SELECT 'vault:' || to_jsonb(v)::text FROM esi_token_vault v
+    UNION ALL SELECT 'holder:' || to_jsonb(h)::text FROM esi_holder_assignment h
+    UNION ALL SELECT 'exclusion:' || to_jsonb(e)::text FROM esi_call_log_exclusion e
+    ORDER BY 1
+  ''')).map((row) => row.single as String).toList();
+
+  Future<_Started> scopedAttempt(String bearer) async {
+    final attempt = await begin(bearer: bearer);
+    expect(
+      (await callback(
+        attempt,
+        query: 'code=$_scopedCode&state=${attempt.state}',
+      )).statusCode,
+      200,
+    );
+    return attempt;
+  }
 
   Future<bool> sessionExists(String bearer) => pod.pod.withSession(
     (s) async =>
@@ -2493,6 +2609,834 @@ void main() {
         null,
     enableLogging: false,
   );
+
+  test('transfer retires opt-ins and the vault without carrying ESI authority over', () async {
+    final old = (await signIn())['session'] as String;
+    await authorize(old);
+    final holder = await holderRow();
+    final before = await rows('SELECT generation FROM esi_token_vault');
+    owner = _newOwner;
+    final fresh = (await signIn())['session'] as String;
+    expect((await post('skills', {}, bearer: old)).statusCode, 401);
+    expect((await post('skills', {}, bearer: fresh)).statusCode, 403);
+    expect((await rows('SELECT 1 FROM esi_scope_opt_in')), isEmpty);
+    expect(
+      (await rows('''
+        SELECT status, generation, "sealedCredential", "leaseUntil" FROM esi_token_vault
+      ''')).single.toList(),
+      ['parked', (before.single.single as int) + 1, null, null],
+    );
+    expect((await holderRow()).toJson(), holder.toJson());
+    await authorize(fresh);
+    expect((await post('skills', {}, bearer: fresh)).statusCode, 200);
+  });
+
+  for (final refresh in [false, true]) {
+    final path = refresh ? 'refresh' : 'scope';
+    test('scope and refresh can transfer but cannot claim: $path', () async {
+      final signed = await signIn();
+      final old = signed['session'] as String;
+      await authorize(old);
+      owner = _newOwner;
+      if (refresh) clock = clock.add(const Duration(minutes: 21));
+      final proof = refresh ? null : await scopedAttempt(old);
+      final denied = refresh
+          ? await post('skills', {}, bearer: old)
+          : await complete(proof!, bearer: old);
+      expect(denied.statusCode, 403);
+      expect(await ownership(), [_newOwner, 1, null, true]);
+      expect(
+        (await rows('SELECT id, "mainIdentityId" FROM member_account')).single
+            .toList(),
+        [int.parse(signed['memberId'] as String), null],
+      );
+      expect((await post('viewer', {}, bearer: old)).statusCode, 401);
+      final fresh = await signIn();
+      expect(fresh['memberId'], isNot(signed['memberId']));
+    });
+  }
+
+  test('legacy block needs a fresh mismatching proof to transfer', () async {
+    final signed = await signIn();
+    await rows('UPDATE esi_identity SET blocked = true RETURNING id');
+    final same = await begin();
+    expect((await callback(same)).statusCode, 200);
+    expect((await complete(same)).statusCode, 403);
+    expect(await ownership(), [
+      owner,
+      0,
+      int.parse(signed['memberId'] as String),
+      false,
+    ]);
+    owner = _newOwner;
+    expect((await signIn())['memberId'], isNot(signed['memberId']));
+  });
+
+  test("transfer of an alt revokes only that signer's sessions", () async {
+    final (main, alt) = await mainAndSkillsAlt();
+    final anotherAlt = (await signIn())['session'] as String;
+    owner = _newOwner;
+    final copied = await signIn();
+    expect((await post('viewer', {}, bearer: main)).statusCode, 200);
+    for (final old in [alt, anotherAlt]) {
+      expect((await post('viewer', {}, bearer: old)).statusCode, 401);
+    }
+    expect(
+      (await post(
+        'viewer',
+        {},
+        bearer: copied['session'] as String,
+      )).statusCode,
+      200,
+    );
+  });
+
+  test(
+    'one signing identity revokes every verifier, including expired rows',
+    () async {
+      final (main, alt) = await mainAndSkillsAlt();
+      await rows('''
+      INSERT INTO esi_session (digest, "accountId", "identityId", "expiresAt")
+      SELECT 'expired-' || n, "accountId", id, '2020-01-01'
+      FROM esi_identity CROSS JOIN generate_series(1, 129) n
+      WHERE "characterId" = 410 RETURNING id
+    ''');
+      owner = _newOwner;
+      await signIn();
+      expect(
+        (await rows('''
+        SELECT count(*) FROM esi_session s JOIN esi_identity i ON i.id = s."identityId"
+        WHERE i."characterId" = 410 AND s."expiresAt" < '2026-11-25'
+      ''')).single.single,
+        0,
+      );
+      expect(await sessionExists(alt), isFalse);
+      expect(await sessionExists(main), isTrue);
+    },
+  );
+
+  for (final allBlocked in [false, true]) {
+    test(
+      'transfer promotes the lowest eligible CCP ID: all blocked=$allBlocked',
+      () async {
+        final old = await signIn();
+        final key = old['session'] as String;
+        await rows('''
+        INSERT INTO esi_identity ("characterId", "accountId", owner, "characterName", blocked)
+        SELECT ccp, "accountId", owner, 'Alt', true
+        FROM esi_identity CROSS JOIN generate_series(411, 1010) AS g(ccp)
+        WHERE "characterId" = 410 RETURNING "characterId"
+      ''');
+        if (!allBlocked) {
+          await rows(
+            'UPDATE esi_identity SET blocked = false WHERE "characterId" IN (1008, 1010) RETURNING id',
+          );
+        }
+        owner = _newOwner;
+        await signIn();
+        expect(
+          (await rows('''
+          SELECT i."characterId" FROM member_account a
+          JOIN esi_identity i ON i.id = a."mainIdentityId"
+          WHERE i."characterId" <> 410
+        ''')).single.single,
+          allBlocked ? 411 : 1008,
+        );
+        expect((await post('viewer', {}, bearer: key)).statusCode, 401);
+      },
+    );
+  }
+
+  test(
+    'transfer retains the empty account and its product references',
+    () async {
+      final signed = await signIn();
+      await rows(
+        'CREATE TABLE transfer_product_fixture (account bigint REFERENCES member_account(id))',
+      );
+      await rows(
+        'INSERT INTO transfer_product_fixture (account) SELECT id FROM member_account',
+      );
+      owner = _newOwner;
+      final buyer = await signIn();
+      expect(buyer['memberId'], isNot(signed['memberId']));
+      expect(
+        (await rows('''
+        SELECT a.id, a."mainIdentityId", count(i.id)
+        FROM transfer_product_fixture p JOIN member_account a ON a.id = p.account
+        LEFT JOIN esi_identity i ON i."accountId" = a.id GROUP BY a.id
+      ''')).single.toList(),
+        [int.parse(signed['memberId'] as String), null, 0],
+      );
+    },
+  );
+
+  for (final transferFirst in [false, true]) {
+    test(
+      'main selection orders with transfer: transfer first=$transferFirst',
+      () async {
+        final signed = await signIn();
+        final key = signed['session'] as String;
+        expect((await linkAlt(key, 411)).statusCode, 200);
+        expect((await linkAlt(key, 412)).statusCode, 200);
+        final atAuth = Completer<void>();
+        final settle = Completer<void>();
+        afterRpcAuth = () async {
+          atAuth.complete();
+          await settle.future;
+        };
+        final selection = accountRpc(key, 'makeMain', {'characterId': '412'});
+        try {
+          await Future.any([
+            atAuth.future,
+            selection.then((_) => fail('RPC auth skipped')),
+          ]);
+          characterId = 410;
+          owner = _newOwner;
+          if (transferFirst) await signIn();
+        } finally {
+          afterRpcAuth = null;
+          settle.complete();
+        }
+        expect(
+          jsonDecode((await selection).body),
+          containsPair('status', transferFirst ? 'denied' : 'mainChanged'),
+        );
+        if (!transferFirst) await signIn();
+        expect(
+          (await rows('''
+        SELECT i."characterId" FROM member_account a
+        JOIN esi_identity i ON i.id = a."mainIdentityId" WHERE i."characterId" <> 410
+      ''')).single.single,
+          transferFirst ? 411 : 412,
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+  }
+
+  for (final delayCallback in [false, true]) {
+    test(
+      'an old browser attempt cannot reverse transfer: delayed callback=$delayCallback',
+      () async {
+        await signIn();
+        final former = owner;
+        final delayed = await begin();
+        if (!delayCallback) expect((await callback(delayed)).statusCode, 200);
+        final other = await begin();
+        characterId = 411;
+        expect((await callback(other)).statusCode, 200);
+        characterId = 410;
+        final next = await begin();
+        owner = _newOwner;
+        expect((await callback(next)).statusCode, 200);
+        final committed = await complete(next);
+        expect(committed.statusCode, 200);
+        final priorAccount = (await ownership())[2];
+        if (delayCallback) {
+          // Even a matching proof cannot claim authority from an old attempt.
+          expect((await callback(delayed)).statusCode, 200);
+        } else {
+          owner = former;
+        }
+        expect((await complete(delayed)).statusCode, 403);
+        expect(await ownership(), [_newOwner, 1, priorAccount, false]);
+        final unaffected = await complete(other);
+        expect(unaffected.statusCode, 200);
+        expect(jsonDecode(unaffected.body), containsPair('characterId', '411'));
+      },
+    );
+  }
+
+  test(
+    'a later signed return to a prior owner starts another account',
+    () async {
+      final firstOwner = owner;
+      final first = await signIn();
+      owner = _newOwner;
+      final second = await signIn();
+      owner = firstOwner;
+      final third = await signIn();
+      expect({
+        first['memberId'],
+        second['memberId'],
+        third['memberId'],
+      }, hasLength(3));
+      expect(await ownership(), [
+        firstOwner,
+        2,
+        int.parse(third['memberId'] as String),
+        false,
+      ]);
+    },
+  );
+
+  for (final kind in ['former owner', 'new owner', 'superseded grant']) {
+    test(
+      'a stale refresh cannot change the current owner or vault: $kind',
+      () async {
+        final old = await signIn();
+        final bearer = old['session'] as String;
+        await authorize(bearer);
+        final original = owner;
+        final reached = Completer<void>();
+        final settle = Completer<void>();
+        beforeRefresh = () async {
+          reached.complete();
+          await settle.future;
+        };
+        final refresh = pod.pod.withSession((s) async {
+          final current = (await SsoSessions.forPod(s.serverpod)!
+              .viewer(s, bearer))!;
+          final grant = (await grants.liveAuthorization(s, current.identity))!;
+          return grants.refresh(s, grant, _refresh);
+        }, enableLogging: false);
+        late List<String> after;
+        try {
+          await Future.any([
+            reached.future,
+            refresh.then((_) => fail('CCP refresh skipped')),
+          ]);
+          if (kind == 'superseded grant') {
+            await authorize(bearer);
+          } else {
+            owner = _newOwner;
+            await authorize((await signIn())['session'] as String);
+          }
+          after = await authoritySnapshot();
+          owner = kind == 'former owner' ? original : _newOwner;
+        } finally {
+          beforeRefresh = null;
+          settle.complete();
+          await refresh;
+        }
+        expect(await refresh, isA<VaultRefreshUnverifiedGrant>());
+        expect(await authoritySnapshot(), after);
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+  }
+
+  test('failed transfer commit rolls back account and authorization', () async {
+    final old = (await signIn())['session'] as String;
+    await authorize(old);
+    final before = await authoritySnapshot();
+    await rows(r'''
+      CREATE FUNCTION refuse_transfer_commit() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN RAISE EXCEPTION 'intentional transfer commit failure'; END
+      $$;
+    ''');
+    await rows('''
+      CREATE CONSTRAINT TRIGGER refuse_transfer_commit AFTER UPDATE OF owner ON esi_identity
+      DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN (NEW.owner <> OLD.owner)
+      EXECUTE FUNCTION refuse_transfer_commit()
+    ''');
+    owner = _newOwner;
+    final proof = await begin();
+    expect((await callback(proof)).statusCode, 200);
+    expect((await complete(proof)).statusCode, 503);
+    expect(await authoritySnapshot(), before);
+    expect((await post('skills', {}, bearer: old)).statusCode, 200);
+  });
+
+  test(
+    'new owner signs in without taking the existing device holder',
+    () async {
+      final old = (await signIn())['session'] as String;
+      await authorize(old);
+      final proof = newOAuthProof();
+      expect(
+        (await intent('start', old, await prepare(old), proof)).statusCode,
+        200,
+      );
+      final before = (await holderRow()).toJson();
+      owner = _newOwner;
+      final current = (await signIn())['session'] as String;
+      expect((await holderRow()).toJson(), before);
+      expect((await post('skills', {}, bearer: current)).statusCode, 403);
+      expect(
+        (await post('opt-in', {'enabled': true}, bearer: current)).statusCode,
+        200,
+      );
+      expect(
+        (await post('begin', {
+          'proofDigest': ssoDigest(newOAuthProof()),
+          'native': true,
+          'scoped': true,
+        }, bearer: current)).statusCode,
+        403,
+      );
+      expect(
+        (await post('join', {
+          'proof': newOAuthProof(),
+          'ownerFingerprint': ssoDigest('410:$owner'),
+        }, bearer: current)).statusCode,
+        403,
+      );
+      expect((await holderRow()).toJson(), before);
+    },
+  );
+
+  for (final saved in [false, true]) {
+    test(
+      saved
+          ? 'ordinary Return after transfer requires saved proof and fresh scope'
+          : 'a lost Take reply cannot be recovered across ownership',
+      () async {
+        final old = (await signIn())['session'] as String;
+        await authorize(old);
+        final epoch = await prepare(old);
+        final proof = newOAuthProof();
+        Map<String, Object?>? reservation;
+        if (saved) {
+          final taken = await intent('start', old, epoch, proof);
+          expect(taken.statusCode, 200);
+          reservation = jsonDecode(taken.body) as Map<String, Object?>;
+        } else {
+          final committed = Completer<void>();
+          final discard = Completer<void>();
+          final resume = Completer<void>();
+          beforeTakeReply = () async {
+            committed.complete();
+            await resume.future;
+          };
+          final request =
+              http.AbortableRequest(
+                  'POST',
+                  Uri.parse('${pod.baseUrl}auth/esi/take-intent'),
+                  abortTrigger: discard.future,
+                )
+                ..headers.addAll({...headers(), 'authorization': 'Bearer $old'})
+                ..body = jsonEncode({
+                  'action': 'start',
+                  'sourceEpoch': epoch,
+                  'proof': proof,
+                });
+          final lost = expectLater(
+            browser.send(request),
+            throwsA(isA<http.RequestAbortedException>()),
+          );
+          try {
+            await Future.any([
+              committed.future,
+              lost.then(
+                (_) => fail('Take response settled before the commit barrier'),
+              ),
+            ]);
+            expect((await holderRow()).phase, 'deviceReserved');
+          } finally {
+            beforeTakeReply = null;
+            discard.complete();
+            try {
+              await lost;
+            } finally {
+              resume.complete();
+            }
+          }
+        }
+        final before = await holderRow();
+        owner = _newOwner;
+        final current = (await signIn())['session'] as String;
+        final retry = await intent('reconcile', current, epoch, proof);
+        expect(retry.statusCode, 202);
+        expect(jsonDecode(retry.body), {'status': 'pending'});
+        expect((await holderRow()).toJson(), before.toJson());
+        if (reservation == null) {
+          expect(
+            (await post('take', {'proof': proof}, bearer: current)).statusCode,
+            403,
+          );
+          return;
+        }
+        final generation = reservation['generation'];
+        expect(
+          (await post('release', {
+            'proof': newOAuthProof(),
+            'generation': generation,
+          }, bearer: current)).statusCode,
+          403,
+        );
+        final returnRequest = {'proof': proof, 'generation': generation};
+        expect(
+          (await post('release', returnRequest, bearer: old)).statusCode,
+          403,
+        );
+        final returned = await post('release', returnRequest, bearer: current);
+        expect(returned.statusCode, 200);
+        expect(jsonDecode(returned.body), {'status': 'released'});
+        expect((await post('skills', {}, bearer: current)).statusCode, 403);
+        await authorize(current);
+        expect((await post('skills', {}, bearer: current)).statusCode, 200);
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+  }
+
+  test('transfer before final Take leaves no returnable reservation', () async {
+    final old = (await signIn())['session'] as String;
+    await authorize(old);
+    final epoch = await prepare(old);
+    final proof = newOAuthProof();
+    final parked = Completer<void>();
+    final settle = Completer<void>();
+    beforeReservation = () async {
+      parked.complete();
+      await settle.future;
+    };
+    final taking = intent('start', old, epoch, proof);
+    late String current;
+    late SsoHolderRow before;
+    try {
+      await Future.any([
+        parked.future,
+        taking.then((_) => fail('Source park skipped')),
+      ]);
+      before = await holderRow();
+      expect(before.phase, 'toDevice');
+      owner = _newOwner;
+      current = (await signIn())['session'] as String;
+    } finally {
+      beforeReservation = null;
+      settle.complete();
+      await taking;
+    }
+    expect((await taking).statusCode, 202);
+    expect((await holderRow()).toJson(), before.toJson());
+    final retry = await intent('reconcile', current, epoch, proof);
+    expect(retry.statusCode, 202);
+    expect(jsonDecode(retry.body), {'status': 'pending'});
+    expect(
+      (await post('release', {
+        'proof': proof,
+        'generation': '${before.generation}',
+      }, bearer: current)).statusCode,
+      403,
+    );
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  for (final reauthorize in [false, true]) {
+    test(
+      reauthorize
+          ? 'old Take cannot authorize a device or park a refreshed server grant'
+          : 'ownership change alone cannot prove Take non-acceptance',
+      () async {
+        final old = (await signIn())['session'] as String;
+        await authorize(old);
+        final epoch = await prepare(old);
+        final proof = newOAuthProof();
+        owner = _newOwner;
+        final current = (await signIn())['session'] as String;
+        if (reauthorize) await authorize(current);
+        final before = await authoritySnapshot();
+        for (final action in ['start', 'reconcile']) {
+          final reply = await intent(action, current, epoch, proof);
+          expect(reply.statusCode, 202);
+          expect(jsonDecode(reply.body), {'status': 'pending'});
+        }
+        expect(
+          (await post('take', {'proof': proof}, bearer: current)).statusCode,
+          403,
+        );
+        expect(await authoritySnapshot(), before);
+        if (reauthorize) {
+          expect((await post('skills', {}, bearer: current)).statusCode, 200);
+          final next = await prepare(current);
+          expect(int.parse(next), greaterThan(int.parse(epoch)));
+          final accepted = await intent(
+            'start',
+            current,
+            next,
+            newOAuthProof(),
+          );
+          expect(accepted.statusCode, 200);
+          expect(
+            jsonDecode(accepted.body),
+            containsPair('ownerFingerprint', ssoDigest('410:$owner')),
+          );
+        }
+      },
+    );
+  }
+
+  for (final mode in ['sign-in', 'link', 'scope', 'refresh']) {
+    test('expired transfer proof rolls back its writes: $mode', () async {
+      late final String old;
+      late final String? actor;
+      if (mode == 'link') {
+        final (main, alt) = await mainAndSkillsAlt();
+        old = alt;
+        actor = main;
+      } else {
+        old = (await signIn())['session'] as String;
+        await authorize(old);
+        actor = null;
+      }
+      if (mode == 'refresh') clock = clock.add(const Duration(minutes: 21));
+      final before = await authoritySnapshot();
+      await rows(r'''
+        CREATE FUNCTION wait_after_transfer_write() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN PERFORM pg_advisory_xact_lock(7781209); RETURN NEW; END
+        $$;
+      ''');
+      await rows('''
+        CREATE TRIGGER wait_after_transfer_write AFTER UPDATE OF owner ON esi_identity
+        FOR EACH ROW WHEN (NEW.owner <> OLD.owner) EXECUTE FUNCTION wait_after_transfer_write()
+      ''');
+      owner = _newOwner;
+      identityLifetime = const Duration(minutes: 2);
+      final expires = clock.add(identityLifetime);
+      final start = switch (mode) {
+        'refresh' => null,
+        'scope' => await scopedAttempt(old),
+        _ => await begin(bearer: actor, link: actor != null),
+      };
+      if (mode == 'link' || mode == 'sign-in') {
+        expect((await callback(start!)).statusCode, 200);
+      }
+      final acquired = Completer<int>();
+      final release = Completer<void>();
+      final held = pod.pod.withSession(
+        (s) => s.db.transaction((tx) async {
+          final lock = await s.db.unsafeQuery(
+            'SELECT pg_backend_pid(), pg_advisory_xact_lock(7781209)',
+            transaction: tx,
+          );
+          acquired.complete(lock.single.first as int);
+          await release.future;
+        }),
+        enableLogging: false,
+      );
+      Future<http.Response>? pending;
+      try {
+        final holder = await Future.any([
+          acquired.future,
+          held.then((_) => fail('Did not acquire write barrier')),
+        ]);
+        // Pause the actual write without letting a driver's timer stand in
+        // for the fake proof clock. Refresh enters through a nested session.
+        beforeSession = () async {
+          unboundedCharacterLock = true;
+          extendDriverWait = true;
+        };
+        pending = mode == 'refresh'
+            ? post('skills', {}, bearer: old)
+            : complete(
+                start!,
+                bearer: mode == 'scope' ? old : actor,
+                link: actor != null,
+              );
+        await pod.pod.withSession(
+          (s) => observePostgresLock(s, holder, pending!),
+          enableLogging: false,
+        );
+        clock = expires;
+      } finally {
+        beforeSession = null;
+        release.complete();
+        await held;
+        await pending;
+      }
+      expect((await pending).statusCode, 403);
+      if (mode == 'refresh') {
+        final after = await authoritySnapshot();
+        bool notVault(String row) => !row.startsWith('vault:');
+        expect(after.where(notVault), before.where(notVault));
+        expect(
+          (await rows(
+            'SELECT status, "sealedCredential", "leaseUntil" FROM esi_token_vault',
+          )).single.toList(),
+          ['dead', null, null],
+        );
+      } else {
+        expect(await authoritySnapshot(), before);
+      }
+      expect((await post('viewer', {}, bearer: old)).statusCode, 200);
+    }, timeout: const Timeout(Duration(minutes: 3)));
+  }
+
+  for (final scoped in [false, true]) {
+    for (final transferFirst in [false, true]) {
+      test(
+        'transfer orders with old opt-in and scope writes: scoped=$scoped, transfer first=$transferFirst',
+        () async {
+          final old = (await signIn())['session'] as String;
+          if (scoped) await authorize(old);
+          final grant = scoped ? await scopedAttempt(old) : null;
+          owner = _newOwner;
+          final transferProof = await begin();
+          expect((await callback(transferProof)).statusCode, 200);
+          final reached = Completer<void>();
+          final release = Completer<void>();
+          afterCharacterLock = (_) async {
+            afterCharacterLock = null;
+            reached.complete();
+            await release.future;
+          };
+          Future<http.Response> transfer() => complete(transferProof);
+          Future<http.Response> write() => scoped
+              ? complete(grant!, bearer: old)
+              : post('opt-in', {'enabled': true}, bearer: old);
+          final first = transferFirst ? transfer() : write();
+          Future<http.Response>? second;
+          try {
+            await Future.any([
+              reached.future,
+              first.then((_) => fail('Character write lock skipped')),
+            ]);
+            final blocker =
+                (await rows('''
+              SELECT pid FROM pg_locks WHERE locktype = 'advisory'
+                AND classid = 0 AND objid = 410 AND granted
+                AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+            ''')).single.single
+                    as int;
+            unboundedCharacterLock = true;
+            second = transferFirst ? write() : transfer();
+            await pod.pod.withSession(
+              (s) => observePostgresLock(s, blocker, second!),
+              enableLogging: false,
+            );
+          } finally {
+            afterCharacterLock = null;
+            release.complete();
+            await first;
+            await second;
+          }
+          expect((await first).statusCode, 200);
+          expect((await second).statusCode, transferFirst ? 403 : 200);
+          expect(await rows('SELECT id FROM esi_scope_opt_in'), isEmpty);
+          if (scoped) {
+            expect(
+              (await rows(
+                'SELECT status, "sealedCredential" FROM esi_token_vault',
+              )).single.toList(),
+              ['parked', null],
+            );
+          }
+        },
+        timeout: const Timeout(Duration(minutes: 3)),
+      );
+    }
+  }
+
+  test(
+    "new owner reads current receipts but never the former account's receipts",
+    () async {
+      final (main, alt) = await mainAndSkillsAlt();
+      persistReceipts = true;
+      expect((await post('skills', {}, bearer: alt)).statusCode, 200);
+      await scheduler.drainCallLog();
+      expect(await ownCharacters(main), ['410']);
+      owner = _newOwner;
+      final current = (await signIn())['session'] as String;
+      expect(await ownCharacters(current), isEmpty);
+      expect(await ownCharacters(main), isEmpty);
+      clock = clock.add(const Duration(seconds: 1));
+      await authorize(current);
+      expect((await post('skills', {}, bearer: current)).statusCode, 200);
+      await scheduler.drainCallLog();
+      expect(await ownCharacters(current), ['410']);
+      expect(await ownCharacters(main), isEmpty);
+    },
+  );
+
+  test(
+    'late receipt keeps the admission generation through transfer and relink',
+    () async {
+      final (main, alt) = await mainAndSkillsAlt();
+      persistReceipts = true;
+      final entered = Completer<void>();
+      final settle = Completer<void>();
+      beforeSkillsWire = () async {
+        entered.complete();
+        await settle.future;
+      };
+      final pending = post('skills', {}, bearer: alt);
+      try {
+        await Future.any([
+          entered.future,
+          pending.then((_) => fail('Wire send skipped')),
+        ]);
+        owner = _newOwner;
+        await signIn();
+        expect((await linkAlt(main, 410)).statusCode, 200);
+      } finally {
+        beforeSkillsWire = null;
+        settle.complete();
+        await pending;
+      }
+      expect((await pending).statusCode, 200);
+      await scheduler.drainCallLog();
+      expect(await ownCharacters(main), isEmpty);
+      final history = await rows(
+        'SELECT "ownershipGeneration" FROM esi_call_log_entry',
+      );
+      expect(history.single.single, 0);
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
+  test(
+    'transfer detachment records first exclusions without rewriting receipts',
+    () async {
+      final (main, alt) = await mainAndSkillsAlt();
+      persistReceipts = true;
+      expect((await post('skills', {}, bearer: alt)).statusCode, 200);
+      await scheduler.drainCallLog();
+      final before = (await rows(
+        'SELECT to_jsonb(r)::text FROM esi_call_log_entry r',
+      )).single.single;
+      owner = _newOwner;
+      final claimed = await signIn();
+      expect((await linkAlt(main, 410)).statusCode, 200);
+      expect(
+        (await rows('SELECT id FROM esi_call_log_exclusion'))
+            .map((row) => row.single),
+        unorderedEquals([
+          receipts.single.member,
+          int.parse(claimed['memberId'] as String),
+        ]),
+      );
+      expect(
+        (await rows('SELECT to_jsonb(r)::text FROM esi_call_log_entry r'))
+            .single
+            .single,
+        before,
+      );
+    },
+  );
+
+  test('after relink only current-generation rows are visible on the former account', () async {
+    final (main, alt) = await mainAndSkillsAlt();
+    persistReceipts = true;
+    expect((await post('skills', {}, bearer: alt)).statusCode, 200);
+    await scheduler.drainCallLog();
+    owner = _newOwner;
+    final claimed = await signIn();
+    expect((await linkAlt(main, 410)).statusCode, 200);
+    final current = (await signIn())['session'] as String;
+    expect(await ownCharacters(main), isEmpty);
+    await authorize(current);
+    clock = clock.add(const Duration(seconds: 1));
+    expect((await post('skills', {}, bearer: current)).statusCode, 200);
+    await scheduler.drainCallLog();
+    expect(await ownCharacters(main), ['410']);
+    final records = await rows(
+      'SELECT "memberId", "ownershipGeneration", "accountExcluded" FROM esi_call_log_entry ORDER BY id',
+    );
+    expect(records.map((row) => row.toList()), [
+      [receipts.first.member, 0, false],
+      [receipts.first.member, 1, true],
+    ]);
+    expect(
+      (await rows('SELECT id FROM esi_call_log_exclusion'))
+          .map((row) => row.single),
+      unorderedEquals([
+        receipts.first.member,
+        int.parse(claimed['memberId'] as String),
+      ]),
+    );
+  });
 
   test('expiry stays permanent after a lost reply and restart', () async {
     final first = clock;

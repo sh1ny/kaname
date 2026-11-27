@@ -27,6 +27,7 @@ final class MemberAccounts {
     CcpVerifiedIdentity claims,
     DateTime expires,
     DateTime Function() now,
+    int browserAttempt,
   ) async {
     bool fresh() {
       final at = now();
@@ -38,27 +39,44 @@ final class MemberAccounts {
         if (!fresh()) return false;
         await _lockCharacters(session, tx, actor.character, claims.characterId);
         final target = await _character(session, tx, claims.characterId);
-        if (!fresh()) return false;
+        if (!fresh() ||
+            target != null &&
+                !_sessions.browserProofIsCurrent(target, browserAttempt)) {
+          return false;
+        }
         final previous = target?.accountId;
-        final account = await _lockAccounts(
+        final mains = await SsoSessions.lockAccountMains(
           session,
           tx,
           actor.account,
-          previous,
+          previous: previous,
         );
         if (!await _lockActor(session, tx, actor) ||
             !fresh() ||
-            account == null) {
+            mains.actor == null) {
           return false;
         }
-        if (target != null &&
-            (target.blocked || target.owner != claims.owner)) {
-          if (!target.blocked) {
-            await SsoSessions.blockIdentity(session, tx, target, admit: fresh);
+        if (target != null) {
+          if (target.owner != claims.owner) {
+            final moved = (await SsoSessions.transferLocked(
+              session,
+              tx,
+              target,
+              claims,
+              mains.previous,
+              admit: fresh,
+            ))!;
+            await _sessions.recordTransferFence(
+              session,
+              tx,
+              moved.id!,
+              admit: fresh,
+            );
+            return false;
           }
-          return false;
+          if (target.blocked || target.awaitingSignIn) return false;
+          if (previous == actor.account) return true;
         }
-        if (previous == actor.account) return true;
         if (previous != null) {
           final second = await SsoIdentityRow.db.findFirstRow(
             session,
@@ -149,7 +167,11 @@ final class MemberAccounts {
     required bool detach,
   }) => session.db.transaction((tx) async {
     await _lockCharacters(session, tx, actor.character, character);
-    final main = await _lockAccounts(session, tx, actor.account, null);
+    final main = (await SsoSessions.lockAccountMains(
+      session,
+      tx,
+      actor.account,
+    )).actor;
     if (main == null || !await _lockActor(session, tx, actor)) {
       return MemberAccountStatus.denied;
     }
@@ -226,29 +248,6 @@ final class MemberAccounts {
     );
     await SsoSessions.lockCharacter(session, tx, a <= b ? a : b);
     if (a != b) await SsoSessions.lockCharacter(session, tx, a > b ? a : b);
-  }
-
-  static Future<int?> _lockAccounts(
-    Session session,
-    Transaction tx,
-    int account,
-    int? previous,
-  ) async {
-    final rows = await session.db.unsafeQuery(
-      '''
-      SELECT id, "mainIdentityId" FROM member_account
-      WHERE id IN (@account::bigint, @previous::bigint) ORDER BY id FOR UPDATE
-      ''',
-      parameters: QueryParameters.named({
-        'account': account,
-        'previous': previous,
-      }),
-      transaction: tx,
-    );
-    for (final row in rows) {
-      if (row[0] == account) return row[1] as int?;
-    }
-    return null;
   }
 
   static Future<SsoIdentityRow?> _character(

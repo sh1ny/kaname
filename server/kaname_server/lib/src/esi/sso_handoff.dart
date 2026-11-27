@@ -42,16 +42,20 @@ final class SsoHandoff {
   /// Shares the main-isolate gate with all authenticated server ESI work.
   ///
   /// `now` is the server runtime clock that times epoch closures.
+  /// [beforeReservation] lets integration tests put a transfer between the
+  /// source park and the final reservation write.
   SsoHandoff({
     required this._sessions,
     required this._vault,
     required this._now,
+    this._beforeReservation,
   });
 
   final SsoSessions _sessions;
   SsoCharacterGate get _gate => _sessions.gate;
   final EsiTokenVault _vault;
   final DateTime Function() _now;
+  final Future<void> Function()? _beforeReservation;
   final _changing = <int>{};
   static const _maxGeneration = 0x7fffffffffffffff;
   static const _closureCooldown = Duration(seconds: 60);
@@ -82,7 +86,7 @@ final class SsoHandoff {
             transaction: tx,
           );
           if (row == null || row.phase != 'serverHeld') return null;
-          final epoch = _takeEpoch(row);
+          final epoch = _takeEpoch(row, identity.ownershipGeneration);
           return epoch != null && epoch < _maxGeneration ? epoch : null;
         },
         settings: const TransactionSettings(
@@ -137,16 +141,22 @@ final class SsoHandoff {
       if (_gate.isMutating(character)) return SsoHandoffStatus.pending;
       final identity = await _live(session, viewer);
       if (identity == null) return SsoHandoffStatus.blocked;
-      var row = await ServerSsoGrants.assignment(session, character);
-      if (row == null) {
+      final assigned = await ServerSsoGrants.assignment(session, character);
+      if (assigned == null) {
         return intent == null
             ? SsoHandoffStatus.blocked
             : SsoHandoffStatus.pending;
       }
+      var row = assigned;
+      final ownership = identity.ownershipGeneration;
+      if (intent == null && ownership != 0) return SsoHandoffStatus.blocked;
       final digest = ssoDigest(proof);
       if (intent != null) {
-        final epoch = _takeEpoch(row);
+        final epoch = _takeEpoch(row, ownership);
         if (epoch == intent.epoch + 1) {
+          if (row.takeOwnershipGeneration != ownership) {
+            return SsoHandoffStatus.pending;
+          }
           if (!_matches(row, digest)) return SsoHandoffStatus.notAccepted;
           if (row.phase != 'toDevice' && row.phase != 'deviceReserved') {
             return SsoHandoffStatus.pending;
@@ -154,7 +164,7 @@ final class SsoHandoff {
         } else if (epoch != intent.epoch || row.phase != 'serverHeld') {
           return SsoHandoffStatus.pending;
         } else if (intent.reconcile) {
-          return await _closeTake(session, row);
+          return await _closeTake(session, viewer, row);
         }
       }
       ({VaultAuthorization authorization, VaultStatus status})? current;
@@ -167,7 +177,7 @@ final class SsoHandoff {
           if (row.generation >= _maxGeneration || row.vaultGeneration == null) {
             return intent == null
                 ? SsoHandoffStatus.blocked
-                : await _closeTake(session, row);
+                : await _closeTake(session, viewer, row);
           }
           current = await _inspectHolder(character);
           if (current == null) return SsoHandoffStatus.pending;
@@ -177,21 +187,31 @@ final class SsoHandoff {
               current.authorization.generation != row.vaultGeneration) {
             return intent == null
                 ? SsoHandoffStatus.blocked
-                : await _closeTake(session, row);
+                : await _closeTake(session, viewer, row);
           }
-          if (!await _cas(
-            session,
-            row,
-            phase: 'toDevice',
-            generation: row.generation + 1,
-            digest: digest,
-          )) {
+          final started = await session.db.transaction((tx) async {
+            await SsoSessions.lockCharacter(session, tx, character);
+            if (await _live(session, viewer, transaction: tx) == null) {
+              return false;
+            }
+            return _cas(
+              session,
+              row,
+              transaction: tx,
+              phase: 'toDevice',
+              generation: row.generation + 1,
+              digest: digest,
+              takeOwnership: ownership,
+            );
+          });
+          if (!started) {
             return SsoHandoffStatus.pending;
           }
           row = row.copyWith(
             phase: 'toDevice',
             generation: row.generation + 1,
             proofDigest: digest,
+            takeOwnershipGeneration: ownership,
           );
         case 'toDevice':
           if (!_matches(row, digest)) return SsoHandoffStatus.blocked;
@@ -215,13 +235,31 @@ final class SsoHandoff {
           return SsoHandoffStatus.pending;
         }
       }
-      if (!await _cas(
-        session,
-        row,
-        phase: 'deviceReserved',
-        generation: row.generation,
-        digest: digest,
-      )) {
+      if (_beforeReservation case final probe?) await probe();
+      final completed = await session.db.transaction((tx) async {
+        await SsoSessions.lockCharacter(session, tx, character);
+        final currentOwner = await session.db.unsafeQuery(
+          '''
+          SELECT 1 FROM esi_identity WHERE id = @identity::bigint
+            AND "ownershipGeneration" = @ownership::bigint
+          ''',
+          parameters: QueryParameters.named({
+            'identity': identity.id,
+            'ownership': ownership,
+          }),
+          transaction: tx,
+        );
+        if (currentOwner.isEmpty) return false;
+        return _cas(
+          session,
+          row,
+          transaction: tx,
+          phase: 'deviceReserved',
+          generation: row.generation,
+          digest: digest,
+        );
+      });
+      if (!completed) {
         return SsoHandoffStatus.pending;
       }
       return _reservation(row, identity);
@@ -328,7 +366,9 @@ final class SsoHandoff {
       before.accountId,
       transaction: transaction,
     );
-    return current?.identity.id == before.identity.id
+    return current?.identity.id == before.identity.id &&
+            current?.identity.ownershipGeneration ==
+                before.identity.ownershipGeneration
         ? current?.identity
         : null;
   }
@@ -338,15 +378,17 @@ final class SsoHandoff {
   static bool _releaseRecorded(SsoHolderRow row) =>
       row.phase == 'serverReserved' || row.phase == 'serverHeld';
 
-  static int? _takeEpoch(SsoHolderRow row) {
+  static int? _takeEpoch(SsoHolderRow row, int ownership) {
     final closures = row.takeClosures ?? 0;
     final generation = row.generation;
     if (generation <= 0 ||
         closures < 0 ||
-        closures > _maxGeneration - generation) {
+        closures > _maxGeneration - generation ||
+        ownership < 0 ||
+        ownership > _maxGeneration - generation - closures) {
       return null;
     }
-    return generation + closures;
+    return generation + closures + ownership;
   }
 
   /// Closes the observed unused epoch at most once per [_closureCooldown].
@@ -356,8 +398,15 @@ final class SsoHandoff {
   /// update checks the cooldown and the observed row, so a stale observation
   /// or a closure inside the cooldown writes nothing and stays pending. Only
   /// a committed closure proves non-acceptance.
-  Future<SsoHandoffStatus> _closeTake(Session session, SsoHolderRow row) async {
+  Future<SsoHandoffStatus> _closeTake(
+    Session session,
+    SsoViewer viewer,
+    SsoHolderRow row,
+  ) async {
     final closed = await session.db.transaction((transaction) async {
+      await SsoSessions.lockCharacter(session, transaction, row.characterId);
+      final identity = await _live(session, viewer, transaction: transaction);
+      if (identity == null) return false;
       final locked = await session.db.unsafeQuery(
         'SELECT id FROM esi_holder_assignment WHERE id = @id FOR UPDATE',
         parameters: QueryParameters.named({'id': row.id}),
@@ -369,7 +418,8 @@ final class SsoHandoff {
         '''
 UPDATE esi_holder_assignment
 SET "takeClosures" = COALESCE("takeClosures", 0) + 1,
-  "lastTakeClosureAt" = @now::timestamp
+  "lastTakeClosureAt" = @now::timestamp,
+  "takeOwnershipGeneration" = @ownership::bigint
 WHERE id = @id AND generation = @generation AND phase = 'serverHeld'
   AND COALESCE("takeClosures", 0) = @closures
   AND ("lastTakeClosureAt" IS NULL
@@ -382,6 +432,7 @@ RETURNING id
           'id': row.id,
           'generation': row.generation,
           'closures': row.takeClosures ?? 0,
+          'ownership': identity.ownershipGeneration,
         }),
         transaction: transaction,
       );
@@ -409,11 +460,14 @@ RETURNING id
     required String phase,
     required int generation,
     required String digest,
+    Transaction? transaction,
+    int? takeOwnership,
   }) async {
     final rows = await session.db.unsafeQuery(
       '''
 UPDATE esi_holder_assignment
 SET phase = \$1, generation = \$2, "proofDigest" = \$3
+${takeOwnership == null ? '' : ', "takeOwnershipGeneration" = \$8'}
 WHERE id = \$4 AND generation = \$5 AND phase = \$6
   AND COALESCE("takeClosures", 0) = \$7
 RETURNING id
@@ -426,7 +480,9 @@ RETURNING id
         row.generation,
         row.phase,
         row.takeClosures ?? 0,
+        ?takeOwnership,
       ]),
+      transaction: transaction,
     );
     return rows.isNotEmpty;
   }

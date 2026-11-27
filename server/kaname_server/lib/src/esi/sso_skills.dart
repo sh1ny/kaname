@@ -76,6 +76,12 @@ final class ServerSsoSkills {
                   body: <String, Object?>{'status': 'esiReauthorize'},
                 );
               }
+              if (vaultFailure == VaultFailureReason.notHolder) {
+                return (
+                  status: 403,
+                  body: <String, Object?>{'status': 'holderOrScopeRequired'},
+                );
+              }
               return switch (result) {
                 EsiNotSent(:final refusal) => (
                   status: 503,
