@@ -18,7 +18,8 @@ The Compose `server` service SHALL receive the declaration from the deployment e
 
 #### Scenario: Upgrade without a tree
 - **WHEN** a server starts with no tree declaration
-- **THEN** it starts normally, server readers get an unconfigured tree, and the startup affiliation refresh is scheduled
+- **THEN** it starts normally and server readers get an unconfigured tree
+- **AND** if the affiliation scheduling prerequisites are met, the startup refresh is scheduled
 
 #### Scenario: Invalid tree declaration
 - **WHEN** a declaration has an unknown type, malformed or non-positive ID, wrong number of IDs, or duplicate coalition ID
