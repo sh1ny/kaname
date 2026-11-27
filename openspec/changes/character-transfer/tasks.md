@@ -89,8 +89,8 @@
 
 ## 1. Document the ownership boundary
 
-- [ ] 1.1 Check A1 against the CCP claim docs linked in the design. Confirm what the signed example supplies, and record the absence of a documented ownership sampling guarantee rather than inferring one. Verify that the fixtures only claim to prove local behavior and that D8 records the owner's acceptance of the upstream risk.
-- [ ] 1.2 Write the successor to ADR 0019 with C7, including the approved entitlement and holder recovery text. Update only the applicable state row and ADR index entries in `openspec/architecture.md`; cross-reference the recovery limit from the ADR 0017 index entry without editing the accepted ADR. Confirm the next free ADR number against main and run strict OpenSpec validation.
+- [x] 1.1 Check A1 against the CCP claim docs linked in the design. Confirm what the signed example supplies, and record the absence of a documented ownership sampling guarantee rather than inferring one. Verify that the fixtures only claim to prove local behavior and that D8 records the owner's acceptance of the upstream risk.
+- [x] 1.2 Write the successor to ADR 0019 with C7, including the approved entitlement and holder recovery text. Update only the applicable state row and ADR index entries in `openspec/architecture.md`; cross-reference the recovery limit from the ADR 0017 index entry without editing the accepted ADR. Confirm the next free ADR number against main and run strict OpenSpec validation.
 
 ## 2. Upgrade persistence and fence receipt visibility
 

@@ -60,7 +60,7 @@ flowchart LR
 
 | State | Sole writer | Lifetime | Invalidation / rebuild | Authoritative copy |
 |---|---|---|---|---|
-| Member accounts, signing identities and sessions | Server main isolate | Stable account ID; bearer lifetime is tied to the signing identity and membership | Membership changes and owner conflicts revoke affected sessions (ADR 0019) | Postgres |
+| Member accounts, signing identities and sessions | Server main isolate | Stable account ID; bearer lifetime follows the signing identity and membership | Transfer detaches the character and revokes its signing sessions without moving the old account or clearing a device holder (ADR 0020) | Postgres |
 | Groups, policies and org records | Server main isolate | Install lifetime; soft delete | Affiliation and policy checks | Postgres |
 | Character data on a server | Server (the character's one token holder) | Per policy retention | Sync recipes re-pull from ESI | Postgres; ESI upstream |
 | Character data in solo | Device (the character's one token holder) | Until handed over or deleted | Local sync recipes | Device local store; ESI upstream |
@@ -122,6 +122,6 @@ Accepted, not superseded. Proposed ADRs are drafts and are not listed.
 | [0013](../docs/adr/0013-client-data-bundle.md) | One versioned gzip JSON Lines bundle per SDE build, public data only, served by build and hash; same builder on server and device | — |
 | [0014](../docs/adr/0014-realtime-bus-topics.md) | RealtimeBus topics typed and versioned, public or scoped, local delivery first, only the main isolate publishes | — |
 | [0016](../docs/adr/0016-esi-scheduler-shared-state.md) | Isolate-owned Redis connections and one atomic scheduler state; solo in process | — |
-| [0017](../docs/adr/0017-esi-holder-handoff.md) | Durable ESI holder handoff and a desktop credential-only store; verified reclaim stays in M7 | — |
+| [0017](../docs/adr/0017-esi-holder-handoff.md) | Durable ESI holder handoff; see ADR 0020 for recovery after ownership changes. Verified reclaim stays in M7. | — |
 | [0018](../docs/adr/0018-scoped-static-data-administration.md) | Live Kaname admin scope for static-data mutations; public reads stay open | [0015](../docs/adr/0015-interim-install-admin-key.md) |
-| [0019](../docs/adr/0019-member-account-and-signing-identity.md) | Stable member account with a main and alts; character-scoped ESI and administrator authority | — |
+| [0020](../docs/adr/0020-character-ownership-and-account-data.md) | Stable accounts and signing identities; transfer revokes old authority without moving private records or clearing a device holder | [0019](../docs/adr/0019-member-account-and-signing-identity.md) |
