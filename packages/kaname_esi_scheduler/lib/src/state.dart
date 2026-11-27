@@ -59,6 +59,7 @@ final class SchedulerRequest {
     required this.priority,
     this.negativeKey,
     this.pollKey,
+    this.outagePoll = false,
     this.retained = false,
     this.corpKey,
     this.probe = false,
@@ -87,6 +88,12 @@ final class SchedulerRequest {
 
   /// Representation identity only when explicitly polling a read.
   final String? pollKey;
+
+  /// Whether a poll without a GET representation shares the outage pause.
+  final bool outagePoll;
+
+  /// Whether admission and completion participate in the shared outage state.
+  bool get watchesOutage => pollKey != null || outagePoll;
 
   /// Whether the caller still holds the polled representation.
   final bool retained;

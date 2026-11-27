@@ -232,6 +232,9 @@ final class EsiScheduler {
         : _digest([owner.application, owner.character]);
     final isGet = route.method == EsiMethod.get;
     final isPoll = isGet && poll;
+    // This POST is a public batch read, not a cacheable GET representation.
+    final affiliationPoll =
+        poll && request.operationId == 'PostCharactersAffiliation';
     final validator = isGet ? request.headers['If-None-Match'] : null;
     final fields = [
       request.target.toString(),
@@ -252,6 +255,7 @@ final class EsiScheduler {
       priority: priority,
       negativeKey: negative,
       pollKey: isPoll ? (corp ?? negative) : null,
+      outagePoll: affiliationPoll,
       retained: validator != null,
       corpKey: corp,
       probe: probe,
@@ -271,7 +275,7 @@ final class EsiScheduler {
     }
     if (admission case Denied(:final refusal)) {
       _record(route, owner, started, EsiCallLogOutcome.notSent, cost: 0);
-      if (isPoll &&
+      if (input.watchesOutage &&
           refusal.reason == EsiRefusalReason.outage &&
           (refusal.retryAt?.millisecondsSinceEpoch ?? 0) <= _ms) {
         await EsiClient(_ProbeTransport(this)).getStatus();

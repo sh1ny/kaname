@@ -298,6 +298,7 @@ Map<String, Object> _request(SchedulerRequest r) => {
   'priority': r.priority.index,
   'negative': ?r.negativeKey,
   'poll': ?r.pollKey,
+  if (r.outagePoll) 'outagePoll': true,
   'retained': r.retained,
   'corp': ?r.corpKey,
   'probe': r.probe,

@@ -51,10 +51,10 @@
 | Conditional polling and downtime | Fresh page and stale worker | `scheduler`, `Redis` | distinguishes not due from no local representation | green |
 | Conditional polling and downtime | Probe fails | `scheduler`, `Redis` | does not resume for a failed probe; decoded VIP status does not resume polling (in-process) | green |
 | Conditional polling and downtime | ESI reachable but every route answers 503 | `scheduler`, `Redis` | repeated failures refresh the outage window for distinct routes | green |
-| Conditional polling and downtime | Affiliation uses the shared outage pause | `scheduler`, `Redis` | a GET and affiliation share one probe without replaying refused calls | red |
-| Conditional polling and downtime | An affiliation connection failure pauses other polls | `scheduler`, `Redis` | affiliation connectivity failure pauses GET polling | red |
-| Conditional polling and downtime | An affiliation 503 contributes to the shared outage | `scheduler`, `Redis` | affiliation and GET 503s share the outage signal | red |
-| Conditional polling and downtime | POSTs do not share GET metadata | `scheduler`, `Redis` | affiliation posts share neither GET metadata nor outage behavior with unrelated posts | red |
+| Conditional polling and downtime | Affiliation uses the shared outage pause | `scheduler`, `Redis` | a GET and affiliation share one probe without replaying refused calls | green |
+| Conditional polling and downtime | An affiliation connection failure pauses other polls | `scheduler`, `Redis` | affiliation connectivity failure pauses GET polling | green |
+| Conditional polling and downtime | An affiliation 503 contributes to the shared outage | `scheduler`, `Redis` | affiliation and GET 503s share the outage signal | green |
+| Conditional polling and downtime | POSTs do not share GET metadata | `scheduler`, `Redis` | affiliation posts share neither GET metadata nor outage behavior with unrelated posts | green |
 
 ## 1. Verify the pinned future-call manager
 
@@ -62,8 +62,8 @@
 
 ## 2. Extend shared outage admission for affiliation
 
-- [ ] 2.1 Write the four new scheduler scenarios red first. Use the same generated-client scenarios in Redis and in-process tests, hold the probe open until both admissions refuse, and inject time for the two-route `503` window. Confirm the failures are due to missing POST outage admission or observation, not fixture timing.
-- [ ] 2.2 Implement D7 and C6 in the scheduler, in-process state and Redis state. Keep GET validators, freshness and negative caching unchanged; keep existing GET metadata compatible in persisted admission state. Re-run the two conformance files, including the unchanged rows, and mark the new tests green.
+- [x] 2.1 Write the four new scheduler scenarios red first. Use the same generated-client scenarios in Redis and in-process tests, hold the probe open until both admissions refuse, and inject time for the two-route `503` window. Confirm the failures are due to missing POST outage admission or observation, not fixture timing.
+- [x] 2.2 Implement D7 and C6 in the scheduler, in-process state and Redis state. Keep GET validators, freshness and negative caching unchanged; keep existing GET metadata compatible in persisted admission state. Re-run the two conformance files, including the unchanged rows, and mark the new tests green.
 
 ## 3. Store and refresh affiliation observations
 

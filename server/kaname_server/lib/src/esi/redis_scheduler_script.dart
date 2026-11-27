@@ -168,7 +168,7 @@ local function denial(r)
   if routeBlock > now then return refused('budget', routeBlock) end
   if r.probe then
     if not g.paused or g.probe or g.probeAt > now then return refused('outage', g.probeAt) end
-  elseif r.poll and g.paused then return refused('outage', g.probeAt) end
+  elseif (r.poll or r.outagePoll) and g.paused then return refused('outage', g.probeAt) end
   local newKeys = 0
   if r.negative then
     local entry = load(metaKey, 'n:' .. r.negative, metadata)
@@ -428,11 +428,11 @@ if r.negative then
     update('n:'..r.negative,{status=status,negativeUntil=now+60000},now+60000)
   elseif status and status >= 200 and status < 400 then update('n:'..r.negative,{},call.untilAt) end
 end
-if r.poll then
-  if observation.freshUntil then
-    local expiry=observation.freshUntil
-    update('p:'..r.poll,{freshUntil=expiry},math.max(expiry,call.untilAt))
-  end
+if r.poll and observation.freshUntil then
+  local expiry=observation.freshUntil
+  update('p:'..r.poll,{freshUntil=expiry},math.max(expiry,call.untilAt))
+end
+if r.poll or r.outagePoll then
   local failed=observation.connectivityFailure
   if not failed and (status==502 or status==503 or status==504) then
     local previousRoute = g.failedRoute

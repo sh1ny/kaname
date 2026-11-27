@@ -141,7 +141,7 @@ final class MemorySchedulerState implements SchedulerState {
       if (!_paused || _probe != null || _probeAt > _now) {
         return _deny(EsiRefusalReason.outage, _probeAt);
       }
-    } else if (r.pollKey != null && _paused) {
+    } else if (r.watchesOutage && _paused) {
       return _deny(EsiRefusalReason.outage, _probeAt);
     }
     var newKeys = 0;
@@ -418,10 +418,11 @@ final class MemorySchedulerState implements SchedulerState {
           _Metadata(sequence: id, freshUntil: expiry),
         );
       }
-      if (o.connectivityFailure || _outageSignal(r.operation, status)) {
-        if (!_paused) _probeAt = _now;
-        _paused = true;
-      }
+    }
+    if (r.watchesOutage &&
+        (o.connectivityFailure || _outageSignal(r.operation, status))) {
+      if (!_paused) _probeAt = _now;
+      _paused = true;
     }
     if (_probe == id) {
       _probe = null;
