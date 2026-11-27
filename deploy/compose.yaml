@@ -88,6 +88,7 @@ services:
     command: ["--mode", "production"]
     environment:
       <<: *server-environment
+      KANAME_ORG_TREE: ${KANAME_ORG_TREE:-}
       # Server-only EVE SSO configuration. Unset credentials disable SSO.
       KANAME_ESI_SSO_CLIENT_ID: ${KANAME_ESI_SSO_CLIENT_ID:-}
       KANAME_ESI_SSO_CLIENT_SECRET: ${KANAME_ESI_SSO_CLIENT_SECRET:-}

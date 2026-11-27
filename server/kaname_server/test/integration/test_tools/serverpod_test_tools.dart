@@ -14,6 +14,10 @@
 import 'dart:async' as _ida;
 import 'dart:io' as _idi;
 
+import 'package:kaname_server/src/generated/affiliation/affiliation_first_known_args.dart'
+    as _id0q6syb;
+import 'package:kaname_server/src/generated/affiliation/affiliation_sweep_args.dart'
+    as _ibelcfu3;
 import 'package:kaname_server/src/generated/esi/esi_call_log_cursor.dart'
     as _izoszn5i;
 import 'package:kaname_server/src/generated/esi/esi_call_log_page.dart'
@@ -204,6 +208,8 @@ class _InternalTestEndpoints extends TestEndpoints
 }
 
 class _FutureCalls {
+  late final affiliationCall = _AffiliationCallFutureCall();
+
   late final esiCallLogPruneCall = _EsiCallLogPruneCallFutureCall();
 
   late final ssoSessionPruneCall = _SsoSessionPruneCallFutureCall();
@@ -611,6 +617,40 @@ class _StaticDataEndpoint {
       );
     }, _localTestStreamManager.outputStreamController);
     return _localTestStreamManager.outputStreamController.stream;
+  }
+}
+
+class _AffiliationCallFutureCall {
+  Future<void> sweep(
+    _ist.TestSessionBuilder sessionBuilder,
+    _ibelcfu3.AffiliationSweepArgs args,
+  ) async {
+    var _localUniqueSession =
+        (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild();
+    try {
+      await _ibdqg5o2.AffiliationCallSweepFutureCall().invoke(
+        _localUniqueSession,
+        args,
+      );
+    } finally {
+      await _localUniqueSession.close();
+    }
+  }
+
+  Future<void> firstKnown(
+    _ist.TestSessionBuilder sessionBuilder,
+    _id0q6syb.AffiliationFirstKnownArgs args,
+  ) async {
+    var _localUniqueSession =
+        (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild();
+    try {
+      await _ibdqg5o2.AffiliationCallFirstKnownFutureCall().invoke(
+        _localUniqueSession,
+        args,
+      );
+    } finally {
+      await _localUniqueSession.close();
+    }
   }
 }
 

@@ -70,11 +70,13 @@ final class SsoSessions {
   /// Without a test clock, live reads check expiry against the database clock.
   /// [afterCharacterLock] and [callLog] let integration tests advance proof
   /// time at the character or release lock without waiting for a deadline.
+  /// [afterFirstIdentity] queues public work after an identity commits.
   SsoSessions({
     this._now,
     Set<int> adminCharacters = const {},
     EsiCallLogStore? callLog,
     this._afterCharacterLock,
+    this._afterFirstIdentity,
   }) : _admins = Set.unmodifiable(adminCharacters),
        _callLog = callLog ?? _defaultCallLog;
 
@@ -82,6 +84,7 @@ final class SsoSessions {
   static final _defaultCallLog = EsiCallLogStore();
   final EsiCallLogStore _callLog;
   final Future<void> Function(int character)? _afterCharacterLock;
+  final Future<void> Function(int identityId)? _afterFirstIdentity;
 
   /// Associates generated RPCs with this install's exact session authority.
   void bind(Serverpod pod) => _bound[pod] = this;
@@ -320,15 +323,33 @@ final class SsoSessions {
     DateTime proofDeadline,
   ) async {
     try {
-      return await session.db.transaction(
+      final signedIn = await session.db.transaction(
         (tx) => _signIn(session, tx, claims, proofDeadline),
       );
+      if (signedIn?.insertedIdentity case final id?) {
+        await identityCommitted(session, id);
+      }
+      return signedIn?.reply;
     } on SsoProofExpired {
       return null;
     }
   }
 
-  Future<Map<String, Object?>?> _signIn(
+  /// Runs the post-commit hook for a new identity without changing auth results.
+  Future<void> identityCommitted(Session session, int identityId) async {
+    final enqueue = _afterFirstIdentity;
+    if (enqueue == null) return;
+    try {
+      await enqueue(identityId);
+    } on Object {
+      session.log(
+        'affiliation: could not enqueue first-known lookup',
+        level: LogLevel.warning,
+      );
+    }
+  }
+
+  Future<({Map<String, Object?> reply, int? insertedIdentity})?> _signIn(
     Session session,
     Transaction transaction,
     CcpVerifiedIdentity claims,
@@ -430,13 +451,16 @@ final class SsoSessions {
       transaction: transaction,
     );
     if (!admit()) throw const SsoProofExpired();
-    return {
-      'session': bearer,
-      'memberId': member.toString(),
-      'characterId': identity.characterId.toString(),
-      'characterName': identity.characterName,
-      'admin': _admins.contains(identity.characterId),
-    };
+    return (
+      reply: {
+        'session': bearer,
+        'memberId': member.toString(),
+        'characterId': identity.characterId.toString(),
+        'characterName': identity.characterName,
+        'admin': _admins.contains(identity.characterId),
+      },
+      insertedIdentity: stored == null ? signer : null,
+    );
   }
 
   /// Removes a current session; an unknown token has no effect.

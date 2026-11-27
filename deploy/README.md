@@ -50,6 +50,21 @@ sign-in and add verified character IDs to `KANAME_ESI_SSO_ADMIN_CHARACTERS`.
 Update the server and app together. Public status and job reads still work
 without signing in (ADR 0018).
 
+### Organisation tree
+
+Set `KANAME_ORG_TREE` in `deploy/.env` to `corporation:<id>`,
+`alliance:<id>`, or `coalition:<id>,<id>[,...]`. Use positive decimal EVE IDs.
+A coalition needs at least two distinct alliance IDs. Leave the setting unset
+or empty to run without a tree. A non-empty invalid declaration stops the
+server and names `KANAME_ORG_TREE` in the startup error.
+
+The server refreshes public corporation and alliance IDs for every known
+character at startup, hourly, and after the first verified sign-in or link
+that registers a character. The refresh uses the shared Redis-backed ESI
+scheduler without an EVE token. It still runs without a tree or an EVE SSO
+registration. A failed lookup leaves the last valid observation in place
+until a later refresh succeeds.
+
 ### ESI vault backups
 
 Back up `KANAME_ESI_VAULT_KEY` separately from Postgres. The key is 32 random
