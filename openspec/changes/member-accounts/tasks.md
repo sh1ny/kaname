@@ -84,7 +84,7 @@
 
 ## 1. Account and authority contract
 
-- [ ] 1.1 Write ADR 0019 and update the ADR index and the matching state ownership entry in `openspec/architecture.md`. Verify the ADR records distinct account and signing identity (C1), transfer boundary (C7), write order (C9) and account retirement (C10), without superseding ADR 0017 or ADR 0018. Run strict OpenSpec validation.
+- [x] 1.1 Write ADR 0019 and update the ADR index and the matching state ownership entry in `openspec/architecture.md`. Verify the ADR records distinct account and signing identity (C1), transfer boundary (C7), write order (C9) and account retirement (C10), without superseding ADR 0017 or ADR 0018. Run strict OpenSpec validation.
 
 ## 2. M2 upgrade, first sign-in and live sessions
 
