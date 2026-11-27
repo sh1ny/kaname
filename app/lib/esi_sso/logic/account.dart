@@ -237,12 +237,26 @@ final class AccountNotifier extends Notifier<AccountState> {
     if (next != null && DateTime.now().isBefore(next)) return;
     final epoch = ++_epoch;
     state = AccountWorking(before.connected);
-    final (notice, updated) = await api.complete(
+    final (outcome, updated) = await api.complete(
       before.attempt,
       code: code,
       session: before.connected,
     );
     if (!_current(epoch)) return;
+    var notice = outcome;
+    final session = before.connected;
+    if (before.attempt.linking &&
+        session != null &&
+        (outcome == AccountNotice.blocked ||
+            outcome == AccountNotice.signedOut)) {
+      final check = await session.refresh();
+      if (!_current(epoch)) return;
+      if (check is ViewerRefreshInvalid) {
+        notice = AccountNotice.signedOut;
+      } else if (outcome == AccountNotice.signedOut) {
+        notice = AccountNotice.unavailable;
+      }
+    }
     if (notice == AccountNotice.memberLinked) {
       ref.read(membershipEpochProvider.notifier).advance();
     }

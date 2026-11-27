@@ -278,6 +278,91 @@ void main() {
     });
   }
 
+  testWidgets('an unexpected unlink result needs exact-session recovery', (
+    tester,
+  ) async {
+    final server = _Server()
+      ..unlinkReply = Completer<void>()
+      ..unlinkStatus = MemberAccountStatus.mainChanged;
+    final history = _HistoryRequests();
+    await http.runWithClient(() async {
+      await _open(tester, history: history);
+      await _signIn(tester);
+      await _tap(tester, 'My calls', settle: false);
+      history.pages.single.complete(_historyPage('1', 'Original receipt'));
+      await tester.pumpAndSettle();
+      expect(find.text('Original receipt'), findsOneWidget);
+
+      await _tap(tester, _unlink, settle: false);
+      expect(server.unlinkCalls, 1);
+      expect(find.text('My calls'), findsNothing);
+      server.unlinkReply!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Original receipt'), findsNothing);
+      expect(find.text('Linked characters'), findsNothing);
+      expect(find.text('Sign in to server'), findsNothing);
+      expect(server.rosterRequests, hasLength(1));
+
+      await _tap(tester, _recover);
+      expect(server.revocations, ['Bearer ${'b' * 43}']);
+      await _signIn(tester);
+      expect(find.text('Linked characters'), findsOneWidget);
+      expect(
+        server.rosterRequests.last.headers['authorization'],
+        'Bearer ${'c' * 43}',
+      );
+      expect(find.text('Original receipt'), findsNothing);
+      expect(server.unlinkCalls, 1);
+    }, () => MockClient(server.call));
+  });
+
+  for (final status in [401, 200, 503]) {
+    testWidgets('refused link checks the original viewer: HTTP $status', (
+      tester,
+    ) async {
+      final history = _HistoryRequests();
+      final viewerReply = Completer<void>();
+      final server = _Server()..refuseLink = true;
+      await http.runWithClient(() async {
+        await _open(tester, history: history);
+        await _signIn(tester);
+        await _tap(tester, 'My calls', settle: false);
+        history.pages.single.complete(
+          _historyPage('1', 'Original receipt', next: true),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Original receipt'), findsOneWidget);
+        await _tap(tester, 'Older calls', settle: false);
+
+        await _tap(tester, 'Link character', settle: false);
+        server
+          ..viewerBearers.clear()
+          ..viewerReply = viewerReply
+          ..viewerFailure = status == 200 ? null : status;
+        await _tap(tester, 'Finish linking', settle: false);
+        expect(server.viewerBearers, ['Bearer ${'b' * 43}']);
+        expect(find.text('Sign in to server'), findsNothing);
+        viewerReply.complete();
+        await tester.pump();
+        history.pages.last.complete(_historyPage('2', 'Delayed receipt'));
+        await tester.pumpAndSettle();
+
+        final invalid = status == 401;
+        expect(
+          find.text('Sign in to server'),
+          invalid ? findsOneWidget : findsNothing,
+        );
+        for (final label in [
+          'Linked characters',
+          'My calls',
+          'Delayed receipt',
+        ]) {
+          expect(find.text(label), invalid ? findsNothing : findsOneWidget);
+        }
+      }, () => MockClient(server.call));
+    });
+  }
+
   for (final viewerStatus in [503, 401]) {
     testWidgets(
       'Make main confirms session end before signing out ($viewerStatus)',
@@ -561,6 +646,10 @@ final class _Server {
   int unlinkCalls = 0;
   int? unlinkDenialStatus;
   bool rosterDenied = false;
+  MemberAccountStatus? unlinkStatus;
+  bool refuseLink = false;
+  Completer<void>? viewerReply;
+  final viewerBearers = <String>[];
   int? viewerFailure;
 
   Future<http.Response> call(http.Request request) async {
@@ -604,9 +693,11 @@ final class _Server {
         if (self) await selfReply.future;
         return _json(
           MemberAccountMutation(
-            status: self
-                ? MemberAccountStatus.selfUnlinked
-                : MemberAccountStatus.unlinked,
+            status:
+                unlinkStatus ??
+                (self
+                    ? MemberAccountStatus.selfUnlinked
+                    : MemberAccountStatus.unlinked),
           ).toJson(),
         );
       case ['api', 'memberAccount', 'makeMain']:
@@ -633,10 +724,13 @@ final class _Server {
         if ((jsonDecode(request.body) as Map<String, Object?>)['link'] ==
             true) {
           linkRequests.add(request);
+          if (refuseLink) return _json({'status': 'blocked'}, 403);
           return _json({'status': 'linked'});
         }
         return _json({...pilot, 'session': (++signIns == 1 ? 'b' : 'c') * 43});
       case 'viewer':
+        viewerBearers.add(request.headers['authorization']!);
+        await viewerReply?.future;
         if (viewerFailure case final status?) {
           return _json({
             'status': status == 401 ? 'signInRequired' : 'unavailable',

@@ -103,6 +103,9 @@ invalid policy permits identity sign-in but does not grant a skills scope.
 The browser callback and completion replies use `no-store` and `no-referrer`.
 Do not log callbacks, their query strings, or authentication request bodies
 and headers at any reverse proxy.
+Skip access logs for the member roster and account RPCs, including requests
+to `/api/memberRoster`, `/api/memberAccount`, and their method paths. The
+shipped Caddy config skips both forms.
 The browser must keep Kaname's short-lived attempt cookie. Other cookies on
 the same host do not affect the sign-in check.
 

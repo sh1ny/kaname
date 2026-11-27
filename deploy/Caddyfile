@@ -52,7 +52,7 @@
 
 :80 {
 	@sso path /auth/esi /auth/esi/*
-	@private path /auth/esi /auth/esi/* /api/esiCallLog/* /api/staticDataAdmin/*
+	@private path /auth/esi /auth/esi/* /api/esiCallLog/* /api/staticDataAdmin/* /api/memberRoster /api/memberRoster/* /api/memberAccount /api/memberAccount/*
 	log_skip @private
 	handle @sso {
 		reverse_proxy server:8080

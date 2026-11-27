@@ -41,10 +41,21 @@ final class MemberAccountClient {
   Future<MemberAccountStatus?> makeMain(String character) =>
       _mutate(() => _client.memberAccount.makeMain(character));
 
-  /// Detaches a character. Only a typed reply establishes a definitive result.
+  /// Detaches a character. An outcome from a different mutation does not
+  /// settle the unlink, even if the reply decodes.
   Future<MemberAccountStatus> unlink(String character) async =>
-      await _mutate(() => _client.memberAccount.unlink(character)) ??
-      MemberAccountStatus.unavailable;
+      switch (await _mutate(() => _client.memberAccount.unlink(character))) {
+        final MemberAccountStatus status &&
+            (MemberAccountStatus.unlinked ||
+                MemberAccountStatus.selfUnlinked ||
+                MemberAccountStatus.mainRequired ||
+                MemberAccountStatus.refused ||
+                MemberAccountStatus.denied) =>
+          status,
+        MemberAccountStatus.mainChanged ||
+        MemberAccountStatus.unavailable ||
+        null => MemberAccountStatus.unavailable,
+      };
 
   Future<MemberAccountStatus?> _mutate(
     Future<MemberAccountMutation> Function() send,
