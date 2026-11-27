@@ -11,6 +11,7 @@ import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
 
 import '../support/in_process_pod.dart';
+import '../support/observe_postgres_lock.dart';
 
 const _one = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const _two = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
@@ -21,34 +22,63 @@ const _owner = 'VEVTVCBPTkxZ';
 void main() {
   late InProcessPod pod;
   late Session session;
-  late SsoIdentityRow pilot;
+  late SsoViewer pilot;
   late EsiTokenVault vault;
   late SsoCharacterGate gate;
   late SsoHandoff handoff;
   late DateTime clock;
+
+  Future<SsoViewer> signViewer(int character) async {
+    final identity = await SsoIdentityRow.db.insertRow(
+      session,
+      SsoIdentityRow(
+        characterId: character,
+        characterName: 'Pilot',
+        owner: _owner,
+        blocked: false,
+      ),
+    );
+    final account = await MemberAccountRow.db.insertRow(
+      session,
+      MemberAccountRow(mainIdentityId: identity.id!),
+    );
+    final linked = await SsoIdentityRow.db.updateRow(
+      session,
+      identity.copyWith(accountId: account.id),
+    );
+    final login = await SsoSessionRow.db.insertRow(
+      session,
+      SsoSessionRow(
+        digest: 'fixture-$character',
+        identityId: linked.id!,
+        accountId: account.id!,
+        expiresAt: clock.add(const Duration(days: 1)),
+      ),
+    );
+    return (
+      accountId: account.id!,
+      accountExcluded: null,
+      admin: false,
+      identity: linked,
+      sessionId: login.id!,
+    );
+  }
 
   setUp(() async {
     pod = await InProcessPod.start();
     addTearDown(pod.stop);
     session = await pod.pod.createSession(enableLogging: false);
     addTearDown(session.close);
-    pilot = await SsoIdentityRow.db.insertRow(
-      session,
-      SsoIdentityRow(
-        characterId: _character,
-        characterName: 'Pilot',
-        owner: _owner,
-        blocked: false,
-      ),
-    );
+    clock = DateTime.utc(2026, 11, 25, 10);
+    pilot = await signViewer(_character);
     vault = createServerEsiVault(
       pod.pod,
       readKey: () => base64Encode(List.filled(32, 19)),
       refresh: (_, _) async => fail('handoff must not send refresh'),
-    );
-    gate = SsoCharacterGate();
-    clock = DateTime.utc(2026, 11, 25, 10);
-    handoff = SsoHandoff(gate: gate, vault: vault, now: () => clock);
+    ).vault;
+    final sessions = SsoSessions(now: () => clock);
+    gate = sessions.gate;
+    handoff = SsoHandoff(sessions: sessions, vault: vault, now: () => clock);
   });
 
   Future<VaultAuthorization> holdOnServer({int character = _character}) async {
@@ -88,6 +118,78 @@ void main() {
 
   Future<SsoHandoffResult> reconcile(String proof, int epoch) =>
       handoff.takeIntent(session, pilot, proof, epoch, reconcile: true);
+
+  test('revocation before holder admission starts no holder action', () async {
+    await holdOnServer();
+    await SsoSessionRow.db.deleteWhere(
+      session,
+      where: (t) => t.id.equals(pilot.sessionId),
+    );
+    expect(await handoff.take(session, pilot, _one), SsoHandoffStatus.blocked);
+    expect((await assigned())?.phase, 'serverHeld');
+    expect(await handoff.prepareTake(session, pilot), isNull);
+  });
+
+  for (final returning in [true, false]) {
+    final action = returning ? 'release' : 'standalone join';
+    test('exact-session revocation blocks holder $action', () async {
+      final sessions = SsoSessions(now: () => clock);
+      final oldBearer = 'r' * 43;
+      final currentBearer = 'k' * 43;
+      final old = (await SsoSessionRow.db.findById(session, pilot.sessionId))!;
+      await SsoSessionRow.db.updateRow(
+        session,
+        old.copyWith(digest: ssoDigest(oldBearer)),
+        columns: (t) => [t.digest],
+      );
+      await SsoSessionRow.db.insertRow(
+        session,
+        SsoSessionRow(
+          digest: ssoDigest(currentBearer),
+          accountId: old.accountId,
+          identityId: old.identityId,
+          expiresAt: old.expiresAt,
+        ),
+      );
+      SsoDeviceReservation? reservation;
+      if (returning) {
+        await holdOnServer();
+        reservation =
+            await handoff.take(session, pilot, _one) as SsoDeviceReservation;
+      }
+      final before = (await assigned())?.toJson();
+      Future<SsoHandoffStatus> attempt(SsoViewer viewer) => returning
+          ? handoff.release(session, viewer, _one, reservation!.generation)
+          : handoff.joinStandalone(
+              session,
+              viewer,
+              _one,
+              ssoDigest('$_character:$_owner'),
+            );
+
+      final captured = await sessions.viewerForRefresh(session, oldBearer);
+      expect(captured?.sessionId, pilot.sessionId);
+      final revoked = Completer<void>();
+      final pending = revoked.future.then((_) => attempt(captured!));
+      try {
+        await pod.pod.withSession(
+          (s) => sessions.signOut(s, oldBearer),
+          enableLogging: false,
+        );
+      } finally {
+        revoked.complete();
+      }
+      expect(await pending, SsoHandoffStatus.blocked);
+      expect((await assigned())?.toJson(), before);
+
+      final live = (await sessions.viewerForRefresh(session, currentBearer))!;
+      expect(await attempt(live), SsoHandoffStatus.released);
+      final released = (await assigned())!.toJson();
+      expect(released['phase'], 'serverReserved');
+      expect(await attempt(captured!), SsoHandoffStatus.blocked);
+      expect((await assigned())?.toJson(), released);
+    }, timeout: const Timeout(Duration(minutes: 3)));
+  }
 
   test('Take a server-held character solo', () async {
     final original = await holdOnServer();
@@ -241,7 +343,7 @@ void main() {
     finish.complete();
     await admitted;
     final reconstructed = SsoHandoff(
-      gate: SsoCharacterGate(),
+      sessions: SsoSessions(now: () => clock),
       vault: vault,
       now: () => clock,
     );
@@ -368,15 +470,7 @@ void main() {
 
   test('Repeated closures stay pending after restart and do not limit another character', () async {
     await holdOnServer();
-    final other = await SsoIdentityRow.db.insertRow(
-      session,
-      SsoIdentityRow(
-        characterId: _other,
-        characterName: 'Other',
-        owner: _owner,
-        blocked: false,
-      ),
-    );
+    final other = await signViewer(_other);
     await holdOnServer(character: _other);
     final start = clock;
     expect(await reconcile(_one, 1), SsoHandoffStatus.notAccepted);
@@ -384,7 +478,7 @@ void main() {
 
     clock = start.add(const Duration(seconds: 30));
     final restarted = SsoHandoff(
-      gate: SsoCharacterGate(),
+      sessions: SsoSessions(now: () => clock),
       vault: vault,
       now: () => clock,
     );
@@ -418,7 +512,7 @@ void main() {
     () async {
       await holdOnServer();
       final start = clock;
-      final locked = Completer<void>();
+      final locked = Completer<int>();
       final unlock = Completer<void>();
       addTearDown(() {
         if (!unlock.isCompleted) unlock.complete();
@@ -431,31 +525,28 @@ void main() {
             parameters: QueryParameters.named({'character': _character}),
             transaction: transaction,
           );
-          locked.complete();
+          final pid = await db.db.unsafeQuery(
+            'SELECT pg_backend_pid()',
+            transaction: transaction,
+          );
+          locked.complete(pid.single.single as int);
           await unlock.future;
         }),
         enableLogging: false,
       );
-      await locked.future;
-
-      var finished = false;
-      final closing = reconcile(_one, 1)
-        ..whenComplete(() => finished = true).ignore();
-      // Poll the server until the closure waits on the held row lock.
-      while (true) {
-        final waiting = await session.db.unsafeQuery('''
-SELECT count(*) FROM pg_stat_activity
-WHERE datname = current_database() AND wait_event_type = 'Lock'
-  AND query LIKE '%esi_holder_assignment%'
-''');
-        if ((waiting.single.single! as int) > 0) break;
-        if (finished) fail('The closure finished without waiting for the row.');
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
+      final pid = await Future.any<int>([
+        locked.future,
+        holder.then((_) => fail('The holder did not lock the assignment.')),
+      ]);
+      final closing = withPostgresWaitBarrier(() => reconcile(_one, 1));
       final lockedAt = start.add(const Duration(minutes: 2));
-      clock = lockedAt;
-      unlock.complete();
-      await holder;
+      try {
+        await observePostgresLock(session, pid, closing);
+        clock = lockedAt;
+      } finally {
+        unlock.complete();
+        await holder;
+      }
       expect(await closing, SsoHandoffStatus.notAccepted);
       final first = await closure();
       expect(first, ('serverHeld', 1, null, 1, lockedAt));

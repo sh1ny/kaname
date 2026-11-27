@@ -1,0 +1,6 @@
+### The stable Kaname account, independent of the current signing character.
+class: MemberAccountRow
+table: member_account
+serverOnly: true
+fields:
+  mainIdentityId: int, relation(parent=esi_identity, onDelete=Restrict)

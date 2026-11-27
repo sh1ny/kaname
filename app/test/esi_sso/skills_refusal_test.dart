@@ -27,6 +27,9 @@ void main() {
         'admin': false,
         'holder': 'serverHeld',
       };
+      if (request.url.pathSegments case [..., 'memberRoster', 'page']) {
+        return http.Response('{"status":"ok","characters":[]}', 200);
+      }
       switch (request.url.pathSegments.last) {
         case 'begin':
           return http.Response(

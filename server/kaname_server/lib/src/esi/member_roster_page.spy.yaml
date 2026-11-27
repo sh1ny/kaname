@@ -1,0 +1,9 @@
+### One connected account page with main and signing roles outside the page.
+class: MemberRosterPage
+fields:
+  status: MemberRosterStatus
+  accountId: String?
+  main: MemberCharacter?
+  signing: MemberCharacter?
+  characters: List<MemberCharacter>
+  next: String?

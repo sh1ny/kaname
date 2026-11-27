@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:kaname_server/src/esi/esi_call_log_endpoint.dart';
 import 'package:kaname_server/src/esi/esi_call_log_store.dart';
+import 'package:kaname_server/src/esi/sso_sessions.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
@@ -8,33 +11,61 @@ import '../test_tools/serverpod_test_tools.dart';
 
 const _operation = 'GetCharactersCharacterIdSkills';
 
+typedef _Pilot = ({int account, int character, int session});
+
 void main() {
   withServerpod('Scoped ESI receipt projections', (sessions, endpoints) {
     late Session session;
-    late SsoIdentityRow first;
-    late SsoIdentityRow second;
+    late _Pilot first;
+    late _Pilot second;
     late DateTime now;
 
-    TestSessionBuilder signed(SsoIdentityRow viewer, {bool admin = false}) =>
+    TestSessionBuilder signed(_Pilot viewer, {bool admin = false}) =>
         sessions.copyWith(
           authentication: AuthenticationOverride.authenticationInfo(
-            viewer.id!.toString(),
+            viewer.account.toString(),
             {if (admin) Scope.admin},
+            authId: viewer.session.toString(),
           ),
         );
 
-    Future<SsoIdentityRow> addPilot(int character) =>
-        SsoIdentityRow.db.insertRow(
-          session,
-          SsoIdentityRow(
-            characterId: character,
-            owner: 'b3duZXI=',
-            characterName: 'Pilot',
-            blocked: false,
-          ),
-        );
+    Future<_Pilot> addPilot(int character) => session.db.transaction((
+      transaction,
+    ) async {
+      final identity = await SsoIdentityRow.db.insertRow(
+        session,
+        SsoIdentityRow(
+          characterId: character,
+          owner: 'b3duZXI=',
+          characterName: 'Pilot',
+          blocked: false,
+        ),
+        transaction: transaction,
+      );
+      final account = await MemberAccountRow.db.insertRow(
+        session,
+        MemberAccountRow(mainIdentityId: identity.id!),
+        transaction: transaction,
+      );
+      await SsoIdentityRow.db.updateRow(
+        session,
+        identity.copyWith(accountId: account.id),
+        transaction: transaction,
+      );
+      final signed = await SsoSessionRow.db.insertRow(
+        session,
+        SsoSessionRow(
+          digest: 'test-session-$character',
+          accountId: account.id!,
+          identityId: identity.id!,
+          expiresAt: now.add(const Duration(days: 1)),
+        ),
+        transaction: transaction,
+      );
+      return (account: account.id!, character: character, session: signed.id!);
+    });
 
-    Future<void> receipt(SsoIdentityRow viewer, DateTime at) async {
+    Future<void> receipt(_Pilot viewer, DateTime at) async {
       await EsiCallLogRow.db.insertRow(
         session,
         EsiCallLogRow(
@@ -44,8 +75,8 @@ void main() {
           status: 200,
           cost: 2,
           latencyMicros: 10,
-          memberId: viewer.id,
-          characterId: viewer.characterId,
+          memberId: viewer.account,
+          characterId: viewer.character,
         ),
       );
     }
@@ -54,6 +85,11 @@ void main() {
       now = DateTime.now().toUtc();
       session = sessions.build();
       addTearDown(session.close);
+      SsoSessions(
+        now: () => now,
+        adminCharacters: {511, 512},
+      ).bind(session.serverpod);
+      await session.db.unsafeExecute('DELETE FROM esi_call_log_seal');
       first = await addPilot(511);
       second = await addPilot(512);
       addTearDown(() async {
@@ -63,6 +99,18 @@ void main() {
             cleanup,
             where: (t) => t.characterId.between(511, 516),
           );
+          await cleanup.db.unsafeExecute('''
+            DELETE FROM esi_session WHERE "identityId" IN
+              (SELECT id FROM esi_identity WHERE "characterId" BETWEEN 511 AND 516)
+          ''');
+          await cleanup.db.unsafeExecute('''
+            UPDATE esi_identity SET "accountId" = NULL
+            WHERE "characterId" BETWEEN 511 AND 516
+          ''');
+          await cleanup.db.unsafeExecute('''
+            DELETE FROM member_account WHERE "mainIdentityId" IN
+              (SELECT id FROM esi_identity WHERE "characterId" BETWEEN 511 AND 516)
+          ''');
           await SsoIdentityRow.db.deleteWhere(
             cleanup,
             where: (t) => t.characterId.between(511, 516),
@@ -166,6 +214,33 @@ void main() {
       expect((await reader.own(viewers.last, null)).status, 'ok');
     });
 
+    test(
+      'a sparse page advances on visible rows, not removed characters',
+      () async {
+        final hidden = await addPilot(513);
+        final time = now.subtract(const Duration(hours: 1));
+        await receipt(first, time.subtract(const Duration(seconds: 1000)));
+        for (var index = 0; index < 101; index++) {
+          await receipt(first, time.subtract(Duration(seconds: index)));
+          await receipt((
+            account: first.account,
+            character: hidden.character,
+            session: hidden.session,
+          ), time.add(Duration(seconds: index)));
+        }
+        final auth = signed(first);
+        final page = await endpoints.esiCallLog.ownRows(auth, null);
+        expect(page.rows, hasLength(100));
+        expect(page.rows.map((row) => row.characterId).toSet(), {'511'});
+        final remaining = await endpoints.esiCallLog.ownRows(auth, page.next);
+        expect(remaining.rows.map((row) => row.recordedAt), [
+          time.subtract(const Duration(seconds: 100)),
+          time.subtract(const Duration(seconds: 1000)),
+        ]);
+        expect(remaining.next, isNull);
+      },
+    );
+
     test('Admins read the same released window', () async {
       final at = DateTime.utc(2026, 11, 25, 9);
       var clock = at;
@@ -186,10 +261,124 @@ void main() {
       }
       final before = await reader.totals(admin);
       expect(before.rows.single.total, 5);
-      await receipt(second, at.subtract(const Duration(days: 2)));
+      await receipt(second, at);
       expect((await reader.totals(other)).rows.single.total, 5);
       clock = at.add(const Duration(days: 1));
       expect((await reader.totals(other)).rows.single.total, 6);
     });
+
+    test('revoked allowlisted alt cannot use cached route totals', () async {
+      final date = DateTime.utc(2026, 11, 25, 9);
+      final reader = EsiCallLogReads(EsiCallLogStore(now: () => date));
+      final acting = signed(first, admin: true).build();
+      addTearDown(acting.close);
+      await EsiCallLogRow.db.insertRow(
+        session,
+        EsiCallLogRow(
+          recordedAt: date.subtract(const Duration(days: 1)),
+          operation: 'GetStatus',
+          outcome: 'success',
+          latencyMicros: 1,
+          characterId: first.character,
+        ),
+      );
+      expect((await reader.totals(acting)).rows.single.total, 1);
+      await SsoSessionRow.db.deleteWhere(
+        session,
+        where: (t) => t.id.equals(first.session),
+      );
+      final denied = await reader.totals(acting);
+      expect(denied.status, 'denied');
+      expect(denied.rows, isEmpty);
+    });
+
+    test('newer seal refuses prior results for owners waiters and cache hits before admission', () async {
+      var clock = DateTime.utc(2026, 11, 25, 9);
+      final store = EsiCallLogStore(now: () => clock);
+      final owner = signed(first, admin: true).build();
+      final waiter = signed(second, admin: true).build();
+      addTearDown(owner.close);
+      addTearDown(waiter.close);
+      for (final pilot in [
+        first,
+        second,
+        await addPilot(513),
+        await addPilot(514),
+        await addPilot(515),
+      ]) {
+        await receipt(pilot, clock.subtract(const Duration(days: 2)));
+      }
+
+      for (final warmCache in [false, true]) {
+        final paused = Completer<void>();
+        final resume = Completer<void>();
+        final calculating = Completer<void>();
+        final joined = Completer<void>();
+        final releaseCalculation = Completer<void>();
+        var calculations = 0;
+        final expected = warmCache ? 1 : 2;
+        var checks = 0;
+        var fence = !warmCache;
+        final reader = EsiCallLogReads(
+          store,
+          beforeAggregate: ({required joining}) async {
+            if (joining) {
+              joined.complete();
+            } else {
+              expect(++calculations, 1);
+              calculating.complete();
+              if (!warmCache) await releaseCalculation.future;
+            }
+          },
+          readSeal: (admitting) async {
+            if (fence) {
+              if (++checks == expected) paused.complete();
+              await resume.future;
+            }
+            return store.currentSeal(admitting);
+          },
+        );
+        final responses = <Future<EsiRouteCountPage>>[];
+        try {
+          if (warmCache) {
+            final admitted = await reader.totals(owner);
+            expect(admitted.rows.single.total, 5);
+            fence = true;
+            responses.add(reader.totals(owner));
+          } else {
+            final original = reader.totals(owner);
+            responses.add(original);
+            await Future.any([
+              calculating.future,
+              original.then(
+                (_) => fail('the original request did not calculate'),
+              ),
+            ]);
+            final waiting = reader.totals(waiter);
+            responses.add(waiting);
+            await Future.any([
+              joined.future,
+              waiting.then((_) => fail('the second request did not join')),
+            ]);
+            releaseCalculation.complete();
+          }
+          await Future.any([
+            paused.future,
+            for (final response in responses)
+              response.then((_) => fail('response did not await admission')),
+          ]);
+          clock = clock.add(const Duration(days: 1));
+          await store.sealWindow(session);
+        } finally {
+          if (!releaseCalculation.isCompleted) releaseCalculation.complete();
+          resume.complete();
+        }
+        for (final page in await Future.wait(responses)) {
+          expect(page.status, 'unavailable');
+          expect(page.rows, isEmpty);
+        }
+        expect(calculations, 1);
+      }
+    }, timeout: const Timeout(Duration(minutes: 3)));
   }, rollbackDatabase: RollbackDatabase.disabled);
 }

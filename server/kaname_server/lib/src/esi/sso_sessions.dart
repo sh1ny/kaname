@@ -5,9 +5,22 @@ import 'package:kaname_esi_sso/kaname_esi_sso.dart';
 import 'package:serverpod/serverpod.dart';
 
 import '../generated/protocol.dart';
+import 'esi_call_log_store.dart';
 
-/// The current Kaname authority, derived from a session and pinned CCP owner.
-typedef SsoViewer = ({SsoIdentityRow identity, bool admin, int sessionId});
+/// Live account and signing character. ESI and admin authority follow the signer.
+typedef SsoViewer = ({
+  int accountId,
+  bool? accountExcluded,
+  SsoIdentityRow identity,
+  bool admin,
+  int sessionId,
+});
+
+/// Aborts a proof-authorized transaction that outlived the proof while writing.
+final class SsoProofExpired implements Exception {
+  /// The caller maps a rolled-back mutation to the usual proof refusal.
+  const SsoProofExpired();
+}
 
 /// One admitted activity per character in the server main isolate (ADR 0017).
 final class SsoCharacterGate {
@@ -54,29 +67,85 @@ final class SsoCharacterGate {
 /// Session and identity storage. Only a bearer digest reaches Postgres.
 final class SsoSessions {
   /// [adminCharacters] contains only operator-approved CCP character IDs.
-  SsoSessions({required this._now, Set<int> adminCharacters = const {}})
-    : _admins = Set.unmodifiable(adminCharacters);
+  /// Without a test clock, live reads check expiry against the database clock.
+  /// [afterCharacterLock] and [callLog] let integration tests advance proof
+  /// time at the character or release lock without waiting for a deadline.
+  SsoSessions({
+    this._now,
+    Set<int> adminCharacters = const {},
+    EsiCallLogStore? callLog,
+    this._afterCharacterLock,
+  }) : _admins = Set.unmodifiable(adminCharacters),
+       _callLog = callLog ?? _defaultCallLog;
 
-  /// The same main-isolate gate protects sign-in, grants and ESI dispatch.
+  static final _bound = Expando<SsoSessions>();
+  static final _defaultCallLog = EsiCallLogStore();
+  final EsiCallLogStore _callLog;
+  final Future<void> Function(int character)? _afterCharacterLock;
+
+  /// Associates generated RPCs with this install's exact session authority.
+  void bind(Serverpod pod) => _bound[pod] = this;
+
+  /// Returns the session authority installed for [pod], if sign-in is enabled.
+  static SsoSessions? forPod(Serverpod pod) => _bound[pod];
+
+  /// Rechecks the original admin bearer in the caller's admitted DB work.
+  static Future<bool> liveAdmin(
+    Session session,
+    AuthenticationInfo? auth,
+  ) async {
+    if (auth == null || !auth.scopes.contains(Scope.admin)) return false;
+    final authority = forPod(session.serverpod);
+    final account = int.tryParse(auth.userIdentifier, radix: 10);
+    final id = int.tryParse(auth.authId, radix: 10);
+    if (authority == null || account == null || id == null) return false;
+    return (await authority.viewerById(session, id, account))?.admin == true;
+  }
+
+  /// The main-isolate gate protects grants, holders and ESI dispatch.
   final gate = SsoCharacterGate();
 
-  final DateTime Function() _now;
+  final DateTime Function()? _now;
   final Set<int> _admins;
+
+  DateTime _wallNow() => _now?.call().toUtc() ?? DateTime.now().toUtc();
+
+  static const _databaseUtc =
+      "COALESCE(@clock::timestamp, clock_timestamp() AT TIME ZONE 'UTC')";
 
   /// Whether this install can grant admin scope to a verified character.
   bool get adminConfigured => _admins.isNotEmpty;
   static final _bearerShape = RegExp(r'^[A-Za-z0-9_-]{43}$');
+
+  /// Applies the same Postgres statement budget before and after roster auth.
+  static const rosterStatementBudget = "SET LOCAL statement_timeout = '10s'";
 
   /// Authenticates a Serverpod bearer and derives scope from the live identity.
   Future<AuthenticationInfo?> authenticate(
     Session session,
     String bearer,
   ) async {
-    final current = await viewer(session, bearer);
-    if (current == null) return null;
-    return AuthenticationInfo(current.identity.id!.toString(), {
-      if (current.admin) Scope.admin,
-    }, authId: current.sessionId.toString());
+    if (!_bearerShape.hasMatch(bearer)) return null;
+    final digest = ssoDigest(bearer);
+    try {
+      final current = switch (session) {
+        MethodCallSession(endpoint: 'memberRoster') =>
+          await session.db.transaction((tx) async {
+            await session.db.unsafeExecute(
+              rosterStatementBudget,
+              transaction: tx,
+            );
+            return _live(session, digest: digest, transaction: tx);
+          }),
+        _ => await _live(session, digest: digest),
+      };
+      if (current == null) return null;
+      return AuthenticationInfo(current.accountId.toString(), {
+        if (current.admin) Scope.admin,
+      }, authId: current.sessionId.toString());
+    } on Exception {
+      return null;
+    }
   }
 
   /// Finds the live identity for the supplied bearer, never for a claimed ID.
@@ -88,42 +157,188 @@ final class SsoSessions {
     }
   }
 
+  /// Captures account, signer and exclusion for an ESI dispatch in one read.
+  Future<SsoViewer?> viewerForDispatch(Session session, String bearer) {
+    if (!_bearerShape.hasMatch(bearer)) return Future.value();
+    return _live(session, digest: ssoDigest(bearer), includeExclusion: true);
+  }
+
   /// Resolves the bearer for the viewer route without hiding lookup errors.
   ///
   /// Returns `null` only if the bearer or session is invalid. Lookup errors
   /// propagate so the viewer route can report unavailability. Other consumers
   /// use [viewer] to keep their existing failure handling.
-  Future<SsoViewer?> viewerForRefresh(Session session, String bearer) async {
+  /// A caller supplying [transaction] must commit an expiry deletion before
+  /// confirming that this check denied the session.
+  Future<SsoViewer?> viewerForRefresh(
+    Session session,
+    String bearer, {
+    Transaction? transaction,
+  }) async {
     if (!_bearerShape.hasMatch(bearer)) return null;
-    final now = _now();
-    final row = await SsoSessionRow.db.findFirstRow(
-      session,
-      where: (t) => t.digest.equals(ssoDigest(bearer)) & (t.expiresAt > now),
+    return _live(session, digest: ssoDigest(bearer), transaction: transaction);
+  }
+
+  /// Rechecks the exact session and account selected by Serverpod authentication.
+  /// A caller-supplied transaction must commit before confirming expiry.
+  Future<SsoViewer?> viewerById(
+    Session session,
+    int sessionId,
+    int accountId, {
+    Transaction? transaction,
+  }) => _live(
+    session,
+    sessionId: sessionId,
+    accountId: accountId,
+    transaction: transaction,
+  );
+
+  Future<SsoViewer?> _live(
+    Session session, {
+    String? digest,
+    int? sessionId,
+    int? accountId,
+    Transaction? transaction,
+    bool includeExclusion = false,
+  }) async {
+    final rows = await session.db.unsafeQuery(
+      '''
+      SELECT s.id, s."accountId", i.id, i."characterId", i.owner,
+             i."characterName", i."wasDetached", s."expiresAt" <= $_databaseUtc
+             ${includeExclusion ? ', EXISTS (SELECT 1 FROM esi_call_log_exclusion e WHERE e.id = s."accountId")' : ''}
+      FROM esi_session AS s JOIN esi_identity AS i ON i.id = s."identityId"
+      WHERE ${digest != null ? 's.digest = @digest' : 's.id = @id AND s."accountId" = @account'}
+        AND NOT i.blocked
+        AND i."accountId" = s."accountId"
+      ''',
+      parameters: QueryParameters.named({
+        'digest': ?digest,
+        'id': ?sessionId,
+        'account': ?accountId,
+        'clock': _now?.call().toUtc(),
+      }),
+      transaction: transaction,
     );
-    if (row == null) return null;
-    final identity = await SsoIdentityRow.db.findById(session, row.memberId);
-    if (identity == null || identity.blocked) return null;
+    if (rows.isEmpty) return null;
+    final row = rows.single;
+    final exactId = row[0] as int;
+    if (row[7] == true) {
+      await _deleteExpired(session, exactId, transaction);
+      return null;
+    }
+    final account = row[1] as int;
+    final character = row[3] as int;
     return (
-      identity: identity,
-      admin: _admins.contains(identity.characterId),
-      sessionId: row.id!,
+      accountId: account,
+      identity: SsoIdentityRow(
+        id: row[2] as int,
+        characterId: character,
+        owner: row[4] as String,
+        characterName: row[5] as String,
+        blocked: false,
+        accountId: account,
+        wasDetached: row[6] as bool,
+      ),
+      admin: _admins.contains(character),
+      accountExcluded: includeExclusion ? row[8] as bool : null,
+      sessionId: exactId,
     );
   }
 
-  /// Creates a session only after the caller proves browser and app possession.
-  /// Returns null after marking a signed owner conflict as blocked.
-  Future<Map<String, Object?>?> signIn(
+  static Future<void> _deleteExpired(
     Session session,
-    CcpVerifiedIdentity claims,
-  ) => session.db.transaction((transaction) async {
+    int id,
+    Transaction? transaction,
+  ) async {
+    Future<void> delete(Transaction tx) async {
+      await _boundIdentityWrite(session, tx);
+      // This ID has expired in an admission snapshot. Do not sample time
+      // again: a backward step cannot cancel that observation.
+      await session.db.unsafeExecute(
+        'DELETE FROM esi_session WHERE id = @id::bigint',
+        parameters: QueryParameters.named({'id': id}),
+        transaction: tx,
+      );
+    }
+
+    if (transaction != null) {
+      await delete(transaction);
+    } else {
+      await session.db.transaction(delete);
+    }
+  }
+
+  /// Locks the identity key even before its row exists. Multi-character writes
+  /// acquire these locks in ascending CCP character ID order (ADR 0019).
+  static Future<void> lockCharacter(
+    Session session,
+    Transaction transaction,
+    int character,
+  ) async {
     await session.db.unsafeQuery(
       'SELECT pg_advisory_xact_lock(\$1::int,\$2::int)',
       parameters: QueryParameters.positional([
-        claims.characterId >>> 32,
-        claims.characterId.toSigned(32),
+        character >>> 32,
+        character.toSigned(32),
       ]),
       transaction: transaction,
     );
+  }
+
+  static Future<void> _boundIdentityWrite(
+    Session session,
+    Transaction transaction,
+  ) async {
+    await session.db.unsafeExecute(
+      "SET LOCAL lock_timeout = '1s'",
+      transaction: transaction,
+    );
+    await session.db.unsafeExecute(
+      "SET LOCAL statement_timeout = '10s'",
+      transaction: transaction,
+    );
+  }
+
+  Future<void> _lockIdentityWrite(
+    Session session,
+    Transaction transaction,
+    int character,
+  ) async {
+    await _boundIdentityWrite(session, transaction);
+    await lockCharacter(session, transaction, character);
+    await _afterCharacterLock?.call(character);
+  }
+
+  /// Checks the deadline of a verified identity or a consumed browser attempt.
+  bool proofIsFresh(DateTime deadline) => _wallNow().isBefore(deadline);
+
+  /// Creates a session only after the caller proves browser and app possession.
+  /// Returns null for expiry or a signed owner conflict.
+  Future<Map<String, Object?>?> signIn(
+    Session session,
+    CcpVerifiedIdentity claims,
+    DateTime proofDeadline,
+  ) async {
+    try {
+      return await session.db.transaction(
+        (tx) => _signIn(session, tx, claims, proofDeadline),
+      );
+    } on SsoProofExpired {
+      return null;
+    }
+  }
+
+  Future<Map<String, Object?>?> _signIn(
+    Session session,
+    Transaction transaction,
+    CcpVerifiedIdentity claims,
+    DateTime proofDeadline,
+  ) async {
+    bool admit() => proofIsFresh(proofDeadline);
+
+    if (!admit()) return null;
+    await _lockIdentityWrite(session, transaction, claims.characterId);
+    if (!admit()) return null;
     final stored = await SsoIdentityRow.db.findFirstRow(
       session,
       where: (t) => t.characterId.equals(claims.characterId),
@@ -131,16 +346,7 @@ final class SsoSessions {
     );
     if (stored != null && (stored.blocked || stored.owner != claims.owner)) {
       if (!stored.blocked) {
-        await SsoIdentityRow.db.updateRow(
-          session,
-          stored.copyWith(blocked: true),
-          transaction: transaction,
-        );
-        await SsoSessionRow.db.deleteWhere(
-          session,
-          where: (t) => t.memberId.equals(stored.id!),
-          transaction: transaction,
-        );
+        await blockIdentity(session, transaction, stored, admit: admit);
       }
       return null;
     }
@@ -160,16 +366,46 @@ final class SsoSessions {
       identity = await SsoIdentityRow.db.updateRow(
         session,
         stored.copyWith(characterName: claims.name),
+        columns: (t) => [t.characterName],
         transaction: transaction,
       );
     } else {
       identity = stored;
     }
-    final member = identity.id!;
-    final now = _now();
+    final signer = identity.id!;
+    var member = identity.accountId;
+    if (member == null) {
+      final account = await MemberAccountRow.db.insertRow(
+        session,
+        MemberAccountRow(mainIdentityId: signer),
+        transaction: transaction,
+      );
+      member = account.id!;
+      await SsoIdentityRow.db.updateRow(
+        session,
+        identity.copyWith(accountId: member),
+        columns: (t) => [t.accountId],
+        transaction: transaction,
+      );
+      if (identity.wasDetached &&
+          !await _callLog.excludeAccount(
+            session,
+            transaction,
+            member,
+            admit: admit,
+          )) {
+        throw const SsoProofExpired();
+      }
+    }
+    final time = await session.db.unsafeQuery(
+      'SELECT $_databaseUtc',
+      parameters: QueryParameters.named({'clock': _now?.call().toUtc()}),
+      transaction: transaction,
+    );
+    final now = (time.single.single as DateTime).toUtc();
     final existing = await SsoSessionRow.db.find(
       session,
-      where: (t) => t.memberId.equals(member) & (t.expiresAt > now),
+      where: (t) => t.identityId.equals(signer) & (t.expiresAt > now),
       orderBy: (t) => t.id,
       limit: 8,
       transaction: transaction,
@@ -181,16 +417,19 @@ final class SsoSessions {
         transaction: transaction,
       );
     }
+    if (!admit()) throw const SsoProofExpired();
     final bearer = newOAuthProof();
     await SsoSessionRow.db.insertRow(
       session,
       SsoSessionRow(
         digest: ssoDigest(bearer),
-        memberId: member,
+        identityId: signer,
+        accountId: member,
         expiresAt: now.add(const Duration(hours: 24)),
       ),
       transaction: transaction,
     );
+    if (!admit()) throw const SsoProofExpired();
     return {
       'session': bearer,
       'memberId': member.toString(),
@@ -198,7 +437,7 @@ final class SsoSessions {
       'characterName': identity.characterName,
       'admin': _admins.contains(identity.characterId),
     };
-  });
+  }
 
   /// Removes a current session; an unknown token has no effect.
   Future<void> signOut(Session session, String bearer) async {
@@ -213,40 +452,66 @@ final class SsoSessions {
   Future<void> block(
     Session session,
     int characterId,
-    String previousOwner,
-  ) async {
-    await session.db.transaction((transaction) async {
-      final stored = await SsoIdentityRow.db.findFirstRow(
-        session,
-        where: (t) =>
-            t.characterId.equals(characterId) & t.owner.equals(previousOwner),
-        transaction: transaction,
-      );
-      if (stored == null || stored.blocked) return;
-      await SsoIdentityRow.db.updateRow(
-        session,
-        stored.copyWith(blocked: true),
-        transaction: transaction,
-      );
-      await SsoSessionRow.db.deleteWhere(
-        session,
-        where: (t) => t.memberId.equals(stored.id!),
-        transaction: transaction,
-      );
-    });
+    String previousOwner, {
+    required DateTime proofDeadline,
+  }) async {
+    bool admit() => proofIsFresh(proofDeadline);
+    try {
+      await session.db.transaction((transaction) async {
+        if (!admit()) return;
+        await _lockIdentityWrite(session, transaction, characterId);
+        final stored = await SsoIdentityRow.db.findFirstRow(
+          session,
+          where: (t) =>
+              t.characterId.equals(characterId) & t.owner.equals(previousOwner),
+          transaction: transaction,
+        );
+        if (stored == null || stored.blocked) return;
+        await blockIdentity(session, transaction, stored, admit: admit);
+      });
+    } on SsoProofExpired {
+      return;
+    }
+  }
+
+  /// Blocks a verified conflict under the caller's character transaction lock.
+  /// Rolls back if [admit] fails before or after any write wait.
+  static Future<void> blockIdentity(
+    Session session,
+    Transaction transaction,
+    SsoIdentityRow identity, {
+    required bool Function() admit,
+  }) async {
+    if (!admit()) throw const SsoProofExpired();
+    await SsoIdentityRow.db.updateRow(
+      session,
+      identity.copyWith(blocked: true),
+      columns: (t) => [t.blocked],
+      transaction: transaction,
+    );
+    await SsoSessionRow.db.deleteWhere(
+      session,
+      where: (t) => t.identityId.equals(identity.id!),
+      transaction: transaction,
+    );
+    if (!admit()) throw const SsoProofExpired();
   }
 
   /// Removes a bounded batch of expired session verifiers.
-  Future<void> prune(Session session) async {
-    final now = _now();
-    final expired = await SsoSessionRow.db.find(
-      session,
-      where: (t) => t.expiresAt <= now,
-      orderBy: (t) => t.expiresAt,
-      limit: 128,
+  Future<void> prune(Session session) => session.db.transaction((tx) async {
+    await _boundIdentityWrite(session, tx);
+    await session.db.unsafeExecute(
+      '''
+      DELETE FROM esi_session WHERE id IN (
+        SELECT id FROM esi_session
+        WHERE "expiresAt" <= (SELECT $_databaseUtc)
+        ORDER BY "expiresAt", id LIMIT 128 FOR UPDATE SKIP LOCKED
+      )
+      ''',
+      parameters: QueryParameters.named({'clock': _now?.call().toUtc()}),
+      transaction: tx,
     );
-    if (expired.isNotEmpty) await SsoSessionRow.db.delete(session, expired);
-  }
+  });
 }
 
 /// Digests a high-entropy proof or bearer without retaining the input.

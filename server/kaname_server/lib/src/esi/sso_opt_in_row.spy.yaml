@@ -3,11 +3,11 @@ class: SsoOptInRow
 table: esi_scope_opt_in
 serverOnly: true
 fields:
-  memberId: int
+  identityId: int
   owner: String
   scopeClass: String
   policyFingerprint: String
 indexes:
   esi_opt_in_identity_class_idx:
-    fields: memberId, scopeClass
+    fields: identityId, scopeClass
     unique: true

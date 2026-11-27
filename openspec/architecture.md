@@ -60,7 +60,8 @@ flowchart LR
 
 | State | Sole writer | Lifetime | Invalidation / rebuild | Authoritative copy |
 |---|---|---|---|---|
-| Users, characters, groups, policies, org records | Server main isolate | Install lifetime; soft delete | Owner-hash and affiliation checks | Postgres |
+| Member accounts, signing identities and sessions | Server main isolate | Stable account ID; bearer lifetime is tied to the signing identity and membership | Membership changes and owner conflicts revoke affected sessions (ADR 0019) | Postgres |
+| Groups, policies and org records | Server main isolate | Install lifetime; soft delete | Affiliation and policy checks | Postgres |
 | Character data on a server | Server (the character's one token holder) | Per policy retention | Sync recipes re-pull from ESI | Postgres; ESI upstream |
 | Character data in solo | Device (the character's one token holder) | Until handed over or deleted | Local sync recipes | Device local store; ESI upstream |
 | Refresh tokens | Token vault (server or device), single-flight per character | Until revoked or dead | New token saved as soon as CCP returns it; a crash before the save means re-login (ADR 0007) | Encrypted in Postgres or on the device; key outside the database |
@@ -123,3 +124,4 @@ Accepted, not superseded. Proposed ADRs are drafts and are not listed.
 | [0016](../docs/adr/0016-esi-scheduler-shared-state.md) | Isolate-owned Redis connections and one atomic scheduler state; solo in process | — |
 | [0017](../docs/adr/0017-esi-holder-handoff.md) | Durable ESI holder handoff and a desktop credential-only store; verified reclaim stays in M7 | — |
 | [0018](../docs/adr/0018-scoped-static-data-administration.md) | Live Kaname admin scope for static-data mutations; public reads stay open | [0015](../docs/adr/0015-interim-install-admin-key.md) |
+| [0019](../docs/adr/0019-member-account-and-signing-identity.md) | Stable member account with a main and alts; character-scoped ESI and administrator authority | — |

@@ -18,6 +18,8 @@ import 'package:kaname_server/src/generated/static_data/setting_revision.dart'
 import 'package:serverpod/serverpod.dart' as _is;
 
 import '../esi/esi_call_log_endpoint.dart' as _icvsz6ul;
+import '../esi/member_account_endpoint.dart' as _io3a41qd;
+import '../esi/member_roster_endpoint.dart' as _ile8f1kt;
 import '../health/health_endpoint.dart' as _id9paj9q;
 import '../static_data/static_data_admin_endpoint.dart' as _i18bqoi9;
 import '../static_data/static_data_endpoint.dart' as _ije194qr;
@@ -34,6 +36,10 @@ class Endpoints extends _is.EndpointDispatch {
     var endpoints = <String, _is.Endpoint>{
       'esiCallLog': _icvsz6ul.EsiCallLogEndpoint()
         ..initialize(server, 'esiCallLog', null),
+      'memberAccount': _io3a41qd.MemberAccountEndpoint()
+        ..initialize(server, 'memberAccount', null),
+      'memberRoster': _ile8f1kt.MemberRosterEndpoint()
+        ..initialize(server, 'memberRoster', null),
       'health': _id9paj9q.HealthEndpoint()..initialize(server, 'health', null),
       'staticDataAdmin': _i18bqoi9.StaticDataAdminEndpoint()
         ..initialize(server, 'staticDataAdmin', null),
@@ -65,6 +71,57 @@ class Endpoints extends _is.EndpointDispatch {
           call: (_is.Session session, Map<String, dynamic> params) async =>
               (endpoints['esiCallLog'] as _icvsz6ul.EsiCallLogEndpoint)
                   .routeCounts(session),
+        ),
+      },
+    );
+    connectors['memberAccount'] = _is.EndpointConnector(
+      name: 'memberAccount',
+      endpoint: endpoints['memberAccount']!,
+      methodConnectors: {
+        'makeMain': _is.MethodConnector(
+          name: 'makeMain',
+          params: {
+            'characterId': _is.ParameterDescription(
+              name: 'characterId',
+              type: _is.getType<String>(),
+              nullable: false,
+            ),
+          },
+          call: (_is.Session session, Map<String, dynamic> params) async =>
+              (endpoints['memberAccount'] as _io3a41qd.MemberAccountEndpoint)
+                  .makeMain(session, params['characterId']),
+        ),
+        'unlink': _is.MethodConnector(
+          name: 'unlink',
+          params: {
+            'characterId': _is.ParameterDescription(
+              name: 'characterId',
+              type: _is.getType<String>(),
+              nullable: false,
+            ),
+          },
+          call: (_is.Session session, Map<String, dynamic> params) async =>
+              (endpoints['memberAccount'] as _io3a41qd.MemberAccountEndpoint)
+                  .unlink(session, params['characterId']),
+        ),
+      },
+    );
+    connectors['memberRoster'] = _is.EndpointConnector(
+      name: 'memberRoster',
+      endpoint: endpoints['memberRoster']!,
+      methodConnectors: {
+        'page': _is.MethodConnector(
+          name: 'page',
+          params: {
+            'after': _is.ParameterDescription(
+              name: 'after',
+              type: _is.getType<String?>(),
+              nullable: true,
+            ),
+          },
+          call: (_is.Session session, Map<String, dynamic> params) async =>
+              (endpoints['memberRoster'] as _ile8f1kt.MemberRosterEndpoint)
+                  .page(session, params['after']),
         ),
       },
     );

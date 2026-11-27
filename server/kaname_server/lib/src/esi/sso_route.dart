@@ -6,6 +6,8 @@ import 'package:serverpod/serverpod.dart';
 
 import '../network/client_identity.dart';
 import '../network/trusted_proxies.dart';
+import 'esi_call_log_store.dart';
+import 'member_accounts.dart';
 import 'server_sso_grants.dart';
 import 'sso_handoff.dart';
 import 'sso_sessions.dart';
@@ -21,6 +23,7 @@ final class _Attempt {
     required this.browserDigest,
     required this.expires,
     required this.scoped,
+    this.link,
   });
   final ClientKey client;
   final String id;
@@ -29,9 +32,11 @@ final class _Attempt {
   final String? browserDigest;
   final DateTime expires;
   final SsoRequestedGrant? scoped;
+  final MemberActor? link;
   bool claimed = false;
   String? completionDigest;
-  (CcpVerifiedIdentity, CcpGrant)? verified;
+  CcpVerifiedIdentity? identity;
+  CcpGrant? scopedGrant;
 }
 
 /// Scoped attempt bound to the current session, owner and scope policy.
@@ -57,6 +62,7 @@ abstract interface class SsoGrantAuthority {
     SsoRequestedGrant expected,
     CcpVerifiedIdentity identity,
     CcpGrant grant,
+    DateTime proofDeadline,
   );
 
   /// Records or cancels the optional personal class for the current policy.
@@ -66,19 +72,24 @@ abstract interface class SsoGrantAuthority {
 /// Handles confidential SSO without sending the upstream grant to the app.
 final class SsoRoute {
   /// Binds the handler to its configured install origin and trusted proxy set.
+  /// [memberAccounts] lets integration tests hold a real link transaction at
+  /// the acting-session lock without relying on a database timeout.
   SsoRoute({
     required this._registration,
     required this._allowLocalHttp,
     required this._trustedProxies,
     required this._oauth,
     required this._verifier,
-    required this._sessions,
+    required SsoSessions sessions,
     required this._now,
     required this._withSession,
     this._grants,
     this._handoff,
     this._skills,
-  });
+    MemberAccounts? memberAccounts,
+  }) : _sessions = sessions,
+       _memberAccounts =
+           memberAccounts ?? MemberAccounts(sessions, EsiCallLogStore());
 
   final CcpConfidential _registration;
   final bool _allowLocalHttp;
@@ -86,6 +97,7 @@ final class SsoRoute {
   final CcpOAuth _oauth;
   final CcpJwtVerifier _verifier;
   final SsoSessions _sessions;
+  final MemberAccounts _memberAccounts;
   final DateTime Function() _now;
   final Future<T> Function<T>(Future<T> Function(Session)) _withSession;
   final SsoGrantAuthority? _grants;
@@ -193,7 +205,10 @@ final class SsoRoute {
       if (_attempts.length >= 128 || (_perClient[key] ?? 0) >= 4) {
         return _failure(429);
       }
-      final scoped = input is Map<String, Object?> && input['scoped'] == true;
+      final fields = input as Map<String, Object?>;
+      final scoped = fields['scoped'] == true;
+      final linking = fields['link'] == true;
+      if (scoped && linking) return _failure(400);
       final browser = native ? null : newOAuthProof();
       // Reserve before any I/O, including resolving a scoped viewer.
       final attempt = _Attempt(
@@ -209,15 +224,28 @@ final class SsoRoute {
       var active = attempt;
       var ready = false;
       try {
-        if (scoped) {
+        if (scoped || linking) {
           final authority = _grants;
           final bearer = _bearer(request);
-          if (authority == null || bearer == null) return _failure(403);
-          final grant = await _withSession((session) async {
+          if (bearer == null || (scoped && authority == null)) {
+            return _failure(403);
+          }
+          final (grant, link) = await _withSession((session) async {
             final viewer = await _sessions.viewer(session, bearer);
-            return viewer == null ? null : authority.request(session, viewer);
+            if (viewer == null) return (null, null);
+            if (scoped) {
+              return (await authority!.request(session, viewer), null);
+            }
+            return (
+              null,
+              (
+                account: viewer.accountId,
+                session: viewer.sessionId,
+                character: viewer.identity.characterId,
+              ),
+            );
           });
-          if (grant == null) return _failure(403);
+          if (grant == null && link == null) return _failure(403);
           if (!_isLive(attempt)) return _failure(400);
           active = _Attempt(
             client: key,
@@ -227,6 +255,7 @@ final class SsoRoute {
             browserDigest: attempt.browserDigest,
             expires: attempt.expires,
             scoped: grant,
+            link: link,
           );
           _attempts[active.id] = active;
           _states[active.state] = active;
@@ -293,7 +322,8 @@ final class SsoRoute {
             _remove(attempt);
             return _failure(403);
           }
-          attempt.verified = (identity, exchange);
+          attempt.identity = identity;
+          if (scoped != null) attempt.scopedGrant = exchange;
           final confirmation = attempt.browserDigest == null
               ? newOAuthProof().substring(0, 22)
               : null;
@@ -301,7 +331,7 @@ final class SsoRoute {
               ? null
               : ssoDigest(confirmation);
           return _html(
-            '<p>Signed in as ${_esc.convert(identity.name)}.</p>'
+            '<p>${attempt.link == null ? 'Signed in as' : 'Link character'} ${_esc.convert(identity.name)}.</p>'
             '${confirmation == null ? '<p>Return to Kaname to finish.</p>' : '<p>Enter this code only in the Kaname app that started sign-in. Do not share it.</p><code>$confirmation</code>'}',
           );
         } finally {
@@ -322,7 +352,12 @@ final class SsoRoute {
           !ssoDigestMatches(ssoDigest(proof), attempt.proofDigest)) {
         return _failure(400);
       }
-      if (attempt.verified case (final identity, final grant)) {
+      final link = attempt.link;
+      final linking = input['link'] == true;
+      if (linking != (link != null) || linking && input['scoped'] == true) {
+        return _failure(400);
+      }
+      if (attempt.identity case final identity?) {
         if (attempt.completionDigest case final expected?) {
           if (input case {'code': final String code}) {
             if (!_completion.hasMatch(code) ||
@@ -339,20 +374,47 @@ final class SsoRoute {
         }
         final scoped = attempt.scoped;
         final bearer = _bearer(request);
-        if (scoped != null && bearer == null) return _failure(403);
+        if ((scoped != null || link != null) && bearer == null) {
+          return _failure(403);
+        }
         _remove(attempt);
+        if (link != null) {
+          final linked = await _withSession((session) async {
+            final actor = await _sessions.viewer(session, bearer!);
+            if (actor?.sessionId != link.session ||
+                actor?.accountId != link.account) {
+              return false;
+            }
+            return _memberAccounts.link(
+              session,
+              link,
+              identity,
+              attempt.expires,
+              _now,
+            );
+          });
+          return linked ? _json(200, {'status': 'linked'}) : _failure(403);
+        }
+        final proofDeadline = identity.expiresAt.isBefore(attempt.expires)
+            ? identity.expiresAt
+            : attempt.expires;
         if (scoped != null) {
           final activated = await _withSession(
-            (session) =>
-                _grants!.activate(session, bearer!, scoped, identity, grant),
+            (session) => _grants!.activate(
+              session,
+              bearer!,
+              scoped,
+              identity,
+              attempt.scopedGrant!,
+              proofDeadline,
+            ),
           );
           return activated
               ? _json(200, {'status': 'authorized'})
               : _failure(403);
         }
-        final result = await _sessions.gate.run(
-          identity.characterId,
-          () => _withSession((session) => _sessions.signIn(session, identity)),
+        final result = await _withSession(
+          (session) => _sessions.signIn(session, identity, proofDeadline),
         );
         return result == null ? _failure(403) : _json(200, result);
       }
@@ -364,16 +426,31 @@ final class SsoRoute {
   Future<Response> _viewer(Request request) async {
     final bearer = _bearer(request);
     if (bearer == null) return _failure(401);
-    final (viewer, holder) = await _withSession((s) async {
-      final viewer = await _sessions.viewerForRefresh(s, bearer);
-      final row = viewer == null
-          ? null
-          : await ServerSsoGrants.assignment(s, viewer.identity.characterId);
-      return (viewer, row?.phase);
-    });
+    final (viewer, holder) = await _withSession(
+      (s) => s.db.transaction(
+        (tx) async {
+          final viewer = await _sessions.viewerForRefresh(
+            s,
+            bearer,
+            transaction: tx,
+          );
+          final row = viewer == null
+              ? null
+              : await ServerSsoGrants.assignment(
+                  s,
+                  viewer.identity.characterId,
+                  transaction: tx,
+                );
+          return (viewer, row?.phase);
+        },
+        settings: const TransactionSettings(
+          isolationLevel: IsolationLevel.repeatableRead,
+        ),
+      ),
+    );
     if (viewer == null) return _failure(401);
     return _json(200, {
-      'memberId': viewer.identity.id!.toString(),
+      'memberId': viewer.accountId.toString(),
       'characterId': viewer.identity.characterId.toString(),
       'characterName': viewer.identity.characterName,
       'admin': viewer.admin,
@@ -420,7 +497,7 @@ final class SsoRoute {
       final viewer = await _sessions.viewer(session, bearer);
       if (viewer == null) return _failure(403);
       if (input case {'action': 'prepare'} && Map(length: 1)) {
-        final epoch = await handoff.prepareTake(session, viewer.identity);
+        final epoch = await handoff.prepareTake(session, viewer);
         return epoch == null
             ? _failure(403)
             : _json(200, {'sourceEpoch': epoch.toString()});
@@ -440,7 +517,7 @@ final class SsoRoute {
         }
         final result = await handoff.takeIntent(
           session,
-          viewer.identity,
+          viewer,
           proof,
           epoch,
           reconcile: action == 'reconcile',
@@ -479,16 +556,16 @@ final class SsoRoute {
         final viewer = await _sessions.viewer(session, bearer);
         if (viewer == null) return SsoHandoffStatus.blocked;
         return switch ((action, input)) {
-          ('take', _) => handoff.take(session, viewer.identity, proof),
+          ('take', _) => handoff.take(session, viewer, proof),
           ('release', {'generation': final String value}) => handoff.release(
             session,
-            viewer.identity,
+            viewer,
             proof,
             int.tryParse(value) ?? -1,
           ),
           ('join', {'ownerFingerprint': final String hash})
               when _digest.hasMatch(hash) =>
-            handoff.joinStandalone(session, viewer.identity, proof, hash),
+            handoff.joinStandalone(session, viewer, proof, hash),
           _ => SsoHandoffStatus.blocked,
         };
       });
@@ -505,6 +582,19 @@ final class SsoRoute {
       };
     }
     return _failure(400);
+  }
+
+  /// Validates Serverpod's RPC transport and origin before bearer lookup.
+  ///
+  /// The roster has only HTTP RPCs. Serverpod initializes stream-session
+  /// authentication before rejecting an unsupported method, outside the
+  /// roster's HTTP admission limit.
+  bool acceptsRpcSession(Session session) {
+    if (session case MethodStreamSession(endpoint: 'memberRoster')) {
+      return false;
+    }
+    final request = session.request;
+    return request != null && acceptsOrigin(request);
   }
 
   /// Checks the request's effective origin without trusting client headers.

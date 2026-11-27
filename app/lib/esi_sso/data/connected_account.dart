@@ -12,7 +12,13 @@ final _random = Random.secure();
 
 /// A new browser attempt. The proof stays in the initiating app's memory.
 final class ConnectedAttempt {
-  const ConnectedAttempt._(this.url, this._id, this._proof, this.scoped);
+  const ConnectedAttempt._(
+    this.url,
+    this._id,
+    this._proof, {
+    required this.scoped,
+    required this.linking,
+  });
 
   /// Trusted CCP link the user can open with a deliberate click or tap.
   final Uri url;
@@ -21,6 +27,9 @@ final class ConnectedAttempt {
 
   /// Whether completion enables scopes rather than replacing the session.
   final bool scoped;
+
+  /// Whether completion adds a character without replacing the session.
+  final bool linking;
 }
 
 /// Whether a viewer check can replace or end the connected session.
@@ -90,8 +99,23 @@ final class ConnectedSession implements HolderRemote {
   }
 
   /// Revokes this token at the server without retry or local persistence.
-  Future<void> signOut() async =>
-      _api._request('sign-out', const {}, bearer: _bearer);
+  Future<void> signOut() async {
+    await revoke();
+  }
+
+  /// Only a fixed acknowledgment of deletion or absence confirms revocation.
+  /// Recovery supplies its own [client], since changing servers closes the
+  /// original client. The request still targets this session's original server.
+  Future<bool> revoke({http.Client? client}) async {
+    final api = client == null
+        ? _api
+        : ConnectedAccount(_api._base, client, native: _api._native);
+    final reply = await api._request('sign-out', const {}, bearer: _bearer);
+    return switch (reply) {
+      (code: 200, body: {'status': 'signedOut'} && Map(length: 1)) => true,
+      _ => false,
+    };
+  }
 
   /// Records consent if the configured skills class is optional.
   Future<AccountNotice> optIn(bool enabled) async => _notice(
@@ -289,29 +313,41 @@ final class ConnectedAccount {
   /// Whether this client may send an authentication proof or credential.
   bool get secure => _base.scheme == 'https' || origin == 'http://localhost';
 
-  /// Reserves an unscoped or current-session scoped attempt.
+  /// Reserves sign-in, scope authorization, or a link for this exact session.
   Future<(AccountNotice, ConnectedAttempt?)> start({
     ConnectedSession? session,
+    bool link = false,
   }) async {
+    final bearer = session?.bearerFor(_base);
+    if (link && bearer == null) return (AccountNotice.unavailable, null);
     final proof = base64Url
         .encode(List.generate(32, (_) => _random.nextInt(256)))
         .replaceAll('=', '');
     final reply = await _request('begin', {
       'native': _native,
       'proofDigest': sha256.convert(utf8.encode(proof)).toString(),
-      if (session != null) 'scoped': true,
-    }, bearer: session?.bearerFor(_base));
+      if (link) 'link': true else if (session != null) 'scoped': true,
+    }, bearer: bearer);
     if ((reply.code, reply.body) case (
       200,
-      {'attemptId': final String id, 'authorizationUrl': final String link},
+      {
+        'attemptId': final String id,
+        'authorizationUrl': final String authorization,
+      },
     )) {
-      final uri = Uri.tryParse(link);
+      final uri = Uri.tryParse(authorization);
       if (_shape.hasMatch(id) &&
           uri?.origin == 'https://login.eveonline.com' &&
           uri!.userInfo.isEmpty) {
         return (
           AccountNotice.none,
-          ConnectedAttempt._(uri, id, proof, session != null),
+          ConnectedAttempt._(
+            uri,
+            id,
+            proof,
+            scoped: session != null && !link,
+            linking: link,
+          ),
         );
       }
       return (AccountNotice.unavailable, null);
@@ -332,8 +368,18 @@ final class ConnectedAccount {
       'attemptId': attempt._id,
       'proof': attempt._proof,
       'code': ?code,
+      if (attempt.linking) 'link': true,
     }, bearer: session?.bearerFor(_base));
     if (reply.code != 200) return (_notice(reply), null);
+    if (attempt.linking) {
+      return switch (reply.body) {
+        {'status': 'linked'} && Map(length: 1) => (
+          AccountNotice.memberLinked,
+          null,
+        ),
+        _ => (AccountNotice.unavailable, null),
+      };
+    }
     if (attempt.scoped) {
       return switch (await session?.refresh()) {
         ViewerRefreshUpdated(session: final updated) => (

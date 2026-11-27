@@ -10,6 +10,7 @@ import '../../settings/ui/settings_section.dart';
 import '../data/account_types.dart';
 import '../data/desktop_platform.dart';
 import '../logic/account.dart';
+import 'member_roster_panel.dart';
 
 /// Connected and solo account actions, with separate dispatch buttons.
 final class EsiAccountSection extends ConsumerStatefulWidget {
@@ -47,6 +48,8 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
     final local = desktop?.pilot;
     final nativeReady = desktop?.clientId != null;
     final idle = state is AccountIdle;
+    final action = state is AccountUnlinkRecovery ? state.desktopAction : state;
+    final canUseDesktop = action is AccountIdle;
     final mayReturn =
         local != null &&
         connected?.characterId == local.characterId &&
@@ -70,10 +73,10 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
       'deviceReserved' => l10n.esiHolderReserved,
       _ => null,
     };
-    final notice = switch (state) {
+    final notice = switch (action) {
       AccountIdle(:final notice) => notice,
       AccountBrowser(:final notice) => notice,
-      AccountWorking() => AccountNotice.none,
+      AccountWorking() || AccountUnlinkRecovery() => AccountNotice.none,
     };
     ref.listen(accountProvider, (before, after) {
       if (after is AccountIdle) _code.clear();
@@ -86,7 +89,11 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
           if (serverHolder != null) Text(serverHolder),
         ],
         if (state case AccountBrowser(:final attempt)) ...[
-          Text(l10n.esiBrowserInstruction),
+          Text(
+            attempt.linking
+                ? l10n.esiRosterLinkInstruction
+                : l10n.esiBrowserInstruction,
+          ),
           _buttons([
             FilledButton(
               onPressed: () => _open(attempt.url),
@@ -108,7 +115,9 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
               onPressed: () =>
                   account.complete(code: kIsWeb ? null : _code.text.trim()),
               child: Text(
-                attempt.scoped
+                attempt.linking
+                    ? l10n.esiRosterFinishLink
+                    : attempt.scoped
                     ? l10n.esiFinishAuthorization
                     : l10n.esiFinishSignIn,
               ),
@@ -126,6 +135,10 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
             Text(l10n.esiSecureConnection),
         ] else if (idle && connected != null) ...[
           _buttons([
+            FilledButton.tonal(
+              onPressed: account.linkCharacter,
+              child: Text(l10n.esiRosterLink),
+            ),
             FilledButton.tonal(
               onPressed: () => account.start(scoped: true),
               child: Text(l10n.esiAuthorizeServer),
@@ -165,7 +178,20 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
               ),
           ]),
         ],
-        if (state case AccountWorking(:final native)) ...[
+        if (state case AccountUnlinkRecovery(:final revoking)) ...[
+          Semantics(liveRegion: true, child: Text(l10n.esiRosterRecovery)),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonal(
+              onPressed: revoking ? null : account.recoverUnlink,
+              child: Text(
+                revoking ? l10n.esiRosterRevoking : l10n.esiRosterRevoke,
+              ),
+            ),
+          ),
+        ],
+        if (connected != null) MemberRosterPanel(canEdit: idle),
+        if (action case AccountWorking(:final native)) ...[
           const LinearProgressIndicator(),
           if (native)
             _buttons([
@@ -182,7 +208,7 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
           ],
           TextField(
             controller: _clientId,
-            enabled: idle,
+            enabled: canUseDesktop,
             enableSuggestions: false,
             autocorrect: false,
             decoration: InputDecoration(
@@ -192,30 +218,32 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
           ),
           _buttons([
             OutlinedButton(
-              onPressed: idle
+              onPressed: canUseDesktop
                   ? () => account.configureDesktop(_clientId.text)
                   : null,
               child: Text(l10n.esiSaveRegistration),
             ),
             if (nativeReady)
               OutlinedButton(
-                onPressed: idle ? account.identifyDesktop : null,
+                onPressed: canUseDesktop ? account.identifyDesktop : null,
                 child: Text(l10n.esiNativeIdentify),
               ),
             if (nativeReady && local != null) ...[
               FilledButton.tonal(
-                onPressed: idle ? account.authorizeDesktop : null,
+                onPressed: canUseDesktop ? account.authorizeDesktop : null,
                 child: Text(l10n.esiNativeAuthorize),
               ),
               OutlinedButton(
-                onPressed: idle && local.holder == 'solo'
+                onPressed: canUseDesktop && local.holder == 'solo'
                     ? () => account.readSkills(solo: true)
                     : null,
                 child: Text(l10n.esiReadNativeSkills),
               ),
               if (local.holder == 'solo')
                 TextButton(
-                  onPressed: idle ? account.disableDesktopSkills : null,
+                  onPressed: canUseDesktop
+                      ? account.disableDesktopSkills
+                      : null,
                   child: Text(l10n.esiNativeDisable),
                 ),
             ],
@@ -239,9 +267,12 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
               AccountNotice.reauthorize => l10n.esiReauthorize,
               AccountNotice.takeNotAccepted => l10n.esiTakeNotAccepted,
               AccountNotice.takeUnconfirmed => l10n.esiTakeUnconfirmed,
+              AccountNotice.memberLinked => l10n.esiRosterLinked,
+              AccountNotice.memberMainRequired => l10n.esiRosterMainRequired,
+              AccountNotice.memberRefused => l10n.esiRosterRefused,
             }),
           ),
-        if (state case AccountIdle(refusal: final refusal?))
+        if (action case AccountIdle(refusal: final refusal?))
           Semantics(
             liveRegion: true,
             child: Column(
@@ -273,7 +304,7 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
               ],
             ),
           ),
-        if (state case AccountIdle(skills: (:final count, :final totalSp)))
+        if (action case AccountIdle(skills: (:final count, :final totalSp)))
           Semantics(
             liveRegion: true,
             child: Text(l10n.esiSkillsResult(count, totalSp)),

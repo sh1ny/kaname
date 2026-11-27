@@ -90,6 +90,15 @@ enum AccountNotice {
   /// A retried take is still pending at the source. Another retry may not
   /// settle it; the journal and original proof stay.
   takeUnconfirmed,
+
+  /// Fresh CCP proof added the character to the existing account.
+  memberLinked,
+
+  /// The designated main must be replaced before that character can unlink.
+  memberMainRequired,
+
+  /// This membership change was not accepted.
+  memberRefused,
 }
 
 /// The server's answer to a desktop take request.

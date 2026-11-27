@@ -42,9 +42,14 @@ final class SsoHandoff {
   /// Shares the main-isolate gate with all authenticated server ESI work.
   ///
   /// `now` is the server runtime clock that times epoch closures.
-  SsoHandoff({required this._gate, required this._vault, required this._now});
+  SsoHandoff({
+    required this._sessions,
+    required this._vault,
+    required this._now,
+  });
 
-  final SsoCharacterGate _gate;
+  final SsoSessions _sessions;
+  SsoCharacterGate get _gate => _sessions.gate;
   final EsiTokenVault _vault;
   final DateTime Function() _now;
   final _changing = <int>{};
@@ -61,18 +66,29 @@ final class SsoHandoff {
   /// existing assignment.
   Future<SsoHandoffResult> take(
     Session session,
-    SsoIdentityRow viewer,
+    SsoViewer viewer,
     String proof,
   ) => _take(session, viewer, proof);
 
   /// Snapshots the epoch at which this viewer can start a fenced take.
-  Future<int?> prepareTake(Session session, SsoIdentityRow viewer) async {
-    if (viewer.blocked) return null;
-    final row = await ServerSsoGrants.assignment(session, viewer.characterId);
-    if (row == null || row.phase != 'serverHeld') return null;
-    final epoch = _takeEpoch(row);
-    return epoch != null && epoch < _maxGeneration ? epoch : null;
-  }
+  Future<int?> prepareTake(Session session, SsoViewer viewer) =>
+      session.db.transaction(
+        (tx) async {
+          final identity = await _live(session, viewer, transaction: tx);
+          if (identity == null) return null;
+          final row = await ServerSsoGrants.assignment(
+            session,
+            identity.characterId,
+            transaction: tx,
+          );
+          if (row == null || row.phase != 'serverHeld') return null;
+          final epoch = _takeEpoch(row);
+          return epoch != null && epoch < _maxGeneration ? epoch : null;
+        },
+        settings: const TransactionSettings(
+          isolationLevel: IsolationLevel.repeatableRead,
+        ),
+      );
 
   /// Starts or reconciles a take within the epoch captured before first send.
   ///
@@ -89,7 +105,7 @@ final class SsoHandoff {
   /// from a committed row do not consult the cooldown.
   Future<SsoHandoffResult> takeIntent(
     Session session,
-    SsoIdentityRow viewer,
+    SsoViewer viewer,
     String proof,
     int sourceEpoch, {
     required bool reconcile,
@@ -107,18 +123,20 @@ final class SsoHandoff {
 
   Future<SsoHandoffResult> _take(
     Session session,
-    SsoIdentityRow viewer,
+    SsoViewer viewer,
     String proof, {
     ({int epoch, bool reconcile})? intent,
   }) async {
-    final character = viewer.characterId;
-    if (!_proof.hasMatch(proof) || viewer.blocked) {
+    final character = viewer.identity.characterId;
+    if (!_proof.hasMatch(proof)) {
       return SsoHandoffStatus.blocked;
     }
     if (!_changing.add(character)) return SsoHandoffStatus.pending;
     _gate.pause(character);
     try {
       if (_gate.isMutating(character)) return SsoHandoffStatus.pending;
+      final identity = await _live(session, viewer);
+      if (identity == null) return SsoHandoffStatus.blocked;
       var row = await ServerSsoGrants.assignment(session, character);
       if (row == null) {
         return intent == null
@@ -143,7 +161,7 @@ final class SsoHandoff {
       switch (row.phase) {
         case 'deviceReserved':
           return _matches(row, digest)
-              ? _reservation(row, viewer)
+              ? _reservation(row, identity)
               : SsoHandoffStatus.blocked;
         case 'serverHeld':
           if (row.generation >= _maxGeneration || row.vaultGeneration == null) {
@@ -206,7 +224,7 @@ final class SsoHandoff {
       )) {
         return SsoHandoffStatus.pending;
       }
-      return _reservation(row, viewer);
+      return _reservation(row, identity);
     } finally {
       _gate.resume(character);
       _changing.remove(character);
@@ -223,15 +241,18 @@ final class SsoHandoff {
   /// Returns only the exact generation and proof previously reserved.
   Future<SsoHandoffStatus> release(
     Session session,
-    SsoIdentityRow viewer,
+    SsoViewer viewer,
     String proof,
     int generation,
   ) async {
-    if (!_proof.hasMatch(proof) || viewer.blocked) {
+    if (!_proof.hasMatch(proof)) {
       return SsoHandoffStatus.blocked;
     }
-    final character = viewer.characterId;
+    final character = viewer.identity.characterId;
     return await _gate.run(character, () async {
+          if (await _live(session, viewer) == null) {
+            return SsoHandoffStatus.blocked;
+          }
           final row = await ServerSsoGrants.assignment(session, character);
           final digest = ssoDigest(proof);
           if (row == null ||
@@ -257,17 +278,22 @@ final class SsoHandoff {
   /// Records a parked standalone source only when the server never assigned it.
   Future<SsoHandoffStatus> joinStandalone(
     Session session,
-    SsoIdentityRow viewer,
+    SsoViewer viewer,
     String proof,
     String ownerFingerprint,
   ) async {
     if (!_proof.hasMatch(proof) ||
-        viewer.blocked ||
-        !ssoDigestMatches(ownerFingerprint, _ownerFingerprint(viewer))) {
+        !ssoDigestMatches(
+          ownerFingerprint,
+          _ownerFingerprint(viewer.identity),
+        )) {
       return SsoHandoffStatus.blocked;
     }
-    final character = viewer.characterId;
+    final character = viewer.identity.characterId;
     return await _gate.run(character, () async {
+          if (await _live(session, viewer) == null) {
+            return SsoHandoffStatus.blocked;
+          }
           final digest = ssoDigest(proof);
           final row = await ServerSsoGrants.assignment(session, character);
           if (row != null) {
@@ -289,6 +315,22 @@ final class SsoHandoff {
           return SsoHandoffStatus.released;
         }) ??
         SsoHandoffStatus.pending;
+  }
+
+  Future<SsoIdentityRow?> _live(
+    Session session,
+    SsoViewer before, {
+    Transaction? transaction,
+  }) async {
+    final current = await _sessions.viewerById(
+      session,
+      before.sessionId,
+      before.accountId,
+      transaction: transaction,
+    );
+    return current?.identity.id == before.identity.id
+        ? current?.identity
+        : null;
   }
 
   // The matching device can retry after a lost response. Activating the

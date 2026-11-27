@@ -1,0 +1,6 @@
+### The latest sealed window end, stored at ID 1 under the release lock.
+class: EsiCallLogSealRow
+table: esi_call_log_seal
+serverOnly: true
+fields:
+  windowEnd: DateTime

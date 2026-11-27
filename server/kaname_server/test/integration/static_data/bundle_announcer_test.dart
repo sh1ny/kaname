@@ -342,6 +342,7 @@ void main() {
       final answer = await admission.request(
         id,
         kind: SdeAdminOperationKind.updateNow,
+        authorize: (_) async => true,
       );
       expect(answer.outcome, AdminAnswerOutcome.started);
       await _eventually(

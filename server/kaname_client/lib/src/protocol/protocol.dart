@@ -19,6 +19,11 @@ import 'esi/esi_call_log_item.dart' as _iuknwcy9;
 import 'esi/esi_call_log_page.dart' as _iiojdgzp;
 import 'esi/esi_route_count_item.dart' as _iy73o4xt;
 import 'esi/esi_route_count_page.dart' as _ikoz4zoy;
+import 'esi/member_account_mutation.dart' as _i59p56h3;
+import 'esi/member_account_status.dart' as _imvcpcvn;
+import 'esi/member_character.dart' as _ixvgfduz;
+import 'esi/member_roster_page.dart' as _if1eutsr;
+import 'esi/member_roster_status.dart' as _il40m74f;
 import 'health/dependency_status.dart' as _iztepymd;
 import 'health/health_report.dart' as _if75m2mz;
 import 'static_data/admin_answer.dart' as _iyccfpu2;
@@ -56,6 +61,11 @@ export 'esi/esi_call_log_item.dart';
 export 'esi/esi_call_log_page.dart';
 export 'esi/esi_route_count_item.dart';
 export 'esi/esi_route_count_page.dart';
+export 'esi/member_account_mutation.dart';
+export 'esi/member_account_status.dart';
+export 'esi/member_character.dart';
+export 'esi/member_roster_page.dart';
+export 'esi/member_roster_status.dart';
 export 'health/dependency_status.dart';
 export 'health/health_report.dart';
 export 'static_data/admin_answer.dart';
@@ -108,6 +118,11 @@ class Protocol extends _isc.SerializationManager
           _isc.getType<_iiojdgzp.EsiCallLogPage>,
           _isc.getType<_iy73o4xt.EsiRouteCount>,
           _isc.getType<_ikoz4zoy.EsiRouteCountPage>,
+          _isc.getType<_i59p56h3.MemberAccountMutation>,
+          _isc.getType<_imvcpcvn.MemberAccountStatus>,
+          _isc.getType<_ixvgfduz.MemberCharacter>,
+          _isc.getType<_if1eutsr.MemberRosterPage>,
+          _isc.getType<_il40m74f.MemberRosterStatus>,
           _isc.getType<_iztepymd.DependencyStatus>,
           _isc.getType<_if75m2mz.HealthReport>,
           _isc.getType<_iyccfpu2.AdminAnswer>,
@@ -147,6 +162,11 @@ class Protocol extends _isc.SerializationManager
           _isc.getType<_iiojdgzp.EsiCallLogPage?>,
           _isc.getType<_iy73o4xt.EsiRouteCount?>,
           _isc.getType<_ikoz4zoy.EsiRouteCountPage?>,
+          _isc.getType<_i59p56h3.MemberAccountMutation?>,
+          _isc.getType<_imvcpcvn.MemberAccountStatus?>,
+          _isc.getType<_ixvgfduz.MemberCharacter?>,
+          _isc.getType<_if1eutsr.MemberRosterPage?>,
+          _isc.getType<_il40m74f.MemberRosterStatus?>,
           _isc.getType<_iztepymd.DependencyStatus?>,
           _isc.getType<_if75m2mz.HealthReport?>,
           _isc.getType<_iyccfpu2.AdminAnswer?>,
@@ -183,6 +203,7 @@ class Protocol extends _isc.SerializationManager
           _isc.getType<_iidkva5e.StaticDataSwitchStatus?>,
           _isc.getType<List<_iuknwcy9.EsiCallLogReceipt>>,
           _isc.getType<List<_iy73o4xt.EsiRouteCount>>,
+          _isc.getType<List<_ixvgfduz.MemberCharacter>>,
           _isc.getType<List<_iacxd2dw.StaticDataReportFile>>,
           _isc.getType<List<_iacxd2dw.StaticDataReportFile>?>,
           _isc.getType<Map<String, int>>,
@@ -199,6 +220,11 @@ class Protocol extends _isc.SerializationManager
           'EsiCallLogPage',
           'EsiRouteCount',
           'EsiRouteCountPage',
+          'MemberAccountMutation',
+          'MemberAccountStatus',
+          'MemberCharacter',
+          'MemberRosterPage',
+          'MemberRosterStatus',
           'DependencyStatus',
           'HealthReport',
           'AdminAnswer',
@@ -271,6 +297,21 @@ class Protocol extends _isc.SerializationManager
     }
     if (t == _ikoz4zoy.EsiRouteCountPage) {
       return _ikoz4zoy.EsiRouteCountPage.fromJson(data) as T;
+    }
+    if (t == _i59p56h3.MemberAccountMutation) {
+      return _i59p56h3.MemberAccountMutation.fromJson(data) as T;
+    }
+    if (t == _imvcpcvn.MemberAccountStatus) {
+      return _imvcpcvn.MemberAccountStatus.fromJson(data) as T;
+    }
+    if (t == _ixvgfduz.MemberCharacter) {
+      return _ixvgfduz.MemberCharacter.fromJson(data) as T;
+    }
+    if (t == _if1eutsr.MemberRosterPage) {
+      return _if1eutsr.MemberRosterPage.fromJson(data) as T;
+    }
+    if (t == _il40m74f.MemberRosterStatus) {
+      return _il40m74f.MemberRosterStatus.fromJson(data) as T;
     }
     if (t == _iztepymd.DependencyStatus) {
       return _iztepymd.DependencyStatus.fromJson(data) as T;
@@ -392,6 +433,30 @@ class Protocol extends _isc.SerializationManager
     }
     if (t == _isc.getType<_ikoz4zoy.EsiRouteCountPage?>()) {
       return (data != null ? _ikoz4zoy.EsiRouteCountPage.fromJson(data) : null)
+          as T;
+    }
+    if (t == _isc.getType<_i59p56h3.MemberAccountMutation?>()) {
+      return (data != null
+              ? _i59p56h3.MemberAccountMutation.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _isc.getType<_imvcpcvn.MemberAccountStatus?>()) {
+      return (data != null
+              ? _imvcpcvn.MemberAccountStatus.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _isc.getType<_ixvgfduz.MemberCharacter?>()) {
+      return (data != null ? _ixvgfduz.MemberCharacter.fromJson(data) : null)
+          as T;
+    }
+    if (t == _isc.getType<_if1eutsr.MemberRosterPage?>()) {
+      return (data != null ? _if1eutsr.MemberRosterPage.fromJson(data) : null)
+          as T;
+    }
+    if (t == _isc.getType<_il40m74f.MemberRosterStatus?>()) {
+      return (data != null ? _il40m74f.MemberRosterStatus.fromJson(data) : null)
           as T;
     }
     if (t == _isc.getType<_iztepymd.DependencyStatus?>()) {
@@ -574,6 +639,12 @@ class Protocol extends _isc.SerializationManager
               .toList()
           as T;
     }
+    if (t == List<_ixvgfduz.MemberCharacter>) {
+      return (data as List)
+              .map((e) => deserialize<_ixvgfduz.MemberCharacter>(e))
+              .toList()
+          as T;
+    }
     if (t == List<_iacxd2dw.StaticDataReportFile>) {
       return (data as List)
               .map((e) => deserialize<_iacxd2dw.StaticDataReportFile>(e))
@@ -622,6 +693,11 @@ class Protocol extends _isc.SerializationManager
       _iiojdgzp.EsiCallLogPage => 'EsiCallLogPage',
       _iy73o4xt.EsiRouteCount => 'EsiRouteCount',
       _ikoz4zoy.EsiRouteCountPage => 'EsiRouteCountPage',
+      _i59p56h3.MemberAccountMutation => 'MemberAccountMutation',
+      _imvcpcvn.MemberAccountStatus => 'MemberAccountStatus',
+      _ixvgfduz.MemberCharacter => 'MemberCharacter',
+      _if1eutsr.MemberRosterPage => 'MemberRosterPage',
+      _il40m74f.MemberRosterStatus => 'MemberRosterStatus',
       _iztepymd.DependencyStatus => 'DependencyStatus',
       _if75m2mz.HealthReport => 'HealthReport',
       _iyccfpu2.AdminAnswer => 'AdminAnswer',
@@ -682,6 +758,16 @@ class Protocol extends _isc.SerializationManager
         return 'EsiRouteCount';
       case _ikoz4zoy.EsiRouteCountPage():
         return 'EsiRouteCountPage';
+      case _i59p56h3.MemberAccountMutation():
+        return 'MemberAccountMutation';
+      case _imvcpcvn.MemberAccountStatus():
+        return 'MemberAccountStatus';
+      case _ixvgfduz.MemberCharacter():
+        return 'MemberCharacter';
+      case _if1eutsr.MemberRosterPage():
+        return 'MemberRosterPage';
+      case _il40m74f.MemberRosterStatus():
+        return 'MemberRosterStatus';
       case _iztepymd.DependencyStatus():
         return 'DependencyStatus';
       case _if75m2mz.HealthReport():
@@ -777,6 +863,21 @@ class Protocol extends _isc.SerializationManager
     }
     if (dataClassName == 'EsiRouteCountPage') {
       return deserialize<_ikoz4zoy.EsiRouteCountPage>(data['data']);
+    }
+    if (dataClassName == 'MemberAccountMutation') {
+      return deserialize<_i59p56h3.MemberAccountMutation>(data['data']);
+    }
+    if (dataClassName == 'MemberAccountStatus') {
+      return deserialize<_imvcpcvn.MemberAccountStatus>(data['data']);
+    }
+    if (dataClassName == 'MemberCharacter') {
+      return deserialize<_ixvgfduz.MemberCharacter>(data['data']);
+    }
+    if (dataClassName == 'MemberRosterPage') {
+      return deserialize<_if1eutsr.MemberRosterPage>(data['data']);
+    }
+    if (dataClassName == 'MemberRosterStatus') {
+      return deserialize<_il40m74f.MemberRosterStatus>(data['data']);
     }
     if (dataClassName == 'DependencyStatus') {
       return deserialize<_iztepymd.DependencyStatus>(data['data']);

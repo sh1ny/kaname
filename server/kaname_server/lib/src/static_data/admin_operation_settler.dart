@@ -23,12 +23,15 @@ import 'static_data_lock.dart';
 /// minutes without progress. Observation never ends an open row.
 final class AdminOperationSettler {
   /// Uses a fresh dedicated session per attempt, never a request's session.
+  /// [afterFailedAttempt] is a test signal after a failed attempt and its
+  /// bounded connection cleanup return.
   AdminOperationSettler({
     required Future<pg.Connection> Function() open,
     required this.log,
     required this.onBuildChange,
     this.clock = const SystemClock(),
     Future<void> Function(pg.Connection)? close,
+    this._afterFailedAttempt,
   }) : _connection = AdmissionConnectionAttempt(
          open: open,
          clock: clock,
@@ -46,6 +49,7 @@ final class AdminOperationSettler {
   /// The settlement retry and worker-stall clock.
   final ServerClock clock;
   final AdmissionConnectionAttempt _connection;
+  final void Function()? _afterFailedAttempt;
   _Operation? _slot;
   _Operation? _unanswered;
   Timer? _tick;
@@ -180,7 +184,11 @@ final class AdminOperationSettler {
         return (row: row, held: held);
       }),
     );
-    if (_stopped || result == null) return;
+    if (_stopped) return;
+    if (result == null) {
+      _afterFailedAttempt?.call();
+      return;
+    }
     final (:row, :held) = result;
     if (watching && identical(_unanswered, job)) {
       _observeProgress(job, row, held: held);

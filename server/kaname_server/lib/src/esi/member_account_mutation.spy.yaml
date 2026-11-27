@@ -1,0 +1,4 @@
+### Result of changing the linked character roster or its main.
+class: MemberAccountMutation
+fields:
+  status: MemberAccountStatus

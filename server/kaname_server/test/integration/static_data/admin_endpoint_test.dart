@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:kaname_client/kaname_client.dart' as api;
+import 'package:kaname_server/src/esi/sso_sessions.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/static_data/admin_operation_settler.dart';
 import 'package:kaname_server/src/static_data/admission_connection_attempt.dart';
@@ -26,6 +27,7 @@ import 'package:test/test.dart';
 import '../support/announcer_support.dart';
 import '../support/in_process_pod.dart';
 import '../support/migrated_database.dart';
+import '../support/observed_database_session.dart';
 import '../support/sde_bundle_support.dart';
 import '../support/static_data_test_auth.dart';
 import '../support/tcp_proxy.dart';
@@ -39,6 +41,7 @@ void main() {
   late int poolCalls;
   Future<void> Function(int call)? beforeSession;
   Future<void> Function(int call)? afterSession;
+  Future<void> Function()? beforeOperationLookup;
 
   Future<void> start({bool admin = false}) async {
     clock = FakeClock();
@@ -50,6 +53,7 @@ void main() {
     poolCalls = 0;
     beforeSession = null;
     afterSession = null;
+    beforeOperationLookup = null;
     settings = await server.pod.withSession(migratedDatabaseSettings);
     final scratch = sdeScratchRootFor(settings);
     addTearDown(() async {
@@ -62,8 +66,21 @@ void main() {
     });
     Future<T> pooled<T>(Future<T> Function(Session) action) async {
       final call = ++poolCalls;
+      final probe = beforeOperationLookup;
+      beforeOperationLookup = null;
       await beforeSession?.call(call);
-      final value = await server.pod.withSession(action);
+      final value = await server.pod.withSession((session) async {
+        if (probe == null) return action(session);
+        final observed = ObservedDatabaseSession(
+          session,
+          beforeFirstFind: probe,
+        );
+        try {
+          return await action(observed);
+        } finally {
+          await observed.close();
+        }
+      });
       await afterSession?.call(call);
       return value;
     }
@@ -85,6 +102,7 @@ void main() {
     WorkerProcess? controlled,
     bool recover = true,
     Future<pg.Connection> Function()? settleOpen,
+    void Function()? afterFailedSettle,
     WorkerLogSink? settleLog,
     PostgresConnectionSettings? workerSettings,
     void Function()? onBuildChange,
@@ -109,6 +127,7 @@ void main() {
           ),
       clock: clock,
       log: settleLog ?? (_, _) {},
+      afterFailedAttempt: afterFailedSettle,
       onBuildChange: onBuildChange ?? () {},
     );
     final recovery = runtime.recovery = AdmissionRecovery(
@@ -326,6 +345,192 @@ void main() {
     });
   }
 
+  test('revocation before admission reserves no static-data job', () async {
+    await start(admin: true);
+    final worker = _ControlledWorker();
+    await runWorker(controlled: worker);
+    final reached = Completer<void>();
+    final continueLookup = Completer<void>();
+    beforeSession = (_) async {
+      if (!reached.isCompleted) reached.complete();
+      await continueLookup.future;
+    };
+    final pending = update(42);
+    try {
+      await Future.any([
+        reached.future,
+        pending.then((_) => fail('lookup skipped')),
+      ]);
+      await server.pod.withSession(
+        (owner) => owner.db.unsafeExecute('DELETE FROM esi_session'),
+        enableLogging: false,
+      );
+    } finally {
+      continueLookup.complete();
+    }
+    expect((await pending).outcome, api.AdminAnswerOutcome.notAuthorized);
+    expect(worker.checks, isEmpty);
+    expect(await operation(42), isNull);
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  test('final gate sample sees a competing reservation', () async {
+    await start(admin: true);
+    final worker = _ControlledWorker();
+    await runWorker(controlled: worker);
+    final reached = Completer<void>();
+    final resume = Completer<void>();
+    final admission = StaticDataAccess.forPod(server.pod).admission;
+    final auth = await server.pod.withSession(
+      (s) => staticDataTestAuthentication(s, staticDataTestBearer),
+    );
+    var checks = 0;
+    final delayed = admission.request(
+      _id(41).toString(),
+      kind: SdeAdminOperationKind.updateNow,
+      authorize: (session) async {
+        if (++checks == 1) {
+          reached.complete();
+          await resume.future;
+        }
+        return SsoSessions.liveAdmin(session, auth);
+      },
+    );
+    try {
+      await Future.any([
+        reached.future,
+        delayed.then((_) => fail('admission skipped live authorization')),
+      ]);
+      final winner = update(42);
+      final launched = await Future.any([
+        worker.firstCheck.future,
+        winner.then((_) => fail('the competing request did not dispatch')),
+      ]);
+      resume.complete();
+      expect((await delayed).outcome, AdminAnswerOutcome.importRunning);
+      expect(await operation(41), isNull);
+      worker.reply(
+        BuildCheckFinished(
+          requestId: launched.requestId,
+          result: const BuildCheckFailed('Postgres unreachable'),
+        ),
+      );
+      await winner;
+    } finally {
+      if (!resume.isCompleted) resume.complete();
+    }
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  for (final revoke in [false, true]) {
+    test(
+      revoke
+          ? 'a replay rechecks revocation during its fallback lookup'
+          : 'a replay paused in authorization answers from the settled row',
+      () async {
+        await start(admin: true);
+        final worker = _ControlledWorker();
+        final settled = Completer<void>();
+        await runWorker(
+          controlled: worker,
+          settleLog: (_, message) {
+            if (message.contains(' ${_id(1)} settled ')) settled.complete();
+          },
+        );
+        final storageReached = Completer<void>();
+        final store = Completer<void>();
+        final authorizationReached = Completer<void>();
+        final authorize = Completer<void>();
+        final lookupReached = Completer<void>();
+        final finishLookup = Completer<void>();
+        addTearDown(() {
+          if (!store.isCompleted) store.complete();
+          if (!authorize.isCompleted) authorize.complete();
+          if (!finishLookup.isCompleted) finishLookup.complete();
+        });
+        beforeSession = (call) async {
+          if (call == 2) {
+            storageReached.complete();
+            await store.future;
+          }
+        };
+        final original = update(1);
+        await Future.any([
+          storageReached.future,
+          original.then(
+            (_) => fail('The operation skipped reservation storage.'),
+          ),
+        ]);
+        final auth = await server.pod.withSession(
+          (s) => staticDataTestAuthentication(s, staticDataTestBearer),
+        );
+        if (revoke) {
+          beforeOperationLookup = () async {
+            lookupReached.complete();
+            await finishLookup.future;
+          };
+        }
+        var checks = 0;
+        final replay = StaticDataAccess.forPod(server.pod).admission.request(
+          _id(1).toString(),
+          kind: SdeAdminOperationKind.updateNow,
+          authorize: (session) async {
+            final live = await SsoSessions.liveAdmin(session, auth);
+            if (++checks == 1) {
+              expect(live, isTrue);
+              authorizationReached.complete();
+              await authorize.future;
+            }
+            return live;
+          },
+        );
+        await Future.any([
+          authorizationReached.future,
+          replay.then((_) => fail('The replay skipped live authorization.')),
+        ]);
+        store.complete();
+        final request = await worker.firstCheck.future;
+        worker.reply(BuildCheckStarted(requestId: request.requestId));
+        expect((await original).outcome, api.AdminAnswerOutcome.started);
+        worker.reply(
+          BuildCheckFinished(
+            requestId: request.requestId,
+            result: const BuildUpToDate(901),
+          ),
+        );
+        await settled.future;
+        expect((await operation(1))?.state, SdeAdminOperationState.ended);
+        authorize.complete();
+        if (revoke) {
+          await Future.any<void>([
+            lookupReached.future,
+            replay.then((_) => fail('The replay skipped its fallback lookup.')),
+          ]);
+          try {
+            final id = int.parse(auth!.authId);
+            await server.pod.withSession(
+              (s) => SsoSessionRow.db.deleteWhere(
+                s,
+                where: (t) => t.id.equals(id),
+              ),
+            );
+          } finally {
+            finishLookup.complete();
+          }
+        }
+        final answer = await replay;
+        if (revoke) {
+          expect(answer.outcome, AdminAnswerOutcome.notAuthorized);
+          expect(answer.operation, isNull);
+        } else {
+          expect(answer.outcome, AdminAnswerOutcome.ended);
+          expect(answer.operation?.outcome, SdeAdminOperationOutcome.upToDate);
+        }
+        expect(checks, 2);
+        expect(worker.checks, hasLength(1));
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+  }
+
   test('two pending admin lookups exhaust only their own budget', () async {
     await start(admin: true);
     final worker = _ControlledWorker();
@@ -535,10 +740,18 @@ void main() {
         'then one reservation wins (second revision: $revision)', () async {
       await start(admin: true);
       final worker = _ControlledWorker();
-      await runWorker(controlled: worker);
+      final settled = Completer<void>();
+      await runWorker(
+        controlled: worker,
+        settleLog: (_, message) {
+          if (message.contains(' ${_id(1)} settled ')) settled.complete();
+        },
+      );
       final firstLookup = Completer<void>();
       final secondLookup = Completer<void>();
       final bothLookedUp = Completer<void>();
+      final firstLookedUp = Completer<void>();
+      final storing = Completer<void>();
       final store = Completer<void>();
       addTearDown(() {
         for (final gate in [firstLookup, secondLookup, store]) {
@@ -546,31 +759,27 @@ void main() {
         }
       });
       afterSession = (index) async {
-        if (index == 1) await firstLookup.future;
+        if (index == 1) {
+          firstLookedUp.complete();
+          await firstLookup.future;
+        }
         if (index == 2) {
           bothLookedUp.complete();
           await secondLookup.future;
         }
       };
       beforeSession = (index) async {
-        if (index == 3) await store.future;
+        if (index == 3) {
+          storing.complete();
+          await store.future;
+        }
       };
       final first = revision == null ? update(1) : rollback(1, 3);
-      await _until(() async => poolCalls == 1 ? true : null);
+      await firstLookedUp.future;
       final second = revision == null ? update(1) : rollback(1, revision);
       await bothLookedUp.future;
       firstLookup.complete();
-      await _until(() async => poolCalls == 3 ? true : null);
-      if (revision != null) {
-        final inMemory = await rollback(1, revision);
-        expect(
-          inMemory.outcome,
-          revision == 3
-              ? api.AdminAnswerOutcome.outcomeUnknown
-              : api.AdminAnswerOutcome.malformed,
-        );
-        expect(poolCalls, 3);
-      }
+      await storing.future;
       secondLookup.complete();
       final repeated = await second;
       expect(repeated.outcome, switch (revision) {
@@ -579,11 +788,17 @@ void main() {
         _ => api.AdminAnswerOutcome.malformed,
       });
       expect(poolCalls, 4); // The raced miss checked the database again.
+      if (revision != null) {
+        // The raced replay has released its admission token; only storage is held.
+        final inMemory = await rollback(1, revision);
+        expect(inMemory.outcome, repeated.outcome);
+        expect(poolCalls, 5); // The replay still checks live authorization.
+      }
       expect(worker.rollbacks, isEmpty);
       expect(worker.checks, isEmpty);
       store.complete();
       if (revision == null) {
-        final dispatch = await _until(() async => worker.checks.singleOrNull);
+        final dispatch = await worker.firstCheck.future;
         worker.reply(BuildCheckStarted(requestId: dispatch.requestId));
         expect((await first).outcome, api.AdminAnswerOutcome.started);
         worker.reply(
@@ -592,11 +807,15 @@ void main() {
             result: const BuildUpToDate(901),
           ),
         );
-        expect((await ended(1)).outcome, SdeAdminOperationOutcome.upToDate);
+        await settled.future;
+        expect(
+          (await operation(1))?.outcome,
+          SdeAdminOperationOutcome.upToDate,
+        );
         expect(worker.checks, hasLength(1));
         return;
       }
-      final dispatch = await _until(() async => worker.rollbacks.singleOrNull);
+      final dispatch = await worker.firstRollback.future;
       expect(dispatch.expectedRevision, 3);
       worker.reply(
         RollbackFinished(
@@ -607,7 +826,7 @@ void main() {
       );
       expect((await first).outcome, api.AdminAnswerOutcome.buildsChanged);
       expect(worker.rollbacks, hasLength(1));
-    });
+    }, timeout: const Timeout(Duration(minutes: 3)));
   }
 
   for (final otherSlot in ['same', 'free', 'another']) {
@@ -698,11 +917,18 @@ void main() {
         final unavailable = await postgresProxy();
         final port = unavailable.port;
         await unavailable.close();
+        final failures = List.generate(5, (_) => Completer<void>());
+        final settled = Completer<void>();
         var failedAttempts = 0;
         await runWorker(
           controlled: worker,
+          afterFailedSettle: () {
+            if (failedAttempts < failures.length) {
+              failures[failedAttempts++].complete();
+            }
+          },
           settleLog: (_, message) {
-            if (message.contains('attempt failed')) failedAttempts++;
+            if (message.contains(' ${_id(1)} settled ')) settled.complete();
           },
           settleOpen: () {
             return openAdmissionConnection(
@@ -731,11 +957,9 @@ void main() {
         };
         final original = update(1);
         await stored.future;
+        final beforeStoredReplay = poolCalls;
         expect((await update(1)).outcome, api.AdminAnswerOutcome.noAnswerYet);
-        expect(
-          poolCalls,
-          2,
-        ); // The same-id replay consulted memory, not Postgres.
+        expect(poolCalls, beforeStoredReplay + 1);
         expect(
           (await client.staticData.operation(_id(1).toString())).state,
           api.AdminOperationReadState.waiting,
@@ -746,21 +970,23 @@ void main() {
           clock.elapse(const Duration(seconds: 5));
         }
         expect((await original).outcome, api.AdminAnswerOutcome.noAnswerYet);
-        await _until(() async => failedAttempts == 1 ? true : null);
+        await failures[0].future;
         final beforeReplay = poolCalls;
         expect((await update(1)).outcome, api.AdminAnswerOutcome.noAnswerYet);
-        expect(poolCalls, beforeReplay);
+        expect(poolCalls, beforeReplay + 1);
         expect(runtime.settler!.activeOperationId, _id(1).toString());
-        for (var attempt = 2; attempt <= 5; attempt++) {
+        for (final failure in failures.skip(1)) {
           clock.elapse(const Duration(seconds: 30));
-          await _until(() async => failedAttempts == attempt ? true : null);
+          await failure.future;
         }
         final healed = await postgresProxy(port: port);
         addTearDown(healed.close);
         clock.elapse(const Duration(seconds: 30));
-        final row = await ended(1);
+        await settled.future;
+        final row = (await operation(1))!;
+        expect(row.state, SdeAdminOperationState.ended);
         expect(row.failureReason, 'Postgres unreachable');
-        await waitForFreeSlot();
+        expect(runtime.settler!.activeOperationId, isNull);
         if (!release.isCompleted) release.complete();
         final replayed = await update(1);
         expect(replayed.outcome, api.AdminAnswerOutcome.ended);
@@ -768,8 +994,13 @@ void main() {
           replayed.operation?.reason,
           api.PublicReason.postgresUnreachable,
         );
+        final operations = await server.pod.withSession(
+          (session) => SdeAdminOperation.db.count(session),
+        );
+        expect(operations, 1);
         expect(worker.checks, isEmpty);
       },
+      timeout: const Timeout(Duration(minutes: 3)),
     );
   }
 
@@ -1246,6 +1477,8 @@ final class _ControlledWorker implements WorkerProcess {
   final _outbox = workerOutboxCodec();
   final checks = <RunBuildCheck>[];
   final rollbacks = <RunRollback>[];
+  final firstCheck = Completer<RunBuildCheck>();
+  final firstRollback = Completer<RunRollback>();
 
   @override
   Stream<Object?> get replies => _replies.stream;
@@ -1258,8 +1491,10 @@ final class _ControlledWorker implements WorkerProcess {
     switch (_inbox.decode(message)) {
       case final RunBuildCheck request:
         checks.add(request);
+        if (!firstCheck.isCompleted) firstCheck.complete(request);
       case final RunRollback request:
         rollbacks.add(request);
+        if (!firstRollback.isCompleted) firstRollback.complete(request);
       case _:
         break;
     }

@@ -1,6 +1,11 @@
 esiCallLog:
   - ownRows:
   - routeCounts:
+memberAccount:
+  - makeMain:
+  - unlink:
+memberRoster:
+  - page:
 health:
   - check:
 staticDataAdmin:

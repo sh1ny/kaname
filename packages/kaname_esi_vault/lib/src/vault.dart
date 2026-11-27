@@ -72,56 +72,74 @@ final class EsiTokenVault {
     required String refreshToken,
     VaultBearer? bearer,
   }) => _safe(() async {
+    final update = prepareActivation(
+      character: character,
+      holder: holder,
+      expectedGeneration: expectedGeneration,
+      refreshToken: refreshToken,
+      bearer: bearer,
+    );
+    if (update == null) {
+      return const VaultFailure(VaultFailureReason.invalidInput);
+    }
+    return await _store.withCharacter(character, wait: false, update: update) ??
+        const VaultFailure(VaultFailureReason.busy);
+  });
+
+  /// Prepares the same activation for an adapter that also writes related rows.
+  ///
+  /// Returns null for invalid input. Run the returned update under the vault's
+  /// character lock and publish its value only after the row and related writes
+  /// commit. The update only prepares ciphertext and does not persist anything.
+  Future<VaultWrite<VaultResult<VaultAuthorization>>> Function(VaultRecord?)?
+  prepareActivation({
+    required int character,
+    required VaultHolder holder,
+    required int expectedGeneration,
+    required String refreshToken,
+    VaultBearer? bearer,
+  }) {
     if (character <= 0 ||
         expectedGeneration < 0 ||
         !_validHolder(holder) ||
         !validToken(refreshToken) ||
         (bearer != null && !validToken(bearer.token))) {
-      return const VaultFailure(VaultFailureReason.invalidInput);
+      return null;
     }
-    return await _store.withCharacter<VaultResult<VaultAuthorization>>(
-          character,
-          wait: false,
-          update: (row) async {
-            final generation = row?.authorization.generation ?? 0;
-            if (expectedGeneration != generation ||
-                (row != null &&
-                    row.status != VaultStatus.parked &&
-                    row.authorization.holder != holder)) {
-              return _unchanged(
-                const VaultFailure(VaultFailureReason.notHolder),
-              );
-            }
-            if (_live(row)) {
-              return _unchanged(const VaultFailure(VaultFailureReason.busy));
-            }
-            if (generation == _maxCounter) {
-              return _unchanged(
-                const VaultFailure(VaultFailureReason.unavailable),
-              );
-            }
-            final auth = (
-              character: character,
-              holder: holder,
-              generation: generation + 1,
-            );
-            return (
-              value: VaultSuccess(auth),
-              next: VaultRecord(
-                authorization: auth,
-                status: VaultStatus.active,
-                sealedCredential: await _cipher.seal(auth, (
-                  refresh: refreshToken,
-                  bearer: bearer,
-                )),
-                fence: 0,
-                leaseUntil: null,
-              ),
-            );
-          },
-        ) ??
-        const VaultFailure(VaultFailureReason.busy);
-  });
+    return (row) async {
+      final generation = row?.authorization.generation ?? 0;
+      if (expectedGeneration != generation ||
+          (row != null &&
+              row.status != VaultStatus.parked &&
+              row.authorization.holder != holder)) {
+        return _unchanged(const VaultFailure(VaultFailureReason.notHolder));
+      }
+      if (_live(row)) {
+        return _unchanged(const VaultFailure(VaultFailureReason.busy));
+      }
+      if (generation == _maxCounter) {
+        return _unchanged(const VaultFailure(VaultFailureReason.unavailable));
+      }
+      final auth = (
+        character: character,
+        holder: holder,
+        generation: generation + 1,
+      );
+      return (
+        value: VaultSuccess(auth),
+        next: VaultRecord(
+          authorization: auth,
+          status: VaultStatus.active,
+          sealedCredential: await _cipher.seal(auth, (
+            refresh: refreshToken,
+            bearer: bearer,
+          )),
+          fence: 0,
+          leaseUntil: null,
+        ),
+      );
+    };
+  }
 
   /// Removes the credential and invalidates the old handle before handoff.
   Future<VaultResult<VaultAuthorization>> park(VaultAuthorization auth) =>
@@ -212,7 +230,7 @@ final class EsiTokenVault {
         },
       );
       if (prepared == null) return const VaultFailure(VaultFailureReason.busy);
-      if (prepared.outcome case final done?) return done;
+      if (prepared.outcome case final done?) return _afterAdmission(done);
       var attempt = prepared.attempt!;
       for (var round = 0; ; round++) {
         final reply = await _refresh(auth, attempt.refresh);
@@ -226,12 +244,7 @@ final class EsiTokenVault {
           return const VaultFailure(VaultFailureReason.unavailable);
         }
         if (completed.outcome case final result?) {
-          if (result case VaultSuccess(:final value)) {
-            return _usable(value, _admissionMargin) == null
-                ? const VaultFailure(VaultFailureReason.refreshRequired)
-                : result;
-          }
-          return result;
+          return _afterAdmission(result);
         }
         attempt = completed.attempt!;
       }
@@ -239,6 +252,16 @@ final class EsiTokenVault {
       _inFlight--;
     }
   });
+
+  // A reused or refreshed bearer can expire while its transaction settles.
+  // Keep a committed rotation, but do not admit the expired access token.
+  VaultResult<VaultBearer> _afterAdmission(VaultResult<VaultBearer> result) =>
+      switch (result) {
+        VaultSuccess(:final value)
+            when _usable(value, _admissionMargin) == null =>
+          const VaultFailure(VaultFailureReason.refreshRequired),
+        _ => result,
+      };
 
   Future<VaultResult<VaultBearer>> _read(
     VaultAuthorization auth,

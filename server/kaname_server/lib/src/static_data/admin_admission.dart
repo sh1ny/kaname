@@ -39,10 +39,13 @@ final class AdminAdmission {
 
   _Reservation? _inMemory;
 
-  /// Tries a verified key's request or answers a replay without dispatching.
+  /// Rechecks the signing session before reserving a job or answering a replay.
+  /// The final gate sample, deadline check and reservation share one
+  /// synchronous turn; none of them runs on stale pre-authorization state.
   Future<AdminAnswer> request(
     String rawId, {
     required SdeAdminOperationKind kind,
+    required Future<bool> Function(Session) authorize,
     int? revision,
   }) async {
     final arrival = clock.now();
@@ -54,13 +57,13 @@ final class AdminAdmission {
       return _answer(AdminAnswerOutcome.malformed);
     }
     final key = (id: id, kind: kind, revision: revision);
-    if (_inMemory case final pending? when pending.key.id == id) {
-      return _remembered(key, pending.key);
-    }
+    final pending = _inMemory;
     final attempt = _AdmissionAttempt();
     final deadline = arrival.add(const Duration(seconds: 5));
     final admitted = await _until(
-      _admit(key, attempt, deadline),
+      pending?.key.id == id
+          ? _answerInMemory(key, pending!, authorize)
+          : _admit(key, attempt, deadline, authorize),
       deadline,
       () => _expired(key, attempt),
     );
@@ -73,14 +76,51 @@ final class AdminAdmission {
     }
   }
 
+  Future<_AdmissionResult> _answerInMemory(
+    AdminOperationKey key,
+    _Reservation pending,
+    Future<bool> Function(Session) authorize,
+  ) async {
+    try {
+      final answer = await _withAdminSession((session) async {
+        if (!await authorize(session)) {
+          return _answer(AdminAnswerOutcome.notAuthorized);
+        }
+        if (identical(_inMemory, pending)) {
+          return _remembered(key, pending.key);
+        }
+
+        final row = await readAdminOperation(session, key.id);
+        if (!await authorize(session)) {
+          return _answer(AdminAnswerOutcome.notAuthorized);
+        }
+        if (row != null) return _fromRow(key, row);
+        return switch (_inMemory) {
+          final current? when current.key.id == key.id => _remembered(
+            key,
+            current.key,
+          ),
+          _ => _waiting(key),
+        };
+      });
+      return _Refused(answer);
+    } on _AdminWorkBusy {
+      return _Refused(_answer(AdminAnswerOutcome.adminBusy));
+    } on Exception {
+      return _Refused(_failure(key, PublicReason.postgresUnreachable));
+    }
+  }
+
   Future<_AdmissionResult> _admit(
     AdminOperationKey key,
     _AdmissionAttempt attempt,
     DateTime deadline,
+    Future<bool> Function(Session) authorize,
   ) async {
     try {
-      final first = await _lookup(key.id);
+      final (first, live) = await _lookupAuthorized(key.id, authorize);
       if (!_before(deadline)) return _expired(key, attempt);
+      if (!live) return _Refused(_answer(AdminAnswerOutcome.notAuthorized));
       if (first != null) return _Refused(_fromRow(key, first));
 
       final supervisor = runtime.supervisor;
@@ -107,8 +147,9 @@ final class AdminAdmission {
       }
       if (refusal != null) {
         // A lookup miss does not prove the id is still new at this gate.
-        final found = await _lookup(key.id);
+        final (found, live) = await _lookupAuthorized(key.id, authorize);
         if (!_before(deadline)) return _expired(key, attempt);
+        if (!live) return _Refused(_answer(AdminAnswerOutcome.notAuthorized));
         return _Refused(found == null ? refusal : _fromRow(key, found));
       }
 
@@ -133,8 +174,14 @@ final class AdminAdmission {
 
       // A known conflict inserted nothing; the earlier job remains its owner.
       _discard(attempt);
-      final found = await _lookup(key.id);
+      final (found, liveAfterConflict) = await _lookupAuthorized(
+        key.id,
+        authorize,
+      );
       if (!_before(deadline)) return _expired(key, attempt);
+      if (!liveAfterConflict) {
+        return _Refused(_answer(AdminAnswerOutcome.notAuthorized));
+      }
       return _Refused(found == null ? _waiting(key) : _fromRow(key, found));
     } on _AdminWorkBusy {
       _discard(attempt);
@@ -168,8 +215,13 @@ final class AdminAdmission {
     }
   }
 
-  Future<SdeAdminOperation?> _lookup(String id) =>
-      _withAdminSession((session) => readAdminOperation(session, id));
+  Future<(SdeAdminOperation?, bool)> _lookupAuthorized(
+    String id,
+    Future<bool> Function(Session) authorize,
+  ) => _withAdminSession((session) async {
+    final row = await readAdminOperation(session, id);
+    return (row, await authorize(session));
+  });
 
   Future<T> _withAdminSession<T>(Future<T> Function(Session) work) async =>
       await (tokens.tryRun<T>(ReadWorkKind.admin, (_) => withSession(work)) ??

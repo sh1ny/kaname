@@ -23,7 +23,9 @@ abstract class SsoIdentityRow
     required this.owner,
     required this.characterName,
     required this.blocked,
-  });
+    this.accountId,
+    bool? wasDetached,
+  }) : wasDetached = wasDetached ?? false;
 
   factory SsoIdentityRow({
     int? id,
@@ -31,6 +33,8 @@ abstract class SsoIdentityRow
     required String owner,
     required String characterName,
     required bool blocked,
+    int? accountId,
+    bool? wasDetached,
   }) = _SsoIdentityRowImpl;
 
   factory SsoIdentityRow.fromJson(Map<String, dynamic> jsonSerialization) {
@@ -40,6 +44,10 @@ abstract class SsoIdentityRow
       owner: jsonSerialization['owner'] as String,
       characterName: jsonSerialization['characterName'] as String,
       blocked: _is.BoolJsonExtension.fromJson(jsonSerialization['blocked']),
+      accountId: jsonSerialization['accountId'] as int?,
+      wasDetached: jsonSerialization['wasDetached'] == null
+          ? null
+          : _is.BoolJsonExtension.fromJson(jsonSerialization['wasDetached']),
     );
   }
 
@@ -58,6 +66,10 @@ abstract class SsoIdentityRow
 
   bool blocked;
 
+  int? accountId;
+
+  bool wasDetached;
+
   @override
   _is.Table<int?> get table => t;
 
@@ -70,6 +82,8 @@ abstract class SsoIdentityRow
     String? owner,
     String? characterName,
     bool? blocked,
+    int? accountId,
+    bool? wasDetached,
   });
   @override
   Map<String, dynamic> toJson() {
@@ -80,6 +94,8 @@ abstract class SsoIdentityRow
       'owner': owner,
       'characterName': characterName,
       'blocked': blocked,
+      if (accountId != null) 'accountId': accountId,
+      'wasDetached': wasDetached,
     };
   }
 
@@ -125,12 +141,16 @@ class _SsoIdentityRowImpl extends SsoIdentityRow {
     required String owner,
     required String characterName,
     required bool blocked,
+    int? accountId,
+    bool? wasDetached,
   }) : super._(
          id: id,
          characterId: characterId,
          owner: owner,
          characterName: characterName,
          blocked: blocked,
+         accountId: accountId,
+         wasDetached: wasDetached,
        );
 
   /// Returns a shallow copy of this [SsoIdentityRow]
@@ -143,6 +163,8 @@ class _SsoIdentityRowImpl extends SsoIdentityRow {
     String? owner,
     String? characterName,
     bool? blocked,
+    Object? accountId = _Undefined,
+    bool? wasDetached,
   }) {
     return SsoIdentityRow(
       id: id is int? ? id : this.id,
@@ -150,6 +172,8 @@ class _SsoIdentityRowImpl extends SsoIdentityRow {
       owner: owner ?? this.owner,
       characterName: characterName ?? this.characterName,
       blocked: blocked ?? this.blocked,
+      accountId: accountId is int? ? accountId : this.accountId,
+      wasDetached: wasDetached ?? this.wasDetached,
     );
   }
 }
@@ -168,6 +192,12 @@ class SsoIdentityRowUpdateTable extends _is.UpdateTable<SsoIdentityRowTable> {
 
   _is.ColumnValue<bool, bool> blocked(bool value) =>
       _is.ColumnValue(table.blocked, value);
+
+  _is.ColumnValue<int, int> accountId(int? value) =>
+      _is.ColumnValue(table.accountId, value);
+
+  _is.ColumnValue<bool, bool> wasDetached(bool value) =>
+      _is.ColumnValue(table.wasDetached, value);
 }
 
 class SsoIdentityRowTable extends _is.Table<int?> {
@@ -178,6 +208,8 @@ class SsoIdentityRowTable extends _is.Table<int?> {
     owner = _is.ColumnString('owner', this);
     characterName = _is.ColumnString('characterName', this);
     blocked = _is.ColumnBool('blocked', this);
+    accountId = _is.ColumnInt('accountId', this);
+    wasDetached = _is.ColumnBool('wasDetached', this, hasDefault: true);
   }
 
   late final SsoIdentityRowUpdateTable updateTable;
@@ -190,6 +222,10 @@ class SsoIdentityRowTable extends _is.Table<int?> {
 
   late final _is.ColumnBool blocked;
 
+  late final _is.ColumnInt accountId;
+
+  late final _is.ColumnBool wasDetached;
+
   @override
   List<_is.Column> get columns => [
     id,
@@ -197,6 +233,8 @@ class SsoIdentityRowTable extends _is.Table<int?> {
     owner,
     characterName,
     blocked,
+    accountId,
+    wasDetached,
   ];
 }
 

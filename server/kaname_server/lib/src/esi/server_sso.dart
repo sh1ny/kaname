@@ -64,7 +64,6 @@ final class ServerSso {
     }
     final now = DateTime.now;
     final sessions = SsoSessions(
-      now: now,
       adminCharacters: _admins(env['KANAME_ESI_SSO_ADMIN_CHARACTERS']),
     );
     final registration = CcpConfidential(id, redirect, secret);
@@ -72,9 +71,9 @@ final class ServerSso {
     final oauth = CcpOAuth(client, now: now);
     final verifier = CcpJwtVerifier(now: now, loadKeys: oauth.loadSigningKeys);
     late final ServerSsoGrants grants;
-    final EsiTokenVault vault;
+    final ServerEsiVault serverVault;
     try {
-      vault = createServerEsiVault(
+      serverVault = createServerEsiVault(
         pod,
         readKey: () => env['KANAME_ESI_VAULT_KEY'],
         now: now,
@@ -92,11 +91,12 @@ final class ServerSso {
       sessions: sessions,
       gate: sessions.gate,
       policy: ScopePolicy.parse(env['KANAME_ESI_SCOPE_POLICY']),
-      vault: vault,
+      vault: serverVault,
       oauth: oauth,
       verifier: verifier,
       registration: registration,
     );
+    final vault = serverVault.vault;
     final esi =
         pod.config.redis?.enabled == true &&
             (pod.getPassword('serviceSecret')?.isNotEmpty ?? false)
@@ -116,7 +116,7 @@ final class ServerSso {
       sessions: sessions,
       now: now,
       grants: grants,
-      handoff: SsoHandoff(gate: sessions.gate, vault: vault, now: now),
+      handoff: SsoHandoff(sessions: sessions, vault: vault, now: now),
       skills: ServerSsoSkills(
         sessions: sessions,
         grants: grants,
@@ -131,6 +131,7 @@ final class ServerSso {
           pod.withSession<T>(action, enableLogging: false),
     );
     pod.server.addMiddleware(route.middleware);
+    sessions.bind(pod);
     final runtime = ServerSso._(sessions, grants, vault, route);
     _instances[pod] = runtime;
     return runtime;
@@ -141,8 +142,7 @@ final class ServerSso {
     Session session,
     String bearer,
   ) async {
-    final request = session.request;
-    if (request == null || !route.acceptsOrigin(request)) return null;
+    if (!route.acceptsRpcSession(session)) return null;
     return sessions.authenticate(session, bearer);
   }
 

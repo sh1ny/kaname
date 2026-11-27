@@ -1642,6 +1642,120 @@ abstract class AppLocalizations {
   /// **'{count} skills, {totalSp} skill points'**
   String esiSkillsResult(int count, int totalSp);
 
+  /// No description provided for @esiRosterTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Linked characters'**
+  String get esiRosterTitle;
+
+  /// No description provided for @esiRosterMain.
+  ///
+  /// In en, this message translates to:
+  /// **'Main: {name}'**
+  String esiRosterMain(String name);
+
+  /// No description provided for @esiRosterSigner.
+  ///
+  /// In en, this message translates to:
+  /// **'Signed in as: {name}'**
+  String esiRosterSigner(String name);
+
+  /// No description provided for @esiRosterBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} (blocked)'**
+  String esiRosterBlocked(String name);
+
+  /// No description provided for @esiRosterLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Link character'**
+  String get esiRosterLink;
+
+  /// No description provided for @esiRosterLinkInstruction.
+  ///
+  /// In en, this message translates to:
+  /// **'Use EVE sign-in for the character you want to link, then return here.'**
+  String get esiRosterLinkInstruction;
+
+  /// No description provided for @esiRosterFinishLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Finish linking'**
+  String get esiRosterFinishLink;
+
+  /// No description provided for @esiRosterLinked.
+  ///
+  /// In en, this message translates to:
+  /// **'Character linked.'**
+  String get esiRosterLinked;
+
+  /// No description provided for @esiRosterMakeMain.
+  ///
+  /// In en, this message translates to:
+  /// **'Make main'**
+  String get esiRosterMakeMain;
+
+  /// No description provided for @esiRosterUnlink.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlink'**
+  String get esiRosterUnlink;
+
+  /// No description provided for @esiRosterMainRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Select a new main before unlinking this character.'**
+  String get esiRosterMainRequired;
+
+  /// No description provided for @esiRosterRefused.
+  ///
+  /// In en, this message translates to:
+  /// **'Kaname did not change the linked characters.'**
+  String get esiRosterRefused;
+
+  /// No description provided for @esiRosterNext.
+  ///
+  /// In en, this message translates to:
+  /// **'Next characters'**
+  String get esiRosterNext;
+
+  /// No description provided for @esiRosterRefresh.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh characters'**
+  String get esiRosterRefresh;
+
+  /// No description provided for @esiRosterBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'The character list is busy. Try again.'**
+  String get esiRosterBusy;
+
+  /// No description provided for @esiRosterUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The character list is unavailable.'**
+  String get esiRosterUnavailable;
+
+  /// No description provided for @esiRosterRecovery.
+  ///
+  /// In en, this message translates to:
+  /// **'Kaname could not confirm the unlink. Revoke the old session, then sign in again to see your characters and call history.'**
+  String get esiRosterRecovery;
+
+  /// No description provided for @esiRosterRevoke.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoke old session'**
+  String get esiRosterRevoke;
+
+  /// No description provided for @esiRosterRevoking.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoking the old session…'**
+  String get esiRosterRevoking;
+
   /// No description provided for @esiCallLogTitle.
   ///
   /// In en, this message translates to:

@@ -3,6 +3,7 @@ import 'package:serverpod/serverpod.dart';
 import '../generated/protocol.dart';
 import 'esi_call_log_store.dart'
     show EsiCallLogDenied, EsiCallLogStore, EsiCallLogViewer;
+import 'sso_sessions.dart';
 
 /// Viewer-only receipts and fixed-window totals. Callers cannot choose a viewer.
 final class EsiCallLogEndpoint extends Endpoint {
@@ -23,10 +24,19 @@ final class EsiCallLogEndpoint extends Endpoint {
 
 /// Per-server admission and one cached result for the current release window.
 final class EsiCallLogReads {
-  /// Uses the same release boundary for the query and for cache admission.
-  EsiCallLogReads(this._store);
+  /// Uses the same durable release boundary for query and response admission.
+  /// [readSeal] defaults to a fresh read from the store.
+  /// [beforeAggregate] lets tests hold a calculation and observe a waiter
+  /// joining it without a timing assumption.
+  EsiCallLogReads(
+    this._store, {
+    Future<DateTime?> Function(Session)? readSeal,
+    this._beforeAggregate,
+  }) : _readSeal = readSeal ?? _store.currentSeal;
 
   final EsiCallLogStore _store;
+  final Future<DateTime?> Function(Session) _readSeal;
+  final Future<void> Function({required bool joining})? _beforeAggregate;
   final _reading = <int>{};
   ({DateTime window, EsiRouteCountPage page})? _cached;
   ({DateTime window, Future<EsiRouteCountPage> page})? _computing;
@@ -35,40 +45,21 @@ final class EsiCallLogReads {
   static int? _id(String value) =>
       _number.hasMatch(value) ? int.tryParse(value, radix: 10) : null;
 
-  static Future<EsiCallLogViewer?> _viewer(
-    Session session,
-    int member,
-    bool admin,
-  ) async {
-    final identity = await SsoIdentityRow.db.findById(session, member);
-    return identity == null || identity.blocked
-        ? null
-        : EsiCallLogViewer(
-            member: member,
-            characters: {identity.characterId},
-            admin: admin,
-          );
-  }
-
   /// Admits no more than one read per viewer and four per server.
   Future<EsiCallLogPage> own(Session session, EsiCallLogCursor? after) async {
     EsiCallLogPage failure(String status) =>
         EsiCallLogPage(status: status, rows: []);
     final auth = session.authenticated;
     final member = auth == null ? null : _id(auth.userIdentifier);
-    if (member == null) return failure('denied');
+    final id = auth == null ? null : _id(auth.authId);
+    if (member == null || id == null) return failure('denied');
     final cursorId = after == null ? null : _id(after.id);
     if (after != null && cursorId == null) return failure('denied');
     if (_reading.length >= 4 || !_reading.add(member)) return failure('busy');
     try {
-      final viewer = await _viewer(
-        session,
-        member,
-        auth!.scopes.contains(Scope.admin),
-      );
       final rows = await _store.ownRows(
         session,
-        viewer,
+        (account: member, session: id),
         after: after == null
             ? null
             : (recordedAt: after.recordedAt.toUtc(), id: cursorId!),
@@ -113,23 +104,19 @@ final class EsiCallLogReads {
       return failure('denied');
     }
     final member = _id(auth.userIdentifier);
-    if (member == null) return failure('denied');
+    final id = _id(auth.authId);
+    final authority = SsoSessions.forPod(session.serverpod);
+    if (member == null || id == null || authority == null) {
+      return failure('denied');
+    }
     if (_reading.length >= 4 || !_reading.add(member)) return failure('busy');
     try {
-      final viewer = await _viewer(session, member, true);
-      if (viewer == null) return failure('denied');
-      final window = _store.releasedWindow;
-      final cached = _cached;
-      if (cached?.window == window) return cached!.page;
-      final active = _computing;
-      if (active?.window == window) return await active!.page;
-      final future = _compute(session, viewer);
-      _computing = (window: window, page: future);
-      try {
-        return await future;
-      } finally {
-        if (identical(_computing?.page, future)) _computing = null;
-      }
+      final live = await authority.viewerById(session, id, member);
+      if (live?.admin != true) return failure('denied');
+      final viewer = EsiCallLogViewer(member: member, admin: true);
+      final window = await _store.sealWindow(session);
+      final page = await _pageForSeal(session, viewer, window);
+      return await _readSeal(session) == window ? page : failure('unavailable');
     } on EsiCallLogDenied {
       return failure('denied');
     } on Object {
@@ -139,15 +126,42 @@ final class EsiCallLogReads {
     }
   }
 
+  Future<EsiRouteCountPage> _pageForSeal(
+    Session session,
+    EsiCallLogViewer viewer,
+    DateTime window,
+  ) async {
+    final cached = _cached;
+    if (cached?.window == window) return cached!.page;
+    final active = _computing;
+    if (active?.window == window) {
+      final before = _beforeAggregate;
+      if (before != null) await before(joining: true);
+      return active!.page;
+    }
+    final future = _compute(session, viewer, window);
+    if (active == null || active.window.isBefore(window)) {
+      _computing = (window: window, page: future);
+    }
+    try {
+      return await future;
+    } finally {
+      if (identical(_computing?.page, future)) _computing = null;
+    }
+  }
+
   Future<EsiRouteCountPage> _compute(
     Session session,
     EsiCallLogViewer viewer,
+    DateTime window,
   ) async {
-    final computed = await _store.routeCountsWithWindow(session, viewer);
+    final before = _beforeAggregate;
+    if (before != null) await before(joining: false);
+    final rows = await _store.countsForSeal(session, viewer, window);
     final page = EsiRouteCountPage(
       status: 'ok',
       rows: List.unmodifiable([
-        for (final row in computed.rows)
+        for (final row in rows)
           EsiRouteCount(
             operation: row.operation,
             total: row.total,
@@ -155,8 +169,9 @@ final class EsiCallLogReads {
           ),
       ]),
     );
-    if (_store.releasedWindow == computed.window) {
-      _cached = (window: computed.window, page: page);
+    final cached = _cached;
+    if (cached == null || cached.window.isBefore(window)) {
+      _cached = (window: window, page: page);
     }
     return page;
   }

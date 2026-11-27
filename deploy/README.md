@@ -103,8 +103,31 @@ invalid policy permits identity sign-in but does not grant a skills scope.
 The browser callback and completion replies use `no-store` and `no-referrer`.
 Do not log callbacks, their query strings, or authentication request bodies
 and headers at any reverse proxy.
+Skip access logs for the member roster and account RPCs, including requests
+to `/api/memberRoster`, `/api/memberAccount`, and their method paths. The
+shipped Caddy config skips both forms.
 The browser must keep Kaname's short-lived attempt cookie. Other cookies on
 the same host do not affect the sign-in check.
+
+Kaname uses Postgres UTC for session deadlines. Once Postgres commits the
+removal of an expired session, a backward clock step cannot restore it.
+
+### Upgrading M2 sign-ins to member accounts
+
+Back up Postgres and stop the app server before running the stack's `migrate`
+service. The upgrade makes each existing character the main of a separate
+account. It preserves valid Kaname sessions and their signing characters,
+and leaves the ESI grant, scope opt-ins and holder assignment where they are.
+It does not link characters based on matching owner hashes.
+It removes sessions that have already expired by Postgres UTC and sessions
+with no signing identity.
+
+In connected ESI Settings, sign in and choose **Link character**. Complete
+CCP sign-in with the alt and finish the link in Kaname. You can select a
+different main or unlink any non-main. Unlink ends that character's Kaname
+sessions but leaves its ESI grants, opt-ins and holder assignment in place.
+Switching the main does not grant another character's ESI scopes or
+administrator access. The server checks the character that signed in.
 
 ### Test both sign-in modes locally
 

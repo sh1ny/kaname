@@ -2,32 +2,29 @@ import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:serverpod/serverpod.dart';
 
-import '../generated/protocol.dart';
+import 'sso_sessions.dart';
 
 // Shared by appends and the admin release barrier. This is a different
 // namespace from static-data locks; Postgres releases it with the transaction.
 const _releaseLock = 682997614;
 const _retention = Duration(days: 7);
 const _aggregateGrace = Duration(minutes: 1);
+const _aggregateRange = Duration(days: 5);
 
 /// Viewer resolved by trusted server code, never populated from RPC arguments.
 final class EsiCallLogViewer {
-  /// Binds the current member, currently owned characters and admin grant.
-  const EsiCallLogViewer({
-    required this.member,
-    required this.characters,
-    this.admin = false,
-  });
+  /// Binds a trusted account and its scope for a route aggregate read.
+  const EsiCallLogViewer({required this.member, this.admin = false});
 
   /// Trusted member identity also recorded on that member's calls.
   final int member;
 
-  /// Character IDs the viewer currently owns.
-  final Set<int> characters;
-
   /// Whether this viewer may request route-level aggregates.
   final bool admin;
 }
+
+/// The account and exact session obtained from server authentication.
+typedef EsiCallLogActor = ({int account, int session});
 
 /// A stable denial without caller or character details (ADR 0006).
 final class EsiCallLogDenied implements Exception {
@@ -60,14 +57,22 @@ typedef EsiCallLogRouteCount = ({String operation, int total, int errors});
 
 /// Persists allowlisted receipts and enforces access before returning history.
 final class EsiCallLogStore {
-  /// Uses UTC wall time for retention and release windows.
+  /// Uses the database UTC clock for release and pruning. Tests can supply
+  /// [now] and request an immediate non-queuing lock attempt. Set
+  /// [boundReleaseLock] to false only to hold a test reader at a real lock
+  /// barrier without a database timeout.
   ///
   /// [minimumMembers] can raise, never lower, the ADR 0006 privacy floor.
-  EsiCallLogStore({DateTime Function()? now, int minimumMembers = 5})
-    : _now = now ?? DateTime.now,
-      _minimumMembers = minimumMembers < 5 ? 5 : minimumMembers;
+  EsiCallLogStore({
+    this._now,
+    int minimumMembers = 5,
+    this._waitForReleaseLock = true,
+    this._boundReleaseLock = true,
+  }) : _minimumMembers = minimumMembers < 5 ? 5 : minimumMembers;
 
-  final DateTime Function() _now;
+  final DateTime Function()? _now;
+  final bool _waitForReleaseLock;
+  final bool _boundReleaseLock;
   final int _minimumMembers;
 
   /// Appends exactly the receipt fields in a short, independent transaction.
@@ -88,12 +93,16 @@ final class EsiCallLogStore {
           '''
           INSERT INTO esi_call_log_entry
             ("recordedAt", operation, outcome, status, cost, "latencyMicros",
-             bucket, "memberId", "characterId")
+             bucket, "memberId", "characterId", "accountExcluded")
           SELECT @recorded::timestamp, @operation::text, @outcome::text,
             @status::bigint, @cost::bigint, @latency::bigint, @bucket::text,
-            @member::bigint, @character::bigint
-          WHERE (clock_timestamp() AT TIME ZONE 'UTC') <
-                @recorded::timestamp + interval '10 seconds'
+            @member::bigint, @character::bigint, @excluded::boolean
+          WHERE COALESCE(@clock::timestamp, clock_timestamp() AT TIME ZONE 'UTC')
+                  < @recorded::timestamp + interval '10 seconds'
+            AND NOT EXISTS (
+              SELECT 1 FROM esi_call_log_seal
+              WHERE id = 1 AND "windowEnd" > @recorded::timestamp
+            )
         ''',
           parameters: QueryParameters.named({
             'recorded': receipt.recordedAt,
@@ -105,6 +114,8 @@ final class EsiCallLogStore {
             'bucket': receipt.bucket,
             'member': receipt.member,
             'character': receipt.character,
+            'excluded': receipt.accountExcluded,
+            'clock': _now?.call().toUtc(),
           }),
           transaction: tx,
         );
@@ -122,59 +133,240 @@ final class EsiCallLogStore {
   /// replace the viewer predicate. Ownership and age are checked each time.
   Future<List<EsiCallLogItem>> ownRows(
     Session session,
-    EsiCallLogViewer? viewer, {
+    EsiCallLogActor? viewer, {
     EsiCallLogCursor? after,
   }) async {
-    if (viewer == null || viewer.member <= 0) throw const EsiCallLogDenied._();
-    if (viewer.characters.isEmpty) return const [];
-    final cutoff = _now().toUtc().subtract(_retention);
+    final authority = SsoSessions.forPod(session.serverpod);
+    if (viewer == null || authority == null) throw const EsiCallLogDenied._();
     try {
-      final rows = await session.db.transaction((tx) async {
-        await session.db.unsafeExecute(
-          "SET LOCAL statement_timeout = '10s'",
-          transaction: tx,
-        );
-        return EsiCallLogRow.db.find(
-          session,
-          where: (t) {
-            final own =
-                t.memberId.equals(viewer.member) &
-                t.characterId.inSet(viewer.characters) &
-                (t.recordedAt > cutoff);
-            if (after == null) return own;
-            return own &
-                ((t.recordedAt < after.recordedAt) |
-                    (t.recordedAt.equals(after.recordedAt) &
-                        (t.id < after.id)));
-          },
-          orderByList: (t) => [t.recordedAt.desc(), t.id.desc()],
-          limit: 100,
-          transaction: tx,
-        );
-      });
+      final rows = await session.db.transaction(
+        (tx) async {
+          await session.db.unsafeExecute(
+            "SET LOCAL statement_timeout = '10s'",
+            transaction: tx,
+          );
+          final live = await authority.viewerById(
+            session,
+            viewer.session,
+            viewer.account,
+            transaction: tx,
+          );
+          if (live == null) return null;
+          return session.db.unsafeQuery(
+            '''
+            SELECT r.id, r."recordedAt", r."characterId", r.operation, r.bucket,
+                   r.outcome, r.status, r.cost, r."latencyMicros"
+            FROM esi_call_log_entry AS r
+            WHERE r."memberId" = @account::bigint AND r."recordedAt" > (
+              SELECT COALESCE(@clock::timestamp, clock_timestamp() AT TIME ZONE 'UTC')
+                - make_interval(days => ${_retention.inDays})
+            )
+              ${after == null ? '' : 'AND (r."recordedAt", r.id) < (@at::timestamp, @id::bigint)'}
+              AND EXISTS (
+                SELECT 1 FROM esi_identity AS i
+                WHERE i."accountId" = @account::bigint
+                  AND i."characterId" = r."characterId" AND NOT i.blocked
+              )
+            ORDER BY r."recordedAt" DESC, r.id DESC
+            LIMIT 100
+            ''',
+            parameters: QueryParameters.named({
+              'account': viewer.account,
+              'clock': _now?.call().toUtc(),
+              if (after != null) 'at': after.recordedAt,
+              if (after != null) 'id': after.id,
+            }),
+            transaction: tx,
+          );
+        },
+        settings: const TransactionSettings(
+          isolationLevel: IsolationLevel.repeatableRead,
+        ),
+      );
+      if (rows == null) throw const EsiCallLogDenied._();
       return [
         for (final row in rows)
           (
-            cursor: (recordedAt: row.recordedAt.toUtc(), id: row.id!),
-            recordedAt: row.recordedAt.toUtc(),
-            character: row.characterId!,
-            operation: row.operation,
-            bucket: row.bucket,
-            outcome: EsiCallLogOutcome.values.byName(row.outcome),
-            status: row.status,
-            cost: row.cost,
-            latency: Duration(microseconds: row.latencyMicros),
+            cursor: (
+              recordedAt: (row[1] as DateTime).toUtc(),
+              id: row[0] as int,
+            ),
+            recordedAt: (row[1] as DateTime).toUtc(),
+            character: row[2] as int,
+            operation: row[3] as String,
+            bucket: row[4] as String?,
+            outcome: EsiCallLogOutcome.values.byName(row[5] as String),
+            status: row[6] as int?,
+            cost: row[7] as int?,
+            latency: Duration(microseconds: row[8] as int),
           ),
       ];
+    } on EsiCallLogDenied {
+      rethrow;
     } on Exception {
       throw const EsiCallLogUnavailable._();
     }
   }
 
-  /// End of the fixed aggregate window currently available to readers.
-  DateTime get releasedWindow {
-    final releasedAt = _now().toUtc().subtract(_aggregateGrace);
+  /// Returns the latest already committed seal without proposing a window.
+  /// A standalone read takes a fresh snapshot under the statement budget.
+  Future<DateTime?> currentSeal(
+    Session session, {
+    Transaction? transaction,
+  }) async {
+    if (transaction == null) {
+      return _budgetedSealRead(
+        session,
+        (tx) => currentSeal(session, transaction: tx),
+      );
+    }
+    final rows = await session.db.unsafeQuery(
+      'SELECT "windowEnd" FROM esi_call_log_seal WHERE id = 1',
+      transaction: transaction,
+    );
+    return rows.isEmpty ? null : (rows.single.single as DateTime).toUtc();
+  }
+
+  /// Returns a committed seal, first advancing it if another window is eligible.
+  Future<DateTime> sealWindow(Session session) async {
+    try {
+      final preview = await _budgetedSealRead(
+        session,
+        (tx) => _clockAndSeal(session, transaction: tx),
+      );
+      final end = preview.end;
+      if (end != null && !_eligibleEnd(preview.utc).isAfter(end)) return end;
+      return await session.db.transaction((tx) async {
+        await _lockRelease(session, tx);
+        final sample = await _clockAndSeal(session, transaction: tx);
+        final candidate = _eligibleEnd(sample.utc);
+        final current = sample.end;
+        if (current != null && !candidate.isAfter(current)) return current;
+        await _writeSeal(session, tx, candidate);
+        return candidate;
+      });
+    } on Exception {
+      throw const EsiCallLogUnavailable._();
+    }
+  }
+
+  /// Records a first exclusion inside the membership transaction. A retired
+  /// account's evidence stays in this table; the caller holds its account lock
+  /// or has just inserted it in this transaction.
+  /// [admit] runs after the last lock and timestamp sample, even when an
+  /// existing exclusion needs no write. If it returns false, nothing is
+  /// written and the caller must decline the membership change.
+  Future<bool> excludeAccount(
+    Session session,
+    Transaction tx,
+    int account, {
+    bool Function()? admit,
+  }) async {
+    final existing = await session.db.unsafeQuery(
+      'SELECT 1 FROM esi_call_log_exclusion WHERE id = @id::bigint',
+      parameters: QueryParameters.named({'id': account}),
+      transaction: tx,
+    );
+    if (existing.isNotEmpty) return admit?.call() ?? true;
+    await session.db.unsafeExecute(
+      "SET LOCAL lock_timeout = '1s'",
+      transaction: tx,
+    );
+    await session.db.unsafeQuery(
+      'SELECT pg_advisory_xact_lock_shared($_releaseLock)',
+      transaction: tx,
+    );
+    final clock = _now?.call().toUtc();
+    if (admit != null && !admit()) return false;
+    await session.db.unsafeExecute(
+      '''
+      INSERT INTO esi_call_log_exclusion (id, "excludedAt")
+      VALUES (@id::bigint, GREATEST(
+        COALESCE(@clock::timestamp, clock_timestamp() AT TIME ZONE 'UTC'),
+        (SELECT "windowEnd" + interval '1 minute' FROM esi_call_log_seal WHERE id = 1)
+      )) ON CONFLICT (id) DO NOTHING
+      ''',
+      parameters: QueryParameters.named({'id': account, 'clock': clock}),
+      transaction: tx,
+    );
+    return true;
+  }
+
+  static DateTime _eligibleEnd(DateTime utc) {
+    final releasedAt = utc.subtract(_aggregateGrace);
     return DateTime.utc(releasedAt.year, releasedAt.month, releasedAt.day);
+  }
+
+  Future<({DateTime utc, DateTime? end})> _clockAndSeal(
+    Session session, {
+    required Transaction transaction,
+  }) async {
+    final rows = await session.db.unsafeQuery(
+      '''
+      SELECT COALESCE(@clock::timestamp, clock_timestamp() AT TIME ZONE 'UTC'),
+             (SELECT "windowEnd" FROM esi_call_log_seal WHERE id = 1)
+      ''',
+      parameters: QueryParameters.named({'clock': _now?.call().toUtc()}),
+      transaction: transaction,
+    );
+    final row = rows.single;
+    return (
+      utc: (row[0] as DateTime).toUtc(),
+      end: (row[1] as DateTime?)?.toUtc(),
+    );
+  }
+
+  static Future<T> _budgetedSealRead<T>(
+    Session session,
+    Future<T> Function(Transaction) read,
+  ) => session.db.transaction((tx) async {
+    await session.db.unsafeExecute(
+      "SET LOCAL statement_timeout = '10s'",
+      transaction: tx,
+    );
+    return read(tx);
+  });
+
+  Future<void> _lockRelease(Session session, Transaction tx) async {
+    if (_boundReleaseLock) {
+      await session.db.unsafeExecute(
+        "SET LOCAL statement_timeout = '10s'",
+        transaction: tx,
+      );
+    }
+    if (!_waitForReleaseLock) {
+      final rows = await session.db.unsafeQuery(
+        'SELECT pg_try_advisory_xact_lock($_releaseLock)',
+        transaction: tx,
+      );
+      if (rows.single.single != true) throw const EsiCallLogUnavailable._();
+      return;
+    }
+    if (_boundReleaseLock) {
+      await session.db.unsafeExecute(
+        "SET LOCAL lock_timeout = '1s'",
+        transaction: tx,
+      );
+    }
+    await session.db.unsafeQuery(
+      'SELECT pg_advisory_xact_lock($_releaseLock)',
+      transaction: tx,
+    );
+  }
+
+  static Future<void> _writeSeal(
+    Session session,
+    Transaction tx,
+    DateTime end,
+  ) async {
+    await session.db.unsafeExecute(
+      '''
+      INSERT INTO esi_call_log_seal (id, "windowEnd") VALUES (1, @end::timestamp)
+      ON CONFLICT (id) DO UPDATE SET "windowEnd" = excluded."windowEnd"
+      ''',
+      parameters: QueryParameters.named({'end': end}),
+      transaction: tx,
+    );
   }
 
   /// Returns route counts from one fixed window, to a trusted admin only.
@@ -186,44 +378,79 @@ final class EsiCallLogStore {
     EsiCallLogViewer? viewer,
   ) async => (await routeCountsWithWindow(session, viewer)).rows;
 
-  /// Carries the exact window selected before the first database await.
+  /// Selects a seal and reads its rows from a matching database snapshot.
   Future<({DateTime window, List<EsiCallLogRouteCount> rows})>
   routeCountsWithWindow(Session session, EsiCallLogViewer? viewer) async {
+    _requireAdmin(viewer);
+    final end = await sealWindow(session);
+    final rows = await countsForSeal(session, viewer, end);
+    if (await currentSeal(session) != end) {
+      throw const EsiCallLogUnavailable._();
+    }
+    return (window: end, rows: rows);
+  }
+
+  static void _requireAdmin(EsiCallLogViewer? viewer) {
     if (viewer == null || viewer.member <= 0 || !viewer.admin) {
       throw const EsiCallLogDenied._();
     }
-    final end = releasedWindow;
-    final start = end.subtract(const Duration(days: 5));
+  }
+
+  /// Computes the selected window only if that seal is present in the same
+  /// database snapshot as its inputs. The caller fences response admission.
+  Future<List<EsiCallLogRouteCount>> countsForSeal(
+    Session session,
+    EsiCallLogViewer? viewer,
+    DateTime end,
+  ) async {
+    _requireAdmin(viewer);
+    final start = end.subtract(_aggregateRange);
     try {
-      await session.db.transaction((tx) async {
-        await session.db.unsafeExecute(
-          "SET LOCAL lock_timeout = '1s'",
-          transaction: tx,
-        );
-        await session.db.unsafeQuery(
-          'SELECT pg_advisory_xact_lock($_releaseLock)',
-          transaction: tx,
-        );
-      });
-      final rows = await session.db.transaction((tx) async {
-        await session.db.unsafeExecute(
-          "SET LOCAL statement_timeout = '10s'",
-          transaction: tx,
-        );
-        return session.db.unsafeQuery(
-          '''
-          SELECT operation, count(*), count(*) FILTER (WHERE outcome = 'error'),
-            count(DISTINCT "memberId"), count("memberId"),
-            count("memberId") FILTER (WHERE outcome = 'error')
-          FROM esi_call_log_entry
-          WHERE "recordedAt" >= @start::timestamp
-            AND "recordedAt" < @end::timestamp
-          GROUP BY operation ORDER BY operation
-        ''',
-          parameters: QueryParameters.named({'start': start, 'end': end}),
-          transaction: tx,
-        );
-      });
+      final rows = await session.db.transaction(
+        (tx) async {
+          await session.db.unsafeExecute(
+            "SET LOCAL statement_timeout = '10s'",
+            transaction: tx,
+          );
+          if (await currentSeal(session, transaction: tx) != end) {
+            throw const EsiCallLogUnavailable._();
+          }
+          return session.db.unsafeQuery(
+            '''
+            WITH receipts AS MATERIALIZED (
+              SELECT operation, outcome, "memberId", "characterId"
+              FROM esi_call_log_entry
+              WHERE "recordedAt" >= @start::timestamp AND "recordedAt" < @end::timestamp
+            ), shared_characters AS (
+              SELECT "characterId" FROM receipts
+              WHERE "characterId" IS NOT NULL AND "memberId" IS NOT NULL
+              GROUP BY "characterId" HAVING count(DISTINCT "memberId") > 1
+            ), overlapping_accounts AS (
+              SELECT DISTINCT "memberId" FROM receipts
+              WHERE "memberId" IS NOT NULL
+                AND "characterId" IN (SELECT "characterId" FROM shared_characters)
+            )
+            SELECT r.operation, count(*), count(*) FILTER (WHERE r.outcome = 'error'),
+              count(DISTINCT r."memberId") FILTER (WHERE x."memberId" IS NULL AND e.id IS NULL),
+              count(r."memberId"), count(r."memberId") FILTER (WHERE r.outcome = 'error')
+            FROM receipts AS r
+            LEFT JOIN overlapping_accounts AS x ON x."memberId" = r."memberId"
+            LEFT JOIN esi_call_log_exclusion AS e ON e.id = r."memberId"
+              AND e."excludedAt" < @cutoff::timestamp
+            GROUP BY r.operation ORDER BY r.operation
+            ''',
+            parameters: QueryParameters.named({
+              'start': start,
+              'end': end,
+              'cutoff': end.add(_aggregateGrace),
+            }),
+            transaction: tx,
+          );
+        },
+        settings: const TransactionSettings(
+          isolationLevel: IsolationLevel.repeatableRead,
+        ),
+      );
       final counts = <EsiCallLogRouteCount>[];
       for (final row in rows) {
         final operation = row[0]! as String;
@@ -244,7 +471,7 @@ final class EsiCallLogStore {
           ));
         }
       }
-      return (window: end, rows: counts);
+      return counts;
     } on Exception {
       throw const EsiCallLogUnavailable._();
     }
@@ -254,11 +481,16 @@ final class EsiCallLogStore {
   Future<int> prune(Session session) async {
     try {
       return await session.db.transaction((tx) async {
-        await session.db.unsafeExecute(
-          "SET LOCAL statement_timeout = '10s'",
-          transaction: tx,
-        );
-        return session.db.unsafeExecute(
+        await _lockRelease(session, tx);
+        final sample = await _clockAndSeal(session, transaction: tx);
+        final cutoff = sample.utc.subtract(_retention);
+        final end = sample.end;
+        if (end != null && !cutoff.isBefore(end.subtract(_aggregateRange))) {
+          final candidate = _eligibleEnd(sample.utc);
+          if (!candidate.isAfter(end)) throw const EsiCallLogUnavailable._();
+          await _writeSeal(session, tx, candidate);
+        }
+        final removed = await session.db.unsafeExecute(
           '''
           DELETE FROM esi_call_log_entry WHERE id IN (
             SELECT id FROM esi_call_log_entry
@@ -266,11 +498,15 @@ final class EsiCallLogStore {
             ORDER BY "recordedAt", id LIMIT 1000 FOR UPDATE SKIP LOCKED
           )
         ''',
-          parameters: QueryParameters.named({
-            'cutoff': _now().toUtc().subtract(_retention),
-          }),
+          parameters: QueryParameters.named({'cutoff': cutoff}),
           transaction: tx,
         );
+        // The first non-empty prune also establishes a floor: a later clock
+        // step must not release an unsealed window whose inputs we just removed.
+        if (end == null && removed != 0) {
+          await _writeSeal(session, tx, _eligibleEnd(sample.utc));
+        }
+        return removed;
       });
     } on Exception {
       throw const EsiCallLogUnavailable._();

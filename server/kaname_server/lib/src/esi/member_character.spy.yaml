@@ -1,0 +1,6 @@
+### Character display data; no grant, owner hash or bearer.
+class: MemberCharacter
+fields:
+  characterId: String
+  name: String
+  blocked: bool

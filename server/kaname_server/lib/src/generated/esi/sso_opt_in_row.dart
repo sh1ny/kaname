@@ -19,7 +19,7 @@ abstract class SsoOptInRow
     implements _is.TableRow<int?>, _is.ProtocolSerialization {
   SsoOptInRow._({
     this.id,
-    required this.memberId,
+    required this.identityId,
     required this.owner,
     required this.scopeClass,
     required this.policyFingerprint,
@@ -27,7 +27,7 @@ abstract class SsoOptInRow
 
   factory SsoOptInRow({
     int? id,
-    required int memberId,
+    required int identityId,
     required String owner,
     required String scopeClass,
     required String policyFingerprint,
@@ -36,7 +36,7 @@ abstract class SsoOptInRow
   factory SsoOptInRow.fromJson(Map<String, dynamic> jsonSerialization) {
     return SsoOptInRow(
       id: jsonSerialization['id'] as int?,
-      memberId: jsonSerialization['memberId'] as int,
+      identityId: jsonSerialization['identityId'] as int,
       owner: jsonSerialization['owner'] as String,
       scopeClass: jsonSerialization['scopeClass'] as String,
       policyFingerprint: jsonSerialization['policyFingerprint'] as String,
@@ -50,7 +50,7 @@ abstract class SsoOptInRow
   @override
   int? id;
 
-  int memberId;
+  int identityId;
 
   String owner;
 
@@ -66,7 +66,7 @@ abstract class SsoOptInRow
   @_is.useResult
   SsoOptInRow copyWith({
     int? id,
-    int? memberId,
+    int? identityId,
     String? owner,
     String? scopeClass,
     String? policyFingerprint,
@@ -76,7 +76,7 @@ abstract class SsoOptInRow
     return {
       '__className__': 'SsoOptInRow',
       if (id != null) 'id': id,
-      'memberId': memberId,
+      'identityId': identityId,
       'owner': owner,
       'scopeClass': scopeClass,
       'policyFingerprint': policyFingerprint,
@@ -121,13 +121,13 @@ class _Undefined {}
 class _SsoOptInRowImpl extends SsoOptInRow {
   _SsoOptInRowImpl({
     int? id,
-    required int memberId,
+    required int identityId,
     required String owner,
     required String scopeClass,
     required String policyFingerprint,
   }) : super._(
          id: id,
-         memberId: memberId,
+         identityId: identityId,
          owner: owner,
          scopeClass: scopeClass,
          policyFingerprint: policyFingerprint,
@@ -139,14 +139,14 @@ class _SsoOptInRowImpl extends SsoOptInRow {
   @override
   SsoOptInRow copyWith({
     Object? id = _Undefined,
-    int? memberId,
+    int? identityId,
     String? owner,
     String? scopeClass,
     String? policyFingerprint,
   }) {
     return SsoOptInRow(
       id: id is int? ? id : this.id,
-      memberId: memberId ?? this.memberId,
+      identityId: identityId ?? this.identityId,
       owner: owner ?? this.owner,
       scopeClass: scopeClass ?? this.scopeClass,
       policyFingerprint: policyFingerprint ?? this.policyFingerprint,
@@ -157,8 +157,8 @@ class _SsoOptInRowImpl extends SsoOptInRow {
 class SsoOptInRowUpdateTable extends _is.UpdateTable<SsoOptInRowTable> {
   SsoOptInRowUpdateTable(super.table);
 
-  _is.ColumnValue<int, int> memberId(int value) =>
-      _is.ColumnValue(table.memberId, value);
+  _is.ColumnValue<int, int> identityId(int value) =>
+      _is.ColumnValue(table.identityId, value);
 
   _is.ColumnValue<String, String> owner(String value) =>
       _is.ColumnValue(table.owner, value);
@@ -174,7 +174,7 @@ class SsoOptInRowTable extends _is.Table<int?> {
   SsoOptInRowTable({super.tableRelation})
     : super(tableName: 'esi_scope_opt_in') {
     updateTable = SsoOptInRowUpdateTable(this);
-    memberId = _is.ColumnInt('memberId', this);
+    identityId = _is.ColumnInt('identityId', this);
     owner = _is.ColumnString('owner', this);
     scopeClass = _is.ColumnString('scopeClass', this);
     policyFingerprint = _is.ColumnString('policyFingerprint', this);
@@ -182,7 +182,7 @@ class SsoOptInRowTable extends _is.Table<int?> {
 
   late final SsoOptInRowUpdateTable updateTable;
 
-  late final _is.ColumnInt memberId;
+  late final _is.ColumnInt identityId;
 
   late final _is.ColumnString owner;
 
@@ -193,7 +193,7 @@ class SsoOptInRowTable extends _is.Table<int?> {
   @override
   List<_is.Column> get columns => [
     id,
-    memberId,
+    identityId,
     owner,
     scopeClass,
     policyFingerprint,

@@ -3,6 +3,7 @@ import 'package:kaname_esi_vault/kaname_esi_vault.dart';
 import 'package:serverpod/serverpod.dart';
 
 import '../generated/protocol.dart';
+import 'server_esi_vault.dart';
 import 'sso_route.dart';
 import 'sso_sessions.dart';
 
@@ -22,7 +23,7 @@ final class ServerSsoGrants implements SsoGrantAuthority {
   final SsoSessions _sessions;
   final SsoCharacterGate _gate;
   final ScopePolicy? _policy;
-  final EsiTokenVault _vault;
+  final ServerEsiVault _vault;
   final CcpOAuth _oauth;
   final CcpJwtVerifier _verifier;
   final CcpConfidential _registration;
@@ -31,11 +32,15 @@ final class ServerSsoGrants implements SsoGrantAuthority {
   static const holder = (kind: VaultHolderKind.server, id: 'server');
 
   /// No assignment is assumed active without a matching committed vault row.
-  static Future<SsoHolderRow?> assignment(Session session, int character) =>
-      SsoHolderRow.db.findFirstRow(
-        session,
-        where: (t) => t.characterId.equals(character),
-      );
+  static Future<SsoHolderRow?> assignment(
+    Session session,
+    int character, {
+    Transaction? transaction,
+  }) => SsoHolderRow.db.findFirstRow(
+    session,
+    where: (t) => t.characterId.equals(character),
+    transaction: transaction,
+  );
 
   @override
   Future<SsoRequestedGrant?> request(Session session, SsoViewer viewer) async {
@@ -73,7 +78,7 @@ final class ServerSsoGrants implements SsoGrantAuthority {
     final row = await SsoOptInRow.db.findFirstRow(
       session,
       where: (t) =>
-          t.memberId.equals(identity.id!) &
+          t.identityId.equals(identity.id!) &
           t.scopeClass.equals(ScopeClass.characterSkills.name),
     );
     if (row == null) return null;
@@ -97,18 +102,20 @@ final class ServerSsoGrants implements SsoGrantAuthority {
       await _gate.run(viewer.identity.characterId, () async {
         final policy = _policy;
         if (policy == null) return false;
-        final identity = await SsoIdentityRow.db.findById(
+        final live = await _sessions.viewerById(
           session,
-          viewer.identity.id!,
+          viewer.sessionId,
+          viewer.accountId,
         );
-        final key = await SsoSessionRow.db.findById(session, viewer.sessionId);
-        if (identity == null || identity.blocked || key == null) return false;
+        if (live == null) return false;
+        final identity = live.identity;
         final characterSkills = ScopeClass.characterSkills.name;
-        final member = identity.id!;
+        final signer = identity.id!;
         final existing = await SsoOptInRow.db.findFirstRow(
           session,
           where: (t) =>
-              t.memberId.equals(member) & t.scopeClass.equals(characterSkills),
+              t.identityId.equals(signer) &
+              t.scopeClass.equals(characterSkills),
         );
         if (!enabled) {
           if (existing != null) {
@@ -120,7 +127,7 @@ final class ServerSsoGrants implements SsoGrantAuthority {
           await SsoOptInRow.db.insertRow(
             session,
             SsoOptInRow(
-              memberId: member,
+              identityId: signer,
               owner: identity.owner,
               scopeClass: characterSkills,
               policyFingerprint: policy.fingerprint,
@@ -146,6 +153,7 @@ final class ServerSsoGrants implements SsoGrantAuthority {
     SsoRequestedGrant expected,
     CcpVerifiedIdentity identity,
     CcpGrant grant,
+    DateTime proofDeadline,
   ) async =>
       await _gate.run(expected.characterId, () async {
         final current = await _sessions.viewer(session, bearer);
@@ -157,7 +165,12 @@ final class ServerSsoGrants implements SsoGrantAuthority {
           return false;
         }
         if (identity.owner != expected.owner) {
-          await _sessions.block(session, identity.characterId, expected.owner);
+          await _sessions.block(
+            session,
+            identity.characterId,
+            expected.owner,
+            proofDeadline: proofDeadline,
+          );
           return false;
         }
         final permitted = await request(session, current);
@@ -170,7 +183,7 @@ final class ServerSsoGrants implements SsoGrantAuthority {
           return false;
         }
         final observed = await assignment(session, identity.characterId);
-        final vaultStatus = await _vault.inspect(identity.characterId);
+        final vaultStatus = await _vault.vault.inspect(identity.characterId);
         if (vaultStatus
             is! VaultSuccess<
               ({VaultAuthorization authorization, VaultStatus status})?
@@ -183,43 +196,62 @@ final class ServerSsoGrants implements SsoGrantAuthority {
             former.status != VaultStatus.parked) {
           return false;
         }
-        final activation = await _vault.activate(
+        if (!_sessions.proofIsFresh(proofDeadline)) return false;
+        return _vault.activateScoped(
+          session,
           character: identity.characterId,
           holder: holder,
           expectedGeneration: former?.authorization.generation ?? 0,
           refreshToken: grant.refreshToken,
           bearer: VaultBearer(grant.accessToken, identity.expiresAt),
+          admit: () => _sessions.proofIsFresh(proofDeadline),
+          writeHolder: (tx, authorization) => _writeHolder(
+            session,
+            tx,
+            identity,
+            authorization,
+            permitted.fingerprint,
+            observed,
+          ),
         );
-        if (activation is! VaultSuccess<VaultAuthorization>) return false;
-        // A failed assignment write leaves no matching grant generation.
-        // Dispatch stays blocked until fresh authorization replaces it.
-        final scopeList = identity.scopes.toList()..sort();
-        if (observed == null) {
-          await SsoHolderRow.db.insertRow(
-            session,
-            SsoHolderRow(
-              characterId: identity.characterId,
-              phase: 'serverHeld',
-              generation: 1,
-              vaultGeneration: activation.value.generation,
-              grantFingerprint: permitted.fingerprint,
-              requestedScopes: scopeList,
-            ),
-          );
-        } else {
-          await SsoHolderRow.db.updateRow(
-            session,
-            observed.copyWith(
-              phase: 'serverHeld',
-              vaultGeneration: activation.value.generation,
-              grantFingerprint: permitted.fingerprint,
-              requestedScopes: scopeList,
-            ),
-          );
-        }
-        return true;
       }) ??
       false;
+
+  static Future<void> _writeHolder(
+    Session session,
+    Transaction tx,
+    CcpVerifiedIdentity identity,
+    VaultAuthorization authorization,
+    String fingerprint,
+    SsoHolderRow? observed,
+  ) async {
+    final scopeList = identity.scopes.toList()..sort();
+    if (observed == null) {
+      await SsoHolderRow.db.insertRow(
+        session,
+        SsoHolderRow(
+          characterId: identity.characterId,
+          phase: 'serverHeld',
+          generation: 1,
+          vaultGeneration: authorization.generation,
+          grantFingerprint: fingerprint,
+          requestedScopes: scopeList,
+        ),
+        transaction: tx,
+      );
+    } else {
+      await SsoHolderRow.db.updateRow(
+        session,
+        observed.copyWith(
+          phase: 'serverHeld',
+          vaultGeneration: authorization.generation,
+          grantFingerprint: fingerprint,
+          requestedScopes: scopeList,
+        ),
+        transaction: tx,
+      );
+    }
+  }
 
   /// Ensures a credential can still be used under its recorded policy.
   Future<VaultAuthorization?> liveAuthorization(
@@ -283,7 +315,17 @@ final class ServerSsoGrants implements SsoGrantAuthority {
           case CcpVerifiedIdentity():
             if (result.characterId == pinned.characterId &&
                 result.owner != pinned.owner) {
-              await _sessions.block(session, pinned.characterId, pinned.owner);
+              try {
+                await _sessions.block(
+                  session,
+                  pinned.characterId,
+                  pinned.owner,
+                  proofDeadline: result.expiresAt,
+                );
+              } on Object {
+                // Failure to persist the identity block does not make this
+                // credential retryable. The vault must retire it either way.
+              }
               return const VaultRefreshUnverifiedGrant();
             }
             final permitted = _policy == null

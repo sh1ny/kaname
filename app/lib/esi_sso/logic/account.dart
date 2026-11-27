@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
+import 'package:kaname_client/kaname_client.dart';
 
 import '../../server/data/server_address.dart';
 import '../../server/logic/server_status.dart';
 import '../data/account_types.dart';
 import '../data/connected_account.dart';
 import '../data/desktop_platform.dart';
+import '../data/member_account_client.dart';
 
 /// Sign-in and active action states. Secrets remain in the data boundary.
 sealed class AccountState {
@@ -45,10 +47,37 @@ final class AccountIdle extends AccountState {
 /// An app action is running without concurrent credential changes.
 final class AccountWorking extends AccountState {
   /// [native] allows the desktop browser attempt to be cancelled.
-  const AccountWorking(super.connected, {this.native = false});
+  const AccountWorking(
+    super.connected, {
+    this.native = false,
+    this.membershipWrite = false,
+  });
 
   /// A native PKCE attempt can be cancelled.
   final bool native;
+
+  /// Connected membership views stay suspended until this mutation settles.
+  final bool membershipWrite;
+}
+
+/// The previous unlink may have committed. Only exact revocation can leave
+/// this state; [AccountState.connected] never exposes the former session.
+final class AccountUnlinkRecovery extends AccountState {
+  const AccountUnlinkRecovery._(
+    this._former, {
+    this.revoking = false,
+    this._desktopAction,
+  }) : super(null);
+
+  final ConnectedSession _former;
+
+  /// Prevents concurrent revocation requests for the same session.
+  final bool revoking;
+
+  final AccountState? _desktopAction;
+
+  /// Native actions remain independent of the connected revocation result.
+  AccountState get desktopAction => _desktopAction ?? const AccountIdle();
 }
 
 /// The current app must complete the same CCP attempt with the browser proof.
@@ -88,36 +117,87 @@ final connectedAccountSessionProvider = Provider<ConnectedSession?>(
   (ref) => ref.watch(accountProvider.select((state) => state.connected)),
 );
 
+/// A read fence shared by connected roster and history, not by solo views.
+final membershipReadSuspendedProvider = Provider<bool>(
+  (ref) => ref.watch(
+    accountProvider.select(
+      (state) =>
+          state is AccountWorking && state.membershipWrite ||
+          state is AccountUnlinkRecovery,
+    ),
+  ),
+);
+
+/// Changes after a confirmed membership result without changing the bearer.
+final membershipEpochProvider = NotifierProvider<MembershipEpoch, int>(
+  MembershipEpoch.new,
+);
+
+/// Issues an in-memory invalidation epoch, never holding any account data.
+final class MembershipEpoch extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  /// Fences all in-flight roster and history replies from earlier epochs.
+  void advance() => state++;
+}
+
+/// One generated client for the current connected viewer and configured origin.
+final memberAccountClientProvider = Provider.autoDispose<MemberAccountClient?>((
+  ref,
+) {
+  final session = ref.watch(connectedAccountSessionProvider);
+  final target = ref.watch(serverTargetProvider);
+  if (session == null || target is! ConfiguredServer) return null;
+  final bearer = session.bearerFor(target.uri);
+  if (bearer == null) return null;
+  final client = MemberAccountClient(target.uri, bearer);
+  ref.onDispose(client.close);
+  return client;
+});
+
 /// Owns viewer epochs across sign-out, changing servers and delayed reads.
 final class AccountNotifier extends Notifier<AccountState> {
   ConnectedAccount? _api;
+  ServerTarget? _target;
   int _epoch = 0;
   DateTime? _nextComplete;
+
+  // A target rebuild drops the viewer, but cannot settle a sent unlink.
+  // Keep one exact revocation per origin, never a reusable signed-in viewer.
+  final _pendingUnlinks = <String, AccountUnlinkRecovery>{};
 
   @override
   AccountState build() {
     _epoch++;
     _api = null;
     _nextComplete = null;
-    if (ref.watch(serverTargetProvider) case ConfiguredServer(:final uri)) {
+    final target = _target = ref.watch(serverTargetProvider);
+    if (target case ConfiguredServer(:final uri)) {
       if (!kIsWeb || Uri.base.origin == uri.origin) {
         final client = http.Client();
         ref.onDispose(client.close);
         _api = ConnectedAccount(uri, client, native: !kIsWeb);
       }
     }
-    return const AccountIdle();
+    return _pendingUnlinks[_api?.origin] ?? const AccountIdle();
   }
 
   /// Whether connected auth may send credentials to the configured origin.
   bool get canConnect => _api?.secure ?? false;
 
   /// Starts identity sign-in or requests the scopes for the existing viewer.
-  Future<void> start({bool scoped = false}) async {
-    if (state is AccountWorking || state is AccountBrowser) return;
+  Future<void> start({bool scoped = false}) =>
+      _start(scoped: scoped, link: false);
+
+  /// Starts a separate identity-only browser attempt for an alt.
+  Future<void> linkCharacter() => _start(scoped: false, link: true);
+
+  Future<void> _start({required bool scoped, required bool link}) async {
+    if (state is! AccountIdle) return;
     final connected = state.connected;
     final api = _api;
-    if (api == null || !api.secure || scoped && connected == null) {
+    if (api == null || !api.secure || (scoped || link) && connected == null) {
       state = AccountIdle(
         connected: connected,
         notice: AccountNotice.unavailable,
@@ -137,15 +217,38 @@ final class AccountNotifier extends Notifier<AccountState> {
     }
     final epoch = ++_epoch;
     state = AccountWorking(connected);
-    final (notice, attempt) = await api.start(
-      session: scoped ? connected : null,
+    final (outcome, attempt) = await api.start(
+      session: scoped || link ? connected : null,
+      link: link,
     );
     if (!_current(epoch)) return;
     _nextComplete = null;
+    var notice = outcome;
+    if (link && attempt == null && connected != null && _linkRefused(outcome)) {
+      notice = await _checkLinkViewer(connected, outcome);
+      if (!_current(epoch)) return;
+    }
     state = attempt == null
-        ? AccountIdle(connected: connected, notice: notice)
+        ? AccountIdle(
+            connected: link && notice == AccountNotice.signedOut
+                ? null
+                : connected,
+            notice: notice,
+          )
         : AccountBrowser(connected, attempt);
   }
+
+  static bool _linkRefused(AccountNotice notice) =>
+      notice == AccountNotice.blocked || notice == AccountNotice.signedOut;
+
+  static Future<AccountNotice> _checkLinkViewer(
+    ConnectedSession session,
+    AccountNotice outcome,
+  ) async => switch (await session.refresh()) {
+    ViewerRefreshInvalid() => AccountNotice.signedOut,
+    _ when outcome == AccountNotice.signedOut => AccountNotice.unavailable,
+    _ => outcome,
+  };
 
   /// Completes the active browser attempt. Early requests never start a poll loop.
   Future<void> complete({String? code}) async {
@@ -156,12 +259,21 @@ final class AccountNotifier extends Notifier<AccountState> {
     if (next != null && DateTime.now().isBefore(next)) return;
     final epoch = ++_epoch;
     state = AccountWorking(before.connected);
-    final (notice, updated) = await api.complete(
+    final (outcome, updated) = await api.complete(
       before.attempt,
       code: code,
       session: before.connected,
     );
     if (!_current(epoch)) return;
+    var notice = outcome;
+    final session = before.connected;
+    if (before.attempt.linking && session != null && _linkRefused(outcome)) {
+      notice = await _checkLinkViewer(session, outcome);
+      if (!_current(epoch)) return;
+    }
+    if (notice == AccountNotice.memberLinked) {
+      ref.read(membershipEpochProvider.notifier).advance();
+    }
     _nextComplete = DateTime.now().add(const Duration(seconds: 2));
     state = switch (notice) {
       AccountNotice.pending => AccountBrowser(
@@ -176,6 +288,121 @@ final class AccountNotifier extends Notifier<AccountState> {
     };
   }
 
+  /// Changes the designated main without changing the connected bearer.
+  Future<void> makeMain(String character) =>
+      _changeMember(character, unlink: false);
+
+  /// Invalidates membership-scoped views before sending and on completion.
+  Future<void> unlink(String character) =>
+      _changeMember(character, unlink: true);
+
+  Future<void> _changeMember(String character, {required bool unlink}) async {
+    final before = state;
+    final session = before.connected;
+    final target = _target;
+    if (before is! AccountIdle ||
+        session == null ||
+        target is! ConfiguredServer) {
+      return;
+    }
+    final bearer = session.bearerFor(target.uri);
+    if (bearer == null) return;
+    final epoch = ++_epoch;
+    if (unlink) {
+      _pendingUnlinks[session.origin] = AccountUnlinkRecovery._(session);
+    }
+    state = AccountWorking(session, membershipWrite: true);
+    final source = MemberAccountClient(target.uri, bearer);
+    MemberAccountStatus? result;
+    try {
+      result = await (unlink
+          ? source.unlink(character)
+          : source.makeMain(character));
+    } finally {
+      source.close();
+    }
+    if (!_current(epoch)) return;
+    if (result == null) {
+      final check = await session.refresh();
+      if (!_current(epoch)) return;
+      result = check is ViewerRefreshInvalid
+          ? MemberAccountStatus.denied
+          : MemberAccountStatus.unavailable;
+    }
+    if (unlink && result != MemberAccountStatus.unavailable) {
+      _pendingUnlinks.remove(session.origin);
+    }
+    ref.read(membershipEpochProvider.notifier).advance();
+    state = switch (result) {
+      MemberAccountStatus.mainChanged ||
+      MemberAccountStatus.unlinked => AccountIdle(connected: session),
+      MemberAccountStatus.selfUnlinked || MemberAccountStatus.denied =>
+        const AccountIdle(notice: AccountNotice.signedOut),
+      MemberAccountStatus.mainRequired => AccountIdle(
+        connected: session,
+        notice: AccountNotice.memberMainRequired,
+      ),
+      MemberAccountStatus.refused => AccountIdle(
+        connected: session,
+        notice: AccountNotice.memberRefused,
+      ),
+      MemberAccountStatus.unavailable when unlink =>
+        _pendingUnlinks[session.origin]!,
+      MemberAccountStatus.unavailable => AccountIdle(
+        connected: session,
+        notice: AccountNotice.unavailable,
+      ),
+    };
+  }
+
+  /// Uses the original bearer only for definitive revocation, never to read
+  /// the roster or history, and does not resend the unlink.
+  Future<void> recoverUnlink() async {
+    final before = state;
+    if (before is! AccountUnlinkRecovery || before.revoking) return;
+    final origin = before._former.origin;
+    final pending = _pendingUnlinks[origin];
+    if (pending == null ||
+        pending.revoking ||
+        !identical(pending._former, before._former)) {
+      return;
+    }
+    _epoch++;
+    final revoking = AccountUnlinkRecovery._(pending._former, revoking: true);
+    _pendingUnlinks[origin] = revoking;
+    state = AccountUnlinkRecovery._(
+      revoking._former,
+      revoking: true,
+      desktopAction: before._desktopAction,
+    );
+    final client = http.Client();
+    final bool revoked;
+    try {
+      revoked = await revoking._former.revoke(client: client);
+    } finally {
+      client.close();
+    }
+    if (!ref.mounted) return;
+    if (revoked) {
+      _pendingUnlinks.remove(origin);
+    } else {
+      _pendingUnlinks[origin] = pending;
+    }
+    if (ref.read(serverTargetProvider) case ConfiguredServer(:final uri)
+        when uri.origin == origin) {
+      if (state case final AccountUnlinkRecovery current
+          when identical(current._former, revoking._former)) {
+        state = revoked
+            ? current._desktopAction ??
+                  const AccountIdle(notice: AccountNotice.signedOut)
+            : AccountUnlinkRecovery._(
+                current._former,
+                desktopAction: current._desktopAction,
+              );
+      }
+    }
+  }
+
   /// Releases this app's browser attempt or asks the native listener to stop.
   void cancel() {
     if (state is AccountBrowser) {
@@ -184,13 +411,17 @@ final class AccountNotifier extends Notifier<AccountState> {
         connected: state.connected,
         notice: AccountNotice.cancelled,
       );
-    } else if (state case AccountWorking(native: true)) {
+    } else if (_nativeState case AccountWorking(native: true)) {
       ref.read(desktopAccountProvider).value?.cancel();
     }
   }
 
   /// Drops authority immediately, then attempts to revoke the old server session.
   Future<void> signOut() async {
+    if (state
+        case AccountUnlinkRecovery() || AccountWorking(membershipWrite: true)) {
+      return;
+    }
     _epoch++;
     final former = state.connected;
     ref.read(desktopAccountProvider).value?.cancel();
@@ -202,7 +433,9 @@ final class AccountNotifier extends Notifier<AccountState> {
   void rejectConnected(ConnectedSession captured) {
     if (identical(state.connected, captured)) {
       _epoch++;
-      state = const AccountIdle(notice: AccountNotice.signedOut);
+      state =
+          _pendingUnlinks[captured.origin] ??
+          const AccountIdle(notice: AccountNotice.signedOut);
     }
   }
 
@@ -222,16 +455,32 @@ final class AccountNotifier extends Notifier<AccountState> {
 
   /// Reads skills from the mode the user explicitly selected.
   Future<void> readSkills({required bool solo}) async {
+    if (solo) {
+      return _runNative(
+        (desktop, connected) async => _skillsState(
+          connected,
+          await desktop?.skills() ?? (AccountNotice.unavailable, null, null),
+          solo: true,
+        ),
+      );
+    }
     if (state is! AccountIdle) return;
     final connected = state.connected;
     final epoch = ++_epoch;
     state = AccountWorking(connected);
-    final (notice, stats, refusal) = solo
-        ? await ref.read(desktopAccountProvider).value?.skills() ??
-              (AccountNotice.unavailable, null, null)
-        : await connected?.skills() ?? (AccountNotice.signedOut, null, null);
+    final result =
+        await connected?.skills() ?? (AccountNotice.signedOut, null, null);
     if (!_current(epoch)) return;
-    state = AccountIdle(
+    state = _skillsState(connected, result, solo: false);
+  }
+
+  static AccountIdle _skillsState(
+    ConnectedSession? connected,
+    SkillsRead result, {
+    required bool solo,
+  }) {
+    final (notice, stats, refusal) = result;
+    return AccountIdle(
       connected: notice == AccountNotice.signedOut ? null : connected,
       notice: stats == null && refusal == null && notice == AccountNotice.none
           ? AccountNotice.unavailable
@@ -244,56 +493,107 @@ final class AccountNotifier extends Notifier<AccountState> {
 
   /// Configures the public desktop client without contacting a server.
   void configureDesktop(String value) {
-    if (state is! AccountIdle) return;
+    if (_nativeState is! AccountIdle) return;
     final desktop = ref.read(desktopAccountProvider).value;
     final notice =
         desktop?.configure(value.trim()) ?? AccountNotice.unavailable;
-    state = AccountIdle(connected: state.connected, notice: notice);
+    _showNative(AccountIdle(connected: state.connected, notice: notice));
   }
 
   /// Identifies a desktop character without requesting skills scope.
   Future<void> identifyDesktop() =>
-      _desktop((account, _) => account.identify());
+      _localAction((account) => account.identify());
 
   /// Records native consent, then runs a separate PKCE authorization.
-  Future<void> authorizeDesktop() => _desktop((account, session) async {
-    final pilot = account.pilot;
-    if (pilot != null &&
-        session != null &&
-        pilot.characterId == session.pilot.characterId &&
-        session.pilot.holder != null &&
-        !account.ownsReservationFor(session.origin, pilot.characterId)) {
-      return AccountNotice.blocked;
-    }
-    return account.authorizeSkills();
-  });
+  Future<void> authorizeDesktop() {
+    final current = state;
+    // Preserve the holder conflict check without passing the old bearer to
+    // any native operation or returning it to the connected view.
+    final binding = current is AccountUnlinkRecovery
+        ? current._former
+        : current.connected;
+    final signing = binding?.pilot;
+    final origin = binding?.origin;
+    return _localAction((account) async {
+      final local = account.pilot;
+      if (local != null &&
+          signing != null &&
+          origin != null &&
+          signing.characterId == local.characterId &&
+          signing.holder != null &&
+          !account.ownsReservationFor(origin, local.characterId)) {
+        return AccountNotice.blocked;
+      }
+      return account.authorizeSkills();
+    });
+  }
 
   /// Revokes local scope without handing a linked character to another holder.
   Future<void> disableDesktopSkills() =>
-      _desktop((account, _) => account.disableSkills());
+      _localAction((account) => account.disableSkills());
 
   /// Reserves the current connected viewer to the original desktop.
-  Future<void> takeDesktop() => _desktop(
-    (account, session) => session == null
-        ? Future.value(AccountNotice.signedOut)
-        : account.take(session),
-    refresh: true,
-  );
+  Future<void> takeDesktop() =>
+      _handoff((account, session) => account.take(session));
 
   /// Parks the desktop and requests a return to the current connected server.
-  Future<void> returnDesktop() => _desktop(
-    (account, session) => session == null
-        ? Future.value(AccountNotice.signedOut)
-        : account.returnTo(session),
-    refresh: true,
+  Future<void> returnDesktop() =>
+      _handoff((account, session) => account.returnTo(session));
+
+  AccountState get _nativeState {
+    final current = state;
+    return current is AccountUnlinkRecovery ? current.desktopAction : current;
+  }
+
+  void _showNative(AccountState action) {
+    final current = state;
+    state = current is AccountUnlinkRecovery
+        ? AccountUnlinkRecovery._(
+            current._former,
+            revoking: current.revoking,
+            desktopAction: action,
+          )
+        : action;
+  }
+
+  Future<void> _localAction(
+    Future<AccountNotice> Function(DesktopAccount) action,
+  ) => _runNative(
+    (desktop, connected) async => AccountIdle(
+      connected: connected,
+      notice: desktop == null
+          ? AccountNotice.unavailable
+          : await action(desktop),
+    ),
+    cancellable: true,
   );
 
-  Future<void> _desktop(
-    Future<AccountNotice> Function(DesktopAccount, ConnectedSession?) action, {
-    bool refresh = false,
+  Future<void> _runNative(
+    Future<AccountIdle> Function(DesktopAccount?, ConnectedSession?) action, {
+    bool cancellable = false,
   }) async {
+    final before = _nativeState;
+    if (before is! AccountIdle) return;
+    final target = _target;
+    final running = AccountWorking(before.connected, native: cancellable);
+    _showNative(running);
+    final answer = await action(
+      ref.read(desktopAccountProvider).value,
+      before.connected,
+    );
+    if (ref.mounted &&
+        identical(target, ref.read(serverTargetProvider)) &&
+        identical(_nativeState, running)) {
+      _showNative(answer);
+    }
+  }
+
+  Future<void> _handoff(
+    Future<AccountNotice> Function(DesktopAccount, ConnectedSession) action,
+  ) async {
     if (state is! AccountIdle) return;
     final connected = state.connected;
+    if (connected == null) return;
     final desktop = ref.read(desktopAccountProvider).value;
     if (desktop == null) {
       state = AccountIdle(
@@ -306,10 +606,6 @@ final class AccountNotifier extends Notifier<AccountState> {
     state = AccountWorking(connected, native: true);
     final notice = await action(desktop, connected);
     if (!_current(epoch)) return;
-    if (!refresh || connected == null) {
-      state = AccountIdle(connected: connected, notice: notice);
-      return;
-    }
     final updated = await connected.refresh();
     if (!_current(epoch)) return;
     final handoffNotice = notice == AccountNotice.signedOut
@@ -330,5 +626,8 @@ final class AccountNotifier extends Notifier<AccountState> {
     };
   }
 
-  bool _current(int epoch) => ref.mounted && epoch == _epoch;
+  bool _current(int epoch) =>
+      ref.mounted &&
+      epoch == _epoch &&
+      identical(_target, ref.read(serverTargetProvider));
 }

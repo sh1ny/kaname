@@ -34,7 +34,7 @@ void main() {
         calls++;
         return const VaultRefreshUnverifiedGrant();
       },
-    );
+    ).vault;
     final activated = await vault.activate(
       character: 46,
       holder: _holder,
@@ -72,7 +72,7 @@ void main() {
           replacementRefreshToken: _rotated,
         );
       },
-    );
+    ).vault;
     final activated = await vault.activate(
       character: 46,
       holder: _holder,

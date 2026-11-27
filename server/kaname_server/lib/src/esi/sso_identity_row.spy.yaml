@@ -7,3 +7,8 @@ fields:
   owner: String
   characterName: String
   blocked: bool
+  accountId: int?, relation(parent=member_account, onDelete=Restrict)
+  wasDetached: bool, default=false
+indexes:
+  esi_identity_account_character_idx:
+    fields: accountId, characterId
