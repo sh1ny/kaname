@@ -215,15 +215,6 @@ void main() {
       },
     );
 
-    test(
-      'pre-cutoff join disqualifies retained receipts without a new append',
-      () async {
-        await independent(5);
-        await exclusion(5, grace.subtract(const Duration(microseconds: 1)));
-        expect(await store.routeCounts(session, admin), isEmpty);
-      },
-    );
-
     for (final commit in [true, false]) {
       test(
         commit
@@ -321,6 +312,45 @@ void main() {
       timeout: const Timeout(Duration(minutes: 3)),
     );
 
+    test(
+      'production release holds the exclusive lock with its deadline',
+      () async {
+        await session.db.transaction((tx) async {
+          await session.db.unsafeExecute(r'''
+          CREATE FUNCTION require_release_lock_budget() RETURNS trigger
+          LANGUAGE plpgsql AS $$
+          BEGIN
+            IF current_setting('lock_timeout')::interval <> interval '1 second'
+              OR NOT EXISTS (
+                SELECT FROM pg_locks
+                WHERE pid = pg_backend_pid() AND locktype = 'advisory'
+                  AND classid = 0 AND objid = 682997614 AND objsubid = 1
+                  AND mode = 'ExclusiveLock' AND granted
+              )
+            THEN
+              RAISE EXCEPTION 'release must hold its lock under the production deadline';
+            END IF;
+            RETURN NEW;
+          END
+          $$
+        ''', transaction: tx);
+          await session.db.unsafeExecute('''
+          CREATE TRIGGER require_release_lock_budget BEFORE INSERT ON esi_call_log_seal
+          FOR EACH ROW EXECUTE FUNCTION require_release_lock_budget()
+        ''', transaction: tx);
+        });
+        addTearDown(() async {
+          await session.db.unsafeExecute('''
+          DROP TRIGGER require_release_lock_budget ON esi_call_log_seal
+        ''');
+          await session.db.unsafeExecute(
+            'DROP FUNCTION require_release_lock_budget()',
+          );
+        });
+        expect(await store.sealWindow(session), day);
+      },
+    );
+
     test('exclusion at the exact cutoff affects only later windows', () async {
       await independent(5);
       await exclusion(5, grace);
@@ -399,63 +429,80 @@ void main() {
       },
     );
 
-    test(
-      'retiring an account does not change its receipt eligibility',
-      () async {
-        final signer = await SsoIdentityRow.db.insertRow(
-          session,
-          SsoIdentityRow(
-            characterId: 50,
-            owner: 'fixture',
-            characterName: 'Pilot',
-            blocked: false,
-          ),
-        );
-        final account = await MemberAccountRow.db.insertRow(
-          session,
-          MemberAccountRow(mainIdentityId: signer.id!),
-        );
-        final id = account.id!;
-        await SsoIdentityRow.db.updateRow(
-          session,
-          signer.copyWith(accountId: id),
-        );
-        for (var i = 1; i <= 4; i++) {
-          await seed(session, recent, owner: id + i, character: i * 10);
-        }
-        await seed(session, recent, owner: id, character: 50);
-        final published = await store.routeCountsWithWindow(session, admin);
-        expect(published.window, day);
-        expect(published.rows.single.total, 5);
-
-        clock = grace.add(const Duration(microseconds: 1));
-        await session.db.transaction((tx) async {
-          await store.excludeAccount(session, tx, id);
+    for (final beforeCutoff in [true, false]) {
+      test(
+        beforeCutoff
+            ? 'pre-cutoff join disqualifies retained receipts without a new append'
+            : 'retiring an account does not change its receipt eligibility',
+        () async {
+          final character = beforeCutoff ? 60 : 50;
+          final signer = await SsoIdentityRow.db.insertRow(
+            session,
+            SsoIdentityRow(
+              characterId: character,
+              owner: 'fixture',
+              characterName: 'Pilot',
+              blocked: false,
+            ),
+          );
+          final account = await MemberAccountRow.db.insertRow(
+            session,
+            MemberAccountRow(mainIdentityId: signer.id!),
+          );
+          final id = account.id!;
           await SsoIdentityRow.db.updateRow(
             session,
-            signer.copyWith(wasDetached: true),
-            transaction: tx,
+            signer.copyWith(accountId: id),
           );
-          await MemberAccountRow.db.deleteRow(
-            session,
-            account,
-            transaction: tx,
+          for (var i = 1; i <= 4; i++) {
+            await seed(session, recent, owner: id + i, character: i * 10);
+          }
+          await seed(session, recent, owner: id, character: character);
+          final excludedAt = grace.add(
+            Duration(microseconds: beforeCutoff ? -1 : 1),
           );
-        });
-        expect(await MemberAccountRow.db.findById(session, id), isNull);
-        expect(
-          (await session.db.unsafeQuery(
-            'SELECT "excludedAt" FROM esi_call_log_exclusion WHERE id = @id::bigint',
-            parameters: QueryParameters.named({'id': id}),
-          )).single.single,
-          clock,
-        );
-        final cold = EsiCallLogStore(now: () => clock);
-        final recomputed = await cold.routeCountsWithWindow(session, admin);
-        expect(recomputed.window, published.window);
-        expect(recomputed.rows, published.rows);
-      },
-    );
+          if (beforeCutoff) {
+            clock = excludedAt;
+            await session.db.transaction(
+              (tx) => store.excludeAccount(session, tx, id),
+            );
+            clock = grace;
+          }
+          final published = await store.routeCountsWithWindow(session, admin);
+          expect(published.window, day);
+          expect(published.rows, [
+            if (!beforeCutoff) (operation: assets, total: 5, errors: 0),
+          ]);
+
+          if (!beforeCutoff) clock = excludedAt;
+          await session.db.transaction((tx) async {
+            if (!beforeCutoff) await store.excludeAccount(session, tx, id);
+            await SsoIdentityRow.db.updateRow(
+              session,
+              signer.copyWith(wasDetached: true),
+              transaction: tx,
+            );
+            await MemberAccountRow.db.deleteRow(
+              session,
+              account,
+              transaction: tx,
+            );
+          });
+          expect(await MemberAccountRow.db.findById(session, id), isNull);
+          expect(
+            (await session.db.unsafeQuery(
+              'SELECT "excludedAt" FROM esi_call_log_exclusion WHERE id = @id::bigint',
+              parameters: QueryParameters.named({'id': id}),
+            )).single.single,
+            excludedAt,
+          );
+          final cold = EsiCallLogStore(now: () => clock);
+          final recomputed = await cold.routeCountsWithWindow(session, admin);
+          expect(recomputed.window, published.window);
+          expect(recomputed.rows, published.rows);
+        },
+      );
+    }
 
     test('sealed range rejects late input and retains totals across a clock step and restart', () async {
       await independent(5);
