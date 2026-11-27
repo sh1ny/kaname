@@ -4,6 +4,7 @@ import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
 
+import '../support/observe_postgres_lock.dart';
 import '../test_tools/serverpod_test_tools.dart';
 
 void main() {
@@ -94,5 +95,45 @@ void main() {
       expect((await firstPage).accountId, a.toString());
       expect((await endpoint.page(second, null)).status, MemberRosterStatus.ok);
     });
+
+    test(
+      'a session that expires while its admission read waits is denied',
+      () async {
+        final db = sessions.build();
+        addTearDown(db.close);
+        final authority = SsoSessions();
+        final id = int.parse(first.authenticated!.authId);
+        await db.db.unsafeExecute(
+          '''UPDATE esi_session SET "expiresAt" = TIMESTAMP 'infinity'
+           WHERE id = @id::bigint''',
+          parameters: QueryParameters.named({'id': id}),
+        );
+        expect(await authority.viewerById(db, id, a), isNotNull);
+
+        late Future<SsoViewer?> read;
+        await db.db.transaction((tx) async {
+          await db.db.unsafeExecute(
+            'LOCK TABLE esi_session IN ACCESS EXCLUSIVE MODE',
+            transaction: tx,
+          );
+          final holder =
+              (await db.db.unsafeQuery(
+                    'SELECT pg_backend_pid()',
+                    transaction: tx,
+                  )).single.single
+                  as int;
+          read = authority.viewerById(first, id, a);
+          await observePostgresLock(second, holder, read);
+          await db.db.unsafeExecute(
+            '''UPDATE esi_session SET "expiresAt" = clock_timestamp() AT TIME ZONE 'UTC'
+             WHERE id = @id::bigint''',
+            parameters: QueryParameters.named({'id': id}),
+            transaction: tx,
+          );
+        });
+        expect(await read, isNull);
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
   }, rollbackDatabase: RollbackDatabase.disabled);
 }

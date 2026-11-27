@@ -273,10 +273,58 @@ void main() {
     test(
       'retiring an account does not change its receipt eligibility',
       () async {
-        await independent(5);
-        // Diagnostic account 5 has no live account row after retirement.
-        await exclusion(5, grace.subtract(const Duration(seconds: 1)));
-        expect(await store.routeCounts(session, admin), isEmpty);
+        final signer = await SsoIdentityRow.db.insertRow(
+          session,
+          SsoIdentityRow(
+            characterId: 50,
+            owner: 'fixture',
+            characterName: 'Pilot',
+            blocked: false,
+          ),
+        );
+        final account = await MemberAccountRow.db.insertRow(
+          session,
+          MemberAccountRow(mainIdentityId: signer.id!),
+        );
+        final id = account.id!;
+        await SsoIdentityRow.db.updateRow(
+          session,
+          signer.copyWith(accountId: id),
+        );
+        for (var i = 1; i <= 4; i++) {
+          await seed(session, recent, owner: id + i, character: i * 10);
+        }
+        await seed(session, recent, owner: id, character: 50);
+        final published = await store.routeCountsWithWindow(session, admin);
+        expect(published.window, day);
+        expect(published.rows.single.total, 5);
+
+        clock = grace.add(const Duration(microseconds: 1));
+        await session.db.transaction((tx) async {
+          await store.excludeAccount(session, tx, id);
+          await SsoIdentityRow.db.updateRow(
+            session,
+            signer.copyWith(wasDetached: true),
+            transaction: tx,
+          );
+          await MemberAccountRow.db.deleteRow(
+            session,
+            account,
+            transaction: tx,
+          );
+        });
+        expect(await MemberAccountRow.db.findById(session, id), isNull);
+        expect(
+          (await session.db.unsafeQuery(
+            'SELECT "excludedAt" FROM esi_call_log_exclusion WHERE id = @id::bigint',
+            parameters: QueryParameters.named({'id': id}),
+          )).single.single,
+          clock,
+        );
+        final cold = EsiCallLogStore(now: () => clock);
+        final recomputed = await cold.routeCountsWithWindow(session, admin);
+        expect(recomputed.window, published.window);
+        expect(recomputed.rows, published.rows);
       },
     );
 

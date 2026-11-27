@@ -64,7 +64,6 @@ final class ServerSso {
     }
     final now = DateTime.now;
     final sessions = SsoSessions(
-      now: now,
       adminCharacters: _admins(env['KANAME_ESI_SSO_ADMIN_CHARACTERS']),
     );
     final registration = CcpConfidential(id, redirect, secret);

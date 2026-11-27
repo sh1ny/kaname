@@ -61,7 +61,8 @@ final class SsoCharacterGate {
 /// Session and identity storage. Only a bearer digest reaches Postgres.
 final class SsoSessions {
   /// [adminCharacters] contains only operator-approved CCP character IDs.
-  SsoSessions({required this._now, Set<int> adminCharacters = const {}})
+  /// Without a test clock, live reads check expiry against the database clock.
+  SsoSessions({this._now, Set<int> adminCharacters = const {}})
     : _admins = Set.unmodifiable(adminCharacters);
 
   static final _bound = Expando<SsoSessions>();
@@ -89,8 +90,10 @@ final class SsoSessions {
   /// The main-isolate gate protects grants, holders and ESI dispatch.
   final gate = SsoCharacterGate();
 
-  final DateTime Function() _now;
+  final DateTime Function()? _now;
   final Set<int> _admins;
+
+  DateTime _wallNow() => _now?.call().toUtc() ?? DateTime.now().toUtc();
 
   /// Whether this install can grant admin scope to a verified character.
   bool get adminConfigured => _admins.isNotEmpty;
@@ -161,14 +164,15 @@ final class SsoSessions {
              ${includeExclusion ? ', EXISTS (SELECT 1 FROM esi_call_log_exclusion e WHERE e.id = s."accountId")' : ''}
       FROM esi_session AS s JOIN esi_identity AS i ON i.id = s."identityId"
       WHERE ${digest != null ? 's.digest = @digest' : 's.id = @id AND s."accountId" = @account'}
-        AND s."expiresAt" > @now::timestamp AND NOT i.blocked
+        AND s."expiresAt" > COALESCE(@clock::timestamp, clock_timestamp() AT TIME ZONE 'UTC')
+        AND NOT i.blocked
         AND i."accountId" = s."accountId"
       ''',
       parameters: QueryParameters.named({
         'digest': ?digest,
         'id': ?sessionId,
         'account': ?accountId,
-        'now': _now(),
+        'clock': _now?.call().toUtc(),
       }),
       transaction: transaction,
     );
@@ -225,7 +229,7 @@ final class SsoSessions {
       transaction: transaction,
     );
     await lockCharacter(session, transaction, claims.characterId);
-    if (!_now().isBefore(claims.expiresAt)) return null;
+    if (!_wallNow().isBefore(claims.expiresAt)) return null;
     final stored = await SsoIdentityRow.db.findFirstRow(
       session,
       where: (t) => t.characterId.equals(claims.characterId),
@@ -278,7 +282,7 @@ final class SsoSessions {
         await _callLog.excludeAccount(session, transaction, member);
       }
     }
-    final now = _now();
+    final now = _wallNow();
     final existing = await SsoSessionRow.db.find(
       session,
       where: (t) => t.identityId.equals(signer) & (t.expiresAt > now),
@@ -362,7 +366,7 @@ final class SsoSessions {
 
   /// Removes a bounded batch of expired session verifiers.
   Future<void> prune(Session session) async {
-    final now = _now();
+    final now = _wallNow();
     final expired = await SsoSessionRow.db.find(
       session,
       where: (t) => t.expiresAt <= now,

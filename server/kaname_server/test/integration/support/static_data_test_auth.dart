@@ -46,10 +46,7 @@ Future<AuthenticationInfo?> staticDataTestAuthentication(
         transaction: tx,
       );
     });
-    final sessions = SsoSessions(
-      now: DateTime.now,
-      adminCharacters: {_character},
-    );
+    final sessions = SsoSessions(adminCharacters: {_character});
     sessions.bind(pod);
     return sessions.authenticate(owner, bearer);
   }, enableLogging: false);
