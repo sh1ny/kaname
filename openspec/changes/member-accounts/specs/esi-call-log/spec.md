@@ -80,7 +80,7 @@ Each receipt SHALL keep the account, signing character and exclusion status from
 
 ### Requirement: Known membership splits do not qualify as independent accounts
 
-Unlinking SHALL retain detachment evidence. Accounts a detached character starts or joins SHALL have durable exclusion evidence that survives retirement. New receipts SHALL stamp exclusion at admission. A window SHALL apply an exclusion only when its durable time predates the fixed cutoff. A receipt stamp SHALL NOT override the cutoff. M2 receipts SHALL keep their attribution without a detachment stamp.
+Unlinking SHALL preserve detachment for the life of the identity. Kaname SHALL record the first exclusion time for an account a detached character starts or joins. That record SHALL NOT be updated or deleted, even after retirement. New receipts SHALL stamp exclusion at admission. A window SHALL apply an exclusion only if its time precedes the fixed cutoff. A stamp SHALL NOT override the cutoff. M2 receipts SHALL keep their attribution without a detachment stamp.
 
 #### Scenario: Alts split before any receipt for the original account
 - **WHEN** five distinct alts leave one account, each starts a new account, and only those new accounts contribute to a private route
