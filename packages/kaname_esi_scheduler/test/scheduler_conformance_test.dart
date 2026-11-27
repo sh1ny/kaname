@@ -877,13 +877,19 @@ void _affiliationOutageCases(SchedulerState Function() state) {
       await poll.postUniverseNames(body: [104]),
       isA<EsiSuccess<Object?>>(),
     );
-    expect(await poll.postCharactersAffiliation(body: [105]), outage());
+    final unmarked = scheduler.client(EsiPriority.sync);
+    expect(
+      await unmarked.postCharactersAffiliation(body: [105]),
+      isA<EsiSuccess<List<CharactersAffiliationPostItem>>>(),
+    );
+    expect(await poll.postCharactersAffiliation(body: [106]), outage());
     expect(wire, [
       affiliation,
       affiliation,
       affiliation,
       get,
       unrelated,
+      affiliation,
       probe,
     ]);
     expect(validators.whereType<String>(), isEmpty);
