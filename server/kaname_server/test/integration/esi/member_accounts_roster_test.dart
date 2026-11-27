@@ -178,7 +178,9 @@ void main() {
           ]);
           // The expiry read may open a delete transaction of its own. Start
           // it outside the writer's transaction zone.
-          read = authority.viewerById(first, id, a);
+          read = withPostgresWaitBarrier(
+            () => authority.viewerById(first, id, a),
+          );
           await observePostgresLock(second, holder, read);
         } finally {
           resume.complete();

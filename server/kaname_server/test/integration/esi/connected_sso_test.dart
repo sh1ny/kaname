@@ -63,11 +63,13 @@ void main() {
   late Future<void> Function()? beforeLinkProofRecheck;
   Future<void> Function(int)? afterCharacterLock;
   var unboundedCharacterLock = false;
+  var extendDriverWait = false;
   Future<void> Function()? afterVaultLock;
   Future<void> Function()? afterVaultWrite;
   Future<void> Function()? beforeGrantCommit;
   DateTime Function()? exclusionClock;
   Future<void> Function(Session, Transaction)? beforeViewerRead;
+  Future<void> Function()? beforeViewerHolder;
   Future<void> Function()? beforeViewerReply;
   late bool persistReceipts;
   late JsonWebKey signing;
@@ -92,11 +94,13 @@ void main() {
     beforeLinkProofRecheck = null;
     afterCharacterLock = null;
     unboundedCharacterLock = false;
+    extendDriverWait = false;
     afterVaultLock = null;
     afterVaultWrite = null;
     beforeGrantCommit = null;
     exclusionClock = null;
     beforeViewerRead = null;
+    beforeViewerHolder = null;
     beforeViewerReply = null;
     persistReceipts = false;
     final upstream = MockClient((request) async {
@@ -217,13 +221,22 @@ void main() {
     Future<T> withSession<T>(Future<T> Function(Session) action) =>
         pod.pod.withSession<T>((session) async {
           final probe = beforeViewerRead;
+          final holder = beforeViewerHolder;
           final unbounded = unboundedCharacterLock;
-          if (probe == null && !unbounded) return action(session);
+          final driverWait = extendDriverWait;
+          extendDriverWait = false;
+          if (probe == null && holder == null && !unbounded) {
+            return driverWait
+                ? withPostgresWaitBarrier(() => action(session))
+                : action(session);
+          }
           beforeViewerRead = null;
+          beforeViewerHolder = null;
           unboundedCharacterLock = false;
           final observed = ObservedDatabaseSession(
             session,
             afterBegin: probe == null ? null : (tx) => probe(session, tx),
+            beforeFirstFind: holder,
             unboundedFirstLock: unbounded,
           );
           try {
@@ -748,40 +761,41 @@ void main() {
     final signed = await signIn();
     final bearer = signed['session'] as String;
     await authorize(bearer);
-    late Future<http.Response> read;
-    await pod.pod.withSession(
-      (db) => db.db.transaction((tx) async {
-        await db.db.unsafeExecute(
-          'LOCK TABLE esi_holder_assignment IN ACCESS EXCLUSIVE MODE',
-          transaction: tx,
-        );
-        final holder =
-            (await db.db.unsafeQuery(
-                  'SELECT pg_backend_pid()',
-                  transaction: tx,
-                )).single.single
-                as int;
-        read = post('viewer', {}, bearer: bearer);
-        await pod.pod.withSession(
-          (observer) => observePostgresLock(observer, holder, read),
-          enableLogging: false,
-        );
-        final row = (await ServerSsoGrants.assignment(
-          db,
-          410,
-          transaction: tx,
-        ))!;
-        expect(row.phase, 'serverHeld');
-        await SsoHolderRow.db.deleteRow(db, row, transaction: tx);
-        await SsoSessionRow.db.deleteWhere(
-          db,
-          where: (t) => t.digest.equals(ssoDigest(bearer)),
-          transaction: tx,
-        );
-      }),
-      enableLogging: false,
-    );
-    final snapshot = await read;
+    final holderLookup = Completer<void>();
+    final resume = Completer<void>();
+    beforeViewerHolder = () async {
+      holderLookup.complete();
+      await resume.future;
+    };
+    final pending = post('viewer', {}, bearer: bearer);
+    late http.Response snapshot;
+    try {
+      await Future.any<void>([
+        holderLookup.future,
+        pending.then((_) => fail('The viewer skipped its holder lookup.')),
+      ]);
+      await pod.pod.withSession(
+        (db) => db.db.transaction((tx) async {
+          final row = (await ServerSsoGrants.assignment(
+            db,
+            410,
+            transaction: tx,
+          ))!;
+          expect(row.phase, 'serverHeld');
+          await SsoHolderRow.db.deleteRow(db, row, transaction: tx);
+          await SsoSessionRow.db.deleteWhere(
+            db,
+            where: (t) => t.digest.equals(ssoDigest(bearer)),
+            transaction: tx,
+          );
+        }),
+        enableLogging: false,
+      );
+    } finally {
+      beforeViewerHolder = null;
+      resume.complete();
+      snapshot = await pending;
+    }
     expect(snapshot.statusCode, 200);
     final viewer = jsonDecode(snapshot.body) as Map<String, Object?>;
     expect(viewer['memberId'], signed['memberId']);
@@ -1561,6 +1575,14 @@ void main() {
         },
         body: body,
       );
+
+      Future<http.Response> web(String bearer) => native(
+        bearer,
+        endpoint: 'memberRoster/page',
+        contentType: 'text/plain; charset=utf-8',
+        body: '{"after":null}',
+      );
+
       final pending = [
         for (var i = 0; i < 4; i++)
           i.isEven
@@ -1582,6 +1604,8 @@ void main() {
           (await accountRpc(key, 'page', {'after': null})).statusCode,
           429,
         );
+        expect((await web(key)).statusCode, 429);
+        expect(lookups, 4);
         for (final (endpoint, body) in [
           ('memberRoster', '{'),
           ('memberRoster', '{"method":"notPage","after":null}'),
@@ -1610,14 +1634,7 @@ void main() {
         )).statusCode,
         200,
       );
-      expect(
-        (await native(
-          key,
-          endpoint: 'memberRoster/page',
-          contentType: 'text/plain; charset=utf-8',
-        )).statusCode,
-        200,
-      );
+      expect((await web(key)).statusCode, 200);
     },
     timeout: const Timeout(Duration(minutes: 3)),
   );
@@ -2054,6 +2071,7 @@ void main() {
           (_) => fail('Unlink settled before taking the acting lock.'),
         ),
       ]);
+      extendDriverWait = true;
       revocation = post('sign-out', {}, bearer: retained).whenComplete(() {
         replied = true;
       });
@@ -2063,6 +2081,7 @@ void main() {
       );
       expect(replied, isFalse, reason: 'Unlink still holds the session lock.');
     } finally {
+      extendDriverWait = false;
       settle.complete();
       expect(await write, MemberAccountStatus.unlinked);
     }

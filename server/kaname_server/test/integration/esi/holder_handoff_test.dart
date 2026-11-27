@@ -11,6 +11,7 @@ import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
 
 import '../support/in_process_pod.dart';
+import '../support/observe_postgres_lock.dart';
 
 const _one = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const _two = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
@@ -511,7 +512,7 @@ void main() {
     () async {
       await holdOnServer();
       final start = clock;
-      final locked = Completer<void>();
+      final locked = Completer<int>();
       final unlock = Completer<void>();
       addTearDown(() {
         if (!unlock.isCompleted) unlock.complete();
@@ -524,31 +525,28 @@ void main() {
             parameters: QueryParameters.named({'character': _character}),
             transaction: transaction,
           );
-          locked.complete();
+          final pid = await db.db.unsafeQuery(
+            'SELECT pg_backend_pid()',
+            transaction: transaction,
+          );
+          locked.complete(pid.single.single as int);
           await unlock.future;
         }),
         enableLogging: false,
       );
-      await locked.future;
-
-      var finished = false;
-      final closing = reconcile(_one, 1)
-        ..whenComplete(() => finished = true).ignore();
-      // Poll the server until the closure waits on the held row lock.
-      while (true) {
-        final waiting = await session.db.unsafeQuery('''
-SELECT count(*) FROM pg_stat_activity
-WHERE datname = current_database() AND wait_event_type = 'Lock'
-  AND query LIKE '%esi_holder_assignment%'
-''');
-        if ((waiting.single.single! as int) > 0) break;
-        if (finished) fail('The closure finished without waiting for the row.');
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
+      final pid = await Future.any<int>([
+        locked.future,
+        holder.then((_) => fail('The holder did not lock the assignment.')),
+      ]);
+      final closing = withPostgresWaitBarrier(() => reconcile(_one, 1));
       final lockedAt = start.add(const Duration(minutes: 2));
-      clock = lockedAt;
-      unlock.complete();
-      await holder;
+      try {
+        await observePostgresLock(session, pid, closing);
+        clock = lockedAt;
+      } finally {
+        unlock.complete();
+        await holder;
+      }
       expect(await closing, SsoHandoffStatus.notAccepted);
       final first = await closure();
       expect(first, ('serverHeld', 1, null, 1, lockedAt));

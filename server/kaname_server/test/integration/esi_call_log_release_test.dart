@@ -253,10 +253,12 @@ void main() {
                   fail('The writer settled before holding the exclusion lock.'),
             ),
           ]);
-          final read = EsiCallLogStore(
-            now: () => clock,
-            boundReleaseLock: false,
-          ).routeCounts(session, admin);
+          final read = withPostgresWaitBarrier(
+            () => EsiCallLogStore(
+              now: () => clock,
+              boundReleaseLock: false,
+            ).routeCounts(session, admin),
+          );
           try {
             await observePostgresLock(session, holder, read);
           } finally {
@@ -633,12 +635,14 @@ void main() {
       final holder =
           (await observer.execute('SELECT pg_backend_pid()')).single.single
               as int;
-      final read = reader.withSession(
-        (s) => EsiCallLogStore(
-          now: () => clock,
-          boundReleaseLock: false,
-        ).routeCountsWithWindow(s, admin),
-        enableLogging: false,
+      final read = withPostgresWaitBarrier(
+        () => reader.withSession(
+          (s) => EsiCallLogStore(
+            now: () => clock,
+            boundReleaseLock: false,
+          ).routeCountsWithWindow(s, admin),
+          enableLogging: false,
+        ),
       );
       final refused = expectLater(read, throwsA(isA<EsiCallLogUnavailable>()));
       try {

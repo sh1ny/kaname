@@ -9,6 +9,7 @@ import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
 
 import 'support/observe_postgres_lock.dart';
+import 'support/observed_database_session.dart';
 import 'test_tools/serverpod_test_tools.dart';
 
 const assets = 'GetCharactersCharacterIdAssets';
@@ -193,12 +194,16 @@ void main() {
         final current = cutoff.add(const Duration(microseconds: 1));
         await seed(session, cutoff);
         await seed(session, current);
-        final reader = builder.build();
+        final reader = ObservedDatabaseSession(
+          session,
+          unboundedFirstLock: true,
+        );
         final observer = builder.build();
         addTearDown(reader.close);
         addTearDown(observer.close);
-        late Future<List<EsiCallLogItem>> read;
-        await session.db.transaction((tx) async {
+        final locked = Completer<int>();
+        final release = Completer<void>();
+        final writer = session.db.transaction((tx) async {
           await session.db.unsafeExecute(
             'LOCK TABLE esi_session IN ACCESS EXCLUSIVE MODE',
             transaction: tx,
@@ -209,10 +214,24 @@ void main() {
                     transaction: tx,
                   )).single.single
                   as int;
+          locked.complete(holder);
+          await release.future;
+        });
+        late Future<List<EsiCallLogItem>> read;
+        try {
+          final holder = await Future.any<int>([
+            locked.future,
+            writer.then(
+              (_) => fail('The writer did not hold the sessions table.'),
+            ),
+          ]);
           read = store.ownRows(reader, _actor);
           await observePostgresLock(observer, holder, read);
           now = later;
-        });
+        } finally {
+          release.complete();
+          await writer;
+        }
         expect((await read).map((row) => row.recordedAt), [current]);
         expect(await store.prune(session), 1);
         expect(
