@@ -171,27 +171,29 @@ void main() {
     final manager = f.pod.futureCallManager!;
     await manager.start();
     try {
-      await f.pod.withSession((s) async {
-        final auth = (await sessions.signIn(s, await claims(101), deadline))!;
-        await entered[101]!.future;
-        expect(
-          await MemberAccounts(sessions, EsiCallLogStore()).link(
-            s,
-            await actor(sessions, s, auth),
-            await claims(102),
-            deadline,
-            () => f.now,
-          ),
-          isTrue,
-        );
-        await entered[102]!.future;
-        expect(f.wire.map((call) => call.ids), [
-          [101],
-          [102],
-        ]);
-        expect(f.wire.map((call) => call.token), [null, null]);
-        expect(committed, [101, 102]);
-      });
+      await _holdEnqueueBudget(
+        () => f.pod.withSession((s) async {
+          final auth = (await sessions.signIn(s, await claims(101), deadline))!;
+          await entered[101]!.future;
+          expect(
+            await MemberAccounts(sessions, EsiCallLogStore()).link(
+              s,
+              await actor(sessions, s, auth),
+              await claims(102),
+              deadline,
+              () => f.now,
+            ),
+            isTrue,
+          );
+          await entered[102]!.future;
+          expect(f.wire.map((call) => call.ids), [
+            [101],
+            [102],
+          ]);
+          expect(f.wire.map((call) => call.token), [null, null]);
+          expect(committed, [101, 102]);
+        }),
+      );
     } finally {
       release.complete();
       await manager.stop(unregisterAll: false);
