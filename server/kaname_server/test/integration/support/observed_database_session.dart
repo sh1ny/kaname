@@ -7,6 +7,7 @@ final class ObservedDatabaseSession extends Session {
     Session source, {
     this.beforeTransaction,
     this.afterBegin,
+    this.unboundedFirstLock = false,
   }) : super(server: source.server, enableLogging: false, endpoint: 'Test') {
     updateAuthenticated(source.authenticated);
   }
@@ -17,25 +18,40 @@ final class ObservedDatabaseSession extends Session {
   /// Pauses inside the first transaction before the caller runs queries.
   final Future<void> Function(Transaction)? afterBegin;
 
+  /// Runs the initial SQL lock request without wall-clock deadlines.
+  ///
+  /// In this test session only, the preceding transaction-local settings
+  /// disable both SQL deadlines. The test must supply its own hang guard.
+  final bool unboundedFirstLock;
+  var _firstQuerySent = false;
+
   /// Counts database access attempts, even before SQL is sent.
   var databaseAccesses = 0;
 
   @override
   Database get db {
     final real = super.db;
-    return databaseAccesses++ == 0 &&
-            (beforeTransaction != null || afterBegin != null)
-        ? _ObservedTransaction(real, beforeTransaction, afterBegin)
+    final opening = databaseAccesses++ == 0;
+    final probe = opening && (beforeTransaction != null || afterBegin != null);
+    final unbounded = unboundedFirstLock && !_firstQuerySent;
+    return probe || unbounded
+        ? _ObservedTransaction(
+            real,
+            opening ? beforeTransaction : null,
+            opening ? afterBegin : null,
+            unbounded ? () => _firstQuerySent = true : null,
+          )
         : real;
   }
 }
 
 final class _ObservedTransaction implements Database {
-  _ObservedTransaction(this._real, this._before, this._after);
+  _ObservedTransaction(this._real, this._before, this._after, this._onQuery);
 
   final Database _real;
   final Future<void> Function()? _before;
   final Future<void> Function(Transaction)? _after;
+  final void Function()? _onQuery;
 
   @override
   Future<R> transaction<R>(
@@ -56,7 +72,45 @@ final class _ObservedTransaction implements Database {
   }
 
   @override
+  Future<int> unsafeExecute(
+    String query, {
+    int? timeoutInSeconds,
+    Transaction? transaction,
+    QueryParameters? parameters,
+  }) => _real.unsafeExecute(
+    switch (query) {
+      _ when _onQuery != null && query.startsWith('SET LOCAL lock_timeout =') =>
+        'SET LOCAL lock_timeout = 0',
+      _
+          when _onQuery != null &&
+              query.startsWith('SET LOCAL statement_timeout =') =>
+        'SET LOCAL statement_timeout = 0',
+      _ => query,
+    },
+    timeoutInSeconds: timeoutInSeconds,
+    transaction: transaction,
+    parameters: parameters,
+  );
+
+  @override
+  Future<DatabaseResult> unsafeQuery(
+    String query, {
+    int? timeoutInSeconds,
+    Transaction? transaction,
+    QueryParameters? parameters,
+  }) {
+    _onQuery?.call();
+    return _real.unsafeQuery(
+      query,
+      // The driver's mandatory timer must outlast the outer test hang guard.
+      timeoutInSeconds: _onQuery == null ? timeoutInSeconds : 600,
+      transaction: transaction,
+      parameters: parameters,
+    );
+  }
+
+  @override
   Object? noSuchMethod(Invocation invocation) => throw StateError(
-    'The observed database must start a transaction, not ${invocation.memberName}.',
+    'Unexpected database access during a transaction probe: ${invocation.memberName}.',
   );
 }

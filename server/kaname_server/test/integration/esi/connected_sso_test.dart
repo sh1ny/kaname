@@ -62,6 +62,7 @@ void main() {
   late Future<void> Function()? beforeRefresh;
   late Future<void> Function()? beforeLinkProofRecheck;
   Future<void> Function(int)? afterCharacterLock;
+  var unboundedCharacterLock = false;
   Future<void> Function()? afterVaultLock;
   Future<void> Function()? afterVaultWrite;
   Future<void> Function()? beforeGrantCommit;
@@ -90,6 +91,7 @@ void main() {
     beforeRefresh = null;
     beforeLinkProofRecheck = null;
     afterCharacterLock = null;
+    unboundedCharacterLock = false;
     afterVaultLock = null;
     afterVaultWrite = null;
     beforeGrantCommit = null;
@@ -215,11 +217,14 @@ void main() {
     Future<T> withSession<T>(Future<T> Function(Session) action) =>
         pod.pod.withSession<T>((session) async {
           final probe = beforeViewerRead;
-          if (probe == null) return action(session);
+          final unbounded = unboundedCharacterLock;
+          if (probe == null && !unbounded) return action(session);
           beforeViewerRead = null;
+          unboundedCharacterLock = false;
           final observed = ObservedDatabaseSession(
             session,
-            afterBegin: (tx) => probe(session, tx),
+            afterBegin: probe == null ? null : (tx) => probe(session, tx),
+            unboundedFirstLock: unbounded,
           );
           try {
             return await action(observed);
@@ -1003,7 +1008,46 @@ void main() {
     final second = await begin();
     expect((await callback(first)).statusCode, 200);
     expect((await callback(second)).statusCode, 200);
-    final responses = await Future.wait([complete(first), complete(second)]);
+    final held = Completer<void>();
+    final release = Completer<void>();
+    afterCharacterLock = (_) async {
+      held.complete();
+      await release.future;
+    };
+    unboundedCharacterLock = true;
+    final pendingFirst = complete(first);
+    Future<http.Response>? pendingSecond;
+    late http.Response firstReply;
+    http.Response? secondReply;
+    try {
+      await Future.any<void>([
+        held.future,
+        pendingFirst.then((_) => fail('The first sign-in skipped its lock.')),
+      ]);
+      afterCharacterLock = null;
+      final holder = await pod.pod.withSession((s) async {
+        final rows = await s.db.unsafeQuery('''
+          SELECT pid FROM pg_locks
+          WHERE locktype = 'advisory' AND granted AND objsubid = 2
+            AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+            AND classid = 0 AND objid = 410
+        ''');
+        return rows.single.single as int;
+      }, enableLogging: false);
+      unboundedCharacterLock = true;
+      final competing = pendingSecond = complete(second);
+      await pod.pod.withSession(
+        (s) => observePostgresLock(s, holder, competing),
+        enableLogging: false,
+      );
+    } finally {
+      afterCharacterLock = null;
+      unboundedCharacterLock = false;
+      release.complete();
+      firstReply = await pendingFirst;
+      secondReply = await pendingSecond;
+    }
+    final responses = [firstReply, secondReply!];
     final viewers = [
       for (final response in responses)
         jsonDecode(response.body) as Map<String, Object?>,
@@ -1020,7 +1064,7 @@ void main() {
       enableLogging: false,
     );
     expect(rows.single.toList(), [1, 1, 2]);
-  });
+  }, timeout: const Timeout(Duration(minutes: 3)));
 
   Future<http.Response> linkAlt(
     String bearer,

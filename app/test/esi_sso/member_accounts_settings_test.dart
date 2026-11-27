@@ -29,8 +29,9 @@ void main() {
     tester,
   ) async {
     final server = _Server();
+    final history = _HistoryRequests();
     await http.runWithClient(() async {
-      await _open(tester);
+      await _open(tester, history: history);
       expect(find.text('Link character'), findsNothing);
       await _signIn(tester);
       expect(server.rosterRequests, hasLength(1));
@@ -46,8 +47,18 @@ void main() {
       expect(find.text('Link character'), findsOneWidget);
       expect(find.text('Make main'), findsOneWidget);
       expect(find.text(_unlink), findsOneWidget);
-      await _tap(tester, 'Link character');
-      await _tap(tester, 'Finish linking');
+      final firstPage = _historyPage('1', 'History before link', next: true);
+      await _tap(tester, 'My calls', settle: false);
+      history.pages.single.complete(firstPage);
+      await tester.pumpAndSettle();
+      expect(find.text('History before link'), findsOneWidget);
+      await _tap(tester, 'Older calls', settle: false);
+      expect(history.requests.last.after?.toJson(), firstPage.next!.toJson());
+      final oldPage = history.pages.last;
+
+      await _tap(tester, 'Link character', settle: false);
+      await _tap(tester, 'Finish linking', settle: false);
+      await tester.pump();
       expect(find.text('Character linked.'), findsOneWidget);
       expect(find.text('Signed in as: Alt Pilot'), findsOneWidget);
       expect(
@@ -59,6 +70,20 @@ void main() {
         everyElement('Bearer ${'b' * 43}'),
       );
       expect(server.rosterRequests, hasLength(2));
+
+      expect(find.text('History before link'), findsNothing);
+      expect(find.text('Older calls'), findsNothing);
+      await _tap(tester, 'My calls', settle: false);
+      expect(history.requests, hasLength(3));
+      expect(history.requests.last, (bearer: 'b' * 43, after: null));
+      history.pages.last.complete(_historyPage('3', 'History after link'));
+      await tester.pumpAndSettle();
+
+      oldPage.complete(_historyPage('2', 'Delayed history before link'));
+      await tester.pumpAndSettle();
+      expect(find.text('History after link'), findsOneWidget);
+      expect(find.text('Delayed history before link'), findsNothing);
+      expect(find.text('Older calls'), findsNothing);
     }, () => MockClient(server.call));
   });
 
