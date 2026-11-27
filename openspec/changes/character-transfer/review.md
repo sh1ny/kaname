@@ -13,6 +13,12 @@
 2. Proposed ADR 0020 qualifies ADR 0017’s Recovery section when CCP ownership changes. An unfinished Take cannot resume or use ordinary Return across owners. A completed reservation can use ordinary Return when the original device kept the proof and generation and can park. The current owner still needs fresh authorization for server ESI. The design calls for a cross-reference from the architecture index entry for ADR 0017 and preserves the accepted ADR text. [Proposed ADR 0020](design.md#adrs) · [ADR 0017 Recovery](../../../docs/adr/0017-esi-holder-handoff.md#recovery)
 3. The accepted refresh risk says a later correct proof can restore sign-in and allow fresh ESI authorization through a fresh account. The former account keeps its records and remains accessible through any surviving eligible signer. If none remain, the former account has no connected sign-in path. [Design risk](design.md#risks--trade-offs)
 
+## D10 amendment
+
+The owner approved confirmation at the originating server before fresh native activation from a saved Take. Codex reviewed this amendment separately. Its first verdict was `REVISE`: a confirmation in flight after PKCE could outlive desktop cancellation. The recheck returned `APPROVE_WITH_CHANGES` and asked for a guard at the final local await and a session-loss test that does not also cancel the native operation.
+
+Applied both changes. The desktop reads the local vault before requesting confirmation. Confirmation is the last await: the native runtime checks cancellation and the captured live session and target before calling vault activation. Group 4 tests cancel, sign-out, and session loss without native cancellation while the exact success is held at that final await. Ordinary Return still has the original proof and assignment generation.
+
 ## Verdict
 
 VERDICT: APPROVE_WITH_CHANGES

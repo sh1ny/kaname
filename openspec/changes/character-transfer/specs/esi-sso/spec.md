@@ -125,6 +125,23 @@ Kaname SHALL require explicit handoff and confirmed source parking before the de
 - **WHEN** the signed-in character takes the token holder from the server to a desktop device and completes native PKCE for that character and owner
 - **THEN** the server stops dispatching and parks its credential before the device can dispatch; later connected requests do not use a server bearer for that character
 
+#### Scenario: Fresh native activation confirms the saved Take
+
+- **WHEN** the original desktop gets fresh native CCP authorization for a completed Take
+- **THEN** it activates the grant only after the originating server confirms the exact proof, assignment and current ownership generation under a live session for that character
+- **AND** the check does not change the assignment or send a CCP token
+
+#### Scenario: The origin cannot confirm fresh native activation
+
+- **WHEN** the desktop cannot get confirmation of a saved Take, including when the server is offline or does not support the check
+- **THEN** it cannot activate or replace the native grant, and it keeps the saved evidence for ordinary Return
+- **AND** standalone native authorization and existing native refresh do not require this check
+
+#### Scenario: Cancel or session loss wins before native activation
+
+- **WHEN** the user cancels or loses the captured connected session before the native vault write starts, even if the server already admitted or answered confirmation
+- **THEN** a late success cannot activate or replace a native grant, and the original proof and generation remain available for ordinary Return
+
 #### Scenario: Return a device-held character to the server
 
 - **WHEN** the selected desktop device parks its credential and completes ordinary Return with the matching proof and generation, and the current owner completes fresh confidential scoped authorization for the same character
@@ -292,6 +309,13 @@ Transfer SHALL NOT change the holder assignment, generation or proof. The server
 
 - **WHEN** the original desktop saved its completed reservation before transfer, parks its credential, and uses the saved proof and generation with a live connected session for the character
 - **THEN** ordinary Return can release the assignment, and only a fresh scoped authorization may enable server ESI afterward
+- **AND** a blocked native grant after a verified owner mismatch does not stop the original device from parking and returning the saved assignment
+
+#### Scenario: The hash matches a previous ownership generation
+
+- **WHEN** a character has transferred away and back to the same CCP owner hash, and the desktop attempts fresh activation with the reservation saved before those transfers
+- **THEN** the server refuses confirmation even though the owner fingerprint and saved proof match
+- **AND** ordinary Return remains available with its original proof and assignment generation
 
 #### Scenario: An old Take is retried after transfer
 

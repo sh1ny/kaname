@@ -98,6 +98,15 @@ See [proposal.md](proposal.md) for scope. Source citations describe the baseline
 - Important: yes (overload behavior and bounded competing writes).
 - Chosen by: user, decided by Ormy under the owner's delegation. Keep the existing limits and busy response without a new queue.
 
+### D10: Confirm a saved Take before native activation
+
+- Choice: After fresh native CCP proof, ask the originating Kaname server to confirm the saved Take before activating a native skills grant. In one Postgres snapshot, the server checks the live signing character, the exact device proof and assignment generation, `deviceReserved`, and that the Take's ownership generation is still current. The native proof's owner fingerprint must match the server's current owner. The check sends neither CCP tokens nor the raw owner hash and does not change the assignment. A refusal, unavailable origin or old server without confirmation leaves the local grant unactivated and the saved Return proof intact.
+- Only the active connected session for that origin and character may confirm. A former bearer retained for unlink recovery is never used. The desktop reads the local vault first, then makes confirmation the last await before activation. On return it checks cancellation and the captured session and target, then starts the vault write without any intervening await. Cancel, sign-out or loss of that session before the vault write starts discards even a successful reply without clearing the proof or assignment.
+- Rejected: Activate offline from the saved fingerprint alone. If a character returns to an earlier owner, the hash can match while the reservation belongs to the earlier ownership generation.
+- Reversal cost: Medium.
+- Important: yes (fresh authorization and desktop availability).
+- Chosen by: user. "Yes, check with the server first."
+
 ### Decision summary
 
 | # | Decision | Choice | Rejected | Reversal cost | Important | Chosen by |
@@ -113,6 +122,7 @@ See [proposal.md](proposal.md) for scope. Source citations describe the baseline
 | D7 | Take after transfer | Fence intent and replay by ownership | Settle a pending Take across owners | Medium | yes | Ormy under owner's delegation |
 | D8 | Refresh trust | A signed mismatch with current generations can transfer | Require browser confirmation | Medium | yes | user |
 | D9 | Completion admission | Retain the existing attempt slot until settlement | Add a separate completion cap | Low | yes | Ormy under owner's delegation |
+| D10 | Native activation from a saved Take | Confirm with the originating server | Activate offline from the owner hash alone | Medium | yes | user |
 
 ## Assumptions
 
@@ -205,6 +215,7 @@ flowchart LR
 | Transfer transaction | Expired browser proof or failed write | Roll back owner, membership, main, sessions, opt-ins, vault and all other transfer writes. After a lost acknowledgment, fresh sign-in reads the committed state. | Fresh proof only; same-owner sign-in does not transfer again | Existing sign-in or link response, without either owner hash or the former account |
 | Vault refresh | Old completion or a definite verification refusal | Discard the returned grant. If the transfer does not commit, existing terminal retirement can still remove the rejected credential if it is current. That does not change membership or sessions. | No retry of a definitive rejected grant | Existing fixed vault result |
 | Device | Proof, reservation or Return cannot be confirmed | Use ordinary Return only when possible; otherwise leave server ESI blocked until M7 | No automatic retry or reset | Existing holder notices |
+| Fresh native activation from a saved Take | Origin offline, signed out, wrong or no longer confirms the reservation | Sign in at the originating server for a fresh check, or use ordinary Return if the saved assignment can park | A retry needs a fresh native authorization | No new native grant; Return evidence survives |
 | Own history | No live viewer or no matching ownership generation | A fresh request reads current authority. The app keeps its existing viewer and server fences. | Read only | Denied, unavailable or filtered page |
 | Upgrade | Additive fields or nullable main upgrade fails | Roll back the migration and use the existing maintenance procedure | Rerun only the unapplied migration | Operator sees migration failure |
 
@@ -217,6 +228,7 @@ flowchart LR
 | Ownership and receipt fields | One number per identity and receipt, one browser fence and first-sign-in flag per identity, one Take evidence generation per holder row | Never wrap or reset a generation. Refuse a write that cannot advance it. | Existing write limits. | Storage grows with existing identities and retained receipts, not with the number of transfers. No receipt history table or new query cache. |
 | Empty accounts | Keep one existing row per account whose last character transferred | No automatic deletion, revival, or redirect. | None. | Empty-account count grows with distinct old accounts. Retention is deliberate: future account-owned rows must not move or be orphaned. |
 | Own history | Keep the 100-row keyset page and indexed account scan (`server/kaname_server/lib/src/esi/esi_call_log_store.dart:145-171`) | Return no partial page on timeout. | Keep the existing statement budget. | The added predicate may skip older generations, as it already skips unlinked characters. No in-app roster scan. |
+| Saved Take confirmation | One request per fresh native authorization; one session and holder snapshot; no assignment or credential write | Refuse when the evidence does not match. No offline fallback. | Existing connected request timeout and bounded database statements. | Indexed reads for one signing character. Standalone authorization and native refresh make no confirmation requests. |
 
 ## Flow & State Gaps (FULL)
 
@@ -226,6 +238,7 @@ flowchart LR
 - An already admitted ESI call can settle, but an old credential cannot newly pass the vault's dispatch-time check after retirement. If a response was already on the wire it keeps its original receipt stamp. A transfer and a competing old grant or opt-in write have one lock ordering, so a write that wins first is erased by transfer. If transfer wins, the old exact signer check fails before the competing write.
 - Transfer advances the composite Take epoch without establishing acceptance or non-acceptance. Only matching committed Take evidence in the current ownership generation can establish that outcome. A fresh post-transfer Take requires a valid server grant and a current epoch. If transfer commits before the final reservation write, that write refuses under the character lock. The old intent stays pending without a fingerprint, and a `toDevice` assignment is not eligible for Return. If the reservation commits first, transfer preserves its evidence. A lost reservation reply cannot be recovered by the new owner through an old Take; Return still needs the exact proof and generation that the original device uses today.
 - Use event barriers after Take starts, around vault parking, and before the final reservation write. When transfer wins, assert `toDevice` survives, the old attempt returns no reservation, and Return is refused. When the reservation wins, drop its reply before the desktop can save it. Assert that the committed phase, proof and generation survive, replay stays pending without a new fingerprint, and server ESI remains blocked. Exercise the real desktop journal separately: reopen the saved `taking` row, resume with the new connected session, check the original proof survives both Take and Return, and assert Return sends no release. A separate test saves the reservation on the original desktop before transfer and proves that its ordinary Return works with the saved proof and generation, followed by fresh server authorization.
+- The desktop checks the saved origin and signing character before opening native authorization. After checking CCP's character and owner and reading the local vault, it asks the live connected session to confirm the exact saved Take. It accepts only the exact confirmation response, does not reuse it, and checks cancellation and session binding immediately before starting the native vault write. A native owner mismatch can block the local grant but leaves a completed reservation eligible for ordinary Return with the original proof and generation.
 - Test browser proof expiry after a real write with a manual clock. Verify unchanged owner, membership, main, sessions, opt-ins, vault and holder. The matching refresh case separately verifies no partial membership or session changes, no returned replacement grant, and the existing terminal retirement result for a definitively rejected current credential. Force rollback in Postgres, not with a delay. Also test delayed callback and completion, the two orders for old credential writes, late receipts across a link, and upgrade of existing receipts, blocked identities and holder rows.
 - Hold consumed completions with event barriers until the per-client and global limits are full. A replay cannot start a second database action. Advance an injected clock past the held attempts' expiry and verify that new attempts still get busy. When a completion settles, another attempt can use its slot.
 
@@ -247,6 +260,7 @@ flowchart LR
 - Postgres commits one consistent transfer. Kaname cannot retract replies or ESI work admitted before the commit. No new cache, notification or redistribution of historical rows is introduced.
 - The trust and deployment limits from `member-accounts` D20 and ADR 0017 remain. A single main isolate owns authenticated ESI, and a backward database clock step does not undo committed session deletion or sealed aggregate state. A compromised CCP, host or database, or a second writer bypassing the locks, is outside this change. No log or public reply contains either owner hash or a credential.
 - Under D8, a stale but validly signed different owner value from CCP could detach the current owner and retire their old grant and sessions. A later correct proof can restore sign-in and allow fresh ESI authorization through a fresh account. The former account remains accessible through any surviving eligible signer. If none remain, it keeps its records without a connected sign-in path. Refresh does not claim an account or expose prior individual receipts. The owner accepted this upstream risk.
+- D10 checks the server's recorded generation at admission. It cannot see a sale the server has not yet verified, revoke a confirmation already returned, or retroactively change the behavior of an older desktop binary. This is a fresh-activation gate, not a continuous connection requirement. Existing native refresh and standalone authorization still rely on CCP and stay local.
 
 ## ADRs
 
@@ -260,3 +274,5 @@ Proposed ADR decision text for review:
 > A private character data reader must establish the viewer's entitlement under ADR 0006. Character ID or present membership alone is not evidence of ownership of a historical row. When a reader serves records whose authority depends on the owner at collection, it must retain and verify that authority across transfer. A new owner must not gain the prior owner's data because they sign in or link that character. The ESI call log uses immutable receipt attribution and ownership generation; this ADR does not choose future storage or sharing policy.
 >
 > This decision qualifies [ADR 0017's Recovery section](../../../docs/adr/0017-esi-holder-handoff.md#recovery) when CCP ownership changes. An unfinished Take cannot resume across owners or be returned as a device reservation. A completed reservation can use ordinary Return only when the original device kept the committed proof and generation and can park. If the desktop never saved the reply, it keeps its pending journal and cannot recover that reservation by replay after transfer. The current owner still needs fresh authorization to enable the server grant.
+>
+> Fresh authorization from a completed Take requires confirmation from the originating server after fresh native CCP proof. A repeated owner hash does not renew an earlier ownership generation. Standalone authorization and native refresh stay local. Losing the ability to activate a grant does not take away ordinary Return.
