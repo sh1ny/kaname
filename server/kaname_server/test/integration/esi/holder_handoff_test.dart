@@ -129,6 +129,67 @@ void main() {
     expect(await handoff.prepareTake(session, pilot), isNull);
   });
 
+  for (final returning in [true, false]) {
+    final action = returning ? 'release' : 'standalone join';
+    test('exact-session revocation blocks holder $action', () async {
+      final sessions = SsoSessions(now: () => clock);
+      final oldBearer = 'r' * 43;
+      final currentBearer = 'k' * 43;
+      final old = (await SsoSessionRow.db.findById(session, pilot.sessionId))!;
+      await SsoSessionRow.db.updateRow(
+        session,
+        old.copyWith(digest: ssoDigest(oldBearer)),
+        columns: (t) => [t.digest],
+      );
+      await SsoSessionRow.db.insertRow(
+        session,
+        SsoSessionRow(
+          digest: ssoDigest(currentBearer),
+          accountId: old.accountId,
+          identityId: old.identityId,
+          expiresAt: old.expiresAt,
+        ),
+      );
+      SsoDeviceReservation? reservation;
+      if (returning) {
+        await holdOnServer();
+        reservation =
+            await handoff.take(session, pilot, _one) as SsoDeviceReservation;
+      }
+      final before = (await assigned())?.toJson();
+      Future<SsoHandoffStatus> attempt(SsoViewer viewer) => returning
+          ? handoff.release(session, viewer, _one, reservation!.generation)
+          : handoff.joinStandalone(
+              session,
+              viewer,
+              _one,
+              ssoDigest('$_character:$_owner'),
+            );
+
+      final captured = await sessions.viewerForRefresh(session, oldBearer);
+      expect(captured?.sessionId, pilot.sessionId);
+      final revoked = Completer<void>();
+      final pending = revoked.future.then((_) => attempt(captured!));
+      try {
+        await pod.pod.withSession(
+          (s) => sessions.signOut(s, oldBearer),
+          enableLogging: false,
+        );
+      } finally {
+        revoked.complete();
+      }
+      expect(await pending, SsoHandoffStatus.blocked);
+      expect((await assigned())?.toJson(), before);
+
+      final live = (await sessions.viewerForRefresh(session, currentBearer))!;
+      expect(await attempt(live), SsoHandoffStatus.released);
+      final released = (await assigned())!.toJson();
+      expect(released['phase'], 'serverReserved');
+      expect(await attempt(captured!), SsoHandoffStatus.blocked);
+      expect((await assigned())?.toJson(), released);
+    }, timeout: const Timeout(Duration(minutes: 3)));
+  }
+
   test('Take a server-held character solo', () async {
     final original = await holdOnServer();
     final answer = await handoff.take(session, pilot, _one);

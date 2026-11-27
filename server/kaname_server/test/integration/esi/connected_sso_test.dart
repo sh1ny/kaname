@@ -58,6 +58,7 @@ void main() {
   late Future<void> Function()? afterRpcAuth;
   late Future<void> Function()? beforeSkillsWire;
   late Future<void> Function()? beforeRefresh;
+  late Future<void> Function()? beforeLinkProofRecheck;
   Future<void> Function()? beforeViewerReply;
   late bool persistReceipts;
   late JsonWebKey signing;
@@ -78,6 +79,7 @@ void main() {
     afterRpcAuth = null;
     beforeSkillsWire = null;
     beforeRefresh = null;
+    beforeLinkProofRecheck = null;
     beforeViewerReply = null;
     persistReceipts = false;
     final upstream = MockClient((request) async {
@@ -253,6 +255,11 @@ void main() {
       oauth: oauth,
       verifier: verifier,
       sessions: sessions,
+      memberAccounts: MemberAccounts(
+        sessions,
+        EsiCallLogStore(),
+        afterActorLock: (_, _) async => await beforeLinkProofRecheck?.call(),
+      ),
       now: () => clock,
       grants: grants,
       handoff: SsoHandoff(sessions: sessions, vault: vault, now: () => clock),
@@ -976,6 +983,64 @@ void main() {
     );
     expect((await signIn())['memberId'], isNot(main['memberId']));
   });
+
+  test('a verified link expires while held at its membership lock', () async {
+    final main = await signIn();
+    final bearer = main['session'] as String;
+    characterId = 411;
+    final alt = await signIn();
+    final oldAltBearer = alt['session'] as String;
+
+    final expires = clock.add(const Duration(minutes: 5));
+    final attempt = await begin(bearer: bearer, link: true);
+    expect((await callback(attempt)).statusCode, 200);
+
+    final locked = Completer<void>();
+    final finish = Completer<void>();
+    beforeLinkProofRecheck = () async {
+      locked.complete();
+      await finish.future;
+    };
+    final pending = complete(attempt, bearer: bearer, link: true);
+    late http.Response completion;
+    try {
+      await Future.any<void>([
+        locked.future,
+        pending.then((_) => fail('Link settled before the membership lock.')),
+      ]);
+      await expectLater(
+        pod.pod.withSession(
+          (s) => s.db.unsafeQuery(
+            'SELECT id FROM member_account WHERE id = @id::bigint FOR UPDATE NOWAIT',
+            parameters: QueryParameters.named({
+              'id': int.parse(main['memberId'] as String),
+            }),
+          ),
+          enableLogging: false,
+        ),
+        throwsA(
+          isA<DatabaseQueryException>().having(
+            (error) => error.code,
+            'SQLSTATE',
+            '55P03',
+          ),
+        ),
+      );
+      clock = expires;
+    } finally {
+      finish.complete();
+      completion = await pending;
+    }
+    expect(completion.statusCode, 403);
+    for (final (issued, session) in [(main, bearer), (alt, oldAltBearer)]) {
+      final current = await post('viewer', {}, bearer: session);
+      expect(current.statusCode, 200);
+      expect(
+        jsonDecode(current.body),
+        containsPair('memberId', issued['memberId']),
+      );
+    }
+  }, timeout: const Timeout(Duration(minutes: 3)));
 
   test('sign-in and link proofs cannot cross purposes', () async {
     final main = await signIn();

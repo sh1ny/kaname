@@ -71,19 +71,24 @@ abstract interface class SsoGrantAuthority {
 /// Handles confidential SSO without sending the upstream grant to the app.
 final class SsoRoute {
   /// Binds the handler to its configured install origin and trusted proxy set.
+  /// [memberAccounts] lets integration tests hold a real link transaction at
+  /// the acting-session lock without relying on a database timeout.
   SsoRoute({
     required this._registration,
     required this._allowLocalHttp,
     required this._trustedProxies,
     required this._oauth,
     required this._verifier,
-    required this._sessions,
+    required SsoSessions sessions,
     required this._now,
     required this._withSession,
     this._grants,
     this._handoff,
     this._skills,
-  });
+    MemberAccounts? memberAccounts,
+  }) : _sessions = sessions,
+       _memberAccounts =
+           memberAccounts ?? MemberAccounts(sessions, EsiCallLogStore());
 
   final CcpConfidential _registration;
   final bool _allowLocalHttp;
@@ -91,6 +96,7 @@ final class SsoRoute {
   final CcpOAuth _oauth;
   final CcpJwtVerifier _verifier;
   final SsoSessions _sessions;
+  final MemberAccounts _memberAccounts;
   final DateTime Function() _now;
   final Future<T> Function<T>(Future<T> Function(Session)) _withSession;
   final SsoGrantAuthority? _grants;
@@ -378,10 +384,13 @@ final class SsoRoute {
                 actor?.accountId != link.account) {
               return false;
             }
-            return MemberAccounts(
-              _sessions,
-              EsiCallLogStore(),
-            ).link(session, link, identity, attempt.expires, _now);
+            return _memberAccounts.link(
+              session,
+              link,
+              identity,
+              attempt.expires,
+              _now,
+            );
           });
           return linked ? _json(200, {'status': 'linked'}) : _failure(403);
         }
