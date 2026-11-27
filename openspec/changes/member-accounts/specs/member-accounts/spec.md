@@ -68,9 +68,14 @@ Kaname SHALL start a link only for a live connected session. It SHALL require th
 - **WHEN** the callback is canceled, spent, expired, misbound, or the original session has expired, signed out or been revoked before completion
 - **THEN** the attempt cannot change membership, sign in as the alt or activate a grant
 
+#### Scenario: A link proof expires while the membership transaction waits for the release lock
+
+- **WHEN** the attempt or verified proof expires before the transaction acquires the shared release lock it needs to record a first exclusion
+- **THEN** the transaction writes neither membership nor exclusion evidence
+
 #### Scenario: An authorization for a link cannot be used for another purpose
 
-- **WHEN** a sign-in or ESI authorization attempt is submitted as a link, or a link attempt arrives with another session or unrequested scopes
+- **WHEN** a sign-in or scope authorization proof is submitted as a link, a link proof is submitted for sign-in or scope authorization, or a link attempt arrives with another session or unrequested scopes
 - **THEN** Kaname refuses the mismatched operation without giving the caller a session, membership change or ESI grant
 
 ### Requirement: Only an eligible standalone account can supply an already linked alt

@@ -253,17 +253,21 @@ final class EsiCallLogStore {
   /// Records a first exclusion inside the membership transaction. A retired
   /// account's evidence stays in this table; the caller holds its account lock
   /// or has just inserted it in this transaction.
-  Future<void> excludeAccount(
+  /// [admit] runs after the last lock and timestamp sample, even when an
+  /// existing exclusion needs no write. If it returns false, nothing is
+  /// written and the caller must decline the membership change.
+  Future<bool> excludeAccount(
     Session session,
     Transaction tx,
-    int account,
-  ) async {
+    int account, {
+    bool Function()? admit,
+  }) async {
     final existing = await session.db.unsafeQuery(
       'SELECT 1 FROM esi_call_log_exclusion WHERE id = @id::bigint',
       parameters: QueryParameters.named({'id': account}),
       transaction: tx,
     );
-    if (existing.isNotEmpty) return;
+    if (existing.isNotEmpty) return admit?.call() ?? true;
     await session.db.unsafeExecute(
       "SET LOCAL lock_timeout = '1s'",
       transaction: tx,
@@ -272,6 +276,8 @@ final class EsiCallLogStore {
       'SELECT pg_advisory_xact_lock_shared($_releaseLock)',
       transaction: tx,
     );
+    final clock = _now?.call().toUtc();
+    if (admit != null && !admit()) return false;
     await session.db.unsafeExecute(
       '''
       INSERT INTO esi_call_log_exclusion (id, "excludedAt")
@@ -280,12 +286,10 @@ final class EsiCallLogStore {
         (SELECT "windowEnd" + interval '1 minute' FROM esi_call_log_seal WHERE id = 1)
       )) ON CONFLICT (id) DO NOTHING
       ''',
-      parameters: QueryParameters.named({
-        'id': account,
-        'clock': _now?.call().toUtc(),
-      }),
+      parameters: QueryParameters.named({'id': account, 'clock': clock}),
       transaction: tx,
     );
+    return true;
   }
 
   static DateTime _eligibleEnd(DateTime utc) {

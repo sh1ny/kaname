@@ -7,6 +7,7 @@ import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
 
 import '../support/observe_postgres_lock.dart';
+import '../support/observed_database_session.dart';
 import '../test_tools/serverpod_test_tools.dart';
 
 void main() {
@@ -91,14 +92,14 @@ void main() {
       final endpoint = MemberRosterEndpoint();
       final entered = Completer<void>();
       final resume = Completer<void>();
-      final held = _ObservedPageSession(
+      final held = ObservedDatabaseSession(
         first,
         beforeTransaction: () async {
           entered.complete();
           await resume.future;
         },
       );
-      final duplicate = _ObservedPageSession(second);
+      final duplicate = ObservedDatabaseSession(second);
       addTearDown(held.close);
       addTearDown(duplicate.close);
       var firstSettled = false;
@@ -189,50 +190,4 @@ void main() {
       timeout: const Timeout(Duration(minutes: 3)),
     );
   }, rollbackDatabase: RollbackDatabase.disabled);
-}
-
-/// Observes database access without replacing the session's Postgres queries.
-final class _ObservedPageSession extends Session {
-  _ObservedPageSession(Session source, {this.beforeTransaction})
-    : super(
-        server: source.server,
-        enableLogging: false,
-        endpoint: 'RosterTest',
-      ) {
-    updateAuthenticated(source.authenticated);
-  }
-
-  final Future<void> Function()? beforeTransaction;
-  var databaseAccesses = 0;
-
-  @override
-  Database get db {
-    final real = super.db;
-    final before = beforeTransaction;
-    return databaseAccesses++ == 0 && before != null
-        ? _HeldPageTransaction(real, before)
-        : real;
-  }
-}
-
-/// Pauses entry into the first transaction without holding a database lock.
-final class _HeldPageTransaction implements Database {
-  _HeldPageTransaction(this._real, this._before);
-
-  final Database _real;
-  final Future<void> Function() _before;
-
-  @override
-  Future<R> transaction<R>(
-    Future<R> Function(Transaction) action, {
-    TransactionSettings? settings,
-  }) async {
-    await _before();
-    return _real.transaction(action, settings: settings);
-  }
-
-  @override
-  Object? noSuchMethod(Invocation invocation) => fail(
-    'Expected the page to start a transaction, not ${invocation.memberName}.',
-  );
 }

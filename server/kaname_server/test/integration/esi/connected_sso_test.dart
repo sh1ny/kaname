@@ -26,6 +26,7 @@ import 'package:test/test.dart';
 
 import '../support/in_process_pod.dart';
 import '../support/observe_postgres_lock.dart';
+import '../support/observed_database_session.dart';
 
 const _serverId = 'fake-server';
 const _serverSecret = 'fake-confidential-sentinel';
@@ -59,6 +60,8 @@ void main() {
   late Future<void> Function()? beforeSkillsWire;
   late Future<void> Function()? beforeRefresh;
   late Future<void> Function()? beforeLinkProofRecheck;
+  DateTime Function()? exclusionClock;
+  Future<void> Function(Session, Transaction)? beforeViewerRead;
   Future<void> Function()? beforeViewerReply;
   late bool persistReceipts;
   late JsonWebKey signing;
@@ -80,6 +83,8 @@ void main() {
     beforeSkillsWire = null;
     beforeRefresh = null;
     beforeLinkProofRecheck = null;
+    exclusionClock = null;
+    beforeViewerRead = null;
     beforeViewerReply = null;
     persistReceipts = false;
     final upstream = MockClient((request) async {
@@ -195,7 +200,20 @@ void main() {
     sessions.bind(pod.pod);
     addTearDown(pod.stop);
     Future<T> withSession<T>(Future<T> Function(Session) action) =>
-        pod.pod.withSession<T>(action, enableLogging: false);
+        pod.pod.withSession<T>((session) async {
+          final probe = beforeViewerRead;
+          if (probe == null) return action(session);
+          beforeViewerRead = null;
+          final observed = ObservedDatabaseSession(
+            session,
+            afterBegin: (tx) => probe(session, tx),
+          );
+          try {
+            return await action(observed);
+          } finally {
+            await observed.close();
+          }
+        }, enableLogging: false);
     late final ServerSsoGrants grants;
     final vault = createServerEsiVault(
       pod.pod,
@@ -257,7 +275,7 @@ void main() {
       sessions: sessions,
       memberAccounts: MemberAccounts(
         sessions,
-        EsiCallLogStore(),
+        EsiCallLogStore(now: () => exclusionClock?.call() ?? clock),
         afterActorLock: (_, _) async => await beforeLinkProofRecheck?.call(),
       ),
       now: () => clock,
@@ -1051,6 +1069,10 @@ void main() {
     expect((await callback(link)).statusCode, 200);
     expect((await complete(link, bearer: bearer)).statusCode, 400);
     expect(
+      (await complete(link, bearer: bearer, scoped: true)).statusCode,
+      400,
+    );
+    expect(
       (await complete(link, bearer: otherSession, link: true)).statusCode,
       403,
     );
@@ -1595,6 +1617,52 @@ void main() {
     );
   });
 
+  test(
+    'a detached link expires after taking the shared release lock',
+    () async {
+      final main = await signIn();
+      final source = main['session'] as String;
+      expect((await linkAlt(source, 411)).statusCode, 200);
+      final unlink = await accountRpc(source, 'unlink', {'characterId': '411'});
+      expect(jsonDecode(unlink.body), containsPair('status', 'unlinked'));
+      final detached = await signIn();
+
+      final deadline = clock.add(const Duration(minutes: 5));
+      final attempt = await begin(bearer: source, link: true);
+      expect((await callback(attempt)).statusCode, 200);
+
+      var reachedReleaseLock = false;
+      exclusionClock = () {
+        // The store samples the exclusion clock only after taking the real
+        // shared release lock. Advance the proof clock at that boundary.
+        reachedReleaseLock = true;
+        return clock = deadline;
+      };
+      final response = await complete(attempt, bearer: source, link: true);
+      expect(reachedReleaseLock, isTrue);
+      expect(response.statusCode, 403);
+      for (final account in [main, detached]) {
+        final current = await post(
+          'viewer',
+          {},
+          bearer: account['session'] as String,
+        );
+        expect(current.statusCode, 200);
+        expect(
+          jsonDecode(current.body),
+          containsPair('memberId', account['memberId']),
+        );
+      }
+      final exclusions = await pod.pod.withSession(
+        (s) => s.db.unsafeQuery('SELECT id FROM esi_call_log_exclusion'),
+        enableLogging: false,
+      );
+      expect(exclusions.map((row) => row.single), [
+        int.parse(detached['memberId'] as String),
+      ]);
+    },
+  );
+
   test('exact revocation orders with unlink in either lock order', () async {
     final main = await signIn();
     final acting = main['session'] as String;
@@ -2125,37 +2193,36 @@ void main() {
     () async {
       final first = clock;
       final bearer = (await signIn())['session'] as String;
-      final older = pod.pod.withSession(
-        (s) => s.db.transaction(
-          (tx) async {
-            final authority = SsoSessions.forPod(s.serverpod)!;
-            expect(
-              await authority.viewerForRefresh(s, bearer, transaction: tx),
-              isNotNull,
-            );
-            clock = first.add(const Duration(days: 1));
-            expect((await post('viewer', {}, bearer: bearer)).statusCode, 401);
-            await authority.viewerForRefresh(s, bearer, transaction: tx);
-          },
-          settings: const TransactionSettings(
-            isolationLevel: IsolationLevel.repeatableRead,
-          ),
-        ),
-        enableLogging: false,
-      );
-      await expectLater(
-        older,
-        throwsA(
-          isA<DatabaseQueryException>().having(
-            (error) => error.code,
-            'SQLSTATE',
-            '40001',
-          ),
-        ),
-      );
+      final sampled = Completer<void>();
+      final resume = Completer<void>();
+      beforeViewerRead = (session, tx) async {
+        final rows = await session.db.unsafeQuery(
+          'SELECT id FROM esi_session',
+          transaction: tx,
+        );
+        expect(rows, hasLength(1));
+        sampled.complete();
+        await resume.future;
+      };
+      final older = post('viewer', {}, bearer: bearer);
+      late http.Response answer;
+      try {
+        await Future.any<void>([
+          sampled.future,
+          older.then((_) => fail('The older viewer did not hold a snapshot.')),
+        ]);
+        clock = first.add(const Duration(days: 1));
+        expect((await post('viewer', {}, bearer: bearer)).statusCode, 401);
+      } finally {
+        resume.complete();
+        answer = await older;
+      }
+      expect(answer.statusCode, 503);
+      expect(jsonDecode(answer.body), {'status': 'unavailable'});
       clock = first.add(const Duration(hours: 23));
       expect((await post('viewer', {}, bearer: bearer)).statusCode, 401);
     },
+    timeout: const Timeout(Duration(minutes: 3)),
   );
 
   for (final roster in [true, false]) {

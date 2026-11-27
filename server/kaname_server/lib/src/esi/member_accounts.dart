@@ -28,6 +28,11 @@ final class MemberAccounts {
     DateTime expires,
     DateTime Function() now,
   ) async {
+    bool fresh() {
+      final at = now();
+      return at.isBefore(expires) && at.isBefore(claims.expiresAt);
+    }
+
     try {
       return await session.db.transaction((tx) async {
         await _lockCharacters(session, tx, actor.character, claims.characterId);
@@ -40,8 +45,7 @@ final class MemberAccounts {
           previous,
         );
         if (!await _lockActor(session, tx, actor) ||
-            !now().isBefore(expires) ||
-            !now().isBefore(claims.expiresAt) ||
+            !fresh() ||
             account == null) {
           return false;
         }
@@ -61,6 +65,20 @@ final class MemberAccounts {
             transaction: tx,
           );
           if (second != null) return false;
+        }
+        if (target?.wasDetached == true) {
+          // A first exclusion takes the release lock after the actor lock.
+          // Recheck proof freshness there, before writing either change.
+          if (!await _callLog.excludeAccount(
+            session,
+            tx,
+            actor.account,
+            admit: fresh,
+          )) {
+            return false;
+          }
+        } else if (!fresh()) {
+          return false;
         }
         if (target == null) {
           await SsoIdentityRow.db.insertRow(
@@ -97,9 +115,6 @@ final class MemberAccounts {
             where: (t) => t.id.equals(previous),
             transaction: tx,
           );
-        }
-        if (target?.wasDetached == true) {
-          await _callLog.excludeAccount(session, tx, actor.account);
         }
         return true;
       });
