@@ -12,6 +12,7 @@ import 'package:test/test.dart';
 
 import '../support/in_process_pod.dart';
 import '../support/observe_postgres_lock.dart';
+import '../support/observed_database_session.dart';
 
 const _one = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const _two = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
@@ -538,7 +539,14 @@ void main() {
         locked.future,
         holder.then((_) => fail('The holder did not lock the assignment.')),
       ]);
-      final closing = withPostgresWaitBarrier(() => reconcile(_one, 1));
+      final unbounded = ObservedDatabaseSession(
+        session,
+        unboundedFirstLock: true,
+      );
+      addTearDown(unbounded.close);
+      final closing = withPostgresWaitBarrier(
+        () => handoff.takeIntent(unbounded, pilot, _one, 1, reconcile: true),
+      );
       final lockedAt = start.add(const Duration(minutes: 2));
       try {
         await observePostgresLock(session, pid, closing);

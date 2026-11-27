@@ -190,7 +190,7 @@ final class SsoHandoff {
                 : await _closeTake(session, viewer, row);
           }
           final started = await session.db.transaction((tx) async {
-            await SsoSessions.lockCharacter(session, tx, character);
+            await _sessions.lockIdentityWrite(session, tx, character);
             if (await _live(session, viewer, transaction: tx) == null) {
               return false;
             }
@@ -237,7 +237,7 @@ final class SsoHandoff {
       }
       if (_beforeReservation case final probe?) await probe();
       final completed = await session.db.transaction((tx) async {
-        await SsoSessions.lockCharacter(session, tx, character);
+        await _sessions.lockIdentityWrite(session, tx, character);
         final currentOwner = await session.db.unsafeQuery(
           '''
           SELECT 1 FROM esi_identity WHERE id = @identity::bigint
@@ -404,7 +404,7 @@ final class SsoHandoff {
     SsoHolderRow row,
   ) async {
     final closed = await session.db.transaction((transaction) async {
-      await SsoSessions.lockCharacter(session, transaction, row.characterId);
+      await _sessions.lockIdentityWrite(session, transaction, row.characterId);
       final identity = await _live(session, viewer, transaction: transaction);
       if (identity == null) return false;
       final locked = await session.db.unsafeQuery(

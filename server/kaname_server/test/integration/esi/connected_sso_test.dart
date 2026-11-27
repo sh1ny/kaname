@@ -3016,6 +3016,50 @@ void main() {
     expect((await post('skills', {}, bearer: old)).statusCode, 200);
   });
 
+  for (final action in ['start', 'reconcile']) {
+    test('Take $action writes use both database deadlines', () async {
+      final bearer = (await signIn())['session'] as String;
+      await authorize(bearer);
+      final epoch = await prepare(bearer);
+      await rows(r'''
+        CREATE FUNCTION require_take_deadlines() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF current_setting('lock_timeout')::interval <> interval '1 second'
+             OR current_setting('statement_timeout')::interval <> interval '10 seconds'
+          THEN
+            RAISE EXCEPTION 'Take update lacks its database deadlines';
+          END IF;
+          RETURN NEW;
+        END
+        $$;
+      ''');
+      await rows('''
+        CREATE TRIGGER require_take_deadlines BEFORE UPDATE ON esi_holder_assignment
+        FOR EACH ROW WHEN (NEW.phase IN ('toDevice', 'deviceReserved')
+          OR NEW."takeClosures" IS DISTINCT FROM OLD."takeClosures")
+        EXECUTE FUNCTION require_take_deadlines()
+      ''');
+
+      final reply = await intent(action, bearer, epoch, newOAuthProof());
+      expect(reply.statusCode, 200);
+      final row = await holderRow();
+      if (action == 'start') {
+        expect(row.phase, 'deviceReserved');
+        expect(jsonDecode(reply.body), {
+          'sourceEpoch': epoch,
+          'generation': '${row.generation}',
+          'ownerFingerprint': ssoDigest('410:$owner'),
+        });
+      } else {
+        expect(jsonDecode(reply.body), {
+          'status': 'notAccepted',
+          'sourceEpoch': epoch,
+        });
+        expect(row.takeClosures, 1);
+      }
+    });
+  }
+
   test(
     'new owner signs in without taking the existing device holder',
     () async {
@@ -3123,6 +3167,21 @@ void main() {
             (await post('take', {'proof': proof}, bearer: current)).statusCode,
             403,
           );
+          expect(
+            (await post('opt-in', {
+              'enabled': true,
+            }, bearer: current)).statusCode,
+            200,
+          );
+          expect(
+            (await post('begin', {
+              'proofDigest': ssoDigest(newOAuthProof()),
+              'native': true,
+              'scoped': true,
+            }, bearer: current)).statusCode,
+            403,
+          );
+          expect((await post('skills', {}, bearer: current)).statusCode, 403);
           return;
         }
         final generation = reservation['generation'];
