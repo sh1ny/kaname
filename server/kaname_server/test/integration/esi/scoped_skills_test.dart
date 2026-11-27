@@ -53,6 +53,7 @@ void main() {
       authorization: auth,
       application: 'client',
       member: 7,
+      ownershipGeneration: 0,
       client: (principal) =>
           scheduler.client(EsiPriority.interactive, principal: principal),
     );
@@ -69,6 +70,7 @@ void main() {
       authorization: auth,
       application: 'client',
       member: 7,
+      ownershipGeneration: 0,
       client: (principal) =>
           scheduler.client(EsiPriority.interactive, principal: principal),
     );

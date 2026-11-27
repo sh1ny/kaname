@@ -204,7 +204,8 @@ final class SsoSessions {
     final rows = await session.db.unsafeQuery(
       '''
       SELECT s.id, s."accountId", i.id, i."characterId", i.owner,
-             i."characterName", i."wasDetached", s."expiresAt" <= $_databaseUtc
+             i."characterName", i."wasDetached", s."expiresAt" <= $_databaseUtc,
+             i."ownershipGeneration"
              ${includeExclusion ? ', EXISTS (SELECT 1 FROM esi_call_log_exclusion e WHERE e.id = s."accountId")' : ''}
       FROM esi_session AS s JOIN esi_identity AS i ON i.id = s."identityId"
       WHERE ${digest != null ? 's.digest = @digest' : 's.id = @id AND s."accountId" = @account'}
@@ -238,9 +239,10 @@ final class SsoSessions {
         blocked: false,
         accountId: account,
         wasDetached: row[6] as bool,
+        ownershipGeneration: row[8] as int,
       ),
       admin: _admins.contains(character),
-      accountExcluded: includeExclusion ? row[8] as bool : null,
+      accountExcluded: includeExclusion ? row[9] as bool : null,
       sessionId: exactId,
     );
   }

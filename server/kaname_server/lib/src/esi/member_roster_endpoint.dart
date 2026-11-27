@@ -49,12 +49,13 @@ final class MemberRosterEndpoint extends Endpoint {
             account,
             transaction: tx,
           );
-          if (stored == null) return _failure(MemberRosterStatus.unavailable);
-          final main = viewer.identity.id == stored.mainIdentityId
+          final mainId = stored?.mainIdentityId;
+          if (mainId == null) return _failure(MemberRosterStatus.unavailable);
+          final main = viewer.identity.id == mainId
               ? viewer.identity
               : await SsoIdentityRow.db.findById(
                   session,
-                  stored.mainIdentityId,
+                  mainId,
                   transaction: tx,
                 );
           if (main?.accountId != account) {

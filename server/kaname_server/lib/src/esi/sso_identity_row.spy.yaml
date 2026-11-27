@@ -9,6 +9,13 @@ fields:
   blocked: bool
   accountId: int?, relation(parent=member_account, onDelete=Restrict)
   wasDetached: bool, default=false
+  ### Advances only on a verified change of CCP owner.
+  ownershipGeneration: int, default=0
+  ### Only ordinary connected sign-in can attach this identity after transfer.
+  awaitingSignIn: bool, default=false
+  ### Runtime and high-water mark of browser attempts at the last transfer.
+  transferRuntime: String?
+  transferAttempt: int?
 indexes:
   esi_identity_account_character_idx:
     fields: accountId, characterId

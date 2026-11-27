@@ -21,6 +21,7 @@ final class EsiPrincipal {
     required this.generation,
     this.member,
     this.accountExcluded,
+    this.ownershipGeneration = 0,
     required this.bearer,
   });
 
@@ -35,6 +36,9 @@ final class EsiPrincipal {
 
   /// Private-aggregate exclusion at the live admission snapshot, if sampled.
   final bool? accountExcluded;
+
+  /// Character ownership at admission; independent of grant generation.
+  final int ownershipGeneration;
 
   /// A non-secret marker for this authorization and role generation.
   final String generation;
@@ -177,6 +181,7 @@ final class EsiScheduler {
       member: owner?.member,
       character: owner?.character,
       accountExcluded: owner?.accountExcluded,
+      ownershipGeneration: owner?.ownershipGeneration ?? 0,
     );
     late final Future<void> pending;
     pending = Future<void>.microtask(() => sink(row))

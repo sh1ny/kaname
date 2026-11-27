@@ -93,10 +93,10 @@ final class EsiCallLogStore {
           '''
           INSERT INTO esi_call_log_entry
             ("recordedAt", operation, outcome, status, cost, "latencyMicros",
-             bucket, "memberId", "characterId", "accountExcluded")
+             bucket, "memberId", "characterId", "accountExcluded", "ownershipGeneration")
           SELECT @recorded::timestamp, @operation::text, @outcome::text,
             @status::bigint, @cost::bigint, @latency::bigint, @bucket::text,
-            @member::bigint, @character::bigint, @excluded::boolean
+            @member::bigint, @character::bigint, @excluded::boolean, @ownership::bigint
           WHERE COALESCE(@clock::timestamp, clock_timestamp() AT TIME ZONE 'UTC')
                   < @recorded::timestamp + interval '10 seconds'
             AND NOT EXISTS (
@@ -115,6 +115,7 @@ final class EsiCallLogStore {
             'member': receipt.member,
             'character': receipt.character,
             'excluded': receipt.accountExcluded,
+            'ownership': receipt.ownershipGeneration,
             'clock': _now?.call().toUtc(),
           }),
           transaction: tx,
@@ -166,6 +167,7 @@ final class EsiCallLogStore {
                 SELECT 1 FROM esi_identity AS i
                 WHERE i."accountId" = @account::bigint
                   AND i."characterId" = r."characterId" AND NOT i.blocked
+                  AND i."ownershipGeneration" = r."ownershipGeneration"
               )
             ORDER BY r."recordedAt" DESC, r.id DESC
             LIMIT 100

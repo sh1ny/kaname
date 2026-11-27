@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:kaname_server/src/esi/esi_call_log_store.dart';
 import 'package:kaname_server/src/esi/sso_sessions.dart';
 import 'package:kaname_server/src/generated/endpoints.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
@@ -108,7 +109,18 @@ Future<pg.Connection> _seedM2Identities(Session session) async {
   return db;
 }
 
-Future<Serverpod> _openMigratedM2(pg.Connection db) async {
+Future<Serverpod> _openMigratedPod(pg.Connection db) async {
+  // The production projection expects the current schema, even when the
+  // preceding assertions deliberately exercise a historical migration.
+  final versions = _registeredMigrations();
+  final installed = versions.indexOf(await _postgresMigrationVersion(db));
+  expect(installed, isNonNegative);
+  for (final version in versions.skip(installed + 1)) {
+    await db.execute(
+      await _migrationSql(version, 'migration.sql'),
+      queryMode: pg.QueryMode.simple,
+    );
+  }
   final name =
       (await db.execute('SELECT current_database()')).single.single as String;
   final pod = Serverpod(
@@ -141,6 +153,12 @@ Future<String> _postgresMigrationVersion(pg.Connection db) async =>
           "SELECT version FROM serverpod_migrations WHERE module = 'kaname'",
         )).single.single!
         as String;
+
+List<String> _registeredMigrations() =>
+    File(p.join('migrations', 'migration_registry.txt'))
+        .readAsLinesSync()
+        .where((line) => line.isNotEmpty && !line.startsWith('#'))
+        .toList();
 
 /// The newest migration in `migrations/`: the one a migrated database holds.
 String _latestCommittedMigration() {
@@ -441,7 +459,7 @@ FOR EACH STATEMENT EXECUTE FUNCTION fail_report_upgrade();
               as int,
           greaterThan(12),
         );
-        final pod = await _openMigratedM2(db);
+        final pod = await _openMigratedPod(db);
         final authority = SsoSessions(now: () => DateTime.utc(2026, 11, 27));
         await pod.withSession((session) async {
           for (final (bearer, account, sessionId, character) in [
@@ -477,7 +495,7 @@ FOR EACH STATEMENT EXECUTE FUNCTION fail_report_upgrade();
                 as DateTime;
         await migrate();
 
-        final pod = await _openMigratedM2(db);
+        final pod = await _openMigratedPod(db);
         final authority = SsoSessions(
           now: () => expiry.toUtc().subtract(const Duration(microseconds: 1)),
         );
@@ -562,5 +580,121 @@ FOR EACH STATEMENT EXECUTE FUNCTION fail_report_upgrade();
         3,
       );
     });
+  }, rollbackDatabase: RollbackDatabase.disabled);
+
+  withServerpod('Upgrading character ownership', (sessions, _) {
+    late pg.Connection db;
+    late String predecessor;
+    late String version;
+    late String upgrade;
+
+    setUp(() async {
+      final session = sessions.build();
+      addTearDown(session.close);
+      db = await _seedM2Identities(session);
+      final versions = _registeredMigrations();
+      final transfer = versions.indexWhere(
+        (line) => line.endsWith('-character-transfer'),
+      );
+      expect(
+        transfer,
+        greaterThan(0),
+        reason: 'Missing character-transfer migration',
+      );
+      final accounts = versions.indexWhere(
+        (line) => line.endsWith('-member-accounts'),
+      );
+      for (final step in versions.sublist(accounts, transfer)) {
+        await db.execute(
+          await _migrationSql(step, 'migration.sql'),
+          queryMode: pg.QueryMode.simple,
+        );
+      }
+      predecessor = versions[transfer - 1];
+      version = versions[transfer];
+      upgrade = await _migrationSql(version, 'migration.sql');
+      await db.execute('''
+        UPDATE esi_holder_assignment
+        SET phase = 'deviceReserved', "proofDigest" = 'fixture-proof'
+        WHERE "characterId" = 411
+      ''');
+    });
+
+    Future<List<List<Object?>>> authority() async => (await db.execute('''
+          SELECT a."mainIdentityId", i.owner, i.blocked, i."accountId",
+                 s.digest, s."expiresAt", o."policyFingerprint",
+                 v."sealedCredential", v.generation, h.phase, h."proofDigest",
+                 h.generation, h."vaultGeneration",
+                 h."grantFingerprint", r."memberId", r."characterId"
+          FROM esi_identity i
+          JOIN member_account a ON a.id = i."accountId"
+          LEFT JOIN esi_session s ON s."identityId" = i.id
+          LEFT JOIN esi_scope_opt_in o ON o."identityId" = i.id
+          LEFT JOIN esi_token_vault v ON v."characterId" = i."characterId"
+          LEFT JOIN esi_holder_assignment h ON h."characterId" = i."characterId"
+          LEFT JOIN esi_call_log_entry r ON r."characterId" = i."characterId"
+          ORDER BY i.id, s.id, r.id
+        ''')).map((row) => row.toList()).toList();
+
+    test(
+      'pre-transfer upgrade preserves live authority and blocked identities',
+      () async {
+        final before = await authority();
+        await db.execute(upgrade, queryMode: pg.QueryMode.simple);
+        expect(await _postgresMigrationVersion(db), version);
+        expect(await authority(), before);
+
+        final pod = await _openMigratedPod(db);
+        final clock = DateTime.utc(2026, 11, 27);
+        final sessions = SsoSessions(now: () => clock)..bind(pod);
+        await pod.withSession((session) async {
+          final viewer = (await sessions.viewerForRefresh(session, _m2Alt))!;
+          expect(await sessions.viewerForRefresh(session, _m2Blocked), isNull);
+          final rows = await EsiCallLogStore(now: () => clock).ownRows(
+            session,
+            (account: viewer.accountId, session: viewer.sessionId),
+          );
+          expect(rows.single.character, 411);
+          expect(rows.single.operation, 'GetCharactersCharacterIdSkills');
+        }, enableLogging: false);
+      },
+      timeout: _slow,
+    );
+
+    test('interrupted ownership upgrade rolls back schema and rows', () async {
+      final before = await authority();
+      final interrupted = upgrade.replaceFirst(
+        'COMMIT;',
+        'SELECT 1/0; COMMIT;',
+      );
+      await expectLater(
+        db.execute(interrupted, queryMode: pg.QueryMode.simple),
+        throwsA(
+          isA<pg.ServerException>().having(
+            (error) => error.code,
+            'code',
+            '22012',
+          ),
+        ),
+      );
+      await db.execute('ROLLBACK');
+      expect(await authority(), before);
+      expect(await _postgresMigrationVersion(db), predecessor);
+      expect(
+        (await db.execute('''
+          SELECT table_name, column_name FROM information_schema.columns
+          WHERE table_name IN ('esi_identity', 'esi_call_log_entry')
+            AND column_name = 'ownershipGeneration'
+        ''')),
+        isEmpty,
+      );
+      expect(
+        (await db.execute('''
+          SELECT is_nullable FROM information_schema.columns
+          WHERE table_name = 'member_account' AND column_name = 'mainIdentityId'
+        ''')).single.single,
+        'NO',
+      );
+    }, timeout: _slow);
   }, rollbackDatabase: RollbackDatabase.disabled);
 }

@@ -17,15 +17,15 @@ import 'package:serverpod/serverpod.dart' as _is;
 /// The stable Kaname account, independent of the current signing character.
 abstract class MemberAccountRow
     implements _is.TableRow<int?>, _is.ProtocolSerialization {
-  MemberAccountRow._({this.id, required this.mainIdentityId});
+  MemberAccountRow._({this.id, this.mainIdentityId});
 
-  factory MemberAccountRow({int? id, required int mainIdentityId}) =
+  factory MemberAccountRow({int? id, int? mainIdentityId}) =
       _MemberAccountRowImpl;
 
   factory MemberAccountRow.fromJson(Map<String, dynamic> jsonSerialization) {
     return MemberAccountRow(
       id: jsonSerialization['id'] as int?,
-      mainIdentityId: jsonSerialization['mainIdentityId'] as int,
+      mainIdentityId: jsonSerialization['mainIdentityId'] as int?,
     );
   }
 
@@ -36,7 +36,8 @@ abstract class MemberAccountRow
   @override
   int? id;
 
-  int mainIdentityId;
+  /// Null only when transfer leaves no characters in the account.
+  int? mainIdentityId;
 
   @override
   _is.Table<int?> get table => t;
@@ -50,7 +51,7 @@ abstract class MemberAccountRow
     return {
       '__className__': 'MemberAccountRow',
       if (id != null) 'id': id,
-      'mainIdentityId': mainIdentityId,
+      if (mainIdentityId != null) 'mainIdentityId': mainIdentityId,
     };
   }
 
@@ -90,17 +91,22 @@ abstract class MemberAccountRow
 class _Undefined {}
 
 class _MemberAccountRowImpl extends MemberAccountRow {
-  _MemberAccountRowImpl({int? id, required int mainIdentityId})
+  _MemberAccountRowImpl({int? id, int? mainIdentityId})
     : super._(id: id, mainIdentityId: mainIdentityId);
 
   /// Returns a shallow copy of this [MemberAccountRow]
   /// with some or all fields replaced by the given arguments.
   @_is.useResult
   @override
-  MemberAccountRow copyWith({Object? id = _Undefined, int? mainIdentityId}) {
+  MemberAccountRow copyWith({
+    Object? id = _Undefined,
+    Object? mainIdentityId = _Undefined,
+  }) {
     return MemberAccountRow(
       id: id is int? ? id : this.id,
-      mainIdentityId: mainIdentityId ?? this.mainIdentityId,
+      mainIdentityId: mainIdentityId is int?
+          ? mainIdentityId
+          : this.mainIdentityId,
     );
   }
 }
@@ -109,7 +115,7 @@ class MemberAccountRowUpdateTable
     extends _is.UpdateTable<MemberAccountRowTable> {
   MemberAccountRowUpdateTable(super.table);
 
-  _is.ColumnValue<int, int> mainIdentityId(int value) =>
+  _is.ColumnValue<int, int> mainIdentityId(int? value) =>
       _is.ColumnValue(table.mainIdentityId, value);
 }
 
@@ -122,6 +128,7 @@ class MemberAccountRowTable extends _is.Table<int?> {
 
   late final MemberAccountRowUpdateTable updateTable;
 
+  /// Null only when transfer leaves no characters in the account.
   late final _is.ColumnInt mainIdentityId;
 
   @override

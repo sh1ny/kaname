@@ -49,6 +49,7 @@ void main() {
         application: 'app',
         character: 99000001,
         member: 5,
+        ownershipGeneration: 3,
         generation: 'one',
         bearer: () => 'synthetic test token',
       ),
@@ -63,6 +64,7 @@ void main() {
     expect(row.bucket, 'char-asset');
     expect(row.member, 5);
     expect(row.character, 99000001);
+    expect(row.ownershipGeneration, 3);
     expect(row.recordedAt, DateTime.utc(2026));
     expect(row.status, 200);
     expect(row.cost, 1);

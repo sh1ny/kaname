@@ -246,7 +246,7 @@ final class MemberAccounts {
       transaction: tx,
     );
     for (final row in rows) {
-      if (row[0] == account) return row[1] as int;
+      if (row[0] == account) return row[1] as int?;
     }
     return null;
   }

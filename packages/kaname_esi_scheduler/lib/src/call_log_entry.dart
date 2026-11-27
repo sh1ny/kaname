@@ -24,6 +24,7 @@ final class EsiCallLogEntry {
     this.member,
     this.character,
     this.accountExcluded,
+    required this.ownershipGeneration,
   });
 
   /// The pinned catalogue route, never the expanded request target.
@@ -58,4 +59,7 @@ final class EsiCallLogEntry {
 
   /// The owning account's exclusion as admitted, never recalculated on write.
   final bool? accountExcluded;
+
+  /// Character ownership at admission, kept even if the call finishes later.
+  final int ownershipGeneration;
 }

@@ -125,6 +125,7 @@ void main() {
           character: 10,
           member: 1,
           generation: '${secret}_generation',
+          ownershipGeneration: 4,
           bearer: () => '${secret}_bearer',
         ),
       );
@@ -163,11 +164,13 @@ void main() {
             'memberId',
             'characterId',
             'accountExcluded',
+            'ownershipGeneration',
           ]),
         );
         expect(row.single, isNot(contains(secret)));
         expect(values['operation'], assets);
         expect(values['bucket'], 'char-asset');
+        expect(values['ownershipGeneration'], 4);
       }
     });
 
@@ -308,6 +311,23 @@ void main() {
       expect(
         (await store.ownRows(session, _actor)).single.outcome,
         EsiCallLogOutcome.error,
+      );
+    });
+
+    test('same account and character cannot read a receipt from a prior ownership generation', () async {
+      await seed(session, recent);
+      await seed(session, recent, route: other);
+      await session.db.unsafeExecute(
+        'UPDATE esi_identity SET "ownershipGeneration" = 2 WHERE id = 1',
+      );
+      await session.db.unsafeExecute(
+        'UPDATE esi_call_log_entry SET "ownershipGeneration" = 2 '
+        'WHERE operation = @operation',
+        parameters: QueryParameters.named({'operation': other}),
+      );
+      expect(
+        (await store.ownRows(session, _actor)).map((row) => row.operation),
+        [other],
       );
     });
 
