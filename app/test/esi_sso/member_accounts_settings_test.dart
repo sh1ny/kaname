@@ -150,6 +150,66 @@ void main() {
     }, () => MockClient(server.call));
   });
 
+  for (final replyPending in [false, true]) {
+    testWidgets('returning to the original server requires recovery '
+        'with unlink reply pending: $replyPending', (tester) async {
+      final original = _Server(ambiguous: true);
+      final other = _Server();
+      final reply = original.unlinkReply = Completer<void>();
+      await http.runWithClient(
+        () async {
+          final scope = await _open(tester);
+          final target = scope.read(_target.notifier);
+          try {
+            await _signIn(tester);
+            await _tap(tester, _unlink, settle: false);
+            expect(original.unlinkCalls, 1);
+            if (!replyPending) {
+              reply.complete();
+              await tester.pumpAndSettle();
+            }
+            target.change('https://other.kaname.test/api/');
+            await tester.pumpAndSettle();
+            await _signIn(tester);
+            expect(
+              other.rosterRequests.single.url.origin,
+              'https://other.kaname.test',
+            );
+            expect(find.text('My calls'), findsOneWidget);
+
+            target.change('https://kaname.test/api/');
+            await tester.pumpAndSettle();
+            expect(find.text('Sign in to server'), findsNothing);
+            expect(find.text('Linked characters'), findsNothing);
+            expect(find.text('My calls'), findsNothing);
+            expect(original.rosterRequests, hasLength(1));
+            await _tap(tester, _recover);
+            expect(other.revocations, isEmpty);
+            expect(original.revocations, ['Bearer ${'b' * 43}']);
+            await _signIn(tester);
+            expect(
+              original.rosterRequests.last.headers['authorization'],
+              'Bearer ${'c' * 43}',
+            );
+            if (replyPending) {
+              reply.complete();
+              await tester.pumpAndSettle();
+            }
+            expect(find.text('Main: Main Pilot'), findsOneWidget);
+            expect(find.text('My calls'), findsOneWidget);
+            expect(original.unlinkCalls, 1);
+          } finally {
+            if (!reply.isCompleted) reply.complete();
+          }
+        },
+        () => MockClient(
+          (request) => (request.url.host == 'kaname.test' ? original : other)
+              .call(request),
+        ),
+      );
+    });
+  }
+
   testWidgets(
     'lost revocation acknowledgment requires same-session retry then fresh sign-in',
     (tester) async {
@@ -208,26 +268,39 @@ void main() {
           : 'unlink fences a pending old own-history reply',
       (tester) async {
         final server = _Server(ambiguous: ambiguous);
-        final history = _History();
+        final history = _HistoryRequests();
         await http.runWithClient(() async {
           final scope = await _open(tester, history: history);
           await _signIn(tester);
-          final pending = scope.read(callLogProvider.notifier).own();
-          history.next.complete(EsiCallLogPage(status: 'ok', rows: []));
-          await pending;
+          final first = _historyPage('1', 'Old first page', next: true);
+          await _tap(tester, 'My calls', settle: false);
+          history.pages.single.complete(first);
           await tester.pumpAndSettle();
-          final second = scope.read(callLogProvider.notifier).own();
+          expect(find.text('Old first page'), findsOneWidget);
+          await _tap(tester, 'Older calls', settle: false);
+          expect(history.requests.last.after?.toJson(), first.next!.toJson());
           await _tap(tester, _unlink);
-          history.next.complete(EsiCallLogPage(status: 'ok', rows: []));
-          await second;
+          history.pages.last.complete(_historyPage('2', 'Old second page'));
           await tester.pumpAndSettle();
-          expect(scope.read(callLogProvider), isNot(isA<CallLogOwn>()));
-          if (ambiguous) {
-            expect(find.text('My calls'), findsNothing);
-            final count = history.reads;
-            await scope.read(callLogProvider.notifier).own();
-            expect(history.reads, count);
-          }
+          expect(find.text('Old first page'), findsNothing);
+          expect(find.text('Old second page'), findsNothing);
+          expect(find.text('Older calls'), findsNothing);
+          if (!ambiguous) return;
+
+          expect(find.text('My calls'), findsNothing);
+          await scope.read(callLogProvider.notifier).own();
+          expect(history.requests, hasLength(2));
+          await _tap(tester, _recover);
+          expect(find.text('My calls'), findsNothing);
+          await _signIn(tester);
+          expect(find.text('Older calls'), findsNothing);
+          await _tap(tester, 'My calls', settle: false);
+          expect(history.requests.last, (bearer: 'c' * 43, after: null));
+          history.pages.last.complete(_historyPage('3', 'Settled first page'));
+          await tester.pumpAndSettle();
+          expect(find.text('Settled first page'), findsOneWidget);
+          expect(find.text('Old first page'), findsNothing);
+          expect(find.text('Old second page'), findsNothing);
         }, () => MockClient(server.call));
       },
     );
@@ -246,14 +319,22 @@ final class _Target extends Notifier<ServerTarget> {
 
 Future<ProviderContainer> _open(
   WidgetTester tester, {
-  _History? history,
   DesktopAccount? desktop,
+  _HistoryRequests? history,
 }) async {
   final scope = ProviderContainer(
     overrides: [
       serverTargetProvider.overrideWith((ref) => ref.watch(_target)),
       desktopAccountProvider.overrideWith((_) async => desktop),
-      if (history != null) callLogAccessProvider.overrideWithValue(history),
+      if (history != null)
+        callLogAccessProvider.overrideWith((ref) {
+          final session = ref.watch(connectedAccountSessionProvider);
+          final target = ref.watch(serverTargetProvider);
+          final bearer = target is ConfiguredServer
+              ? session?.bearerFor(target.uri)
+              : null;
+          return bearer == null ? null : _History(history, bearer);
+        }),
     ],
   );
   addTearDown(scope.dispose);
@@ -338,6 +419,25 @@ MemberRosterPage _page({
   );
 }
 
+EsiCallLogPage _historyPage(String id, String operation, {bool next = false}) {
+  final time = DateTime.utc(2026, 11, 27);
+  final cursor = EsiCallLogCursor(recordedAt: time, id: id);
+  return EsiCallLogPage(
+    status: 'ok',
+    next: next ? cursor : null,
+    rows: [
+      EsiCallLogReceipt(
+        cursor: cursor,
+        recordedAt: time,
+        characterId: '411',
+        operation: operation,
+        outcome: 'success',
+        latencyMicros: 1,
+      ),
+    ],
+  );
+}
+
 final class _Server {
   _Server({this.ambiguous = false, this.loseRevoke = false, this.self = false});
 
@@ -345,10 +445,12 @@ final class _Server {
   final bool loseRevoke;
   final bool self;
   final selfReply = Completer<void>();
+  Completer<void>? unlinkReply;
   final next = Completer<MemberRosterPage>();
   final revocations = <String>[];
   final rosterRequests = <http.Request>[];
   final linkRequests = <http.Request>[];
+  int signIns = 0;
   int nextPageCalls = 0;
   int unlinkCalls = 0;
 
@@ -372,6 +474,7 @@ final class _Server {
         final args = jsonDecode(request.body) as Map<String, Object?>;
         expect(args['characterId'], self ? '411' : '412');
         unlinkCalls++;
+        await unlinkReply?.future;
         if (ambiguous) throw http.ClientException('lost reply');
         if (self) await selfReply.future;
         return _json(
@@ -398,7 +501,7 @@ final class _Server {
           linkRequests.add(request);
           return _json({'status': 'linked'});
         }
-        return _json({...pilot, 'session': 'b' * 43});
+        return _json({...pilot, 'session': (++signIns == 1 ? 'b' : 'c') * 43});
       case 'viewer':
         return _json(pilot);
       case 'sign-out':
@@ -413,18 +516,26 @@ final class _Server {
   }
 }
 
+final class _HistoryRequests {
+  final requests = <({String bearer, EsiCallLogCursor? after})>[];
+  final pages = <Completer<EsiCallLogPage>>[];
+}
+
 final class _History implements CallLogAccess {
-  Completer<EsiCallLogPage> next = Completer<EsiCallLogPage>();
-  int reads = 0;
+  _History(this._log, this._bearer);
+
+  final _HistoryRequests _log;
+  final String _bearer;
 
   @override
   bool get admin => false;
 
   @override
   Future<EsiCallLogPage> own(EsiCallLogCursor? after) {
-    reads++;
-    next = Completer<EsiCallLogPage>();
-    return next.future;
+    _log.requests.add((bearer: _bearer, after: after));
+    final page = Completer<EsiCallLogPage>();
+    _log.pages.add(page);
+    return page.future;
   }
 
   @override

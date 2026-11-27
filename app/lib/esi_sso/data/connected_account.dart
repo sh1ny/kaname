@@ -104,8 +104,13 @@ final class ConnectedSession implements HolderRemote {
   }
 
   /// Only a fixed acknowledgment of deletion or absence confirms revocation.
-  Future<bool> revoke() async {
-    final reply = await _api._request('sign-out', const {}, bearer: _bearer);
+  /// Recovery supplies its own [client], since changing servers closes the
+  /// original client. The request still targets this session's original server.
+  Future<bool> revoke({http.Client? client}) async {
+    final api = client == null
+        ? _api
+        : ConnectedAccount(_api._base, client, native: _api._native);
+    final reply = await api._request('sign-out', const {}, bearer: _bearer);
     return switch (reply) {
       (code: 200, body: {'status': 'signedOut'} && Map(length: 1)) => true,
       _ => false,

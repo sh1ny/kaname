@@ -163,6 +163,10 @@ final class AccountNotifier extends Notifier<AccountState> {
   int _epoch = 0;
   DateTime? _nextComplete;
 
+  // A target rebuild drops the viewer, but cannot settle a sent unlink.
+  // Keep one exact revocation per origin, never a reusable signed-in viewer.
+  final _pendingUnlinks = <String, AccountUnlinkRecovery>{};
+
   @override
   AccountState build() {
     _epoch++;
@@ -176,7 +180,7 @@ final class AccountNotifier extends Notifier<AccountState> {
         _api = ConnectedAccount(uri, client, native: !kIsWeb);
       }
     }
-    return const AccountIdle();
+    return _pendingUnlinks[_api?.origin] ?? const AccountIdle();
   }
 
   /// Whether connected auth may send credentials to the configured origin.
@@ -276,6 +280,9 @@ final class AccountNotifier extends Notifier<AccountState> {
     final bearer = session.bearerFor(target.uri);
     if (bearer == null) return;
     final epoch = ++_epoch;
+    if (unlink) {
+      _pendingUnlinks[session.origin] = AccountUnlinkRecovery._(session);
+    }
     state = AccountWorking(session, membershipWrite: true);
     final source = MemberAccountClient(target.uri, bearer);
     final MemberAccountStatus result;
@@ -287,6 +294,9 @@ final class AccountNotifier extends Notifier<AccountState> {
       source.close();
     }
     if (!_current(epoch)) return;
+    if (unlink && result != MemberAccountStatus.unavailable) {
+      _pendingUnlinks.remove(session.origin);
+    }
     ref.read(membershipEpochProvider.notifier).advance();
     state = switch (result) {
       MemberAccountStatus.mainChanged ||
@@ -301,9 +311,8 @@ final class AccountNotifier extends Notifier<AccountState> {
         connected: session,
         notice: AccountNotice.memberRefused,
       ),
-      MemberAccountStatus.unavailable when unlink => AccountUnlinkRecovery._(
-        session,
-      ),
+      MemberAccountStatus.unavailable when unlink =>
+        _pendingUnlinks[session.origin]!,
       MemberAccountStatus.unavailable => AccountIdle(
         connected: session,
         notice: AccountNotice.unavailable,
@@ -316,22 +325,46 @@ final class AccountNotifier extends Notifier<AccountState> {
   Future<void> recoverUnlink() async {
     final before = state;
     if (before is! AccountUnlinkRecovery || before.revoking) return;
-    final epoch = ++_epoch;
+    final origin = before._former.origin;
+    final pending = _pendingUnlinks[origin];
+    if (pending == null ||
+        pending.revoking ||
+        !identical(pending._former, before._former)) {
+      return;
+    }
+    _epoch++;
+    final revoking = AccountUnlinkRecovery._(pending._former, revoking: true);
+    _pendingUnlinks[origin] = revoking;
     state = AccountUnlinkRecovery._(
-      before._former,
+      revoking._former,
       revoking: true,
       desktopAction: before._desktopAction,
     );
-    final revoked = await before._former.revoke();
-    if (!_current(epoch)) return;
-    if (state case final AccountUnlinkRecovery current) {
-      state = revoked
-          ? current._desktopAction ??
-                const AccountIdle(notice: AccountNotice.signedOut)
-          : AccountUnlinkRecovery._(
-              current._former,
-              desktopAction: current._desktopAction,
-            );
+    final client = http.Client();
+    final bool revoked;
+    try {
+      revoked = await revoking._former.revoke(client: client);
+    } finally {
+      client.close();
+    }
+    if (!ref.mounted) return;
+    if (revoked) {
+      _pendingUnlinks.remove(origin);
+    } else {
+      _pendingUnlinks[origin] = pending;
+    }
+    if (ref.read(serverTargetProvider) case ConfiguredServer(:final uri)
+        when uri.origin == origin) {
+      if (state case final AccountUnlinkRecovery current
+          when identical(current._former, revoking._former)) {
+        state = revoked
+            ? current._desktopAction ??
+                  const AccountIdle(notice: AccountNotice.signedOut)
+            : AccountUnlinkRecovery._(
+                current._former,
+                desktopAction: current._desktopAction,
+              );
+      }
     }
   }
 
@@ -365,7 +398,9 @@ final class AccountNotifier extends Notifier<AccountState> {
   void rejectConnected(ConnectedSession captured) {
     if (identical(state.connected, captured)) {
       _epoch++;
-      state = const AccountIdle(notice: AccountNotice.signedOut);
+      state =
+          _pendingUnlinks[captured.origin] ??
+          const AccountIdle(notice: AccountNotice.signedOut);
     }
   }
 
