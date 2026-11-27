@@ -1063,6 +1063,48 @@ void main() {
     expect((await signIn())['memberId'], isNot(main['memberId']));
   });
 
+  test('link refuses a verified token with unrequested scopes', () async {
+    final main = await signIn();
+    final bearer = main['session'] as String;
+    characterId = 411;
+    final alt = await signIn();
+    final attempt = await begin(bearer: bearer, link: true);
+    final callbackReply = await callback(
+      attempt,
+      query: 'code=$_scopedCode&state=${attempt.state}',
+    );
+    expect(callbackReply.statusCode, 403);
+    expect(
+      (await complete(attempt, bearer: bearer, link: true)).statusCode,
+      400,
+    );
+
+    for (final account in [main, alt]) {
+      final display = await accountRpc(account['session'] as String, 'page', {
+        'after': null,
+      });
+      expect(display.statusCode, 200);
+      final page = jsonDecode(display.body) as Map<String, Object?>;
+      expect(page['status'], 'ok');
+      expect(page['accountId'], account['memberId']);
+      expect(
+        (page['characters'] as List<Object?>).map(
+          (row) => (row as Map<String, Object?>)['characterId'],
+        ),
+        [account['characterId']],
+      );
+    }
+    final counts = await pod.pod.withSession(
+      (s) => s.db.unsafeQuery('''
+        SELECT (SELECT count(*) FROM esi_session),
+               (SELECT count(*) FROM esi_token_vault),
+               (SELECT count(*) FROM esi_holder_assignment)
+      '''),
+      enableLogging: false,
+    );
+    expect(counts.single.toList(), [2, 0, 0]);
+  });
+
   test('conflicting purpose flags cannot consume a pending link', () async {
     final main = await signIn();
     final bearer = main['session'] as String;

@@ -29,6 +29,8 @@ final _m2Alt = 'b' * 43;
 final _m2Blocked = 'c' * 43;
 final _m2Expired = 'd' * 43;
 final _m2Orphan = 'e' * 43;
+final _m2MainExpiry = DateTime.utc(2100, 1, 1, 5, 6, 7, 890, 123);
+final _m2AltExpiry = DateTime.utc(2100, 1, 2, 8, 9, 10, 987, 654);
 
 Future<String> _migrationSql(String version, String file) =>
     File(p.join('migrations', version, file)).readAsString();
@@ -84,8 +86,8 @@ Future<pg.Connection> _seedM2Identities(Session session) async {
            (11, 411, 'shared-owner', 'Alt', false),
            (12, 412, 'other-owner', 'Blocked', true);
     INSERT INTO esi_session (id, digest, "memberId", "expiresAt")
-    VALUES (20, '${ssoDigest(_m2Main)}', 10, '2030-01-01'),
-           (21, '${ssoDigest(_m2Alt)}', 11, '2030-01-01'),
+    VALUES (20, '${ssoDigest(_m2Main)}', 10, '${_m2MainExpiry.toIso8601String()}'),
+           (21, '${ssoDigest(_m2Alt)}', 11, '${_m2AltExpiry.toIso8601String()}'),
            (22, '${ssoDigest(_m2Blocked)}', 12, '2030-01-01'),
            (23, '${ssoDigest(_m2Expired)}', 11, '2020-01-01'),
            (24, '${ssoDigest(_m2Orphan)}', 99, '2030-01-01');
@@ -366,14 +368,15 @@ FOR EACH STATEMENT EXECUTE FUNCTION fail_report_upgrade();
         );
         expect(
           (await db.execute('''
-          SELECT s.id, s.digest, s."accountId", s."identityId"
+          SELECT s.id, s.digest, s."accountId", s."identityId",
+                 s."expiresAt" AT TIME ZONE 'UTC'
           FROM esi_session AS s JOIN esi_identity AS i ON i.id = s."identityId"
           WHERE NOT i.blocked AND s."expiresAt" > TIMESTAMP '2026-11-27'
           ORDER BY s.id
         ''')).map((row) => row.toList()),
           [
-            [20, ssoDigest(_m2Main), 10, 10],
-            [21, ssoDigest(_m2Alt), 11, 11],
+            [20, ssoDigest(_m2Main), 10, 10, _m2MainExpiry],
+            [21, ssoDigest(_m2Alt), 11, 11, _m2AltExpiry],
           ],
         );
         expect(

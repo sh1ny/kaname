@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:kaname_server/src/esi/member_roster_endpoint.dart';
 import 'package:kaname_server/src/esi/sso_sessions.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
@@ -87,14 +89,47 @@ void main() {
 
     test('second session of one account gets busy without blocking another account', () async {
       final endpoint = MemberRosterEndpoint();
-      final firstPage = endpoint.page(first, null);
-      final duplicate = endpoint.page(second, null);
-      final other = endpoint.page(unrelated, null);
-      expect((await duplicate).status, MemberRosterStatus.busy);
-      expect((await other).accountId, b.toString());
+      final entered = Completer<void>();
+      final resume = Completer<void>();
+      final held = _ObservedPageSession(
+        first,
+        beforeTransaction: () async {
+          entered.complete();
+          await resume.future;
+        },
+      );
+      final duplicate = _ObservedPageSession(second);
+      addTearDown(held.close);
+      addTearDown(duplicate.close);
+      var firstSettled = false;
+      final firstPage = endpoint.page(held, null).then((page) {
+        firstSettled = true;
+        return page;
+      });
+      try {
+        await Future.any<void>([
+          entered.future,
+          firstPage.then((_) => fail('The first read skipped its barrier.')),
+        ]);
+        expect(
+          (await endpoint.page(duplicate, null)).status,
+          MemberRosterStatus.busy,
+        );
+        expect(duplicate.databaseAccesses, 0);
+        final other = await endpoint.page(unrelated, null);
+        expect(other.status, MemberRosterStatus.ok);
+        expect(other.accountId, b.toString());
+        expect(firstSettled, isFalse);
+      } finally {
+        resume.complete();
+        await firstPage;
+      }
       expect((await firstPage).accountId, a.toString());
-      expect((await endpoint.page(second, null)).status, MemberRosterStatus.ok);
-    });
+      expect(
+        (await endpoint.page(duplicate, null)).status,
+        MemberRosterStatus.ok,
+      );
+    }, timeout: const Timeout(Duration(minutes: 3)));
 
     test(
       'a session that expires while its admission read waits is denied',
@@ -110,8 +145,9 @@ void main() {
         );
         expect(await authority.viewerById(db, id, a), isNotNull);
 
-        late Future<SsoViewer?> read;
-        await db.db.transaction((tx) async {
+        final locked = Completer<int>();
+        final resume = Completer<void>();
+        final writer = db.db.transaction((tx) async {
           await db.db.unsafeExecute(
             'LOCK TABLE esi_session IN ACCESS EXCLUSIVE MODE',
             transaction: tx,
@@ -122,8 +158,8 @@ void main() {
                     transaction: tx,
                   )).single.single
                   as int;
-          read = authority.viewerById(first, id, a);
-          await observePostgresLock(second, holder, read);
+          locked.complete(holder);
+          await resume.future;
           await db.db.unsafeExecute(
             '''UPDATE esi_session SET "expiresAt" = clock_timestamp() AT TIME ZONE 'UTC'
              WHERE id = @id::bigint''',
@@ -131,9 +167,72 @@ void main() {
             transaction: tx,
           );
         });
+        late Future<SsoViewer?> read;
+        try {
+          final holder = await Future.any<int>([
+            locked.future,
+            writer.then(
+              (_) => fail('The writer settled before locking sessions.'),
+            ),
+          ]);
+          // The expiry read may open a delete transaction of its own. Start
+          // it outside the writer's transaction zone.
+          read = authority.viewerById(first, id, a);
+          await observePostgresLock(second, holder, read);
+        } finally {
+          resume.complete();
+          await writer;
+        }
         expect(await read, isNull);
+        expect(await SsoSessionRow.db.findById(db, id), isNull);
       },
       timeout: const Timeout(Duration(minutes: 3)),
     );
   }, rollbackDatabase: RollbackDatabase.disabled);
+}
+
+/// Observes database access without replacing the session's Postgres queries.
+final class _ObservedPageSession extends Session {
+  _ObservedPageSession(Session source, {this.beforeTransaction})
+    : super(
+        server: source.server,
+        enableLogging: false,
+        endpoint: 'RosterTest',
+      ) {
+    updateAuthenticated(source.authenticated);
+  }
+
+  final Future<void> Function()? beforeTransaction;
+  var databaseAccesses = 0;
+
+  @override
+  Database get db {
+    final real = super.db;
+    final before = beforeTransaction;
+    return databaseAccesses++ == 0 && before != null
+        ? _HeldPageTransaction(real, before)
+        : real;
+  }
+}
+
+/// Pauses entry into the first transaction without holding a database lock.
+final class _HeldPageTransaction implements Database {
+  _HeldPageTransaction(this._real, this._before);
+
+  final Database _real;
+  final Future<void> Function() _before;
+
+  @override
+  Future<R> transaction<R>(
+    Future<R> Function(Transaction) action, {
+    TransactionSettings? settings,
+  }) async {
+    await _before();
+    return _real.transaction(action, settings: settings);
+  }
+
+  @override
+  Object? noSuchMethod(Invocation invocation) => fail(
+    'Expected the page to start a transaction, not ${invocation.memberName}.',
+  );
 }
