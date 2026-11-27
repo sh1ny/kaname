@@ -253,6 +253,31 @@ void main() {
     });
   }
 
+  for (final status in [200, 401, 403]) {
+    testWidgets('unlink distinguishes a typed denial from HTTP $status', (
+      tester,
+    ) async {
+      final server = _Server()..unlinkDenialStatus = status;
+      await http.runWithClient(() async {
+        await _open(tester);
+        await _signIn(tester);
+        await _tap(tester, _unlink);
+        expect(find.text('My calls'), findsNothing);
+        expect(find.text('Linked characters'), findsNothing);
+        if (status == 200) {
+          expect(find.text(_recover), findsNothing);
+          expect(server.revocations, isEmpty);
+        } else {
+          expect(find.text('Sign in to server'), findsNothing);
+          await _tap(tester, _recover);
+          expect(server.revocations, ['Bearer ${'b' * 43}']);
+        }
+        expect(find.text('Sign in to server'), findsOneWidget);
+        expect(server.unlinkCalls, 1);
+      }, () => MockClient(server.call));
+    });
+  }
+
   testWidgets(
     'lost revocation acknowledgment requires same-session retry then fresh sign-in',
     (tester) async {
@@ -496,6 +521,7 @@ final class _Server {
   int signIns = 0;
   int nextPageCalls = 0;
   int unlinkCalls = 0;
+  int? unlinkDenialStatus;
   bool rosterDenied = false;
   int? viewerFailure;
 
@@ -528,6 +554,14 @@ final class _Server {
         expect(args['characterId'], self ? '411' : '412');
         unlinkCalls++;
         await unlinkReply?.future;
+        if (unlinkDenialStatus case final status?) {
+          return status == 200
+              ? _json(
+                  MemberAccountMutation(status: MemberAccountStatus.denied)
+                      .toJson(),
+                )
+              : _json({'status': 'authenticationFailed'}, status);
+        }
         if (ambiguous) throw http.ClientException('lost reply');
         if (self) await selfReply.future;
         return _json(

@@ -40,18 +40,21 @@ final class MemberAccountClient {
   Future<MemberAccountStatus> makeMain(String character) =>
       _mutate(() => _client.memberAccount.makeMain(character));
 
-  /// Detaches a character. Unavailability does not establish whether it committed.
-  Future<MemberAccountStatus> unlink(String character) =>
-      _mutate(() => _client.memberAccount.unlink(character));
+  /// Detaches a character. Only a typed reply establishes a definitive result.
+  Future<MemberAccountStatus> unlink(String character) => _mutate(
+    () => _client.memberAccount.unlink(character),
+    requireTypedDenial: true,
+  );
 
   Future<MemberAccountStatus> _mutate(
-    Future<MemberAccountMutation> Function() send,
-  ) async {
+    Future<MemberAccountMutation> Function() send, {
+    bool requireTypedDenial = false,
+  }) async {
     try {
       return (await send()).status;
     } on ServerpodClientHttpException catch (error) {
       return switch (error.statusCode) {
-        401 || 403 => MemberAccountStatus.denied,
+        401 || 403 when !requireTypedDenial => MemberAccountStatus.denied,
         _ => MemberAccountStatus.unavailable,
       };
     } on Object {

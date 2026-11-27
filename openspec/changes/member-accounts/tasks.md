@@ -40,7 +40,7 @@
 | Accept only validated CCP character identity | Valid identity signs in again | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `Valid identity signs in again` | green |
 | Accept only validated CCP character identity | Invalid signature, key or claims | `packages/kaname_esi_sso/test/ccp_jwt_test.dart` | `Invalid signature, key or claims` | green |
 | Accept only validated CCP character identity | CCP rotates its signing key | `packages/kaname_esi_sso/test/ccp_jwt_test.dart` | `CCP rotates its signing key` | green |
-| Accept only validated CCP character identity | Known character presents another owner | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `Known character presents another owner` | green |
+| Accept only validated CCP character identity | Known character presents another owner | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `Known character presents another owner`; `link refuses another verified owner and revokes only the target sessions` | green |
 | Accept only validated CCP character identity | Definitive refresh verification rejection | `server/kaname_server/test/integration/esi/vault_refresh_verification_test.dart` | `Definitive refresh verification rejection` | green |
 | Connected authority follows the signing character | The opted-in alt keeps its own policy | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `character opt-in and holder do not follow the account main` | green |
 | Connected authority follows the signing character | An unlisted alt signs in to an account with an allowlisted main | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `unlisted alt cannot inherit the main administrator access` | green |
@@ -50,6 +50,7 @@
 | Connected operations recheck the signing session at admission | A competing static-data mutation reserves while authority is checked | `server/kaname_server/test/integration/static_data/admin_endpoint_test.dart` | `final gate sample sees a competing reservation` | green |
 | Connected operations recheck the signing session at admission | An admitted refresh observes a signed owner conflict after unlink | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `delayed signed owner conflict blocks the detached identity without reattaching it` | green |
 | Privacy-scoped call-log reads | Own rows only | `server/kaname_server/test/integration/esi_call_log_test.dart` | `admins and members see only their own rows` | green |
+| Privacy-scoped call-log reads | The retention cutoff advances during admission | `server/kaname_server/test/integration/esi_call_log_test.dart` | `own history and pruning agree when the cutoff advances during admission` | green |
 | Privacy-scoped call-log reads | No trusted viewer or admin grant | `server/kaname_server/test/integration/esi_call_log_test.dart` | `missing viewer and member aggregate access denied` | green |
 | Privacy-scoped call-log reads | Sufficient and insufficient contributors | `server/kaname_server/test/integration/esi_call_log_test.dart` | `private counts require enough members and exclude refusals from errors` | green |
 | Privacy-scoped call-log reads | Character ownership changes | `server/kaname_server/test/integration/esi_call_log_test.dart` | `transfer does not expose prior member rows` | green |

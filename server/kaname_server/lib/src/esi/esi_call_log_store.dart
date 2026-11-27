@@ -138,9 +138,6 @@ final class EsiCallLogStore {
   }) async {
     final authority = SsoSessions.forPod(session.serverpod);
     if (viewer == null || authority == null) throw const EsiCallLogDenied._();
-    final cutoff = (_now?.call() ?? DateTime.now()).toUtc().subtract(
-      _retention,
-    );
     try {
       final rows = await session.db.transaction(
         (tx) async {
@@ -160,7 +157,10 @@ final class EsiCallLogStore {
             SELECT r.id, r."recordedAt", r."characterId", r.operation, r.bucket,
                    r.outcome, r.status, r.cost, r."latencyMicros"
             FROM esi_call_log_entry AS r
-            WHERE r."memberId" = @account::bigint AND r."recordedAt" > @cutoff::timestamp
+            WHERE r."memberId" = @account::bigint AND r."recordedAt" > (
+              SELECT COALESCE(@clock::timestamp, clock_timestamp() AT TIME ZONE 'UTC')
+                - make_interval(days => ${_retention.inDays})
+            )
               ${after == null ? '' : 'AND (r."recordedAt", r.id) < (@at::timestamp, @id::bigint)'}
               AND EXISTS (
                 SELECT 1 FROM esi_identity AS i
@@ -172,7 +172,7 @@ final class EsiCallLogStore {
             ''',
             parameters: QueryParameters.named({
               'account': viewer.account,
-              'cutoff': cutoff,
+              'clock': _now?.call().toUtc(),
               if (after != null) 'at': after.recordedAt,
               if (after != null) 'id': after.id,
             }),

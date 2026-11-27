@@ -1825,4 +1825,49 @@ void main() {
       isNull,
     );
   });
+
+  test(
+    'link refuses another verified owner and revokes only the target sessions',
+    () async {
+      final initiating = await signIn();
+      final actor = initiating['session'] as String;
+      characterId = 411;
+      final target = await signIn();
+      final second = await signIn();
+      expect(target['memberId'], isNot(initiating['memberId']));
+      final targetAccount = int.parse(target['memberId'] as String);
+      final originalAccount = int.parse(initiating['memberId'] as String);
+
+      owner = 'RElGRkVSRU5U';
+      expect((await linkAlt(actor, 411)).statusCode, 403);
+      final evidence = await pod.pod.withSession(
+        (s) => s.db.unsafeQuery('''
+      SELECT i."characterId", i."accountId", i.blocked,
+             (SELECT count(*) FROM esi_session s WHERE s."identityId" = i.id)
+      FROM esi_identity i ORDER BY i."characterId"
+    '''),
+        enableLogging: false,
+      );
+      expect(evidence.map((row) => row.toList()), [
+        [410, originalAccount, false, 1],
+        [411, targetAccount, true, 0],
+      ]);
+      for (final before in [target, second]) {
+        expect(
+          (await post(
+            'viewer',
+            {},
+            bearer: before['session'] as String,
+          )).statusCode,
+          401,
+        );
+      }
+      final retained = await post('viewer', {}, bearer: actor);
+      expect(retained.statusCode, 200);
+      expect(
+        jsonDecode(retained.body),
+        containsPair('memberId', initiating['memberId']),
+      );
+    },
+  );
 }

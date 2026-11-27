@@ -8,6 +8,7 @@ import 'package:kaname_server/src/esi/sso_sessions.dart';
 import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
 
+import 'support/observe_postgres_lock.dart';
 import 'test_tools/serverpod_test_tools.dart';
 
 const assets = 'GetCharactersCharacterIdAssets';
@@ -183,6 +184,44 @@ void main() {
         hasLength(1),
       );
     });
+
+    test(
+      'own history and pruning agree when the cutoff advances during admission',
+      () async {
+        final later = now.add(const Duration(minutes: 1));
+        final cutoff = later.subtract(const Duration(days: 7));
+        final current = cutoff.add(const Duration(microseconds: 1));
+        await seed(session, cutoff);
+        await seed(session, current);
+        final reader = builder.build();
+        final observer = builder.build();
+        addTearDown(reader.close);
+        addTearDown(observer.close);
+        late Future<List<EsiCallLogItem>> read;
+        await session.db.transaction((tx) async {
+          await session.db.unsafeExecute(
+            'LOCK TABLE esi_session IN ACCESS EXCLUSIVE MODE',
+            transaction: tx,
+          );
+          final holder =
+              (await session.db.unsafeQuery(
+                    'SELECT pg_backend_pid()',
+                    transaction: tx,
+                  )).single.single
+                  as int;
+          read = store.ownRows(reader, _actor);
+          await observePostgresLock(observer, holder, read);
+          now = later;
+        });
+        expect((await read).map((row) => row.recordedAt), [current]);
+        expect(await store.prune(session), 1);
+        expect(
+          (await store.ownRows(session, _actor)).single.recordedAt,
+          current,
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
 
     test('next sweep catches up using its current clock', () async {
       await seed(session, recent);
