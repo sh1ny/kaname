@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'src/esi/member_roster_endpoint.dart';
 import 'src/esi/server_sso.dart';
 import 'src/generated/serverpod.dart';
 import 'src/network/trusted_proxies.dart';
@@ -55,6 +56,7 @@ Future<void> serve(Serverpod pod) async {
   );
 
   final announcer = buildBundleAnnouncer(pod);
+  pod.server.addMiddleware(MemberRosterIngress().middleware);
   pod.server.addMiddleware(BundleRoute(announcer: announcer).middleware);
   pod.server.addMiddleware(
     ReportRoute(read: () => StaticDataAccess.forPod(pod).report.read())

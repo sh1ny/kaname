@@ -20,6 +20,10 @@ import 'package:kaname_server/src/generated/esi/esi_call_log_page.dart'
     as _iyla48b1;
 import 'package:kaname_server/src/generated/esi/esi_route_count_page.dart'
     as _ikp5wj4n;
+import 'package:kaname_server/src/generated/esi/member_account_mutation.dart'
+    as _im2jjw68;
+import 'package:kaname_server/src/generated/esi/member_roster_page.dart'
+    as _i5wyfhm0;
 import 'package:kaname_server/src/generated/future_calls.dart' as _ibdqg5o2;
 import 'package:kaname_server/src/generated/health/health_report.dart'
     as _iaouzw49;
@@ -172,6 +176,10 @@ class TestEndpoints {
 
   late final _EsiCallLogEndpoint esiCallLog;
 
+  late final _MemberAccountEndpoint memberAccount;
+
+  late final _MemberRosterEndpoint memberRoster;
+
   late final _HealthEndpoint health;
 
   late final _StaticDataAdminEndpoint staticDataAdmin;
@@ -187,6 +195,8 @@ class _InternalTestEndpoints extends TestEndpoints
     _is.EndpointDispatch endpoints,
   ) {
     esiCallLog = _EsiCallLogEndpoint(endpoints, serializationManager);
+    memberAccount = _MemberAccountEndpoint(endpoints, serializationManager);
+    memberRoster = _MemberRosterEndpoint(endpoints, serializationManager);
     health = _HealthEndpoint(endpoints, serializationManager);
     staticDataAdmin = _StaticDataAdminEndpoint(endpoints, serializationManager);
     staticData = _StaticDataEndpoint(endpoints, serializationManager);
@@ -258,6 +268,109 @@ class _EsiCallLogEndpoint {
           _localUniqueSession,
           _localCallContext.arguments,
         ) as _ida.Future<_ikp5wj4n.EsiRouteCountPage>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
+}
+
+class _MemberAccountEndpoint {
+  _MemberAccountEndpoint(this._endpointDispatch, this._serializationManager);
+
+  final _is.EndpointDispatch _endpointDispatch;
+
+  final _is.SerializationManager _serializationManager;
+
+  _ida.Future<_im2jjw68.MemberAccountMutation> makeMain(
+    _ist.TestSessionBuilder sessionBuilder,
+    String characterId,
+  ) async {
+    return _ist.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'memberAccount',
+            method: 'makeMain',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'memberAccount',
+          methodName: 'makeMain',
+          parameters: _ist.testObjectToJson({'characterId': characterId}),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue = await (_localCallContext.method.call(
+          _localUniqueSession,
+          _localCallContext.arguments,
+        ) as _ida.Future<_im2jjw68.MemberAccountMutation>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
+
+  _ida.Future<_im2jjw68.MemberAccountMutation> unlink(
+    _ist.TestSessionBuilder sessionBuilder,
+    String characterId,
+  ) async {
+    return _ist.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'memberAccount',
+            method: 'unlink',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'memberAccount',
+          methodName: 'unlink',
+          parameters: _ist.testObjectToJson({'characterId': characterId}),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue = await (_localCallContext.method.call(
+          _localUniqueSession,
+          _localCallContext.arguments,
+        ) as _ida.Future<_im2jjw68.MemberAccountMutation>);
+        return _localReturnValue;
+      } finally {
+        await _localUniqueSession.close();
+      }
+    });
+  }
+}
+
+class _MemberRosterEndpoint {
+  _MemberRosterEndpoint(this._endpointDispatch, this._serializationManager);
+
+  final _is.EndpointDispatch _endpointDispatch;
+
+  final _is.SerializationManager _serializationManager;
+
+  _ida.Future<_i5wyfhm0.MemberRosterPage> page(
+    _ist.TestSessionBuilder sessionBuilder,
+    String? after,
+  ) async {
+    return _ist.callAwaitableFunctionAndHandleExceptions(() async {
+      var _localUniqueSession =
+          (sessionBuilder as _ist.InternalTestSessionBuilder).internalBuild(
+            endpoint: 'memberRoster',
+            method: 'page',
+          );
+      try {
+        var _localCallContext = await _endpointDispatch.getMethodCallContext(
+          createSessionCallback: (_) => _localUniqueSession,
+          endpointPath: 'memberRoster',
+          methodName: 'page',
+          parameters: _ist.testObjectToJson({'after': after}),
+          serializationManager: _serializationManager,
+        );
+        var _localReturnValue = await (_localCallContext.method.call(
+          _localUniqueSession,
+          _localCallContext.arguments,
+        ) as _ida.Future<_i5wyfhm0.MemberRosterPage>);
         return _localReturnValue;
       } finally {
         await _localUniqueSession.close();

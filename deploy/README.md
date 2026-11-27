@@ -114,6 +114,11 @@ account. It preserves valid Kaname sessions and their signing characters,
 and leaves the ESI grant, scope opt-ins and holder assignment where they are.
 It does not link characters based on matching owner hashes.
 
+In connected ESI Settings, sign in and choose **Link character**. Complete
+CCP sign-in with the alt and finish the link in Kaname. You can select a
+different main or unlink any non-main. Unlink ends that character's Kaname
+sessions but leaves its ESI grants, opt-ins and holder assignment in place.
+
 ### Test both sign-in modes locally
 
 1. In the [EVE developers portal](https://developers.eveonline.com/), register

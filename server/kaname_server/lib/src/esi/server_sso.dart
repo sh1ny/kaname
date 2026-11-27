@@ -131,6 +131,7 @@ final class ServerSso {
           pod.withSession<T>(action, enableLogging: false),
     );
     pod.server.addMiddleware(route.middleware);
+    sessions.bind(pod);
     final runtime = ServerSso._(sessions, grants, vault, route);
     _instances[pod] = runtime;
     return runtime;

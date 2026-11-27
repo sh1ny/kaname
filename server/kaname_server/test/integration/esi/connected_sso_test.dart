@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -8,6 +9,7 @@ import 'package:jose/jose.dart';
 import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
+import 'package:kaname_server/src/esi/member_roster_endpoint.dart';
 import 'package:kaname_server/src/esi/server_esi_vault.dart';
 import 'package:kaname_server/src/esi/server_sso_grants.dart';
 import 'package:kaname_server/src/esi/sso_handoff.dart';
@@ -48,6 +50,8 @@ void main() {
   late bool failViewerLookup;
   late String owner;
   late int characterId;
+  late Future<void> Function(String bearer)? beforeRpcAuth;
+  late Future<void> Function()? afterRpcAuth;
   late JsonWebKey signing;
 
   setUpAll(() => signing = JsonWebKey.generate('RS256', keyBitLength: 2048));
@@ -62,6 +66,8 @@ void main() {
     receipts = [];
     owner = 'VEVTVCBPTkxZ';
     characterId = 410;
+    beforeRpcAuth = null;
+    afterRpcAuth = null;
     final upstream = MockClient((request) async {
       if (request.url.path.startsWith('/.well-known/')) {
         return http.Response(
@@ -152,13 +158,20 @@ void main() {
       middleware: [
         (next) =>
             (request) => route.middleware(next)(request),
+        MemberRosterIngress().middleware,
       ],
       authenticationHandler: (session, bearer) async {
         final request = session.request;
         if (request == null || !route.acceptsOrigin(request)) return null;
-        return sessions.authenticate(session, bearer);
+        final beforeAuth = beforeRpcAuth;
+        if (beforeAuth != null) await beforeAuth(bearer);
+        final current = await sessions.authenticate(session, bearer);
+        final afterAuth = afterRpcAuth;
+        if (afterAuth != null) await afterAuth();
+        return current;
       },
     );
+    sessions.bind(pod.pod);
     addTearDown(pod.stop);
     Future<T> withSession<T>(Future<T> Function(Session) action) =>
         pod.pod.withSession<T>(action, enableLogging: false);
@@ -253,12 +266,16 @@ void main() {
     body: jsonEncode(body),
   );
 
-  Future<_Started> begin({bool native = false, String? bearer}) async {
+  Future<_Started> begin({
+    bool native = false,
+    String? bearer,
+    bool link = false,
+  }) async {
     final proof = newOAuthProof();
     final response = await post('begin', {
       'proofDigest': sha256.convert(utf8.encode(proof)).toString(),
       'native': native,
-      if (bearer != null) 'scoped': true,
+      if (link) 'link': true else if (bearer != null) 'scoped': true,
     }, bearer: bearer);
     expect(response.statusCode, 200);
     final data = jsonDecode(response.body) as Map<String, Object?>;
@@ -302,9 +319,15 @@ void main() {
     String? code,
     bool withCookie = true,
     String? bearer,
+    bool link = false,
   }) => post(
     'complete',
-    {'attemptId': start.id, 'proof': start.proof, 'code': ?code},
+    {
+      'attemptId': start.id,
+      'proof': start.proof,
+      'code': ?code,
+      if (link) 'link': true,
+    },
     cookie: withCookie ? start.cookie : null,
     bearer: bearer,
   );
@@ -805,6 +828,477 @@ void main() {
       enableLogging: false,
     );
     expect(rows.single.toList(), [1, 1, 2]);
+  });
+
+  Future<http.Response> linkAlt(
+    String bearer,
+    int alt, {
+    bool native = false,
+  }) async {
+    final attempt = await begin(native: native, bearer: bearer, link: true);
+    characterId = alt;
+    final confirmed = await callback(attempt);
+    expect(confirmed.statusCode, 200);
+    final code = RegExp(r'<code>([^<]+)</code>')
+        .firstMatch(confirmed.body)
+        ?.group(1);
+    return complete(attempt, code: code, bearer: bearer, link: true);
+  }
+
+  Future<http.Response> accountRpc(
+    String bearer,
+    String method, [
+    Map<String, Object?> arguments = const {},
+  ]) => browser.post(
+    Uri.parse(
+      '${pod.baseUrl}${method == 'page' ? 'memberRoster' : 'memberAccount'}/$method',
+    ),
+    headers: {...headers(), 'authorization': 'Bearer $bearer'},
+    body: jsonEncode(arguments),
+  );
+
+  test(
+    'signed-in browser proof adds an alt without a bearer or grant',
+    () async {
+      final main = await signIn();
+      final bearer = main['session'] as String;
+      final response = await linkAlt(bearer, 411);
+      expect(response.statusCode, 200);
+      expect(jsonDecode(response.body), {'status': 'linked'});
+      final sessions = await pod.pod.withSession(
+        (s) => s.db.unsafeQuery(
+          'SELECT (SELECT count(*) FROM esi_session), (SELECT count(*) FROM esi_token_vault)',
+        ),
+        enableLogging: false,
+      );
+      expect(sessions.single.toList(), [1, 0]);
+      expect((await post('viewer', {}, bearer: bearer)).statusCode, 200);
+      final alt = await signIn();
+      expect(alt['memberId'], main['memberId']);
+      expect(alt['characterId'], '411');
+    },
+  );
+
+  test('canceled stale revoked or mismatched link makes no change', () async {
+    final main = await signIn();
+    final bearer = main['session'] as String;
+    final cancel = await begin(bearer: bearer, link: true);
+    expect(
+      (await callback(
+        cancel,
+        query: 'state=${cancel.state}&error=access_denied',
+      )).statusCode,
+      400,
+    );
+    characterId = 411;
+    final expired = await begin(bearer: bearer, link: true);
+    clock = clock.add(const Duration(minutes: 5));
+    expect((await callback(expired)).statusCode, 400);
+    final revoked = await begin(bearer: bearer, link: true);
+    expect((await callback(revoked)).statusCode, 200);
+    expect((await post('sign-out', {}, bearer: bearer)).statusCode, 200);
+    expect(
+      (await complete(revoked, bearer: bearer, link: true)).statusCode,
+      403,
+    );
+    expect((await signIn())['memberId'], isNot(main['memberId']));
+  });
+
+  test('sign-in and link proofs cannot cross purposes', () async {
+    final main = await signIn();
+    final bearer = main['session'] as String;
+    final otherSession = (await signIn())['session'] as String;
+    final link = await begin(bearer: bearer, link: true);
+    characterId = 411;
+    expect((await callback(link)).statusCode, 200);
+    expect((await complete(link, bearer: bearer)).statusCode, 400);
+    expect(
+      (await complete(link, bearer: otherSession, link: true)).statusCode,
+      403,
+    );
+    final signInAttempt = await begin();
+    expect((await callback(signInAttempt)).statusCode, 200);
+    expect(
+      (await complete(signInAttempt, bearer: bearer, link: true)).statusCode,
+      400,
+    );
+    expect((await signIn())['memberId'], isNot(main['memberId']));
+  });
+
+  test('absorbs an eligible singleton and revokes its sessions', () async {
+    final main = await signIn();
+    characterId = 411;
+    final oldAlt = await signIn();
+    final response = await linkAlt(
+      main['session'] as String,
+      411,
+      native: true,
+    );
+    expect(response.statusCode, 200);
+    expect(
+      (await post(
+        'viewer',
+        {},
+        bearer: oldAlt['session'] as String,
+      )).statusCode,
+      401,
+    );
+    final newAlt = await signIn();
+    expect(newAlt['memberId'], main['memberId']);
+    expect(newAlt['characterId'], '411');
+  });
+
+  test(
+    'link refuses a character belonging to another multi-character account',
+    () async {
+      final first = await signIn();
+      expect((await linkAlt(first['session'] as String, 411)).statusCode, 200);
+      characterId = 412;
+      final second = await signIn();
+      expect((await linkAlt(second['session'] as String, 411)).statusCode, 403);
+      expect((await signIn())['memberId'], first['memberId']);
+    },
+  );
+
+  test('restrictive product reference prevents singleton absorption', () async {
+    final first = await signIn();
+    characterId = 411;
+    final second = await signIn();
+    await pod.pod.withSession((s) async {
+      await s.db.unsafeExecute('''
+        CREATE TABLE test_product_account (
+          account bigint REFERENCES member_account(id) ON DELETE RESTRICT
+        )
+      ''');
+      await s.db.unsafeExecute(
+        'INSERT INTO test_product_account VALUES (@account::bigint)',
+        parameters: QueryParameters.named({
+          'account': int.parse(second['memberId'] as String),
+        }),
+      );
+    }, enableLogging: false);
+    expect((await linkAlt(first['session'] as String, 411)).statusCode, 403);
+    final stillLive = await post(
+      'viewer',
+      {},
+      bearer: second['session'] as String,
+    );
+    expect(stillLive.statusCode, 200);
+    expect(
+      (jsonDecode(stillLive.body) as Map<String, Object?>)['memberId'],
+      second['memberId'],
+    );
+  });
+
+  test('competing link transactions yield one membership', () async {
+    final first = await signIn();
+    characterId = 412;
+    final second = await signIn();
+    final firstKey = first['session'] as String;
+    final secondKey = second['session'] as String;
+    final a = await begin(bearer: firstKey, link: true);
+    final b = await begin(bearer: secondKey, link: true);
+    characterId = 411;
+    expect((await callback(a)).statusCode, 200);
+    expect((await callback(b)).statusCode, 200);
+    final results = await Future.wait([
+      complete(a, bearer: firstKey, link: true),
+      complete(b, bearer: secondKey, link: true),
+    ]);
+    expect(results.map((r) => r.statusCode), unorderedEquals([200, 403]));
+    final winner = results.first.statusCode == 200 ? first : second;
+    expect((await signIn())['memberId'], winner['memberId']);
+  });
+
+  test('unlink removes only the alt and its sessions', () async {
+    final main = await signIn();
+    final bearer = main['session'] as String;
+    expect((await linkAlt(bearer, 411)).statusCode, 200);
+    final alt = await signIn();
+    final oldAlt = alt['session'] as String;
+    expect(alt['memberId'], main['memberId']);
+    final response = await accountRpc(bearer, 'unlink', {'characterId': '411'});
+    expect(
+      (jsonDecode(response.body) as Map<String, Object?>)['status'],
+      'unlinked',
+    );
+    expect((await post('viewer', {}, bearer: oldAlt)).statusCode, 401);
+    expect((await post('viewer', {}, bearer: bearer)).statusCode, 200);
+    expect((await signIn())['memberId'], isNot(main['memberId']));
+  });
+
+  test('changing main keeps account ID and both sessions valid', () async {
+    final main = await signIn();
+    final bearer = main['session'] as String;
+    expect((await linkAlt(bearer, 411)).statusCode, 200);
+    final alt = await signIn();
+    final response = await accountRpc(bearer, 'makeMain', {
+      'characterId': '411',
+    });
+    expect(
+      (jsonDecode(response.body) as Map<String, Object?>)['status'],
+      'mainChanged',
+    );
+    for (final member in [main, alt]) {
+      final page = await accountRpc(member['session'] as String, 'page', {
+        'after': null,
+      });
+      final json = jsonDecode(page.body) as Map<String, Object?>;
+      expect(json['accountId'], main['memberId']);
+      expect(json['main'], containsPair('characterId', '411'));
+      expect(
+        json['signing'],
+        containsPair('characterId', member['characterId']),
+      );
+    }
+  });
+
+  test(
+    'self-unlink revokes the old bearer and a later sign-in is standalone',
+    () async {
+      final main = await signIn();
+      expect((await linkAlt(main['session'] as String, 411)).statusCode, 200);
+      final key = (await signIn())['session'] as String;
+      final response = await accountRpc(key, 'unlink', {'characterId': '411'});
+      expect(
+        (jsonDecode(response.body) as Map<String, Object?>)['status'],
+        'selfUnlinked',
+      );
+      expect((await post('viewer', {}, bearer: key)).statusCode, 401);
+      expect((await signIn())['memberId'], isNot(main['memberId']));
+    },
+  );
+
+  test('main change refuses unknown unlinked or blocked character', () async {
+    final main = await signIn();
+    final key = main['session'] as String;
+    expect((await linkAlt(key, 411)).statusCode, 200);
+    await pod.pod.withSession(
+      (s) => s.db.unsafeExecute(
+        'UPDATE esi_identity SET blocked = TRUE WHERE "characterId" = 411',
+      ),
+      enableLogging: false,
+    );
+    for (final id in ['411', '999']) {
+      final reply = await accountRpc(key, 'makeMain', {'characterId': id});
+      expect(
+        (jsonDecode(reply.body) as Map<String, Object?>)['status'],
+        'refused',
+      );
+    }
+    final page = await accountRpc(key, 'page', {'after': null});
+    expect(
+      (jsonDecode(page.body) as Map<String, Object?>)['main'],
+      containsPair('characterId', '410'),
+    );
+  });
+
+  test('unlink refuses the main without changing membership', () async {
+    final key = (await signIn())['session'] as String;
+    final reply = await accountRpc(key, 'unlink', {'characterId': '410'});
+    expect(
+      (jsonDecode(reply.body) as Map<String, Object?>)['status'],
+      'mainRequired',
+    );
+    expect((await post('viewer', {}, bearer: key)).statusCode, 200);
+  });
+
+  test(
+    'roster pages resume in display order without hiding main or signer',
+    () async {
+      final account = await signIn();
+      final key = account['session'] as String;
+      await pod.pod.withSession(
+        (s) => s.db.unsafeExecute(
+          '''
+      INSERT INTO esi_identity ("characterId", owner, "characterName", blocked, "accountId")
+      SELECT n, 'fixture', 'Alt', false, @id::bigint
+      FROM generate_series(411, 462) AS n
+    ''',
+          parameters: QueryParameters.named({
+            'id': int.parse(account['memberId'] as String),
+          }),
+        ),
+        enableLogging: false,
+      );
+      final first = jsonDecode(
+        (await accountRpc(key, 'page', {'after': null})).body,
+      ) as Map<String, Object?>;
+      final second = jsonDecode(
+        (await accountRpc(key, 'page', {'after': first['next']})).body,
+      ) as Map<String, Object?>;
+      expect(first['characters'], hasLength(50));
+      expect(first['next'], '459');
+      expect(second['characters'], hasLength(3));
+      expect(
+        (second['characters'] as List<Object?>).first,
+        containsPair('characterId', '460'),
+      );
+      expect(second['next'], isNull);
+      expect(second['main'], containsPair('characterId', '410'));
+      expect(second['signing'], containsPair('characterId', '410'));
+    },
+  );
+
+  test(
+    'fifth roster RPC makes no bearer lookup on native or proxied web ingress',
+    () async {
+      final key = (await signIn())['session'] as String;
+      final held = Completer<void>();
+      final arrived = Completer<void>();
+      var lookups = 0;
+      beforeRpcAuth = (_) async {
+        if (++lookups == 4) arrived.complete();
+        await held.future;
+      };
+      Future<http.Response> native(String bearer) => browser.post(
+        Uri.parse('${pod.baseUrl}memberRoster'),
+        headers: {...headers(), 'authorization': 'Bearer $bearer'},
+        body: jsonEncode({'method': 'page', 'after': null}),
+      );
+      final pending = [
+        for (var i = 0; i < 4; i++)
+          i.isEven
+              ? native('x' * 43)
+              : accountRpc('x' * 43, 'page', {'after': null}),
+      ];
+      try {
+        await Future.any([
+          arrived.future,
+          for (final response in pending)
+            response.then((_) => fail('auth did not hold')),
+        ]);
+        expect((await native(key)).statusCode, 429);
+        expect(
+          (await accountRpc(key, 'page', {'after': null})).statusCode,
+          429,
+        );
+        expect(lookups, 4);
+      } finally {
+        held.complete();
+      }
+      final failures = await Future.wait(pending);
+      expect(
+        failures.map((response) => response.statusCode),
+        everyElement(401),
+      );
+      expect((await native(key)).statusCode, 200);
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
+  test('unlink retains held grant opt-ins and holder assignment', () async {
+    final main = await signIn();
+    final bearer = main['session'] as String;
+    expect((await linkAlt(bearer, 411)).statusCode, 200);
+    final alt = (await signIn())['session'] as String;
+    await authorize(alt);
+    Future<List<String>> state() => pod.pod.withSession((s) async {
+      final rows = await s.db.unsafeQuery('''
+        SELECT to_jsonb(t)::text FROM esi_scope_opt_in t
+        UNION ALL SELECT to_jsonb(h)::text FROM esi_holder_assignment h
+        UNION ALL SELECT to_jsonb(v)::text FROM esi_token_vault v
+      ''');
+      return rows.map((r) => r.single as String).toList()..sort();
+    }, enableLogging: false);
+    final before = await state();
+    expect(before, hasLength(3));
+    expect(
+      (await accountRpc(bearer, 'unlink', {'characterId': '411'})).statusCode,
+      200,
+    );
+    expect(await state(), before);
+    expect((await post('skills', {}, bearer: alt)).statusCode, 401);
+  });
+
+  test('detached alts cannot qualify by founding fresh accounts', () async {
+    final main = await signIn();
+    final bearer = main['session'] as String;
+    final founded = <int>[];
+    for (var alt = 411; alt <= 415; alt++) {
+      expect((await linkAlt(bearer, alt)).statusCode, 200);
+      expect(
+        (await accountRpc(bearer, 'unlink', {
+          'characterId': '$alt',
+        })).statusCode,
+        200,
+      );
+      founded.add(int.parse((await signIn())['memberId'] as String));
+    }
+    final rows = await pod.pod.withSession(
+      (s) => s.db.unsafeQuery('SELECT id FROM esi_call_log_exclusion'),
+      enableLogging: false,
+    );
+    expect(rows.map((row) => row.single), unorderedEquals(founded));
+    expect(founded.toSet(), hasLength(5));
+  });
+
+  test('detached character excludes the account it joins including after absorption', () async {
+    final main = await signIn();
+    final key = main['session'] as String;
+    expect((await linkAlt(key, 411)).statusCode, 200);
+    expect(
+      (await accountRpc(key, 'unlink', {'characterId': '411'})).statusCode,
+      200,
+    );
+    final detached = await signIn();
+    expect((await linkAlt(key, 411)).statusCode, 200);
+    final result = await pod.pod.withSession(
+      (s) => s.db.unsafeQuery('''
+        SELECT e.id, EXISTS (SELECT 1 FROM member_account a WHERE a.id = e.id)
+        FROM esi_call_log_exclusion e
+      '''),
+      enableLogging: false,
+    );
+    expect(
+      result.map((row) => row.toList()),
+      unorderedEquals([
+        [int.parse(main['memberId'] as String), true],
+        [int.parse(detached['memberId'] as String), false],
+      ]),
+    );
+  });
+
+  test('exact revocation orders with unlink in either lock order', () async {
+    final main = await signIn();
+    final acting = main['session'] as String;
+    final retained = (await signIn())['session'] as String;
+    expect((await linkAlt(acting, 411)).statusCode, 200);
+    final waiting = Completer<void>();
+    final revoked = Completer<void>();
+    afterRpcAuth = () async {
+      waiting.complete();
+      await revoked.future;
+    };
+    final pending = accountRpc(acting, 'unlink', {'characterId': '411'});
+    try {
+      await Future.any([
+        waiting.future,
+        pending.then((_) => fail('RPC skipped auth')),
+      ]);
+      final a = await post('sign-out', {}, bearer: acting);
+      expect(jsonDecode(a.body), {'status': 'signedOut'});
+    } finally {
+      revoked.complete();
+      afterRpcAuth = null;
+    }
+    expect(
+      (jsonDecode((await pending).body) as Map<String, Object?>)['status'],
+      'denied',
+    );
+    final alt = await signIn();
+    expect(alt['memberId'], main['memberId']);
+    final committed = await accountRpc(alt['session'] as String, 'unlink', {
+      'characterId': '411',
+    });
+    expect(
+      (jsonDecode(committed.body) as Map<String, Object?>)['status'],
+      'selfUnlinked',
+    );
+    final absent = await post('sign-out', {}, bearer: alt['session'] as String);
+    expect(jsonDecode(absent.body), {'status': 'signedOut'});
+    expect((await post('viewer', {}, bearer: retained)).statusCode, 200);
+    expect((await signIn())['memberId'], isNot(main['memberId']));
   });
 
   test('Valid identity signs in again', () async {

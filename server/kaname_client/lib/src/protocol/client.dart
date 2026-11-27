@@ -19,6 +19,10 @@ import 'package:kaname_client/src/protocol/esi/esi_call_log_page.dart'
     as _i0ohbe4c;
 import 'package:kaname_client/src/protocol/esi/esi_route_count_page.dart'
     as _inqxx39c;
+import 'package:kaname_client/src/protocol/esi/member_account_mutation.dart'
+    as _i20i8hj3;
+import 'package:kaname_client/src/protocol/esi/member_roster_page.dart'
+    as _iboz0353;
 import 'package:kaname_client/src/protocol/health/health_report.dart'
     as _ipujyub9;
 import 'package:kaname_client/src/protocol/static_data/admin_answer.dart'
@@ -58,6 +62,49 @@ class EndpointEsiCallLog extends _isc.EndpointRef {
         'esiCallLog',
         'routeCounts',
         {},
+      );
+}
+
+/// Account mutations over generated, origin-bound, authenticated RPC.
+/// {@category Endpoint}
+class EndpointMemberAccount extends _isc.EndpointRef {
+  EndpointMemberAccount(_isc.EndpointCaller caller) : super(caller);
+
+  @override
+  String get name => 'memberAccount';
+
+  /// Changes the main without changing either session or authority.
+  _ida.Future<_i20i8hj3.MemberAccountMutation> makeMain(String characterId) =>
+      caller.callServerEndpoint<_i20i8hj3.MemberAccountMutation>(
+        'memberAccount',
+        'makeMain',
+        {'characterId': characterId},
+      );
+
+  /// Revokes the detached character's sessions; leaves its ESI grant alone.
+  _ida.Future<_i20i8hj3.MemberAccountMutation> unlink(String characterId) =>
+      caller.callServerEndpoint<_i20i8hj3.MemberAccountMutation>(
+        'memberAccount',
+        'unlink',
+        {'characterId': characterId},
+      );
+}
+
+/// Bounded roster RPC. A separate endpoint lets HTTP ingress match both the
+/// generated client's body-method route and Serverpod's slash route.
+/// {@category Endpoint}
+class EndpointMemberRoster extends _isc.EndpointRef {
+  EndpointMemberRoster(_isc.EndpointCaller caller) : super(caller);
+
+  @override
+  String get name => 'memberRoster';
+
+  /// Reads one page and both roles from the same live-session snapshot.
+  _ida.Future<_iboz0353.MemberRosterPage> page(String? after) =>
+      caller.callServerEndpoint<_iboz0353.MemberRosterPage>(
+        'memberRoster',
+        'page',
+        {'after': after},
       );
 }
 
@@ -220,12 +267,18 @@ class Client extends _isc.ServerpodClientShared {
          httpClientOverride: httpClientOverride,
        ) {
     esiCallLog = EndpointEsiCallLog(this);
+    memberAccount = EndpointMemberAccount(this);
+    memberRoster = EndpointMemberRoster(this);
     health = EndpointHealth(this);
     staticDataAdmin = EndpointStaticDataAdmin(this);
     staticData = EndpointStaticData(this);
   }
 
   late final EndpointEsiCallLog esiCallLog;
+
+  late final EndpointMemberAccount memberAccount;
+
+  late final EndpointMemberRoster memberRoster;
 
   late final EndpointHealth health;
 
@@ -236,6 +289,8 @@ class Client extends _isc.ServerpodClientShared {
   @override
   Map<String, _isc.EndpointRef> get endpointRefLookup => {
     'esiCallLog': esiCallLog,
+    'memberAccount': memberAccount,
+    'memberRoster': memberRoster,
     'health': health,
     'staticDataAdmin': staticDataAdmin,
     'staticData': staticData,

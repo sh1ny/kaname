@@ -1,0 +1,11 @@
+### Fixed outcomes for connected account mutations.
+enum: MemberAccountStatus
+serialized: byName
+values:
+  - mainChanged
+  - unlinked
+  - selfUnlinked
+  - mainRequired
+  - refused
+  - denied
+  - unavailable

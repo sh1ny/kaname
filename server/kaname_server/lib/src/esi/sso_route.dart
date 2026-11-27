@@ -6,6 +6,8 @@ import 'package:serverpod/serverpod.dart';
 
 import '../network/client_identity.dart';
 import '../network/trusted_proxies.dart';
+import 'esi_call_log_store.dart';
+import 'member_accounts.dart';
 import 'server_sso_grants.dart';
 import 'sso_handoff.dart';
 import 'sso_sessions.dart';
@@ -21,6 +23,7 @@ final class _Attempt {
     required this.browserDigest,
     required this.expires,
     required this.scoped,
+    this.link,
   });
   final ClientKey client;
   final String id;
@@ -29,9 +32,11 @@ final class _Attempt {
   final String? browserDigest;
   final DateTime expires;
   final SsoRequestedGrant? scoped;
+  final MemberActor? link;
   bool claimed = false;
   String? completionDigest;
-  (CcpVerifiedIdentity, CcpGrant)? verified;
+  CcpVerifiedIdentity? identity;
+  CcpGrant? scopedGrant;
 }
 
 /// Scoped attempt bound to the current session, owner and scope policy.
@@ -193,7 +198,10 @@ final class SsoRoute {
       if (_attempts.length >= 128 || (_perClient[key] ?? 0) >= 4) {
         return _failure(429);
       }
-      final scoped = input is Map<String, Object?> && input['scoped'] == true;
+      final fields = input as Map<String, Object?>;
+      final scoped = fields['scoped'] == true;
+      final linking = fields['link'] == true;
+      if (scoped && linking) return _failure(400);
       final browser = native ? null : newOAuthProof();
       // Reserve before any I/O, including resolving a scoped viewer.
       final attempt = _Attempt(
@@ -209,15 +217,28 @@ final class SsoRoute {
       var active = attempt;
       var ready = false;
       try {
-        if (scoped) {
+        if (scoped || linking) {
           final authority = _grants;
           final bearer = _bearer(request);
-          if (authority == null || bearer == null) return _failure(403);
-          final grant = await _withSession((session) async {
+          if (bearer == null || (scoped && authority == null)) {
+            return _failure(403);
+          }
+          final (grant, link) = await _withSession((session) async {
             final viewer = await _sessions.viewer(session, bearer);
-            return viewer == null ? null : authority.request(session, viewer);
+            if (viewer == null) return (null, null);
+            if (scoped) {
+              return (await authority!.request(session, viewer), null);
+            }
+            return (
+              null,
+              (
+                account: viewer.accountId,
+                session: viewer.sessionId,
+                character: viewer.identity.characterId,
+              ),
+            );
           });
-          if (grant == null) return _failure(403);
+          if (grant == null && link == null) return _failure(403);
           if (!_isLive(attempt)) return _failure(400);
           active = _Attempt(
             client: key,
@@ -227,6 +248,7 @@ final class SsoRoute {
             browserDigest: attempt.browserDigest,
             expires: attempt.expires,
             scoped: grant,
+            link: link,
           );
           _attempts[active.id] = active;
           _states[active.state] = active;
@@ -293,7 +315,8 @@ final class SsoRoute {
             _remove(attempt);
             return _failure(403);
           }
-          attempt.verified = (identity, exchange);
+          attempt.identity = identity;
+          if (scoped != null) attempt.scopedGrant = exchange;
           final confirmation = attempt.browserDigest == null
               ? newOAuthProof().substring(0, 22)
               : null;
@@ -301,7 +324,7 @@ final class SsoRoute {
               ? null
               : ssoDigest(confirmation);
           return _html(
-            '<p>Signed in as ${_esc.convert(identity.name)}.</p>'
+            '<p>${attempt.link == null ? 'Signed in as' : 'Link character'} ${_esc.convert(identity.name)}.</p>'
             '${confirmation == null ? '<p>Return to Kaname to finish.</p>' : '<p>Enter this code only in the Kaname app that started sign-in. Do not share it.</p><code>$confirmation</code>'}',
           );
         } finally {
@@ -322,7 +345,9 @@ final class SsoRoute {
           !ssoDigestMatches(ssoDigest(proof), attempt.proofDigest)) {
         return _failure(400);
       }
-      if (attempt.verified case (final identity, final grant)) {
+      final link = attempt.link;
+      if ((input['link'] == true) != (link != null)) return _failure(400);
+      if (attempt.identity case final identity?) {
         if (attempt.completionDigest case final expected?) {
           if (input case {'code': final String code}) {
             if (!_completion.hasMatch(code) ||
@@ -339,12 +364,33 @@ final class SsoRoute {
         }
         final scoped = attempt.scoped;
         final bearer = _bearer(request);
-        if (scoped != null && bearer == null) return _failure(403);
+        if ((scoped != null || link != null) && bearer == null) {
+          return _failure(403);
+        }
         _remove(attempt);
+        if (link != null) {
+          final linked = await _withSession((session) async {
+            final actor = await _sessions.viewer(session, bearer!);
+            if (actor?.sessionId != link.session ||
+                actor?.accountId != link.account) {
+              return false;
+            }
+            return MemberAccounts(
+              _sessions,
+              EsiCallLogStore(),
+            ).link(session, link, identity, attempt.expires, _now);
+          });
+          return linked ? _json(200, {'status': 'linked'}) : _failure(403);
+        }
         if (scoped != null) {
           final activated = await _withSession(
-            (session) =>
-                _grants!.activate(session, bearer!, scoped, identity, grant),
+            (session) => _grants!.activate(
+              session,
+              bearer!,
+              scoped,
+              identity,
+              attempt.scopedGrant!,
+            ),
           );
           return activated
               ? _json(200, {'status': 'authorized'})

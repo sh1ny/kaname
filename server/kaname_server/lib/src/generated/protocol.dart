@@ -24,7 +24,12 @@ import 'esi/esi_call_log_seal_row.dart' as _iot6nyup;
 import 'esi/esi_route_count_item.dart' as _iy73o4xt;
 import 'esi/esi_route_count_page.dart' as _ikoz4zoy;
 import 'esi/esi_token_vault_row.dart' as _iynhzf32;
+import 'esi/member_account_mutation.dart' as _i59p56h3;
 import 'esi/member_account_row.dart' as _ix3luxw6;
+import 'esi/member_account_status.dart' as _imvcpcvn;
+import 'esi/member_character.dart' as _ixvgfduz;
+import 'esi/member_roster_page.dart' as _if1eutsr;
+import 'esi/member_roster_status.dart' as _il40m74f;
 import 'esi/sso_holder_row.dart' as _idzz7lja;
 import 'esi/sso_identity_row.dart' as _i5h09tn7;
 import 'esi/sso_opt_in_row.dart' as _iach3bls;
@@ -96,7 +101,12 @@ export 'esi/esi_call_log_seal_row.dart';
 export 'esi/esi_route_count_item.dart';
 export 'esi/esi_route_count_page.dart';
 export 'esi/esi_token_vault_row.dart';
+export 'esi/member_account_mutation.dart';
 export 'esi/member_account_row.dart';
+export 'esi/member_account_status.dart';
+export 'esi/member_character.dart';
+export 'esi/member_roster_page.dart';
+export 'esi/member_roster_status.dart';
 export 'esi/sso_holder_row.dart';
 export 'esi/sso_identity_row.dart';
 export 'esi/sso_opt_in_row.dart';
@@ -182,7 +192,12 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_iy73o4xt.EsiRouteCount>,
           _is.getType<_ikoz4zoy.EsiRouteCountPage>,
           _is.getType<_iynhzf32.EsiTokenVaultRow>,
+          _is.getType<_i59p56h3.MemberAccountMutation>,
           _is.getType<_ix3luxw6.MemberAccountRow>,
+          _is.getType<_imvcpcvn.MemberAccountStatus>,
+          _is.getType<_ixvgfduz.MemberCharacter>,
+          _is.getType<_if1eutsr.MemberRosterPage>,
+          _is.getType<_il40m74f.MemberRosterStatus>,
           _is.getType<_idzz7lja.SsoHolderRow>,
           _is.getType<_i5h09tn7.SsoIdentityRow>,
           _is.getType<_iach3bls.SsoOptInRow>,
@@ -256,7 +271,12 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_iy73o4xt.EsiRouteCount?>,
           _is.getType<_ikoz4zoy.EsiRouteCountPage?>,
           _is.getType<_iynhzf32.EsiTokenVaultRow?>,
+          _is.getType<_i59p56h3.MemberAccountMutation?>,
           _is.getType<_ix3luxw6.MemberAccountRow?>,
+          _is.getType<_imvcpcvn.MemberAccountStatus?>,
+          _is.getType<_ixvgfduz.MemberCharacter?>,
+          _is.getType<_if1eutsr.MemberRosterPage?>,
+          _is.getType<_il40m74f.MemberRosterStatus?>,
           _is.getType<_idzz7lja.SsoHolderRow?>,
           _is.getType<_i5h09tn7.SsoIdentityRow?>,
           _is.getType<_iach3bls.SsoOptInRow?>,
@@ -323,6 +343,7 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_ib14m8bx.SdeTypeDogma?>,
           _is.getType<List<_iuknwcy9.EsiCallLogReceipt>>,
           _is.getType<List<_iy73o4xt.EsiRouteCount>>,
+          _is.getType<List<_ixvgfduz.MemberCharacter>>,
           _is.getType<List<String>>,
           _is.getType<List<String>?>,
           _is.getType<_idp9h2tz.SdeJson?>,
@@ -345,7 +366,12 @@ class Protocol extends _is.DatabaseSerializationManager
           'EsiRouteCount',
           'EsiRouteCountPage',
           'EsiTokenVaultRow',
+          'MemberAccountMutation',
           'MemberAccountRow',
+          'MemberAccountStatus',
+          'MemberCharacter',
+          'MemberRosterPage',
+          'MemberRosterStatus',
           'SsoHolderRow',
           'SsoIdentityRow',
           'SsoOptInRow',
@@ -2903,8 +2929,23 @@ class Protocol extends _is.DatabaseSerializationManager
     if (t == _iynhzf32.EsiTokenVaultRow) {
       return _iynhzf32.EsiTokenVaultRow.fromJson(data) as T;
     }
+    if (t == _i59p56h3.MemberAccountMutation) {
+      return _i59p56h3.MemberAccountMutation.fromJson(data) as T;
+    }
     if (t == _ix3luxw6.MemberAccountRow) {
       return _ix3luxw6.MemberAccountRow.fromJson(data) as T;
+    }
+    if (t == _imvcpcvn.MemberAccountStatus) {
+      return _imvcpcvn.MemberAccountStatus.fromJson(data) as T;
+    }
+    if (t == _ixvgfduz.MemberCharacter) {
+      return _ixvgfduz.MemberCharacter.fromJson(data) as T;
+    }
+    if (t == _if1eutsr.MemberRosterPage) {
+      return _if1eutsr.MemberRosterPage.fromJson(data) as T;
+    }
+    if (t == _il40m74f.MemberRosterStatus) {
+      return _il40m74f.MemberRosterStatus.fromJson(data) as T;
     }
     if (t == _idzz7lja.SsoHolderRow) {
       return _idzz7lja.SsoHolderRow.fromJson(data) as T;
@@ -3136,8 +3177,32 @@ class Protocol extends _is.DatabaseSerializationManager
       return (data != null ? _iynhzf32.EsiTokenVaultRow.fromJson(data) : null)
           as T;
     }
+    if (t == _is.getType<_i59p56h3.MemberAccountMutation?>()) {
+      return (data != null
+              ? _i59p56h3.MemberAccountMutation.fromJson(data)
+              : null)
+          as T;
+    }
     if (t == _is.getType<_ix3luxw6.MemberAccountRow?>()) {
       return (data != null ? _ix3luxw6.MemberAccountRow.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_imvcpcvn.MemberAccountStatus?>()) {
+      return (data != null
+              ? _imvcpcvn.MemberAccountStatus.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_ixvgfduz.MemberCharacter?>()) {
+      return (data != null ? _ixvgfduz.MemberCharacter.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_if1eutsr.MemberRosterPage?>()) {
+      return (data != null ? _if1eutsr.MemberRosterPage.fromJson(data) : null)
+          as T;
+    }
+    if (t == _is.getType<_il40m74f.MemberRosterStatus?>()) {
+      return (data != null ? _il40m74f.MemberRosterStatus.fromJson(data) : null)
           as T;
     }
     if (t == _is.getType<_idzz7lja.SsoHolderRow?>()) {
@@ -3428,6 +3493,12 @@ class Protocol extends _is.DatabaseSerializationManager
               .toList()
           as T;
     }
+    if (t == List<_ixvgfduz.MemberCharacter>) {
+      return (data as List)
+              .map((e) => deserialize<_ixvgfduz.MemberCharacter>(e))
+              .toList()
+          as T;
+    }
     if (t == List<String>) {
       return (data as List).map((e) => deserialize<String>(e)).toList() as T;
     }
@@ -3499,7 +3570,12 @@ class Protocol extends _is.DatabaseSerializationManager
       _iy73o4xt.EsiRouteCount => 'EsiRouteCount',
       _ikoz4zoy.EsiRouteCountPage => 'EsiRouteCountPage',
       _iynhzf32.EsiTokenVaultRow => 'EsiTokenVaultRow',
+      _i59p56h3.MemberAccountMutation => 'MemberAccountMutation',
       _ix3luxw6.MemberAccountRow => 'MemberAccountRow',
+      _imvcpcvn.MemberAccountStatus => 'MemberAccountStatus',
+      _ixvgfduz.MemberCharacter => 'MemberCharacter',
+      _if1eutsr.MemberRosterPage => 'MemberRosterPage',
+      _il40m74f.MemberRosterStatus => 'MemberRosterStatus',
       _idzz7lja.SsoHolderRow => 'SsoHolderRow',
       _i5h09tn7.SsoIdentityRow => 'SsoIdentityRow',
       _iach3bls.SsoOptInRow => 'SsoOptInRow',
@@ -3598,8 +3674,18 @@ class Protocol extends _is.DatabaseSerializationManager
         return 'EsiRouteCountPage';
       case _iynhzf32.EsiTokenVaultRow():
         return 'EsiTokenVaultRow';
+      case _i59p56h3.MemberAccountMutation():
+        return 'MemberAccountMutation';
       case _ix3luxw6.MemberAccountRow():
         return 'MemberAccountRow';
+      case _imvcpcvn.MemberAccountStatus():
+        return 'MemberAccountStatus';
+      case _ixvgfduz.MemberCharacter():
+        return 'MemberCharacter';
+      case _if1eutsr.MemberRosterPage():
+        return 'MemberRosterPage';
+      case _il40m74f.MemberRosterStatus():
+        return 'MemberRosterStatus';
       case _idzz7lja.SsoHolderRow():
         return 'SsoHolderRow';
       case _i5h09tn7.SsoIdentityRow():
@@ -3772,8 +3858,23 @@ class Protocol extends _is.DatabaseSerializationManager
     if (dataClassName == 'EsiTokenVaultRow') {
       return deserialize<_iynhzf32.EsiTokenVaultRow>(data['data']);
     }
+    if (dataClassName == 'MemberAccountMutation') {
+      return deserialize<_i59p56h3.MemberAccountMutation>(data['data']);
+    }
     if (dataClassName == 'MemberAccountRow') {
       return deserialize<_ix3luxw6.MemberAccountRow>(data['data']);
+    }
+    if (dataClassName == 'MemberAccountStatus') {
+      return deserialize<_imvcpcvn.MemberAccountStatus>(data['data']);
+    }
+    if (dataClassName == 'MemberCharacter') {
+      return deserialize<_ixvgfduz.MemberCharacter>(data['data']);
+    }
+    if (dataClassName == 'MemberRosterPage') {
+      return deserialize<_if1eutsr.MemberRosterPage>(data['data']);
+    }
+    if (dataClassName == 'MemberRosterStatus') {
+      return deserialize<_il40m74f.MemberRosterStatus>(data['data']);
     }
     if (dataClassName == 'SsoHolderRow') {
       return deserialize<_idzz7lja.SsoHolderRow>(data['data']);

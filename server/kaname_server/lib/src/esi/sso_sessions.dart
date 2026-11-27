@@ -5,6 +5,7 @@ import 'package:kaname_esi_sso/kaname_esi_sso.dart';
 import 'package:serverpod/serverpod.dart';
 
 import '../generated/protocol.dart';
+import 'esi_call_log_store.dart';
 
 /// Live account and signing character. ESI and admin authority follow the signer.
 typedef SsoViewer = ({
@@ -62,7 +63,16 @@ final class SsoSessions {
   SsoSessions({required this._now, Set<int> adminCharacters = const {}})
     : _admins = Set.unmodifiable(adminCharacters);
 
-  /// The same main-isolate gate protects sign-in, grants and ESI dispatch.
+  static final _bound = Expando<SsoSessions>();
+  static final _callLog = EsiCallLogStore();
+
+  /// Associates generated RPCs with this install's exact session authority.
+  void bind(Serverpod pod) => _bound[pod] = this;
+
+  /// Returns the session authority installed for [pod], if sign-in is enabled.
+  static SsoSessions? forPod(Serverpod pod) => _bound[pod];
+
+  /// The main-isolate gate protects grants, holders and ESI dispatch.
   final gate = SsoCharacterGate();
 
   final DateTime Function() _now;
@@ -107,14 +117,21 @@ final class SsoSessions {
   Future<SsoViewer?> viewerById(
     Session session,
     int sessionId,
-    int accountId,
-  ) => _live(session, sessionId: sessionId, accountId: accountId);
+    int accountId, {
+    Transaction? transaction,
+  }) => _live(
+    session,
+    sessionId: sessionId,
+    accountId: accountId,
+    transaction: transaction,
+  );
 
   Future<SsoViewer?> _live(
     Session session, {
     String? digest,
     int? sessionId,
     int? accountId,
+    Transaction? transaction,
   }) async {
     final rows = await session.db.unsafeQuery(
       '''
@@ -126,11 +143,12 @@ final class SsoSessions {
         AND i."accountId" = s."accountId"
       ''',
       parameters: QueryParameters.named({
-        if (digest != null) 'digest': digest,
-        if (sessionId != null) 'id': sessionId,
-        if (accountId != null) 'account': accountId,
+        'digest': ?digest,
+        'id': ?sessionId,
+        'account': ?accountId,
         'now': _now(),
       }),
+      transaction: transaction,
     );
     if (rows.isEmpty) return null;
     final row = rows.single;
@@ -175,7 +193,16 @@ final class SsoSessions {
     Session session,
     CcpVerifiedIdentity claims,
   ) => session.db.transaction((transaction) async {
+    await session.db.unsafeExecute(
+      "SET LOCAL lock_timeout = '1s'",
+      transaction: transaction,
+    );
+    await session.db.unsafeExecute(
+      "SET LOCAL statement_timeout = '10s'",
+      transaction: transaction,
+    );
     await lockCharacter(session, transaction, claims.characterId);
+    if (!_now().isBefore(claims.expiresAt)) return null;
     final stored = await SsoIdentityRow.db.findFirstRow(
       session,
       where: (t) => t.characterId.equals(claims.characterId),
@@ -183,7 +210,7 @@ final class SsoSessions {
     );
     if (stored != null && (stored.blocked || stored.owner != claims.owner)) {
       if (!stored.blocked) {
-        await _blockIdentity(session, transaction, stored);
+        await blockIdentity(session, transaction, stored);
       }
       return null;
     }
@@ -224,6 +251,9 @@ final class SsoSessions {
         columns: (t) => [t.accountId],
         transaction: transaction,
       );
+      if (identity.wasDetached) {
+        await _callLog.excludeAccount(session, transaction, member);
+      }
     }
     final now = _now();
     final existing = await SsoSessionRow.db.find(
@@ -284,11 +314,12 @@ final class SsoSessions {
         transaction: transaction,
       );
       if (stored == null || stored.blocked) return;
-      await _blockIdentity(session, transaction, stored);
+      await blockIdentity(session, transaction, stored);
     });
   }
 
-  static Future<void> _blockIdentity(
+  /// Blocks a verified conflict under the caller's character transaction lock.
+  static Future<void> blockIdentity(
     Session session,
     Transaction transaction,
     SsoIdentityRow identity,

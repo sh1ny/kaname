@@ -1,0 +1,8 @@
+### Result of reading a bounded connected roster page.
+enum: MemberRosterStatus
+serialized: byName
+values:
+  - ok
+  - denied
+  - busy
+  - unavailable
