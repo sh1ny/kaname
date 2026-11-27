@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:kaname_esi/kaname_esi.dart';
+import 'package:kaname_server/server.dart' show configureKanameEsi;
 import 'package:kaname_server/src/affiliation/affiliation_runtime.dart';
 import 'package:kaname_server/src/affiliation/affiliation_store.dart';
 import 'package:kaname_server/src/affiliation/org_tree_config.dart';
@@ -9,7 +10,8 @@ import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/kaname_serverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:postgres/postgres.dart' as pg;
-import 'package:serverpod/protocol.dart' show FutureCallClaimEntry;
+import 'package:serverpod/protocol.dart'
+    show FutureCallClaimEntry, FutureCallEntry;
 import 'package:serverpod/serverpod.dart';
 // ignore: implementation_imports
 import 'package:serverpod/src/server/serverpod.dart'
@@ -17,6 +19,7 @@ import 'package:serverpod/src/server/serverpod.dart'
 import 'package:test/test.dart';
 
 import '../support/migrated_database.dart';
+import '../support/scratch_database.dart';
 import 'affiliation_fixture.dart';
 
 const _hour = Duration(hours: 1);
@@ -64,8 +67,16 @@ void main() {
   });
 
   test('refreshes known identities without a valid SSO registration', () async {
+    final pod = await _startComposed();
+    expect(ServerSso.of(pod), isNull);
+    await pod.withSession((s) async {
+      final queued = await FutureCallEntry.db.find(s);
+      expect(queued.single.identifier, startsWith('kaname-affiliation:'));
+      expect(queued.single.identifier, endsWith(':0'));
+    });
+
     final f = await AffiliationFixture.open();
-    expect(ServerSso.install(f.pod, const {}, esiRuntime: () => f.esi), isNull);
+    // Exercise the queued operation with a controlled public ESI sender.
     await f.pod.withSession((s) async {
       await f.addIdentity(s, 101, blocked: true);
       await f.pod.futureCallManager!.runScheduledFutureCalls();
@@ -76,51 +87,25 @@ void main() {
   test(
     'missing Redis configuration or service secret does not stop the server',
     () async {
-      final f = await AffiliationFixture.open(active: false);
-      final config = f.pod.config.copyWith(futureCallExecutionEnabled: true);
-      expect(
-        affiliationAvailability(
-          config.copyWith(
-            redis: RedisConfig(enabled: false, host: 'localhost', port: 8091),
-          ),
-          'production',
-          'configured',
-        ),
-        AffiliationAvailability.missingScheduler,
-      );
-      expect(
-        affiliationAvailability(config, 'production', ''),
-        AffiliationAvailability.missingScheduler,
-      );
-      await f.pod.withSession((s) async {
-        expect(await f.queue(s), isEmpty);
-        expect((await s.db.unsafeQuery('SELECT 1')).single.single, 1);
-      });
-      expect(f.wire, isEmpty);
+      for (final (redis, secret) in [(false, true), (true, false)]) {
+        final pod = await _startComposed(redis: redis, hasSecret: secret);
+        await pod.withSession((s) async {
+          expect(await FutureCallEntry.db.find(s), isEmpty);
+          expect((await s.db.unsafeQuery('SELECT 1')).single.single, 1);
+        });
+      }
     },
   );
 
   test(
     'disabled future calls or execution registers no affiliation work',
     () async {
-      final f = await AffiliationFixture.open(active: false);
-      expect(
-        affiliationAvailability(f.pod.config, 'production', 'configured'),
-        AffiliationAvailability.inactive,
-      );
-      expect(
-        affiliationAvailability(
-          f.pod.config.copyWith(
-            futureCall: const FutureCallConfig(enabled: false),
-            futureCallExecutionEnabled: true,
-          ),
-          'production',
-          'configured',
-        ),
-        AffiliationAvailability.inactive,
-      );
-      await f.pod.withSession((s) async => expect(await f.queue(s), isEmpty));
-      expect(f.wire, isEmpty);
+      for (final (enable, execute) in [(false, true), (true, false)]) {
+        final pod = await _startComposed(futureCalls: enable, execute: execute);
+        await pod.withSession((s) async {
+          expect(await FutureCallEntry.db.find(s), isEmpty);
+        });
+      }
     },
   );
 
@@ -144,7 +129,7 @@ void main() {
     'Serverpod reclaims the abandoned slot and dispatches the next hour',
     () async {
       final f = await AffiliationFixture.open();
-      f.respond = (request, ids) => f.json(request, 200, [
+      f.respond = (ids) async => jsonReply(200, [
         {'character_id': ids.single, 'corporation_id': 40 + f.wire.length},
       ]);
       await f.pod.withSession((s) async {
@@ -183,12 +168,12 @@ void main() {
       final f = await AffiliationFixture.open();
       final first = Completer<void>();
       final unblock = Completer<void>();
-      f.respond = (request, ids) async {
+      f.respond = (ids) async {
         if (f.wire.length == 1) {
           first.complete();
           await unblock.future;
         }
-        await f.json(request, 200, [
+        return jsonReply(200, [
           {'character_id': ids.single, 'corporation_id': 42},
         ]);
       };
@@ -231,10 +216,10 @@ void main() {
     final entered = Completer<void>();
     final release = Completer<void>();
     AffiliationObservation? saved;
-    f.respond = (request, ids) async {
+    f.respond = (ids) async {
       if (!entered.isCompleted) entered.complete();
       await release.future;
-      await f.json(request, 200, [
+      return jsonReply(200, [
         {'character_id': ids.first, 'corporation_id': 42},
       ]);
     };
@@ -289,11 +274,10 @@ void main() {
         await AffiliationRuntime.dispatchSweep(s, _startup);
         final store = AffiliationStore(s);
         final before = await store.read(101);
-        f.respond = (request, _) => f.json(request, 503, {'error': 'downtime'});
+        f.respond = (_) async => jsonReply(503, {'error': 'downtime'});
         expect(await f.client.getAlliances(), isA<EsiError<List<int>>>());
         expect(await f.client.getStatus(), isA<EsiError<Status>>());
-        f.respond = (request, ids) => f.json(
-          request,
+        f.respond = (ids) async => jsonReply(
           200,
           ids.isEmpty
               ? {
@@ -378,4 +362,64 @@ Future<StreamController<String>> _completionEvents(Session session) async {
   });
   await observer.execute('LISTEN test_affiliation_done');
   return events;
+}
+
+Future<KanameServerpod> _startComposed({
+  bool redis = true,
+  bool hasSecret = true,
+  bool futureCalls = true,
+  bool execute = true,
+}) async {
+  final db = await ScratchDatabase.create();
+  addTearDown(db.drop);
+  const scanInterval = Duration(microseconds: 1373);
+  final pod = KanameServerpod(
+    ['--mode', 'test', '--apply-migrations'],
+    environment: const {},
+    configOverride: (config) => config.copyWith(
+      // Keep the embedded test database and passwords; exercise the
+      // production-mode decision on the same resolved config the pod uses.
+      runMode: 'production',
+      database: (config.database! as PostgresDatabaseConfig).withName(db.name),
+      redis: redis
+          ? config.redis
+          : RedisConfig(enabled: false, host: 'localhost', port: 8091),
+      futureCall: FutureCallConfig(
+        enabled: futureCalls,
+        scanInterval: scanInterval,
+      ),
+      futureCallExecutionEnabled: execute,
+    ),
+  );
+  configureKanameEsi(
+    pod,
+    const {},
+    serviceSecret: hasSecret ? pod.getPassword('serviceSecret')! : null,
+  );
+  // Hold only the framework's periodic queue scan, not the product's
+  // registration. Otherwise it can consume the row before this test reads it.
+  await runZoned(
+    () => pod.start(runInGuardedZone: false),
+    zoneSpecification: ZoneSpecification(
+      createPeriodicTimer: (self, parent, zone, duration, callback) =>
+          duration == scanInterval
+          ? _ParkedScan()
+          : parent.createPeriodicTimer(zone, duration, callback),
+    ),
+  );
+  addTearDown(() => pod.shutdown(exitProcess: false));
+  return pod;
+}
+
+final class _ParkedScan implements Timer {
+  bool _cancelled = false;
+
+  @override
+  bool get isActive => !_cancelled;
+
+  @override
+  int get tick => 0;
+
+  @override
+  void cancel() => _cancelled = true;
 }

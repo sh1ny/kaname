@@ -58,12 +58,13 @@ A coalition needs at least two distinct alliance IDs. Leave the setting unset
 or empty to run without a tree. A non-empty invalid declaration stops the
 server and names `KANAME_ORG_TREE` in the startup error.
 
-The server refreshes public corporation and alliance IDs for every known
-character at startup, hourly, and after the first verified sign-in or link
-that registers a character. The refresh uses the shared Redis-backed ESI
-scheduler without an EVE token. It still runs without a tree or an EVE SSO
-registration. A failed lookup leaves the last valid observation in place
-until a later refresh succeeds.
+The monolith refreshes public corporation and alliance IDs at startup, hourly,
+and when the first verified sign-in or link registers a character. Refresh
+requires enabled future calls and execution, enabled Redis, and a service
+secret (`SERVERPOD_SERVICE_SECRET` in Compose). It uses the shared ESI scheduler
+without an EVE token and doesn't require a tree or an EVE SSO registration.
+A failed lookup leaves the last valid observation in place until a later
+refresh succeeds.
 
 ### ESI vault backups
 

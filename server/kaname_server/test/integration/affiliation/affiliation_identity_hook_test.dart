@@ -88,10 +88,10 @@ void main() {
       102: Completer<void>(),
     };
     final release = Completer<void>();
-    f.respond = (request, ids) async {
+    f.respond = (ids) async {
       entered[ids.single]!.complete();
       await release.future;
-      await f.json(request, 200, [
+      return jsonReply(200, [
         {'character_id': ids.single, 'corporation_id': 42},
       ]);
     };
@@ -198,10 +198,10 @@ void main() {
       },
     );
     final codes = <int>[];
-    f.respond = (request, ids) async {
+    f.respond = (ids) async {
       final code = codes.isEmpty ? 500 : 200;
       codes.add(code);
-      await f.json(request, code, [
+      return jsonReply(code, [
         for (final id in ids) {'character_id': id, 'corporation_id': 42},
       ]);
     };

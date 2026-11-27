@@ -26,9 +26,9 @@ The Compose `server` service SHALL receive the declaration from the deployment e
 
 ### Requirement: Affiliation sweep registration
 
-The monolith SHALL schedule startup and hourly sweeps outside test mode when future calls and execution are enabled, Redis is enabled, and a service secret is configured. It SHALL repair failed sweep enqueue without restart and coalesce concurrent full sweeps, not first-known work.
+The monolith SHALL enqueue startup and hourly sweeps outside test mode when future calls, their execution, and Redis are enabled and a service secret is set. It SHALL repair enqueue failures without restart. Concurrent full sweeps coalesce; first-known calls do not.
 
-This job's ADR 0009 exception lets a per-boot timer own cadence and enqueue Serverpod one-shot calls. A prior boot's sweep entry SHALL NOT replace a new startup sweep.
+Under its ADR 0009 exception, one timer per boot SHALL set cadence and enqueue Serverpod one-shots. Each call runs only its slot. Repair SHALL NOT retry failed ESI lookups. A prior boot's call SHALL NOT replace the startup sweep.
 
 #### Scenario: Startup or hourly enqueue fails
 - **WHEN** a startup or hourly enqueue fails and the database later accepts registration
@@ -129,7 +129,7 @@ When affiliation is enabled, the server SHALL enqueue one public affiliation loo
 
 ### Requirement: Last valid affiliation observation
 
-The server SHALL keep at most one observation per identity and delete it with the identity. Store the corporation ID, optional alliance ID, and observation time. No row means unknown; null alliance means none. Among valid results, the greater lookup order allocated before submission SHALL win. Public ESI affiliation SHALL stay server-only in this change. Future outbound delivery SHALL use the viewer's privacy scope under ADR 0006.
+The server-only model and migration SHALL enforce one PostgreSQL affiliation row per identity via a unique foreign key with cascading deletion. Store corporation ID, optional alliance ID, observation time, and lookup order. No row means unknown; a null alliance means none. Among valid results, the greater order allocated before submission SHALL win. Future delivery SHALL use the viewer's privacy scope under ADR 0006.
 
 #### Scenario: Character moves and leaves its alliance
 - **GIVEN** a stored observation has a corporation and an alliance

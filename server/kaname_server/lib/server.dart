@@ -36,6 +36,23 @@ Future<void> run(List<String> args) {
     authenticationHandler: (session, bearer) async =>
         ServerSso.of(session.serverpod)?.authenticate(session, bearer),
   );
+  configureKanameEsi(
+    pod,
+    environment,
+    serviceSecret: pod.getPassword('serviceSecret'),
+  );
+  return serve(pod);
+}
+
+/// Binds SSO and affiliation before listening, sharing one ESI scheduler.
+///
+/// [serviceSecret] is the resolved Serverpod password. Without a usable
+/// scheduler, affiliation does not register work; SSO keeps its own gate.
+void configureKanameEsi(
+  Serverpod pod,
+  Map<String, String> environment, {
+  required String? serviceSecret,
+}) {
   ServerEsiRuntime? esi;
   ServerEsiRuntime openEsi() => esi ??= ServerEsiRuntime.forPod(
     pod,
@@ -43,11 +60,7 @@ Future<void> run(List<String> args) {
     onStateFailure: () => stderr.writeln('esi: scheduler state unavailable'),
   );
   final AffiliationRuntime? affiliation;
-  switch (affiliationAvailability(
-    pod.config,
-    pod.runMode,
-    pod.getPassword('serviceSecret'),
-  )) {
+  switch (affiliationAvailability(pod.config, pod.runMode, serviceSecret)) {
     case AffiliationAvailability.inactive:
       affiliation = null;
     case AffiliationAvailability.missingScheduler:
@@ -71,7 +84,6 @@ Future<void> run(List<String> args) {
   if (esi case final runtime?) {
     pod.experimental.shutdownTasks.addTask('esi-runtime', runtime.close);
   }
-  return serve(pod);
 }
 
 /// Wires the bundle route and announcer into [pod], starts it, then starts
