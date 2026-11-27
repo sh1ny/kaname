@@ -15,6 +15,8 @@ TIER: FULL
 
 ## Context
 
+The source citations describe the pre-change baseline at `e177950`. D20 amends the implemented design; it does not change what the baseline code did.
+
 See [proposal.md](proposal.md) for scope. `SsoIdentityRow` stores a unique CCP character ID, verified owner and blocked flag (`server/kaname_server/lib/src/esi/sso_identity_row.spy.yaml:1-9`). The M2 session stores a digest and `memberId`, and viewer lookup treats `memberId` as the identity row ID (`server/kaname_server/lib/src/esi/sso_session_row.spy.yaml:5-13`, `server/kaname_server/lib/src/esi/sso_sessions.dart:96-110`). Serverpod uses that row ID as `userIdentifier` and the session row ID as `authId` (`server/kaname_server/lib/src/esi/sso_sessions.dart:70-79`). Sign-in can block a stored owner conflict under a character advisory lock and delete that identity's sessions (`server/kaname_server/lib/src/esi/sso_sessions.dart:115-145`).
 
 The raw SSO routes reserve a bounded attempt before I/O (`server/kaname_server/lib/src/esi/sso_route.dart:183-208`). The callback verifies claims and holds the result until the app supplies the proof and either the web browser binding or the native completion code (`server/kaname_server/lib/src/esi/sso_route.dart:255-305`, `server/kaname_server/lib/src/esi/sso_route.dart:315-355`). Scoped completion checks the exact session, character and owner before using the grant (`server/kaname_server/lib/src/esi/server_sso_grants.dart:142-169`). Handoff takes the current session's identity as input (`server/kaname_server/lib/src/esi/sso_route.dart:419-446`, `server/kaname_server/lib/src/esi/sso_route.dart:477-491`). The signing character's allowlist entry determines admin scope (`server/kaname_server/lib/src/esi/sso_sessions.dart:96-110`).
@@ -29,9 +31,11 @@ The handoff route passes a previously resolved identity to `release`, which acqu
 
 ## Threat model
 
-In scope: a member or admin who uses linking or unlinking to inflate private-aggregate counts or read another account's data; concurrent requests; a crash or restart at any point; and one backward step of the database clock. D15 handles that step.
+In scope: a member or admin who uses linking or unlinking to inflate private-aggregate counts or read another account's data; concurrent requests; a crash or restart at any point; and one backward step of the database clock. D15 handles that step for aggregate release, and D20 handles it for session expiry.
 
 Accepted cutoff limit: until a window is first durably sealed, the cutoff uses the database clock. A clock crossing that was never sealed does not decide eligibility. Once sealed, one backward step cannot change the window or make the server select an older one. No independent time source is required.
+
+Accepted expiry limit: until Postgres durably records expiry, an admission read uses current database time. If the clock crosses a session's expiry and steps back before any expiry deletion commits, that crossing does not terminate the session. After the delete commits, a backward step or restart cannot make the same bearer valid again.
 
 Out of scope unless the owner adds them: a compromised Postgres or host, an operator editing the database directly, repeated or malicious clock manipulation, and attackers who control CCP SSO. Record and file out-of-scope findings separately; they do not block this change.
 
@@ -116,6 +120,7 @@ Out of scope unless the owner adds them: a compromised Postgres or host, an oper
 
 - Choice: Every identity writer uses D5's character advisory lock, including the common block path used by sign-in, scoped activation and refresh. The writer re-reads current state after obtaining the lock. Sign-in updates the name only; owner conflict updates the blocked flag only and revokes sessions by signing identity in that transaction. Only membership operations update `accountId`. A refresh admitted before unlink can still block a signed owner conflict, but cannot restore membership from an older row snapshot.
 - Admission: An exact live-session read at the gate below is the authorization point. Use current signing identity, account membership, expiry, blocked state and, for admin paths, the live character allowlist result. Nothing admitted before revocation gains new authority, but already admitted work may finish. Never keep a membership or session transaction open across a holder operation, ESI request, or static-data job.
+- Expiry: Apply D20 within the protected admission read. For a snapshot that must include both viewer and data, the live-session read is its first snapshot read. For a membership mutation, sample expiry after the exact acting-session lock. Do not proceed with protected work after observing expiry, even if the expiry deletion fails.
 
   | Protected path | Where to check the session |
   |---|---|
@@ -213,9 +218,20 @@ Out of scope unless the owner adds them: a compromised Postgres or host, an oper
 - Important: yes (request admission and resource bounds).
 - Chosen by: user; owner approved M3 in item 96.
 
+### D20: End a session permanently when expiry is recorded
+
+- Choice: Use database UTC inside the exact live-session query, including the post-lock check for a membership mutation. At or after `expiresAt`, deny the protected action and delete that exact session row. Commit the deletion before confirming expiry to the caller. The deletion is the durable record. Do not write or take a row lock for a live lookup that did not already require a lock, and do not add a watermark or tombstone table.
+- Ordering: Expiry deletion uses the caller's transaction when admission is already transactional. Return a refusal value through that transaction, including for own history, and translate it to a denial only after commit. An independent lookup commits a separate bounded delete keyed to the exact row it observed. Neither path compares the time again during deletion. A fresh admission snapshot taken after commit cannot read the bearer. Work already admitted follows D10.
+- Time and bounds: Use database UTC to issue new session expiries and to choose the existing bounded prune batch. Don't rewrite valid M2 expiries. Pruning removes expired rows, not new evidence tables. Expiry deletion uses the short existing lock and statement deadlines, never touches account, character, grant or holder rows, and does not acquire character or account locks. Concurrent expiry checks can only contend on the exact session being deleted.
+- Failure: A concurrent delete can abort an older repeatable-read transaction. If that happens, or if the statement or commit outcome is unresolved, admit no work and report unavailability from the explicit viewer route. The same rule applies to the independent delete. A later request can confirm exact-row absence using a fresh snapshot. A crash before commit can leave no durable expiry record; a crash after commit but before the reply leaves the bearer absent. No process cache or external clock is required.
+- Rejected: Keep a process-local expiry set or write a shared clock watermark on live reads. The set cannot survive restart, and the watermark would add shared write contention to authentication.
+- Reversal cost: Medium (the existing session row remains the source of authority).
+- Important: yes (durable authority and operation admission).
+- Chosen by: owner, item 96, pre-ship expiry amendment.
+
 ### Decision summary
 
-Ormy approved S1–S4 and D1–D12 on the owner's delegation on 2026-11-27. The owner confirmed them and authorized apply in item 96, after approving D13–D19 and the threat model. Archive still requires separate approval.
+Ormy approved S1–S4 and D1–D12 on the owner's delegation on 2026-11-27. The owner confirmed them and authorized apply in item 96, after approving D13–D19 and the threat model. The owner later approved D20 during pre-ship review. Archive still requires separate approval.
 
 | # | Decision | Choice | Rejected | Reversal cost | Important | Chosen by |
 |---|---|---|---|---|---|---|
@@ -242,6 +258,7 @@ Ormy approved S1–S4 and D1–D12 on the owner's delegation on 2026-11-27. The 
 | D17 | Aggregate response ordering | Check durable seal again at response admission | Return a superseded result | Low | yes | owner, item 96 |
 | D18 | Ambiguous unlink | Keep affected views uncertain; revoke and sign in again | Add a separate settlement protocol | Medium | yes | owner, item 96 |
 | D19 | Roster ingress | Admit before bearer DB authentication; retain per-account cap | Bound only page work | Low | yes | owner, item 96 |
+| D20 | Session expiry after a clock step | Database UTC at admission; commit deletion of the exact expired session | In-memory expiry or a shared watermark | Medium | yes | owner, item 96 |
 
 ## Assumptions
 
@@ -271,6 +288,7 @@ None.
 - C20: A sealed window cannot regress across restart and a backward clock step. New receipt and exclusion writes cannot change its inputs. Kind: invariant. Destination: spec: specs/esi-call-log/spec.md → Requirement: Released aggregate windows cannot go backward.
 - C21: The roster admits one in-flight page per account and four server-wide, with no queue ahead of bearer database authentication. Kind: invariant. Destination: spec: specs/member-accounts/spec.md → Requirement: Roster reads do not queue.
 - C22: An aggregate response rechecks the durable seal immediately before admission, including cache hits. A superseded page is not returned. Kind: invariant. Destination: spec: specs/esi-call-log/spec.md → Requirement: Released aggregate windows cannot go backward.
+- C23: Once Postgres commits an expiry deletion, no later admission snapshot can use that bearer, including after a backward clock step or restart. A clock crossing before any durable observation does not terminate a session. Kind: invariant. Destination: spec: specs/esi-sso/spec.md → Requirement: Connected operations recheck the signing session at admission.
 
 ## Diagrams (FULL)
 
@@ -367,6 +385,7 @@ flowchart LR
 | Account service or Postgres | A lost reply does not tell the app whether the transaction committed. | An ambiguous unlink uses the revocation and fresh sign-in flow in D18. Partial roster data is not settlement evidence. | Same-account link is a no-op; no automatic unlink retry. | App reports refusal or unavailable without owner or secret data. |
 | Migration | DDL and data backfill roll back together before commit. | Rerun the normal backup-backed maintenance migration. | Yes for a failed, uncommitted upgrade. | Operator sees the migration fail. |
 | RPC authentication or roster | An invalid viewer yields no data. A transient lookup error does not confirm sign-out. | Retry the read explicitly. An invalid session needs sign-in again. | Yes for a read. | App shows sign-in required or unavailable. |
+| Session expiry | A live admission read finds the exact session expired. | Delete only that row. Refuse admission even if deleting fails. Confirm expiry only after the delete commits. | Recheck authority; an already deleted row stays absent. | The explicit viewer check reports invalidity or unavailable; no protected work starts. |
 | Flutter Settings | The app closes or switches server while a reply is in flight. | Re-enter Settings under the current session; discard old replies. | Read only after binding to the current session. | App shows the current viewer or signed-out state. |
 | ESI call log | An own read cannot establish live authority; it returns no rows. | The next own read checks membership from Postgres again. | Yes; no new ESI call is sent. | Call log shows denied or unavailable. |
 
@@ -377,7 +396,7 @@ flowchart LR
 | OAuth attempts, exchange and body | Use the existing 128 live attempts, 4 per client, 8 exchanges, and 2 KiB raw SSO JSON request limit (`server/kaname_server/lib/src/esi/sso_route.dart:147-153`, `server/kaname_server/lib/src/esi/sso_route.dart:183-208`, `server/kaname_server/lib/src/esi/sso_route.dart:270-274`). | Refuse using the existing busy or invalid reply. No queue. | Existing five-minute attempt lifetime (`server/kaname_server/lib/src/esi/sso_route.dart:99-104`, `server/kaname_server/lib/src/esi/sso_route.dart:560-562`). | Link shares the same slots; it does not open another exchange pool. |
 | Membership writes | At most two character keys, two existing account rows and one acting session validation per mutation. Singleton eligibility checks at most two attached identity rows. Revoke sessions with an indexed delete. | Conflicting writes wait only for the short DB lock deadline, then report busy or unavailable. | Follow existing short database lock and statement limits used by the receipt store (`server/kaname_server/lib/src/esi/esi_call_log_store.dart:132-135`, `server/kaname_server/lib/src/esi/esi_call_log_store.dart:198-211`). No network inside a transaction. | Unrelated accounts do not share a lock. Active DB connections use the existing production pool (`server/kaname_server/config/production.yaml:20`). |
 | Roster read and Flutter state | Four server-wide ingress slots before bearer DB authentication; one page per account after authentication. Hold slots until admitted work settles. Fetch at most 51 rows to return 50 and a cursor. | Fixed typed busy without waiting or partial data. The client displays one page and requests another explicitly. | Preserve the RPC connection timeout and use the existing page statement budget for the live auth lookup and page query (`app/lib/esi_sso/data/call_log_client.dart:28-34`, `server/kaname_server/lib/src/esi/esi_call_log_store.dart:130-135`). | Excess requests start neither bearer DB authentication nor page SQL. Only the admitted request count can wait for a database connection. |
-| Active bearers | Preserve the existing limit of eight unexpired sessions per signing identity and one-day expiry (`server/kaname_server/lib/src/esi/sso_sessions.dart:168-193`). | Expire the oldest live bearer on that identity's next sign-in. Existing pruning removes expired rows in batches (`server/kaname_server/lib/src/esi/sso_sessions.dart:239-248`). | Same as before upgrade. | Session volume scales with identities, not number of accounts multiplied by number of characters. |
+| Active bearers | At issuance, retain at most eight sessions live by the sampled database time for a signing identity. Expiry remains one day. Live reads do not write. A read that finds expiry deletes at most one row. | Sign-in retires the oldest live bearer at the cap. The bounded prune batch removes expired rows. A backward step can only reclassify expired rows whose deletion was never committed. | Keep the existing short database lock and statement deadlines for expiry deletion. | No shared expiry row, history table or cross-session lock. |
 | Upgrade backfill | One account row and membership update per identity; one account reference per session. Do not copy receipt, vault or holder records. | Maintenance transaction must commit as a unit. | No application request is held open by the maintenance command. | Linear writes and index maintenance over existing rows. No per-identity CCP request. The maintenance window, disk space and backups are operator concerns. |
 | Known split evidence | One boolean per character and receipt, and one keyed timestamp row per ever-excluded account. No event history. | Insert only on first exclusion. A failed insert fails the account write. | Use the existing account transaction limits and log release barrier. | Evidence can grow with excluded accounts even after retirement. At 10× or 100× churn, storage grows linearly. Admission uses one primary-key lookup; aggregate checks only candidates present in the current window and does not scan lifetime evidence. |
 | Release watermark | One row. One short shared lookup per evidence or receipt write. Advance under the exclusive lock. | On lock or persistence failure, release is unavailable; a write cannot bypass the watermark. | Keep the release lock deadline and existing statement budgets. | State size is constant. Share one in-flight calculation and cache only the latest committed seal. |
@@ -403,6 +422,11 @@ flowchart LR
 - Hold four roster requests before their auth lookups settle. A fifth gets busy without bearer database work. Separately, hold a page for one account with spare ingress capacity. A second session on that account receives busy without page work, and a different account can use the spare slot.
 - Step the database clock backward across a cutoff that was never sealed. Allow an exclusion with the now-current database time; on first release after the clock reaches the cutoff again, that exclusion applies. Contrast with the same step after a seal, where the watermark keeps the exclusion out of the earlier window.
 - Pause an aggregate calculation or cache hit before response admission. Advance the seal from another request or prune, then resume. Each waiting response rejects the superseded end and returns unavailable without old rows.
+- Test a live bearer before expiry and an unrecorded clock crossing. Separately, lose the expiry reply after commit, step the clock backward and restart the server. The next admission must still refuse the former bearer and accept another live bearer.
+- Exercise roster and own history separately. Hold each request after initial authentication, then advance to exact expiry before its first snapshot read. Assert no protected rows and no surviving acting bearer after a backward step.
+- Hold the exact acting-session lock before unlink's protected check. Advance the clock while the mutation waits. The check samples expiry after acquisition, and refusal commits only the exact session deletion. Check that membership and other sessions stay unchanged.
+- Force an expiry transaction to roll back before commit. The row remains and the explicit viewer route reports unavailable. Separately, order a concurrent delete so it aborts an older repeatable-read transaction. That transaction reports unavailable, and the next fresh snapshot confirms absence.
+- Hold a row lock held by another transaction and verify an ordinary live viewer lookup proceeds without waiting for that lock. Reject any session write during that lookup in the test database. No elapsed-time assertion.
 
 ## Mechanism Ledger (FULL)
 
@@ -420,6 +444,7 @@ flowchart LR
 | Persistent split evidence and receipt stamp | Yes | Receipt overlap cannot establish an earlier shared membership when each alt first makes calls after leaving. | An owner-approved privacy rule with equivalent coverage and stable releases. |
 | Single durable seal | Yes | A release lock orders transactions, not wall time. Without the seal, a backward step could let new data alter an already released answer after restart. | An equivalent persistent release protocol reviewed against the threat model. |
 | Roster admission slots | Yes | A row limit controls page size but does not bound concurrent work in the database pool. | An equivalent existing server-wide page admission and deadline. |
+| Delete the exact session on observed expiry | Yes | A backward clock step can make a retained row appear live again. Deletion persists the decision without adding another store or a write to the live path. | A reviewed admission mechanism with the same persistent expiry guarantee and no shared write contention. |
 
 ## Risks / Trade-offs
 

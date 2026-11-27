@@ -49,7 +49,23 @@ The server SHALL derive ESI grants, opt-ins, holder authority and interim admin 
 
 ### Requirement: Connected operations recheck the signing session at admission
 
-A connected operation SHALL require a live session at its protected admission check. A request with an expired, revoked, blocked or detached signing session SHALL NOT start ESI work, change a holder assignment or authorize a static-data mutation. Work already admitted SHALL follow its existing completion rules.
+Connected admissions SHALL require a live signing session. Expired, revoked, blocked or detached sessions SHALL NOT start ESI work, change holders or authorize static-data writes. Work already admitted SHALL follow its existing rules. At or after expiry by database UTC, the admission read SHALL deny access. The server SHALL delete the exact session and commit before confirming expiry. That deletion SHALL stay final. On commit failure the server SHALL NOT admit work or confirm expiry.
+
+#### Scenario: Expiry recorded at admission survives a backward clock step
+
+- **WHEN** a protected admission read reaches the exact session's expiry and commits its deletion, then the database clock steps back and the server restarts
+- **THEN** the former bearer cannot admit work, even if the caller never received the expiry reply
+- **AND** other sessions that have not expired can still admit work
+
+#### Scenario: The database clock steps back before expiry is recorded
+
+- **WHEN** the clock crosses a session's expiry and steps back before any expiry deletion commits
+- **THEN** the next admission uses the current database time. It does not treat the unrecorded crossing as a terminal expiry
+
+#### Scenario: An expiry deletion does not commit
+
+- **WHEN** a protected admission read finds the session expired but cannot commit deletion
+- **THEN** the request starts no protected work, and the explicit viewer check reports unavailability rather than confirmed expiry
 
 #### Scenario: Work already admitted can finish after unlink
 

@@ -135,6 +135,12 @@ A live connected session SHALL be able to unlink a non-main character from its o
 - **WHEN** an unlink request names the current main, including when it is the last character or an earlier main change has lost the race
 - **THEN** membership and sessions stay unchanged and the app explains that the member must select another main first
 
+#### Scenario: The acting bearer expires before the locked unlink check
+
+- **WHEN** an unlink's acting bearer passed initial authentication but reaches expiry before the protected check under its session lock
+- **THEN** the unlink changes no membership or holder state, and the transaction commits deletion of the expired acting session
+- **AND** other sessions remain valid, and the expired bearer cannot access the roster or own history after a backward database-clock step
+
 ### Requirement: Connected Settings shows the account and its characters
 
 Connected ESI settings on web and native SHALL show the main, signing character and up to 50 linked characters per page. The server SHALL recheck the live session on every page request. Paging SHALL NOT use a cross-session roster revision token. Restarting paging after a local change SHALL fence older replies. Invalidation or server change SHALL clear the roster, and late replies SHALL NOT restore it. Kaname SHALL NOT push roster changes to other sessions or show this roster in solo mode.
