@@ -2285,6 +2285,57 @@ void main() {
     expect((await post('viewer', {}, bearer: main)).statusCode, 200);
   }, timeout: const Timeout(Duration(minutes: 3)));
 
+  test(
+    'a failed owner block still retires the rejected refresh credential',
+    () async {
+      final bearer = (await signIn())['session'] as String;
+      await authorize(bearer);
+      await pod.pod.withSession((s) async {
+        await s.db.unsafeExecute('CREATE SEQUENCE owner_block_attempt');
+        await s.db.unsafeExecute(r'''
+        CREATE FUNCTION refuse_owner_block_commit()
+        RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          PERFORM nextval('owner_block_attempt');
+          RAISE EXCEPTION 'Intentional owner block commit failure';
+        END
+        $$
+      ''');
+        await s.db.unsafeExecute('''
+        CREATE CONSTRAINT TRIGGER refuse_owner_block_commit
+        AFTER UPDATE OF blocked ON esi_identity
+        DEFERRABLE INITIALLY DEFERRED FOR EACH ROW
+        WHEN (NEW.blocked AND NOT OLD.blocked)
+        EXECUTE FUNCTION refuse_owner_block_commit()
+      ''');
+      }, enableLogging: false);
+
+      owner = 'RElGRkVSRU5U';
+      clock = clock.add(const Duration(minutes: 21));
+      final denied = await post('skills', {}, bearer: bearer);
+      expect(denied.statusCode, 403);
+      expect(jsonDecode(denied.body), {'status': 'esiReauthorize'});
+      expect((await post('viewer', {}, bearer: bearer)).statusCode, 200);
+      final rows = await pod.pod.withSession(
+        (s) => s.db.unsafeQuery('''
+        SELECT
+          (SELECT is_called FROM owner_block_attempt),
+          (SELECT blocked FROM esi_identity WHERE "characterId" = 410),
+          status, "sealedCredential" IS NULL
+        FROM esi_token_vault WHERE "characterId" = 410
+      '''),
+        enableLogging: false,
+      );
+      expect(rows.single.toList(), [true, false, 'dead', true]);
+
+      final repeated = await post('skills', {}, bearer: bearer);
+      expect(repeated.statusCode, 403);
+      expect(jsonDecode(repeated.body), {'status': 'esiReauthorize'});
+      expect(refreshes, 1);
+      expect(receipts, isEmpty);
+    },
+  );
+
   test('Valid identity signs in again', () async {
     final first = await signIn();
     final second = await signIn();

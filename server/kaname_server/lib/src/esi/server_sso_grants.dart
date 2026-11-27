@@ -315,12 +315,17 @@ final class ServerSsoGrants implements SsoGrantAuthority {
           case CcpVerifiedIdentity():
             if (result.characterId == pinned.characterId &&
                 result.owner != pinned.owner) {
-              await _sessions.block(
-                session,
-                pinned.characterId,
-                pinned.owner,
-                proofDeadline: result.expiresAt,
-              );
+              try {
+                await _sessions.block(
+                  session,
+                  pinned.characterId,
+                  pinned.owner,
+                  proofDeadline: result.expiresAt,
+                );
+              } on Object {
+                // Failure to persist the identity block does not make this
+                // credential retryable. The vault must retire it either way.
+              }
               return const VaultRefreshUnverifiedGrant();
             }
             final permitted = _policy == null
