@@ -131,9 +131,13 @@ final class SsoSessions {
   /// Returns `null` only if the bearer or session is invalid. Lookup errors
   /// propagate so the viewer route can report unavailability. Other consumers
   /// use [viewer] to keep their existing failure handling.
-  Future<SsoViewer?> viewerForRefresh(Session session, String bearer) async {
+  Future<SsoViewer?> viewerForRefresh(
+    Session session,
+    String bearer, {
+    Transaction? transaction,
+  }) async {
     if (!_bearerShape.hasMatch(bearer)) return null;
-    return _live(session, digest: ssoDigest(bearer));
+    return _live(session, digest: ssoDigest(bearer), transaction: transaction);
   }
 
   /// Rechecks the exact session and account selected by Serverpod authentication.

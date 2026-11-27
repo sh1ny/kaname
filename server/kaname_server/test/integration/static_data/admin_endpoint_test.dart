@@ -404,6 +404,76 @@ void main() {
     }
   }, timeout: const Timeout(Duration(minutes: 3)));
 
+  test(
+    'a replay paused in authorization answers from the settled row',
+    () async {
+      await start(admin: true);
+      final worker = _ControlledWorker();
+      final settled = Completer<void>();
+      await runWorker(
+        controlled: worker,
+        settleLog: (_, message) {
+          if (message.contains(' ${_id(1)} settled ')) settled.complete();
+        },
+      );
+      final storageReached = Completer<void>();
+      final store = Completer<void>();
+      final authorizationReached = Completer<void>();
+      final authorize = Completer<void>();
+      addTearDown(() {
+        if (!store.isCompleted) store.complete();
+        if (!authorize.isCompleted) authorize.complete();
+      });
+      beforeSession = (call) async {
+        if (call == 2) {
+          storageReached.complete();
+          await store.future;
+        }
+      };
+      final original = update(1);
+      await Future.any([
+        storageReached.future,
+        original.then(
+          (_) => fail('The operation skipped reservation storage.'),
+        ),
+      ]);
+      final auth = await server.pod.withSession(
+        (s) => staticDataTestAuthentication(s, staticDataTestBearer),
+      );
+      final replay = StaticDataAccess.forPod(server.pod).admission.request(
+        _id(1).toString(),
+        kind: SdeAdminOperationKind.updateNow,
+        authorize: (session) async {
+          authorizationReached.complete();
+          await authorize.future;
+          return SsoSessions.liveAdmin(session, auth);
+        },
+      );
+      await Future.any([
+        authorizationReached.future,
+        replay.then((_) => fail('The replay skipped live authorization.')),
+      ]);
+      store.complete();
+      final request = await worker.firstCheck.future;
+      worker.reply(BuildCheckStarted(requestId: request.requestId));
+      expect((await original).outcome, api.AdminAnswerOutcome.started);
+      worker.reply(
+        BuildCheckFinished(
+          requestId: request.requestId,
+          result: const BuildUpToDate(901),
+        ),
+      );
+      await settled.future;
+      expect((await operation(1))?.state, SdeAdminOperationState.ended);
+      authorize.complete();
+      final answer = await replay;
+      expect(answer.outcome, AdminAnswerOutcome.ended);
+      expect(answer.operation?.outcome, SdeAdminOperationOutcome.upToDate);
+      expect(worker.checks, hasLength(1));
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
   test('two pending admin lookups exhaust only their own budget', () async {
     await start(admin: true);
     final worker = _ControlledWorker();
@@ -613,10 +683,18 @@ void main() {
         'then one reservation wins (second revision: $revision)', () async {
       await start(admin: true);
       final worker = _ControlledWorker();
-      await runWorker(controlled: worker);
+      final settled = Completer<void>();
+      await runWorker(
+        controlled: worker,
+        settleLog: (_, message) {
+          if (message.contains(' ${_id(1)} settled ')) settled.complete();
+        },
+      );
       final firstLookup = Completer<void>();
       final secondLookup = Completer<void>();
       final bothLookedUp = Completer<void>();
+      final firstLookedUp = Completer<void>();
+      final storing = Completer<void>();
       final store = Completer<void>();
       addTearDown(() {
         for (final gate in [firstLookup, secondLookup, store]) {
@@ -624,31 +702,27 @@ void main() {
         }
       });
       afterSession = (index) async {
-        if (index == 1) await firstLookup.future;
+        if (index == 1) {
+          firstLookedUp.complete();
+          await firstLookup.future;
+        }
         if (index == 2) {
           bothLookedUp.complete();
           await secondLookup.future;
         }
       };
       beforeSession = (index) async {
-        if (index == 3) await store.future;
+        if (index == 3) {
+          storing.complete();
+          await store.future;
+        }
       };
       final first = revision == null ? update(1) : rollback(1, 3);
-      await _until(() async => poolCalls == 1 ? true : null);
+      await firstLookedUp.future;
       final second = revision == null ? update(1) : rollback(1, revision);
       await bothLookedUp.future;
       firstLookup.complete();
-      await _until(() async => poolCalls == 3 ? true : null);
-      if (revision != null) {
-        final inMemory = await rollback(1, revision);
-        expect(
-          inMemory.outcome,
-          revision == 3
-              ? api.AdminAnswerOutcome.outcomeUnknown
-              : api.AdminAnswerOutcome.malformed,
-        );
-        expect(poolCalls, 3);
-      }
+      await storing.future;
       secondLookup.complete();
       final repeated = await second;
       expect(repeated.outcome, switch (revision) {
@@ -657,11 +731,17 @@ void main() {
         _ => api.AdminAnswerOutcome.malformed,
       });
       expect(poolCalls, 4); // The raced miss checked the database again.
+      if (revision != null) {
+        // The raced replay has released its admission token; only storage is held.
+        final inMemory = await rollback(1, revision);
+        expect(inMemory.outcome, repeated.outcome);
+        expect(poolCalls, 5); // The replay still checks live authorization.
+      }
       expect(worker.rollbacks, isEmpty);
       expect(worker.checks, isEmpty);
       store.complete();
       if (revision == null) {
-        final dispatch = await _until(() async => worker.checks.singleOrNull);
+        final dispatch = await worker.firstCheck.future;
         worker.reply(BuildCheckStarted(requestId: dispatch.requestId));
         expect((await first).outcome, api.AdminAnswerOutcome.started);
         worker.reply(
@@ -670,11 +750,15 @@ void main() {
             result: const BuildUpToDate(901),
           ),
         );
-        expect((await ended(1)).outcome, SdeAdminOperationOutcome.upToDate);
+        await settled.future;
+        expect(
+          (await operation(1))?.outcome,
+          SdeAdminOperationOutcome.upToDate,
+        );
         expect(worker.checks, hasLength(1));
         return;
       }
-      final dispatch = await _until(() async => worker.rollbacks.singleOrNull);
+      final dispatch = await worker.firstRollback.future;
       expect(dispatch.expectedRevision, 3);
       worker.reply(
         RollbackFinished(
@@ -685,7 +769,7 @@ void main() {
       );
       expect((await first).outcome, api.AdminAnswerOutcome.buildsChanged);
       expect(worker.rollbacks, hasLength(1));
-    });
+    }, timeout: const Timeout(Duration(minutes: 3)));
   }
 
   for (final otherSlot in ['same', 'free', 'another']) {
@@ -1337,6 +1421,7 @@ final class _ControlledWorker implements WorkerProcess {
   final checks = <RunBuildCheck>[];
   final rollbacks = <RunRollback>[];
   final firstCheck = Completer<RunBuildCheck>();
+  final firstRollback = Completer<RunRollback>();
 
   @override
   Stream<Object?> get replies => _replies.stream;
@@ -1352,6 +1437,7 @@ final class _ControlledWorker implements WorkerProcess {
         if (!firstCheck.isCompleted) firstCheck.complete(request);
       case final RunRollback request:
         rollbacks.add(request);
+        if (!firstRollback.isCompleted) firstRollback.complete(request);
       case _:
         break;
     }

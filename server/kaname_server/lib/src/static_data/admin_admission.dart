@@ -82,9 +82,25 @@ final class AdminAdmission {
     Future<bool> Function(Session) authorize,
   ) async {
     try {
-      return await _withAdminSession(authorize)
-          ? _Refused(_remembered(key, pending.key))
-          : _Refused(_answer(AdminAnswerOutcome.notAuthorized));
+      final answer = await _withAdminSession((session) async {
+        if (!await authorize(session)) {
+          return _answer(AdminAnswerOutcome.notAuthorized);
+        }
+        if (identical(_inMemory, pending)) {
+          return _remembered(key, pending.key);
+        }
+
+        final row = await readAdminOperation(session, key.id);
+        if (row != null) return _fromRow(key, row);
+        return switch (_inMemory) {
+          final current? when current.key.id == key.id => _remembered(
+            key,
+            current.key,
+          ),
+          _ => _waiting(key),
+        };
+      });
+      return _Refused(answer);
     } on _AdminWorkBusy {
       return _Refused(_answer(AdminAnswerOutcome.adminBusy));
     } on Exception {

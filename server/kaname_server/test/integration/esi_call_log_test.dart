@@ -291,6 +291,19 @@ void main() {
       expect(await store.routeCounts(session, admin), isEmpty);
     });
 
+    test(
+      'an unattributed error adds nothing to qualifying private totals',
+      () async {
+        for (var owner = 1; owner <= 5; owner++) {
+          await seed(session, recent, owner: owner, character: owner * 10);
+        }
+        await seed(session, recent, owner: null, outcome: 'error');
+        expect(await store.routeCounts(session, admin), [
+          (operation: assets, total: 5, errors: 0),
+        ]);
+      },
+    );
+
     test('expired append cannot alter released counts', () async {
       var failures = 0;
       final runtime = EsiScheduler(

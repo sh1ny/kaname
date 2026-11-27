@@ -613,6 +613,51 @@ void main() {
     expect(invalid.body == '{"status":"signInRequired"}', isTrue);
   });
 
+  test('viewer and holder come from one snapshot across revocation', () async {
+    final signed = await signIn();
+    final bearer = signed['session'] as String;
+    await authorize(bearer);
+    late Future<http.Response> read;
+    await pod.pod.withSession(
+      (db) => db.db.transaction((tx) async {
+        await db.db.unsafeExecute(
+          'LOCK TABLE esi_holder_assignment IN ACCESS EXCLUSIVE MODE',
+          transaction: tx,
+        );
+        final holder =
+            (await db.db.unsafeQuery(
+                  'SELECT pg_backend_pid()',
+                  transaction: tx,
+                )).single.single
+                as int;
+        read = post('viewer', {}, bearer: bearer);
+        await pod.pod.withSession(
+          (observer) => observePostgresLock(observer, holder, read),
+          enableLogging: false,
+        );
+        final row = (await ServerSsoGrants.assignment(
+          db,
+          410,
+          transaction: tx,
+        ))!;
+        expect(row.phase, 'serverHeld');
+        await SsoHolderRow.db.deleteRow(db, row, transaction: tx);
+        await SsoSessionRow.db.deleteWhere(
+          db,
+          where: (t) => t.digest.equals(ssoDigest(bearer)),
+          transaction: tx,
+        );
+      }),
+      enableLogging: false,
+    );
+    final snapshot = await read;
+    expect(snapshot.statusCode, 200);
+    final viewer = jsonDecode(snapshot.body) as Map<String, Object?>;
+    expect(viewer['memberId'], signed['memberId']);
+    expect(viewer['holder'], 'serverHeld');
+    expect((await post('viewer', {}, bearer: bearer)).statusCode, 401);
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
   test('Confidential browser sign-in with other cookies on the host', () async {
     final start = await begin();
     final browserCookies = (

@@ -56,7 +56,7 @@
 | Privacy-scoped call-log reads | Several alts of one member | `server/kaname_server/test/integration/esi_call_log_test.dart` | `alts contribute one member` | green |
 | Privacy-scoped call-log reads | Stable closed periods | `server/kaname_server/test/integration/esi_call_log_release_test.dart` | `next window is not published before its UTC grace and committed seal` | green |
 | Privacy-scoped call-log reads | Public probe | `server/kaname_server/test/integration/esi_call_log_test.dart` | `public probe aggregate does not require member attribution` | green |
-| Privacy-scoped call-log reads | Unattributed authenticated call | `server/kaname_server/test/integration/esi_call_log_test.dart` | `no trusted member excludes a private row` | green |
+| Privacy-scoped call-log reads | Unattributed authenticated call | `server/kaname_server/test/integration/esi_call_log_test.dart` | `no trusted member excludes a private row`; `an unattributed error adds nothing to qualifying private totals` | green |
 | Privacy-scoped call-log reads | Write misses its deadline | `server/kaname_server/test/integration/esi_call_log_test.dart` | `expired append cannot alter released counts` | green |
 | Privacy-scoped call-log reads | Slow commit spans release | `server/kaname_server/test/integration/esi_call_log_test.dart` | `uncommitted admitted append blocks or joins release` | green |
 | Receipt ownership and aggregate eligibility follow recorded activity | Independent accounts qualify the route despite other overlapping accounts | `server/kaname_server/test/integration/esi_call_log_release_test.dart` | `eligible accounts qualify totals including ineligible calls` | green |

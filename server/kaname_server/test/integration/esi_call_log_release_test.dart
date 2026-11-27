@@ -136,8 +136,16 @@ void main() {
     test(
       'overlap on another route disqualifies accounts for the window',
       () async {
-        await independent(5);
-        await seed(session, recent, route: other, owner: 6, character: 10);
+        await independent(6);
+        for (final owner in [1, 6]) {
+          await seed(
+            session,
+            recent,
+            route: other,
+            owner: owner,
+            character: 70,
+          );
+        }
         expect(await store.routeCounts(session, admin), isEmpty);
       },
     );

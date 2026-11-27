@@ -412,13 +412,28 @@ final class SsoRoute {
   Future<Response> _viewer(Request request) async {
     final bearer = _bearer(request);
     if (bearer == null) return _failure(401);
-    final (viewer, holder) = await _withSession((s) async {
-      final viewer = await _sessions.viewerForRefresh(s, bearer);
-      final row = viewer == null
-          ? null
-          : await ServerSsoGrants.assignment(s, viewer.identity.characterId);
-      return (viewer, row?.phase);
-    });
+    final (viewer, holder) = await _withSession(
+      (s) => s.db.transaction(
+        (tx) async {
+          final viewer = await _sessions.viewerForRefresh(
+            s,
+            bearer,
+            transaction: tx,
+          );
+          final row = viewer == null
+              ? null
+              : await ServerSsoGrants.assignment(
+                  s,
+                  viewer.identity.characterId,
+                  transaction: tx,
+                );
+          return (viewer, row?.phase);
+        },
+        settings: const TransactionSettings(
+          isolationLevel: IsolationLevel.repeatableRead,
+        ),
+      ),
+    );
     if (viewer == null) return _failure(401);
     return _json(200, {
       'memberId': viewer.accountId.toString(),
