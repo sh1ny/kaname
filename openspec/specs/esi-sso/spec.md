@@ -50,17 +50,32 @@ The server SHALL bind a connected authorization to the browser that approved it 
 
 ### Requirement: Accept only validated CCP character identity
 
-Both modes SHALL accept only a correctly signed CCP access JWT verified against CCP's JWKS. They SHALL check the allowed signing algorithm, issuer, EVE Online audience, exact registration client ID, expiry and character subject. The server SHALL map validated character and ownership identity to a stable Serverpod user; it SHALL NOT use a CCP access token as a Kaname session credential.
+Both modes SHALL accept only a correctly signed CCP access JWT verified against CCP's JWKS. They SHALL check the allowed signing algorithm, issuer, EVE Online audience, exact registration client ID, expiry and character subject. The server SHALL resolve the Kaname account from the verified character and owner. Each session SHALL identify that account and remain bound to its signing character. A CCP access token SHALL NOT serve as a Kaname session credential.
 
 #### Scenario: Valid identity signs in again
 
-- **WHEN** separate valid authorizations identify the same character and owner in the connected flow
-- **THEN** they resolve to the same Serverpod user, and privileges come only from server policy
+- **WHEN** separate valid authorizations identify the same character and owner in the connected flow and the character is still linked to the same account
+- **THEN** they resolve to the same Kaname user account and signing character, and privileges come only from server policy
 
 #### Scenario: Invalid signature, key or claims
 
 - **WHEN** a token has an invalid signature, an unsupported algorithm, an unknown key after a bounded JWKS update, an invalid issuer, wrong or missing audience, expired validity, malformed subject or missing owner identity
 - **THEN** neither mode establishes identity, activates a credential or sends ESI work using it
+
+#### Scenario: Connected proof expires before committing a mutation
+
+- **WHEN** a sign-in or scope attempt, or the CCP identity it proved, expires before admission to commit
+- **THEN** the server refuses it and leaves the session, account, membership, exclusion, grant and holder assignment unchanged
+
+#### Scenario: Fresh scoped authorization commits the grant and holder together
+
+- **WHEN** a valid scoped attempt matches the live signer and policy, and its proof is still fresh at commit admission
+- **THEN** the encrypted grant and matching holder assignment commit together, or neither changes
+
+#### Scenario: Owner conflict proof expires before the identity can be blocked
+
+- **WHEN** a verified owner conflict from sign-in, linking, scope authorization or refresh expires before the server can finish the block transaction
+- **THEN** the attempt is refused, but that proof does not block the identity or revoke its connected sessions
 
 #### Scenario: CCP rotates its signing key
 
@@ -69,13 +84,14 @@ Both modes SHALL accept only a correctly signed CCP access JWT verified against 
 
 #### Scenario: Known character presents another owner
 
-- **WHEN** a validated token identifies a stored character with a different owner hash
-- **THEN** the sign-in cannot claim the existing user, vault holder or private call history
+- **WHEN** a validated token identifies a stored character with a different owner hash during sign-in or account linking
+- **THEN** the authorization cannot claim the existing user, change membership, activate the vault holder or expose private call history
 
 #### Scenario: Definitive refresh verification rejection
 
 - **WHEN** CCP returns a refreshed grant that definitively fails verification for the current authorization
-- **THEN** the old authorization cannot supply a bearer or refresh again, re-login is required, and a signed owner conflict blocks the mismatched identity
+- **THEN** the old authorization cannot supply a bearer or refresh again and requires re-login, even if the server cannot commit an identity block
+- **AND** a signed owner conflict blocks the mismatched identity only if the proof is still fresh at commit admission and the block transaction commits
 
 ### Requirement: Configured scope policy fails closed
 
@@ -338,3 +354,63 @@ Successive unused take epoch closures for one character SHALL be at least 60 sec
 - **THEN** the source first answers from committed evidence for that intent, such as an accepted take or an epoch that is already closed, before it checks the cooldown or writes a closure
 - **AND** a cooldown or a guarded write that matches no row leaves the outcome unproven, so the source reports pending and does not confirm non-acceptance
 - **AND** a database error also never confirms non-acceptance; the route answers it as unavailable, and the desktop keeps the take and its original proof
+
+### Requirement: Connected authority follows the signing character
+
+The server SHALL derive ESI grants, opt-ins, holder authority and interim admin scope from the session's own verified signing character. A link or main change SHALL NOT grant authority held by another character on the same account.
+
+#### Scenario: The opted-in alt keeps its own policy
+
+- **WHEN** an alt with an applicable opt-in joins an account and signs in through that alt
+- **THEN** the alt retains that opt-in and its existing holder rules, and the account's other characters do not receive the alt's opt-in
+
+#### Scenario: An unlisted alt signs in to an account with an allowlisted main
+
+- **WHEN** a character outside the operator's allowlist signs in to an account with an allowlisted character, including when the allowlisted character is main
+- **THEN** its session does not gain admin scope, and its ESI scope and holder checks still use the character that signed in
+
+### Requirement: Connected operations recheck the signing session at admission
+
+Connected admissions SHALL require a live signing session. Expired, revoked, blocked or detached sessions SHALL NOT start ESI work, change holders or authorize static-data writes. Work already admitted SHALL follow its existing rules. At or after expiry by database UTC, the admission read SHALL deny access. The server SHALL delete the exact session and commit before confirming expiry. That deletion SHALL stay final. On commit failure the server SHALL NOT admit work or confirm expiry.
+
+#### Scenario: Expiry recorded at admission survives a backward clock step
+
+- **WHEN** a protected admission read reaches the exact session's expiry and commits its deletion, then the database clock steps back and the server restarts
+- **THEN** the former bearer cannot admit work, even if the caller never received the expiry reply
+- **AND** other sessions that have not expired can still admit work
+
+#### Scenario: The database clock steps back before expiry is recorded
+
+- **WHEN** the clock crosses a session's expiry and steps back before any expiry deletion commits
+- **THEN** the next admission uses the current database time. It does not treat the unrecorded crossing as a terminal expiry
+
+#### Scenario: An expiry deletion does not commit
+
+- **WHEN** a protected admission read finds the session expired but cannot commit deletion
+- **THEN** the request starts no protected work, and the explicit viewer check reports unavailability rather than confirmed expiry
+
+#### Scenario: Work already admitted can finish after unlink
+
+- **WHEN** unlink commits after the signing session passed the protected admission check for an ESI call
+- **THEN** the call follows its existing completion rules, and the revoked session cannot admit another call
+
+#### Scenario: Unlink wins before holder admission
+
+- **WHEN** a holder request reaches its admission check after its signing session was revoked by unlink
+- **THEN** it neither changes the assignment nor confirms a holder transition using that former session
+
+#### Scenario: Unlink wins before static-data mutation admission
+
+- **WHEN** a static-data mutation reaches its admission check after unlink revoked its allowlisted signing session
+- **THEN** the mutation is denied, without acquiring durable job ownership or writing the setting
+
+#### Scenario: A competing static-data mutation reserves while authority is checked
+
+- **WHEN** one valid admin request is checking its live session and a distinct request reserves the job slot
+- **THEN** the first request uses the existing busy or running response, without another reservation or an invariant failure
+
+#### Scenario: An admitted refresh observes a signed owner conflict after unlink
+
+- **WHEN** a refresh begun before unlink later returns verified claims for a different owner
+- **THEN** the server rejects the grant. It blocks the identity only if the proof is still fresh at commit admission and the block transaction commits
+- **AND** neither outcome restores former membership, changes the holder assignment or gives either owner the old account
