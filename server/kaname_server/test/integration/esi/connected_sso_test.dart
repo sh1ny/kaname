@@ -58,6 +58,7 @@ void main() {
   late Future<void> Function()? afterRpcAuth;
   late Future<void> Function()? beforeSkillsWire;
   late Future<void> Function()? beforeRefresh;
+  Future<void> Function()? beforeViewerReply;
   late bool persistReceipts;
   late JsonWebKey signing;
 
@@ -77,6 +78,7 @@ void main() {
     afterRpcAuth = null;
     beforeSkillsWire = null;
     beforeRefresh = null;
+    beforeViewerReply = null;
     persistReceipts = false;
     final upstream = MockClient((request) async {
       if (request.url.path.startsWith('/.well-known/')) {
@@ -169,8 +171,13 @@ void main() {
     late final SsoRoute route;
     pod = await InProcessPod.start(
       middleware: [
-        (next) =>
-            (request) => route.middleware(next)(request),
+        (next) => (request) async {
+          final response = await route.middleware(next)(request);
+          if (request.url.path == '/auth/esi/viewer') {
+            await beforeViewerReply?.call();
+          }
+          return response;
+        },
         MemberRosterIngress().middleware,
       ],
       authenticationHandler: (session, bearer) async {
@@ -1870,4 +1877,314 @@ void main() {
       );
     },
   );
+
+  test(
+    'owner-conflict blocking revokes the session with both database deadlines',
+    () async {
+      final signed = await signIn();
+      final bearer = signed['session'] as String;
+      await pod.pod.withSession((s) async {
+        await s.db.unsafeExecute(r'''
+        CREATE FUNCTION require_block_deadlines() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+          IF current_setting('lock_timeout')::interval <> interval '1 second'
+             OR current_setting('statement_timeout')::interval <> interval '10 seconds'
+          THEN
+            RAISE EXCEPTION 'Owner-conflict update lacks its database deadlines';
+          END IF;
+          RETURN NEW;
+        END
+        $$
+      ''');
+        await s.db.unsafeExecute('''
+        CREATE TRIGGER require_block_deadlines BEFORE UPDATE OF blocked
+        ON esi_identity FOR EACH ROW WHEN (NEW.blocked AND NOT OLD.blocked)
+        EXECUTE FUNCTION require_block_deadlines()
+      ''');
+        await SsoSessions.forPod(s.serverpod)!.block(s, 410, owner);
+      }, enableLogging: false);
+      expect((await post('viewer', {}, bearer: bearer)).statusCode, 401);
+    },
+  );
+
+  Future<bool> sessionExists(String bearer) => pod.pod.withSession(
+    (s) async =>
+        (await SsoSessionRow.db.findFirstRow(
+          s,
+          where: (t) => t.digest.equals(ssoDigest(bearer)),
+        )) !=
+        null,
+    enableLogging: false,
+  );
+
+  test('expiry stays permanent after a lost reply and restart', () async {
+    final first = clock;
+    final expired = (await signIn())['session'] as String;
+    clock = first.add(const Duration(hours: 1));
+    final live = (await signIn())['session'] as String;
+    expect((await post('viewer', {}, bearer: expired)).statusCode, 200);
+    clock = first.add(const Duration(days: 1));
+    final committed = Completer<void>();
+    final release = Completer<void>();
+    final abort = Completer<void>();
+    beforeViewerReply = () async {
+      committed.complete();
+      await release.future;
+    };
+    final request =
+        http.AbortableRequest(
+            'POST',
+            Uri.parse('${pod.baseUrl}auth/esi/viewer'),
+            abortTrigger: abort.future,
+          )
+          ..headers.addAll({...headers(), 'authorization': 'Bearer $expired'})
+          ..body = '{}';
+    final pending = browser.send(request);
+    final lost = expectLater(
+      pending,
+      throwsA(isA<http.RequestAbortedException>()),
+    );
+    try {
+      await Future.any<void>([
+        committed.future,
+        lost.then((_) => fail('reply ended before the commit barrier')),
+      ]);
+      expect(await sessionExists(expired), isFalse);
+    } finally {
+      beforeViewerReply = null;
+      abort.complete();
+      try {
+        await lost;
+      } finally {
+        release.complete();
+      }
+    }
+    clock = first.add(const Duration(hours: 23));
+    final restarted = await pod.restart();
+    addTearDown(restarted.shutdown);
+    await restarted.pod.withSession((s) async {
+      final authority = SsoSessions(now: () => clock);
+      expect(await authority.viewerForRefresh(s, expired), isNull);
+      expect(await authority.viewerForRefresh(s, live), isNotNull);
+    }, enableLogging: false);
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  test('an unobserved clock crossing does not expire a session', () async {
+    final first = clock;
+    final bearer = (await signIn())['session'] as String;
+    clock = first.add(const Duration(days: 1));
+    expect(await sessionExists(bearer), isTrue);
+    clock = first.add(const Duration(hours: 23));
+    expect((await post('viewer', {}, bearer: bearer)).statusCode, 200);
+  });
+
+  test('a failed expiry commit is unavailable and keeps the session', () async {
+    final first = clock;
+    final bearer = (await signIn())['session'] as String;
+    await pod.pod.withSession((s) async {
+      await s.db.unsafeExecute(r'''
+        CREATE FUNCTION refuse_expiry_commit() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'Intentional expiry commit failure'; END
+        $$
+      ''');
+      await s.db.unsafeExecute('''
+        CREATE CONSTRAINT TRIGGER refuse_expiry_commit AFTER DELETE ON esi_session
+        DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION refuse_expiry_commit()
+      ''');
+    }, enableLogging: false);
+    clock = first.add(const Duration(days: 1));
+    final reply = await post('viewer', {}, bearer: bearer);
+    expect(reply.statusCode, 503);
+    expect(jsonDecode(reply.body), {'status': 'unavailable'});
+    expect(await sessionExists(bearer), isTrue);
+    clock = first.add(const Duration(hours: 23));
+    expect((await post('viewer', {}, bearer: bearer)).statusCode, 200);
+  });
+
+  test(
+    'a concurrent expiry delete makes an older snapshot unavailable',
+    () async {
+      final first = clock;
+      final bearer = (await signIn())['session'] as String;
+      final older = pod.pod.withSession(
+        (s) => s.db.transaction(
+          (tx) async {
+            final authority = SsoSessions.forPod(s.serverpod)!;
+            expect(
+              await authority.viewerForRefresh(s, bearer, transaction: tx),
+              isNotNull,
+            );
+            clock = first.add(const Duration(days: 1));
+            expect((await post('viewer', {}, bearer: bearer)).statusCode, 401);
+            await authority.viewerForRefresh(s, bearer, transaction: tx);
+          },
+          settings: const TransactionSettings(
+            isolationLevel: IsolationLevel.repeatableRead,
+          ),
+        ),
+        enableLogging: false,
+      );
+      await expectLater(
+        older,
+        throwsA(
+          isA<DatabaseQueryException>().having(
+            (error) => error.code,
+            'SQLSTATE',
+            '40001',
+          ),
+        ),
+      );
+      clock = first.add(const Duration(hours: 23));
+      expect((await post('viewer', {}, bearer: bearer)).statusCode, 401);
+    },
+  );
+
+  for (final roster in [true, false]) {
+    test(
+      '${roster ? 'roster' : 'own history'} expiry after authentication commits exact revocation',
+      () async {
+        final first = clock;
+        final signed = await signIn();
+        final acting = signed['session'] as String;
+        await history(signed['memberId'] as String, 410);
+        expect(await ownCharacters(acting), ['410']);
+        clock = first.add(const Duration(hours: 1));
+        final keeper = (await signIn())['session'] as String;
+        final authenticated = Completer<void>();
+        final resume = Completer<void>();
+        afterRpcAuth = () async {
+          authenticated.complete();
+          await resume.future;
+        };
+        final pending = roster
+            ? accountRpc(acting, 'page', {'after': null})
+            : browser.post(
+                Uri.parse('${pod.baseUrl}esiCallLog/ownRows'),
+                headers: {...headers(), 'authorization': 'Bearer $acting'},
+                body: '{"after":null}',
+              );
+        try {
+          await Future.any<void>([
+            authenticated.future,
+            pending.then((_) => fail('request finished before live admission')),
+          ]);
+          clock = first.add(const Duration(days: 1));
+        } finally {
+          afterRpcAuth = null;
+          resume.complete();
+        }
+        final refused = await pending;
+        expect(refused.statusCode, 200);
+        final body = jsonDecode(refused.body) as Map<String, Object?>;
+        expect(body['status'], 'denied');
+        expect(body[roster ? 'characters' : 'rows'], isEmpty);
+        expect(await sessionExists(acting), isFalse);
+        clock = first.add(const Duration(hours: 23));
+        expect((await post('viewer', {}, bearer: acting)).statusCode, 401);
+        expect(await ownCharacters(keeper), ['410']);
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+  }
+
+  test(
+    'expiry after the acting-session lock commits only revocation',
+    () async {
+      final first = clock;
+      final acting = (await signIn())['session'] as String;
+      expect((await linkAlt(acting, 411)).statusCode, 200);
+      clock = first.add(const Duration(hours: 1));
+      characterId = 410;
+      final keeper = (await signIn())['session'] as String;
+
+      final result = await pod.pod.withSession((s) async {
+        final authority = SsoSessions.forPod(s.serverpod)!;
+        final viewer = (await authority.viewerForRefresh(s, acting))!;
+        final mutations = MemberAccounts(
+          authority,
+          EsiCallLogStore(),
+          afterActorLock: (_, _) async {
+            await expectLater(
+              pod.pod.withSession(
+                (observer) => observer.db.unsafeQuery(
+                  'SELECT id FROM esi_session WHERE id = @id::bigint FOR UPDATE NOWAIT',
+                  parameters: QueryParameters.named({'id': viewer.sessionId}),
+                ),
+                enableLogging: false,
+              ),
+              throwsA(
+                isA<DatabaseQueryException>().having(
+                  (error) => error.code,
+                  'SQLSTATE',
+                  '55P03',
+                ),
+              ),
+            );
+            clock = first.add(const Duration(days: 1));
+          },
+        );
+        return mutations.unlink(s, (
+          account: viewer.accountId,
+          session: viewer.sessionId,
+          character: 410,
+        ), 411);
+      }, enableLogging: false);
+      expect(result, MemberAccountStatus.denied);
+      expect(await sessionExists(acting), isFalse);
+      clock = first.add(const Duration(hours: 23));
+      expect((await post('viewer', {}, bearer: acting)).statusCode, 401);
+      final roster = await accountRpc(keeper, 'page', {'after': null});
+      expect(roster.statusCode, 200);
+      final page = jsonDecode(roster.body) as Map<String, Object?>;
+      expect(
+        (page['characters'] as List<Object?>).map(
+          (row) => (row as Map<String, Object?>)['characterId'],
+        ),
+        ['410', '411'],
+      );
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
+  test('ordinary viewer lookup does not lock or write the session', () async {
+    final bearer = (await signIn())['session'] as String;
+    await pod.pod.withSession((s) async {
+      await s.db.unsafeExecute(r'''
+        CREATE FUNCTION reject_live_session_write() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN RAISE EXCEPTION 'A live viewer must not write sessions'; END
+        $$
+      ''');
+      await s.db.unsafeExecute('''
+        CREATE TRIGGER reject_live_session_write BEFORE INSERT OR UPDATE OR DELETE
+        ON esi_session FOR EACH STATEMENT EXECUTE FUNCTION reject_live_session_write()
+      ''');
+      await s.db.transaction((tx) async {
+        final holder =
+            (await s.db.unsafeQuery(
+                  'SELECT pg_backend_pid()',
+                  transaction: tx,
+                )).single.single
+                as int;
+        await s.db.unsafeQuery(
+          'SELECT id FROM esi_session WHERE digest = @digest::text FOR UPDATE',
+          parameters: QueryParameters.named({'digest': ssoDigest(bearer)}),
+          transaction: tx,
+        );
+        final read = post('viewer', {}, bearer: bearer);
+        final reply = await Future.any<http.Response>([
+          read,
+          pod.pod
+              .withSession(
+                (observer) => observePostgresLock(observer, holder, read),
+                enableLogging: false,
+              )
+              .then(
+                (_) => fail('The live viewer waited for a session row lock'),
+                onError: (Object _, StackTrace _) => read,
+              ),
+        ]);
+        expect(reply.statusCode, 200);
+      });
+    }, enableLogging: false);
+  }, timeout: const Timeout(Duration(minutes: 3)));
 }

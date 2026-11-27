@@ -151,7 +151,7 @@ final class EsiCallLogStore {
             viewer.account,
             transaction: tx,
           );
-          if (live == null) throw const EsiCallLogDenied._();
+          if (live == null) return null;
           return session.db.unsafeQuery(
             '''
             SELECT r.id, r."recordedAt", r."characterId", r.operation, r.bucket,
@@ -183,6 +183,7 @@ final class EsiCallLogStore {
           isolationLevel: IsolationLevel.repeatableRead,
         ),
       );
+      if (rows == null) throw const EsiCallLogDenied._();
       return [
         for (final row in rows)
           (

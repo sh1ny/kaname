@@ -12,8 +12,8 @@ typedef MemberActor = ({int account, int session, int character});
 final class MemberAccounts {
   /// Shares session validation and the durable privacy fence with SSO.
   ///
-  /// [afterActorLock] lets integration tests observe an unsettled unlink
-  /// without holding a SQL statement open or depending on its lock timeout.
+  /// [afterActorLock] lets tests pause after locking the exact acting session,
+  /// before checking its live authority, without waiting on a SQL statement.
   const MemberAccounts(this._sessions, this._callLog, {this._afterActorLock});
 
   final SsoSessions _sessions;
@@ -152,8 +152,6 @@ final class MemberAccounts {
       return MemberAccountStatus.mainChanged;
     }
     if (id == main) return MemberAccountStatus.mainRequired;
-    final barrier = _afterActorLock;
-    if (barrier != null) await barrier(session, tx);
     await SsoIdentityRow.db.updateRow(
       session,
       target.copyWith(accountId: null, wasDetached: true),
@@ -181,6 +179,8 @@ final class MemberAccounts {
       transaction: tx,
     );
     if (rows.isEmpty) return false;
+    final barrier = _afterActorLock;
+    if (barrier != null) await barrier(session, tx);
     final live = await _sessions.viewerById(
       session,
       actor.session,

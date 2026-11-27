@@ -95,6 +95,9 @@ final class SsoSessions {
 
   DateTime _wallNow() => _now?.call().toUtc() ?? DateTime.now().toUtc();
 
+  static const _databaseUtc =
+      "COALESCE(@clock::timestamp, clock_timestamp() AT TIME ZONE 'UTC')";
+
   /// Whether this install can grant admin scope to a verified character.
   bool get adminConfigured => _admins.isNotEmpty;
   static final _bearerShape = RegExp(r'^[A-Za-z0-9_-]{43}$');
@@ -150,6 +153,8 @@ final class SsoSessions {
   /// Returns `null` only if the bearer or session is invalid. Lookup errors
   /// propagate so the viewer route can report unavailability. Other consumers
   /// use [viewer] to keep their existing failure handling.
+  /// A caller supplying [transaction] must commit an expiry deletion before
+  /// confirming that this check denied the session.
   Future<SsoViewer?> viewerForRefresh(
     Session session,
     String bearer, {
@@ -160,6 +165,7 @@ final class SsoSessions {
   }
 
   /// Rechecks the exact session and account selected by Serverpod authentication.
+  /// A caller-supplied transaction must commit before confirming expiry.
   Future<SsoViewer?> viewerById(
     Session session,
     int sessionId,
@@ -183,11 +189,10 @@ final class SsoSessions {
     final rows = await session.db.unsafeQuery(
       '''
       SELECT s.id, s."accountId", i.id, i."characterId", i.owner,
-             i."characterName", i."wasDetached"
+             i."characterName", i."wasDetached", s."expiresAt" <= $_databaseUtc
              ${includeExclusion ? ', EXISTS (SELECT 1 FROM esi_call_log_exclusion e WHERE e.id = s."accountId")' : ''}
       FROM esi_session AS s JOIN esi_identity AS i ON i.id = s."identityId"
       WHERE ${digest != null ? 's.digest = @digest' : 's.id = @id AND s."accountId" = @account'}
-        AND s."expiresAt" > COALESCE(@clock::timestamp, clock_timestamp() AT TIME ZONE 'UTC')
         AND NOT i.blocked
         AND i."accountId" = s."accountId"
       ''',
@@ -201,6 +206,11 @@ final class SsoSessions {
     );
     if (rows.isEmpty) return null;
     final row = rows.single;
+    final exactId = row[0] as int;
+    if (row[7] == true) {
+      await _deleteExpired(session, exactId, transaction);
+      return null;
+    }
     final account = row[1] as int;
     final character = row[3] as int;
     return (
@@ -215,9 +225,32 @@ final class SsoSessions {
         wasDetached: row[6] as bool,
       ),
       admin: _admins.contains(character),
-      accountExcluded: includeExclusion ? row[7] as bool : null,
-      sessionId: row[0] as int,
+      accountExcluded: includeExclusion ? row[8] as bool : null,
+      sessionId: exactId,
     );
+  }
+
+  static Future<void> _deleteExpired(
+    Session session,
+    int id,
+    Transaction? transaction,
+  ) async {
+    Future<void> delete(Transaction tx) async {
+      await _boundIdentityWrite(session, tx);
+      // This ID has expired in an admission snapshot. Do not sample time
+      // again: a backward step cannot cancel that observation.
+      await session.db.unsafeExecute(
+        'DELETE FROM esi_session WHERE id = @id::bigint',
+        parameters: QueryParameters.named({'id': id}),
+        transaction: tx,
+      );
+    }
+
+    if (transaction != null) {
+      await delete(transaction);
+    } else {
+      await session.db.transaction(delete);
+    }
   }
 
   /// Locks the identity key even before its row exists. Multi-character writes
@@ -237,12 +270,10 @@ final class SsoSessions {
     );
   }
 
-  /// Creates a session only after the caller proves browser and app possession.
-  /// Returns null after marking a signed owner conflict as blocked.
-  Future<Map<String, Object?>?> signIn(
+  static Future<void> _boundIdentityWrite(
     Session session,
-    CcpVerifiedIdentity claims,
-  ) => session.db.transaction((transaction) async {
+    Transaction transaction,
+  ) async {
     await session.db.unsafeExecute(
       "SET LOCAL lock_timeout = '1s'",
       transaction: transaction,
@@ -251,6 +282,15 @@ final class SsoSessions {
       "SET LOCAL statement_timeout = '10s'",
       transaction: transaction,
     );
+  }
+
+  /// Creates a session only after the caller proves browser and app possession.
+  /// Returns null after marking a signed owner conflict as blocked.
+  Future<Map<String, Object?>?> signIn(
+    Session session,
+    CcpVerifiedIdentity claims,
+  ) => session.db.transaction((transaction) async {
+    await _boundIdentityWrite(session, transaction);
     await lockCharacter(session, transaction, claims.characterId);
     if (!_wallNow().isBefore(claims.expiresAt)) return null;
     final stored = await SsoIdentityRow.db.findFirstRow(
@@ -305,7 +345,12 @@ final class SsoSessions {
         await _callLog.excludeAccount(session, transaction, member);
       }
     }
-    final now = _wallNow();
+    final time = await session.db.unsafeQuery(
+      'SELECT $_databaseUtc',
+      parameters: QueryParameters.named({'clock': _now?.call().toUtc()}),
+      transaction: transaction,
+    );
+    final now = (time.single.single as DateTime).toUtc();
     final existing = await SsoSessionRow.db.find(
       session,
       where: (t) => t.identityId.equals(signer) & (t.expiresAt > now),
@@ -356,6 +401,7 @@ final class SsoSessions {
     String previousOwner,
   ) async {
     await session.db.transaction((transaction) async {
+      await _boundIdentityWrite(session, transaction);
       await lockCharacter(session, transaction, characterId);
       final stored = await SsoIdentityRow.db.findFirstRow(
         session,
@@ -388,16 +434,20 @@ final class SsoSessions {
   }
 
   /// Removes a bounded batch of expired session verifiers.
-  Future<void> prune(Session session) async {
-    final now = _wallNow();
-    final expired = await SsoSessionRow.db.find(
-      session,
-      where: (t) => t.expiresAt <= now,
-      orderBy: (t) => t.expiresAt,
-      limit: 128,
+  Future<void> prune(Session session) => session.db.transaction((tx) async {
+    await _boundIdentityWrite(session, tx);
+    await session.db.unsafeExecute(
+      '''
+      DELETE FROM esi_session WHERE id IN (
+        SELECT id FROM esi_session
+        WHERE "expiresAt" <= (SELECT $_databaseUtc)
+        ORDER BY "expiresAt", id LIMIT 128 FOR UPDATE SKIP LOCKED
+      )
+      ''',
+      parameters: QueryParameters.named({'clock': _now?.call().toUtc()}),
+      transaction: tx,
     );
-    if (expired.isNotEmpty) await SsoSessionRow.db.delete(session, expired);
-  }
+  });
 }
 
 /// Digests a high-entropy proof or bearer without retaining the input.

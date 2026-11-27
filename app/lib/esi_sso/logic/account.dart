@@ -285,7 +285,7 @@ final class AccountNotifier extends Notifier<AccountState> {
     }
     state = AccountWorking(session, membershipWrite: true);
     final source = MemberAccountClient(target.uri, bearer);
-    final MemberAccountStatus result;
+    MemberAccountStatus? result;
     try {
       result = await (unlink
           ? source.unlink(character)
@@ -294,6 +294,13 @@ final class AccountNotifier extends Notifier<AccountState> {
       source.close();
     }
     if (!_current(epoch)) return;
+    if (result == null) {
+      final check = await session.refresh();
+      if (!_current(epoch)) return;
+      result = check is ViewerRefreshInvalid
+          ? MemberAccountStatus.denied
+          : MemberAccountStatus.unavailable;
+    }
     if (unlink && result != MemberAccountStatus.unavailable) {
       _pendingUnlinks.remove(session.origin);
     }

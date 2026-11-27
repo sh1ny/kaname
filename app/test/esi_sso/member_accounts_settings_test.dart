@@ -278,6 +278,42 @@ void main() {
     });
   }
 
+  for (final viewerStatus in [503, 401]) {
+    testWidgets(
+      'Make main confirms session end before signing out ($viewerStatus)',
+      (tester) async {
+        final server = _Server();
+        await http.runWithClient(() async {
+          await _open(tester);
+          await _signIn(tester);
+          server.mainAuthFailure = viewerStatus == 503 ? 401 : 403;
+          server.viewerFailure = viewerStatus;
+          await _tap(tester, 'Make main');
+          final oldBearer = 'Bearer ${'b' * 43}';
+          expect(server.mainBearers, [oldBearer]);
+          if (viewerStatus == 401) {
+            expect(find.text('Sign in to server'), findsOneWidget);
+            expect(find.text('My calls'), findsNothing);
+            return;
+          }
+          expect(
+            find.text('Kaname could not complete the EVE request.'),
+            findsOneWidget,
+          );
+          expect(find.text('Sign in to server'), findsNothing);
+          expect(find.text('My calls'), findsOneWidget);
+          server.mainAuthFailure = null;
+          await _tap(tester, 'Make main');
+          expect(server.mainBearers, [oldBearer, oldBearer]);
+          expect(
+            find.text('Kaname could not complete the EVE request.'),
+            findsNothing,
+          );
+        }, () => MockClient(server.call));
+      },
+    );
+  }
+
   testWidgets(
     'lost revocation acknowledgment requires same-session retry then fresh sign-in',
     (tester) async {
@@ -518,6 +554,8 @@ final class _Server {
   final revocations = <String>[];
   final rosterRequests = <http.Request>[];
   final linkRequests = <http.Request>[];
+  final mainBearers = <String>[];
+  int? mainAuthFailure;
   int signIns = 0;
   int nextPageCalls = 0;
   int unlinkCalls = 0;
@@ -570,6 +608,15 @@ final class _Server {
                 ? MemberAccountStatus.selfUnlinked
                 : MemberAccountStatus.unlinked,
           ).toJson(),
+        );
+      case ['api', 'memberAccount', 'makeMain']:
+        mainBearers.add(request.headers['authorization']!);
+        if (mainAuthFailure case final status?) {
+          return _json({'status': 'authenticationFailed'}, status);
+        }
+        return _json(
+          MemberAccountMutation(status: MemberAccountStatus.mainChanged)
+              .toJson(),
         );
     }
     switch (request.url.pathSegments.last) {

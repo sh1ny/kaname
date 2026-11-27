@@ -36,25 +36,24 @@ final class MemberAccountClient {
     }
   }
 
-  /// Selects a different main, keeping the same connected session.
-  Future<MemberAccountStatus> makeMain(String character) =>
+  /// Selects a different main. `null` means HTTP rejected authentication
+  /// without a typed result, so the caller must verify the viewer.
+  Future<MemberAccountStatus?> makeMain(String character) =>
       _mutate(() => _client.memberAccount.makeMain(character));
 
   /// Detaches a character. Only a typed reply establishes a definitive result.
-  Future<MemberAccountStatus> unlink(String character) => _mutate(
-    () => _client.memberAccount.unlink(character),
-    requireTypedDenial: true,
-  );
+  Future<MemberAccountStatus> unlink(String character) async =>
+      await _mutate(() => _client.memberAccount.unlink(character)) ??
+      MemberAccountStatus.unavailable;
 
-  Future<MemberAccountStatus> _mutate(
-    Future<MemberAccountMutation> Function() send, {
-    bool requireTypedDenial = false,
-  }) async {
+  Future<MemberAccountStatus?> _mutate(
+    Future<MemberAccountMutation> Function() send,
+  ) async {
     try {
       return (await send()).status;
     } on ServerpodClientHttpException catch (error) {
       return switch (error.statusCode) {
-        401 || 403 when !requireTypedDenial => MemberAccountStatus.denied,
+        401 || 403 => null,
         _ => MemberAccountStatus.unavailable,
       };
     } on Object {

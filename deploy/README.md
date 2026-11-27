@@ -106,6 +106,9 @@ and headers at any reverse proxy.
 The browser must keep Kaname's short-lived attempt cookie. Other cookies on
 the same host do not affect the sign-in check.
 
+Kaname uses Postgres UTC for session deadlines. Once Postgres commits the
+removal of an expired session, a backward clock step cannot restore it.
+
 ### Upgrading M2 sign-ins to member accounts
 
 Back up Postgres and stop the app server before running the stack's `migrate`
