@@ -88,10 +88,32 @@ void main() {
     test(
       'next window is not published before its UTC grace and committed seal',
       () async {
-        clock = day;
-        await seed(session, recent, route: probe, owner: null, character: null);
-        expect(await store.routeCounts(session, admin), isEmpty);
-        expect(await sealedEnd(), day.subtract(const Duration(days: 1)));
+        clock = day.add(const Duration(seconds: 1));
+        await seed(
+          session,
+          recent.subtract(const Duration(days: 1)),
+          route: probe,
+          owner: null,
+          character: null,
+        );
+        final before = await store.routeCountsWithWindow(session, admin);
+        expect(before.window, day.subtract(const Duration(days: 1)));
+        expect(before.rows, [(operation: probe, total: 1, errors: 0)]);
+
+        final recorded = day.subtract(const Duration(seconds: 1));
+        final scheduler = EsiScheduler(
+          state: MemorySchedulerState(),
+          key: const [1],
+          now: () => recorded,
+          callLog: (receipt) => store.append(session, receipt),
+          send: (_, _, _) async => WireResponse(EsiResponse(status: 304)),
+        );
+        await scheduler.client(EsiPriority.interactive).getStatus();
+        await scheduler.drainCallLog();
+        final duringGrace = await store.routeCountsWithWindow(session, admin);
+        expect(duringGrace.window, before.window);
+        expect(duringGrace.rows, before.rows);
+        expect(await sealedEnd(), before.window);
         clock = grace;
         await rejectSeal();
         await expectLater(
@@ -99,10 +121,53 @@ void main() {
           throwsA(isA<EsiCallLogUnavailable>()),
         );
         await allowSeal();
-        expect((await store.routeCounts(session, admin)).single.total, 1);
+        expect((await store.routeCounts(session, admin)).single.total, 2);
         expect(await sealedEnd(), day);
       },
     );
+
+    for (final preview in [true, false]) {
+      final stage = preview ? 'preview' : 'response admission';
+      test('standalone $stage seal read uses the statement budget', () async {
+        final end = await store.sealWindow(session);
+        await session.db.transaction((tx) async {
+          await session.db.unsafeExecute(r'''
+            CREATE FUNCTION require_seal_read_budget() RETURNS boolean
+            LANGUAGE plpgsql AS $$
+            BEGIN
+              IF current_setting('statement_timeout')::interval <> interval '10 seconds'
+                THEN RAISE EXCEPTION 'seal read has no statement budget';
+              END IF;
+              RETURN true;
+            END
+            $$
+          ''', transaction: tx);
+          await session.db.unsafeExecute('''
+            ALTER TABLE esi_call_log_seal RENAME TO fixture_call_log_seal
+          ''', transaction: tx);
+          await session.db.unsafeExecute('''
+            CREATE VIEW esi_call_log_seal AS
+            SELECT id, "windowEnd" FROM fixture_call_log_seal
+            WHERE require_seal_read_budget()
+          ''', transaction: tx);
+        });
+        addTearDown(() async {
+          await session.db.unsafeExecute('DROP VIEW esi_call_log_seal');
+          await session.db.unsafeExecute('''
+            ALTER TABLE fixture_call_log_seal RENAME TO esi_call_log_seal
+          ''');
+          await session.db.unsafeExecute(
+            'DROP FUNCTION require_seal_read_budget()',
+          );
+        });
+        expect(
+          preview
+              ? await store.sealWindow(session)
+              : await store.currentSeal(session),
+          end,
+        );
+      });
+    }
 
     test(
       'eligible accounts qualify totals including ineligible calls',

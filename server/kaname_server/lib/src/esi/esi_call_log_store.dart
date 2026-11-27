@@ -209,10 +209,17 @@ final class EsiCallLogStore {
   }
 
   /// Returns the latest already committed seal without proposing a window.
+  /// A standalone read takes a fresh snapshot under the statement budget.
   Future<DateTime?> currentSeal(
     Session session, {
     Transaction? transaction,
   }) async {
+    if (transaction == null) {
+      return _budgetedSealRead(
+        session,
+        (tx) => currentSeal(session, transaction: tx),
+      );
+    }
     final rows = await session.db.unsafeQuery(
       'SELECT "windowEnd" FROM esi_call_log_seal WHERE id = 1',
       transaction: transaction,
@@ -223,7 +230,10 @@ final class EsiCallLogStore {
   /// Returns a committed seal, first advancing it if another window is eligible.
   Future<DateTime> sealWindow(Session session) async {
     try {
-      final preview = await _clockAndSeal(session);
+      final preview = await _budgetedSealRead(
+        session,
+        (tx) => _clockAndSeal(session, transaction: tx),
+      );
       final end = preview.end;
       if (end != null && !_eligibleEnd(preview.utc).isAfter(end)) return end;
       return await session.db.transaction((tx) async {
@@ -285,7 +295,7 @@ final class EsiCallLogStore {
 
   Future<({DateTime utc, DateTime? end})> _clockAndSeal(
     Session session, {
-    Transaction? transaction,
+    required Transaction transaction,
   }) async {
     final rows = await session.db.unsafeQuery(
       '''
@@ -301,6 +311,17 @@ final class EsiCallLogStore {
       end: (row[1] as DateTime?)?.toUtc(),
     );
   }
+
+  static Future<T> _budgetedSealRead<T>(
+    Session session,
+    Future<T> Function(Transaction) read,
+  ) => session.db.transaction((tx) async {
+    await session.db.unsafeExecute(
+      "SET LOCAL statement_timeout = '10s'",
+      transaction: tx,
+    );
+    return read(tx);
+  });
 
   Future<void> _lockRelease(Session session, Transaction tx) async {
     if (_boundReleaseLock) {
