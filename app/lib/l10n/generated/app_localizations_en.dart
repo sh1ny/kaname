@@ -751,7 +751,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get esiServerHolder => 'The server holds skills access.';
+  String get esiServerHolder =>
+      'The server is assigned to read skills. Access requires authorization.';
 
   @override
   String get esiDeviceHolder => 'This device holds solo skills access.';

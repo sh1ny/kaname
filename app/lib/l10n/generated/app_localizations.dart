@@ -1471,7 +1471,7 @@ abstract class AppLocalizations {
   /// No description provided for @esiServerHolder.
   ///
   /// In en, this message translates to:
-  /// **'The server holds skills access.'**
+  /// **'The server is assigned to read skills. Access requires authorization.'**
   String get esiServerHolder;
 
   /// No description provided for @esiDeviceHolder.

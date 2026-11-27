@@ -2503,7 +2503,7 @@ void main() {
 
       owner = 'RElGRkVSRU5U';
       expect((await linkAlt(actor, 411)).statusCode, 403);
-      final evidence = await pod.pod.withSession(
+      Future<DatabaseResult> evidence() => pod.pod.withSession(
         (s) => s.db.unsafeQuery('''
       SELECT i."characterId", i."accountId", i.owner, i.blocked, i."awaitingSignIn",
              (SELECT count(*) FROM esi_session s WHERE s."identityId" = i.id)
@@ -2511,7 +2511,7 @@ void main() {
     '''),
         enableLogging: false,
       );
-      expect(evidence.map((row) => row.toList()), [
+      expect((await evidence()).map((row) => row.toList()), [
         [410, originalAccount, 'VEVTVCBPTkxZ', false, false, 1],
         [411, null, _newOwner, false, true, 0],
       ]);
@@ -2531,6 +2531,16 @@ void main() {
         jsonDecode(retained.body),
         containsPair('memberId', initiating['memberId']),
       );
+      // The next proof matches the new owner, but the character is unclaimed.
+      expect((await linkAlt(actor, 411)).statusCode, 403);
+      expect((await evidence()).last.toList(), [
+        411,
+        null,
+        _newOwner,
+        false,
+        true,
+        0,
+      ]);
       final claimed = await signIn();
       expect(claimed['memberId'], isNot(targetAccount.toString()));
       expect(claimed['memberId'], isNot(initiating['memberId']));

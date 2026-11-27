@@ -133,10 +133,12 @@ When a verified CCP proof shows a different owner, Kaname ends that
 character's old sessions and removes its server ESI grant and opt-ins. The
 new owner must use ordinary connected sign-in first. Kaname creates a new
 account without moving or revealing the former owner's private history.
-Sign-in does not clear a desktop holder. Server ESI stays blocked until the
-original desktop completes ordinary Return with its saved reservation proof
-and generation, then the current owner authorizes a fresh grant. If the
-original desktop cannot complete Return, there is no operator reset in this
+If no desktop holder remains, the new owner can authorize server skills
+after sign-in under the existing scope policy. If a desktop still holds a
+completed reservation, server ESI stays blocked until that desktop completes
+ordinary Return with its saved proof and generation. The new owner must then
+authorize a fresh grant. An unfinished Take cannot complete ordinary Return.
+If the desktop cannot return the holder, there is no operator reset in this
 release.
 
 ### Test both sign-in modes locally

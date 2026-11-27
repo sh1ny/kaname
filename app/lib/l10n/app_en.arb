@@ -955,7 +955,7 @@
   "@esiServerPilot": {"placeholders": {"name": {"type": "String"}}},
   "esiNativePilot": "Device: {name}",
   "@esiNativePilot": {"placeholders": {"name": {"type": "String"}}},
-  "esiServerHolder": "The server holds skills access.",
+  "esiServerHolder": "The server is assigned to read skills. Access requires authorization.",
   "esiDeviceHolder": "This device holds solo skills access.",
   "esiOriginalHolder": "The original device must park before the server can take over.",
   "esiHolderPending": "Handoff is pending. Resume on the original device.",
