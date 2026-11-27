@@ -264,6 +264,62 @@ void main() {
       expect(await store.routeCounts(session, admin), isEmpty);
     });
 
+    test('a post-cutoff stamp cannot disqualify an older window', () async {
+      await independent(4);
+      clock = grace.add(const Duration(microseconds: 1));
+      await session.db.transaction(
+        (tx) => store.excludeAccount(session, tx, 5),
+      );
+      expect(await sealedEnd(), isNull);
+
+      clock = day.subtract(const Duration(seconds: 1));
+      final scheduler = EsiScheduler(
+        state: MemorySchedulerState(),
+        key: const [1],
+        now: () => clock,
+        callLog: (receipt) => store.append(session, receipt),
+        send: (_, _, _) async => WireResponse(EsiResponse(status: 304)),
+      );
+      final client = scheduler.client(
+        EsiPriority.interactive,
+        principal: EsiPrincipal(
+          application: 'fixture',
+          character: 50,
+          member: 5,
+          generation: 'first',
+          accountExcluded: true,
+          bearer: () => 'fixture-bearer',
+        ),
+      );
+      await EsiCall.run<void>(
+        client.transport,
+        EsiRequest(
+          method: EsiMethod.get,
+          operationId: assets,
+          target: Uri.parse('/characters/50/assets'),
+          headers: const {},
+        ),
+        decode: (_) {},
+      );
+      await scheduler.drainCallLog();
+      expect(
+        (await session.db.unsafeQuery('''
+          SELECT "accountExcluded" FROM esi_call_log_entry WHERE "memberId" = 5
+        ''')).single.single,
+        isTrue,
+      );
+
+      clock = grace;
+      final first = await store.routeCountsWithWindow(session, admin);
+      expect(first.window, day);
+      expect(first.rows, [(operation: assets, total: 5, errors: 0)]);
+
+      clock = grace.add(const Duration(days: 1));
+      final next = await store.routeCountsWithWindow(session, admin);
+      expect(next.window, day.add(const Duration(days: 1)));
+      expect(next.rows, isEmpty);
+    });
+
     test(
       'post-cutoff exclusion leaves the same totals with a cold cache',
       () async {

@@ -393,25 +393,23 @@ final class EsiCallLogStore {
           return session.db.unsafeQuery(
             '''
             WITH receipts AS MATERIALIZED (
-              SELECT operation, outcome, "memberId", "characterId", "accountExcluded"
+              SELECT operation, outcome, "memberId", "characterId"
               FROM esi_call_log_entry
               WHERE "recordedAt" >= @start::timestamp AND "recordedAt" < @end::timestamp
             ), shared_characters AS (
               SELECT "characterId" FROM receipts
               WHERE "characterId" IS NOT NULL AND "memberId" IS NOT NULL
               GROUP BY "characterId" HAVING count(DISTINCT "memberId") > 1
-            ), ineligible AS (
+            ), overlapping_accounts AS (
               SELECT DISTINCT "memberId" FROM receipts
-              WHERE "memberId" IS NOT NULL AND (
-                "accountExcluded" IS TRUE
-                OR "characterId" IN (SELECT "characterId" FROM shared_characters)
-              )
+              WHERE "memberId" IS NOT NULL
+                AND "characterId" IN (SELECT "characterId" FROM shared_characters)
             )
             SELECT r.operation, count(*), count(*) FILTER (WHERE r.outcome = 'error'),
               count(DISTINCT r."memberId") FILTER (WHERE x."memberId" IS NULL AND e.id IS NULL),
               count(r."memberId"), count(r."memberId") FILTER (WHERE r.outcome = 'error')
             FROM receipts AS r
-            LEFT JOIN ineligible AS x ON x."memberId" = r."memberId"
+            LEFT JOIN overlapping_accounts AS x ON x."memberId" = r."memberId"
             LEFT JOIN esi_call_log_exclusion AS e ON e.id = r."memberId"
               AND e."excludedAt" < @cutoff::timestamp
             GROUP BY r.operation ORDER BY r.operation

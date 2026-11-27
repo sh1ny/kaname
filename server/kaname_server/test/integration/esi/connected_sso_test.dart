@@ -1981,6 +1981,11 @@ void main() {
   test('a failed expiry commit is unavailable and keeps the session', () async {
     final first = clock;
     final bearer = (await signIn())['session'] as String;
+    await authorize(bearer);
+    var skillsSends = 0;
+    beforeSkillsWire = () async {
+      skillsSends++;
+    };
     await pod.pod.withSession((s) async {
       await s.db.unsafeExecute(r'''
         CREATE FUNCTION refuse_expiry_commit() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -1993,12 +1998,19 @@ void main() {
       ''');
     }, enableLogging: false);
     clock = first.add(const Duration(days: 1));
-    final reply = await post('viewer', {}, bearer: bearer);
-    expect(reply.statusCode, 503);
-    expect(jsonDecode(reply.body), {'status': 'unavailable'});
+    for (final route in ['skills', 'viewer']) {
+      final reply = await post(route, {}, bearer: bearer);
+      expect(reply.statusCode, 503, reason: route);
+      expect(jsonDecode(reply.body), {'status': 'unavailable'}, reason: route);
+    }
+    expect(skillsSends, 0);
     expect(await sessionExists(bearer), isTrue);
     clock = first.add(const Duration(hours: 23));
     expect((await post('viewer', {}, bearer: bearer)).statusCode, 200);
+    final resumed = await post('skills', {}, bearer: bearer);
+    expect(resumed.statusCode, 200);
+    expect(jsonDecode(resumed.body), {'skillCount': 0, 'totalSp': 1200});
+    expect(skillsSends, 1);
   });
 
   test(

@@ -34,7 +34,7 @@ final class ServerSsoSkills {
     if (_running >= 16) return (status: 429, body: {'status': 'busy'});
     _running++;
     try {
-      final viewer = await _sessions.viewer(session, bearer);
+      final viewer = await _sessions.viewerForRefresh(session, bearer);
       if (viewer == null) {
         return (status: 401, body: {'status': 'signInRequired'});
       }
