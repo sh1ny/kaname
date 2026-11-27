@@ -36,7 +36,7 @@
 | Scheduled public character affiliation refresh | Shared scheduler pauses for downtime | `runtime` | paused affiliation preserves the observation until a later scheduled call | green |
 | First-known character lookup | A first sign-in or link registers a character | `identity` | first sign-in and link commit before the one-off; auth does not wait for ESI | green |
 | First-known character lookup | Existing or uncommitted identity | `identity` | known or rolled-back identities cannot enqueue a one-off | green |
-| First-known character lookup | One-off work fails | `identity` | failed enqueue or lookup leaves auth successful and the next sweep covers the identity | green |
+| First-known character lookup | One-off work fails | `identity` | failed enqueue or lookup leaves auth successful and the next sweep covers the identity; a stalled enqueue does not hold auth or leak details in its warning | green |
 | First-known character lookup | An identity commits during shutdown | `identity` | a successful identity commit during shutdown cannot enqueue | green |
 | Last valid affiliation observation | Character moves and leaves its alliance | `refresh` | replaces the corporation and clears the alliance on a valid move | green |
 | Last valid affiliation observation | Reply omits a character | `refresh` | saves valid returned rows and preserves omitted observations | green |

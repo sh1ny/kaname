@@ -204,6 +204,10 @@ void main() {
         _ok([first, _row(103, 41, null)]),
         _ok([first, _row(102, 0, null)]),
         _ok([first, _row(102, 41, -1)]),
+        _ok([
+          first,
+          {..._row(102, 41, null), 'faction_id': -1},
+        ]),
         _ok([first, _row(0, 41, null)]),
         _ok([first, _row(102, 41, null), _row(103, 41, null)]),
         const WireFailure(),

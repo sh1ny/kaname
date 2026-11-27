@@ -3,11 +3,12 @@ import 'job.dart';
 /// A verified registry row and its corresponding public EVE character ID.
 typedef AffiliationIdentity = ({int identityId, int characterId});
 
-/// The public corporation and optional alliance in one ESI result.
+/// The public IDs in one ESI result. Faction is validated but not stored.
 typedef AffiliationRow = ({
   int characterId,
   int corporationId,
   int? allianceId,
+  int? factionId,
 });
 
 /// A validated reply joined to the registry row that requested it.
@@ -155,7 +156,8 @@ final class AffiliationJob implements Job<void> {
           if (identityId == null ||
               row.characterId <= 0 ||
               row.corporationId <= 0 ||
-              (row.allianceId ?? 1) <= 0) {
+              (row.allianceId ?? 1) <= 0 ||
+              (row.factionId ?? 1) <= 0) {
             _onIssue(AffiliationIssue.malformed, page.length);
             return;
           }

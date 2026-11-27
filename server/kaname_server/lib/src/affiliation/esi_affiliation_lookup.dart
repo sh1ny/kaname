@@ -14,6 +14,7 @@ Future<AffiliationLookupResult> lookupAffiliation(
         characterId: row.characterId,
         corporationId: row.corporationId,
         allianceId: row.allianceId,
+        factionId: row.factionId,
       ),
   ]),
   EsiMalformed() => const AffiliationLookupFailed(malformed: true),

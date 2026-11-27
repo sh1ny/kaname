@@ -125,7 +125,7 @@ final class MemberAccounts {
       });
       final newIdentity = insertedIdentity;
       if (linked && newIdentity != null) {
-        await _sessions.identityCommitted(session, newIdentity);
+        await _sessions.identityCommitted(newIdentity);
       }
       return linked;
     } on DatabaseForeignKeyViolationException {

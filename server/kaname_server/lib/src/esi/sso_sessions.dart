@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show stderr;
 
 import 'package:crypto/crypto.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
@@ -71,12 +72,15 @@ final class SsoSessions {
   /// [afterCharacterLock] and [callLog] let integration tests advance proof
   /// time at the character or release lock without waiting for a deadline.
   /// [afterFirstIdentity] queues public work after an identity commits.
+  /// [reportFirstIdentity] reports an unconfirmed enqueue without using the
+  /// auth session's disabled logging.
   SsoSessions({
     this._now,
     Set<int> adminCharacters = const {},
     EsiCallLogStore? callLog,
     this._afterCharacterLock,
     this._afterFirstIdentity,
+    this._reportFirstIdentity,
   }) : _admins = Set.unmodifiable(adminCharacters),
        _callLog = callLog ?? _defaultCallLog;
 
@@ -85,6 +89,8 @@ final class SsoSessions {
   final EsiCallLogStore _callLog;
   final Future<void> Function(int character)? _afterCharacterLock;
   final Future<void> Function(int identityId)? _afterFirstIdentity;
+  final void Function(String message)? _reportFirstIdentity;
+  static const _firstIdentityBudget = Duration(seconds: 1);
 
   /// Associates generated RPCs with this install's exact session authority.
   void bind(Serverpod pod) => _bound[pod] = this;
@@ -327,7 +333,7 @@ final class SsoSessions {
         (tx) => _signIn(session, tx, claims, proofDeadline),
       );
       if (signedIn?.insertedIdentity case final id?) {
-        await identityCommitted(session, id);
+        await identityCommitted(id);
       }
       return signedIn?.reply;
     } on SsoProofExpired {
@@ -335,16 +341,18 @@ final class SsoSessions {
     }
   }
 
-  /// Runs the post-commit hook for a new identity without changing auth results.
-  Future<void> identityCommitted(Session session, int identityId) async {
+  /// Waits briefly for the one-off enqueue without changing the auth result.
+  ///
+  /// A timeout leaves the insert unconfirmed, not cancelled. There is no retry:
+  /// it may finish, and the next sweep covers identities not yet refreshed.
+  Future<void> identityCommitted(int identityId) async {
     final enqueue = _afterFirstIdentity;
     if (enqueue == null) return;
     try {
-      await enqueue(identityId);
+      await enqueue(identityId).timeout(_firstIdentityBudget);
     } on Object {
-      session.log(
-        'affiliation: could not enqueue first-known lookup',
-        level: LogLevel.warning,
+      (_reportFirstIdentity ?? stderr.writeln)(
+        'affiliation: could not confirm first-known enqueue',
       );
     }
   }

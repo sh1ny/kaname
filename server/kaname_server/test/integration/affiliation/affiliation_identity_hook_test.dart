@@ -103,38 +103,40 @@ void main() {
           execute: execute,
         );
         final sessions = ServerSso.of(pod)!.sessions;
-        await pod.withSession((s) async {
-          final auth = (await sessions.signIn(s, main, expiry))!;
-          expect(await sessions.signIn(s, main, expiry), isNotNull);
-          final member = await actor(sessions, s, auth);
-          final accounts = MemberAccounts(sessions, EsiCallLogStore());
-          expect(
-            await accounts.link(s, member, alt, expiry, () => f.now),
-            isTrue,
-          );
-          expect(
-            await accounts.link(s, member, alt, expiry, () => f.now),
-            isTrue,
-          );
-          final queued = await FutureCallEntry.db.find(
-            s,
-            where: (row) =>
-                row.name.equals('AffiliationCallFirstKnownFutureCall'),
-          );
-          if (execute) {
-            final ids = await SsoIdentityRow.db.find(s);
+        await _holdEnqueueBudget(
+          () => pod.withSession((s) async {
+            final auth = (await sessions.signIn(s, main, expiry))!;
+            expect(await sessions.signIn(s, main, expiry), isNotNull);
+            final member = await actor(sessions, s, auth);
+            final accounts = MemberAccounts(sessions, EsiCallLogStore());
             expect(
-              queued.map(
-                (row) =>
-                    (jsonDecode(row.serializedObject!)
-                        as Map<String, Object?>)['identityId'],
-              ),
-              unorderedEquals(ids.map((row) => row.id)),
+              await accounts.link(s, member, alt, expiry, () => f.now),
+              isTrue,
             );
-          } else {
-            expect(queued, isEmpty);
-          }
-        });
+            expect(
+              await accounts.link(s, member, alt, expiry, () => f.now),
+              isTrue,
+            );
+            final queued = await FutureCallEntry.db.find(
+              s,
+              where: (row) =>
+                  row.name.equals('AffiliationCallFirstKnownFutureCall'),
+            );
+            if (execute) {
+              final ids = await SsoIdentityRow.db.find(s);
+              expect(
+                queued.map(
+                  (row) =>
+                      (jsonDecode(row.serializedObject!)
+                          as Map<String, Object?>)['identityId'],
+                ),
+                unorderedEquals(ids.map((row) => row.id)),
+              );
+            } else {
+              expect(queued, isEmpty);
+            }
+          }),
+        );
       }
     },
     timeout: _hangGuard,
@@ -209,42 +211,47 @@ void main() {
         await f.runtime!.enqueueFirstKnown(id);
       },
     );
-    await f.pod.withSession((s) async {
-      final login = await claims(101);
-      final auth = (await sessions.signIn(s, login, deadline))!;
-      expect(await sessions.signIn(s, login, deadline), isNotNull);
-      expect(
-        await MemberAccounts(
-          sessions,
-          EsiCallLogStore(),
-        ).link(s, await actor(sessions, s, auth), login, deadline, () => f.now),
-        isTrue,
-      );
-      // The existing signup path inserts the identity and account before it
-      // inserts the session. Force the latter statement to roll back all three.
-      await s.db.unsafeExecute(
-        'ALTER TABLE esi_session ADD CHECK (false) NOT VALID',
-      );
-      final rollback = await claims(102);
-      await expectLater(
-        sessions.signIn(s, rollback, deadline),
-        throwsA(isA<DatabaseQueryException>()),
-      );
-      expect(
-        await SsoIdentityRow.db.findFirstRow(
+    await _holdEnqueueBudget(
+      () => f.pod.withSession((s) async {
+        final login = await claims(101);
+        final auth = (await sessions.signIn(s, login, deadline))!;
+        expect(await sessions.signIn(s, login, deadline), isNotNull);
+        expect(
+          await MemberAccounts(sessions, EsiCallLogStore()).link(
+            s,
+            await actor(sessions, s, auth),
+            login,
+            deadline,
+            () => f.now,
+          ),
+          isTrue,
+        );
+        // The existing signup path inserts the identity and account before it
+        // inserts the session. Force the latter statement to roll back all three.
+        await s.db.unsafeExecute(
+          'ALTER TABLE esi_session ADD CHECK (false) NOT VALID',
+        );
+        final rollback = await claims(102);
+        await expectLater(
+          sessions.signIn(s, rollback, deadline),
+          throwsA(isA<DatabaseQueryException>()),
+        );
+        expect(
+          await SsoIdentityRow.db.findFirstRow(
+            s,
+            where: (row) => row.characterId.equals(102),
+          ),
+          isNull,
+        );
+        final identity = (await SsoIdentityRow.db.findFirstRow(
           s,
-          where: (row) => row.characterId.equals(102),
-        ),
-        isNull,
-      );
-      final identity = (await SsoIdentityRow.db.findFirstRow(
-        s,
-        where: (row) => row.characterId.equals(101),
-      ))!;
-      expect(enqueued, [identity.id]);
-      expect(await f.queue(s), hasLength(2));
-      expect(f.wire, isEmpty);
-    });
+          where: (row) => row.characterId.equals(101),
+        ))!;
+        expect(enqueued, [identity.id]);
+        expect(await f.queue(s), hasLength(2));
+        expect(f.wire, isEmpty);
+      }),
+    );
   });
 
   test('failed enqueue or lookup leaves auth successful and the next sweep covers the identity', () async {
@@ -264,27 +271,87 @@ void main() {
         for (final id in ids) {'character_id': id, 'corporation_id': 42},
       ]);
     };
-    await f.pod.withSession((s) async {
-      await AffiliationRuntime.dispatchSweep(s, _startup);
-      await f.pod.futureCalls.cancel('kaname-affiliation:current:0');
-      for (final id in [101, 102]) {
-        expect(await sessions.signIn(s, await claims(id), deadline), isNotNull);
-      }
-      expect(await f.queue(s), hasLength(1));
-      await f.pod.futureCallManager!.runScheduledFutureCalls();
-      expect(await AffiliationStore(s).read(101), isNull);
-      expect(await AffiliationStore(s).read(102), isNull);
-      expect(codes, [500]);
-      await f.clock.advance(const Duration(hours: 1));
-      await AffiliationRuntime.dispatchSweep(s, (boot: 'current', slot: 1));
-      expect(f.wire.map((call) => call.ids), [
-        [102],
-        [101, 102],
-      ]);
-      expect((await AffiliationStore(s).read(101))?.corporationId, 42);
-      expect((await AffiliationStore(s).read(102))?.corporationId, 42);
-    });
+    await _holdEnqueueBudget(
+      () => f.pod.withSession((s) async {
+        await AffiliationRuntime.dispatchSweep(s, _startup);
+        await f.pod.futureCalls.cancel('kaname-affiliation:current:0');
+        for (final id in [101, 102]) {
+          expect(
+            await sessions.signIn(s, await claims(id), deadline),
+            isNotNull,
+          );
+        }
+        expect(await f.queue(s), hasLength(1));
+        await f.pod.futureCallManager!.runScheduledFutureCalls();
+        expect(await AffiliationStore(s).read(101), isNull);
+        expect(await AffiliationStore(s).read(102), isNull);
+        expect(codes, [500]);
+        await f.clock.advance(const Duration(hours: 1));
+        await AffiliationRuntime.dispatchSweep(s, (boot: 'current', slot: 1));
+        expect(f.wire.map((call) => call.ids), [
+          [102],
+          [101, 102],
+        ]);
+        expect((await AffiliationStore(s).read(101))?.corporationId, 42);
+        expect((await AffiliationStore(s).read(102))?.corporationId, 42);
+      }),
+    );
   });
+
+  test(
+    'a stalled enqueue does not hold auth or leak details in its warning',
+    () async {
+      final attempted = Completer<void>();
+      final stalled = Completer<void>();
+      final timer = Completer<_ManualBudget>();
+      final messages = <String>[];
+      final sessions = SsoSessions(
+        now: () => f.now,
+        afterFirstIdentity: (_) {
+          attempted.complete();
+          return stalled.future;
+        },
+        reportFirstIdentity: messages.add,
+      );
+      final login = await claims(101);
+      await f.pod.withSession((s) async {
+        final auth = runZoned(
+          () => sessions.signIn(s, login, deadline),
+          zoneSpecification: ZoneSpecification(
+            createTimer: (self, parent, zone, duration, callback) {
+              if (attempted.isCompleted &&
+                  duration == const Duration(seconds: 1)) {
+                final manual = _ManualBudget(callback);
+                timer.complete(manual);
+                return manual;
+              }
+              return parent.createTimer(zone, duration, callback);
+            },
+          ),
+        );
+        try {
+          await attempted.future;
+          (await timer.future).fire();
+          expect(await auth, isNotNull);
+          expect(stalled.isCompleted, isFalse);
+          expect(messages, [
+            'affiliation: could not confirm first-known enqueue',
+          ]);
+          expect(
+            await SsoIdentityRow.db.findFirstRow(
+              s,
+              where: (row) => row.characterId.equals(101),
+            ),
+            isNotNull,
+          );
+        } finally {
+          stalled.complete();
+          await auth;
+        }
+      }, enableLogging: false);
+    },
+    timeout: _hangGuard,
+  );
 
   test('a successful identity commit during shutdown cannot enqueue', () async {
     final locked = Completer<void>();
@@ -330,4 +397,39 @@ void main() {
     }
     expect(f.wire, isEmpty);
   }, timeout: _hangGuard);
+}
+
+// These cases assert a completed enqueue, not expiry of the auth wait.
+Future<void> _holdEnqueueBudget(Future<void> Function() body) => runZoned(
+  body,
+  zoneSpecification: ZoneSpecification(
+    createTimer: (self, parent, zone, duration, callback) =>
+        duration == const Duration(seconds: 1)
+        ? _ManualBudget(callback)
+        : parent.createTimer(zone, duration, callback),
+  ),
+);
+
+final class _ManualBudget implements Timer {
+  _ManualBudget(this._callback);
+
+  final void Function() _callback;
+  bool _active = true;
+  int _tick = 0;
+
+  @override
+  bool get isActive => _active;
+
+  @override
+  int get tick => _tick;
+
+  @override
+  void cancel() => _active = false;
+
+  void fire() {
+    if (!_active) throw StateError('budget was already cancelled');
+    _active = false;
+    _tick++;
+    _callback();
+  }
 }
