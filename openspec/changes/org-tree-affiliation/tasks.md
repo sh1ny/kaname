@@ -58,7 +58,7 @@
 
 ## 1. Verify the pinned future-call manager
 
-- [ ] 1.1 Verify A1 against the installed Serverpod 4.1.2 scanner, claim transaction, recurring successor insertion, execution flags and shutdown path. Add a focused PostgreSQL test using an existing one-shot callback and an already stale claim; drive dispatch via the executor and assert it runs once. Verify the test before relying on the selected adapter. Task 4.3 checks the same claim path with the actual affiliation timer, injected registrar time and next-hour dispatch.
+- [x] 1.1 Verify A1 against the installed Serverpod 4.1.2 scanner, claim transaction, recurring successor insertion, execution flags and shutdown path. Add a focused PostgreSQL test using an existing one-shot callback and an already stale claim; drive dispatch via the executor and assert it runs once. Verify the test before relying on the selected adapter. Task 4.3 checks the same claim path with the actual affiliation timer, injected registrar time and next-hour dispatch.
 
 ## 2. Extend shared outage admission for affiliation
 
