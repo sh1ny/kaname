@@ -9,6 +9,7 @@ import 'package:jose/jose.dart';
 import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
+import 'package:kaname_server/src/esi/esi_call_log_store.dart';
 import 'package:kaname_server/src/esi/member_roster_endpoint.dart';
 import 'package:kaname_server/src/esi/server_esi_vault.dart';
 import 'package:kaname_server/src/esi/server_sso_grants.dart';
@@ -52,6 +53,9 @@ void main() {
   late int characterId;
   late Future<void> Function(String bearer)? beforeRpcAuth;
   late Future<void> Function()? afterRpcAuth;
+  late Future<void> Function()? beforeSkillsWire;
+  late Future<void> Function()? beforeRefresh;
+  late bool persistReceipts;
   late JsonWebKey signing;
 
   setUpAll(() => signing = JsonWebKey.generate('RS256', keyBitLength: 2048));
@@ -68,6 +72,9 @@ void main() {
     characterId = 410;
     beforeRpcAuth = null;
     afterRpcAuth = null;
+    beforeSkillsWire = null;
+    beforeRefresh = null;
+    persistReceipts = false;
     final upstream = MockClient((request) async {
       if (request.url.path.startsWith('/.well-known/')) {
         return http.Response(
@@ -106,6 +113,8 @@ void main() {
       final form = request.bodyFields;
       final rotating = form['grant_type'] == 'refresh_token';
       if (rotating) {
+        final hook = beforeRefresh;
+        if (hook != null) await hook();
         expect(form['refresh_token'], _refresh);
         refreshes++;
       } else {
@@ -141,6 +150,7 @@ void main() {
     addTearDown(upstream.close);
     final oauth = CcpOAuth(upstream, now: () => clock);
     final sessions = SsoSessions(
+      adminCharacters: {409},
       now: () {
         if (failViewerLookup) {
           throw const FormatException('synthetic lookup failure');
@@ -201,10 +211,17 @@ void main() {
       now: () => clock,
       callLog: (receipt) async {
         receipts.add(receipt);
+        if (persistReceipts) {
+          await withSession(
+            (s) => EsiCallLogStore(now: () => clock).append(s, receipt),
+          );
+        }
       },
       send: (request, token, _) async {
         expect(request.target.path, '/characters/410/skills');
-        expect(token, issued.last);
+        expect(issued, contains(token));
+        final beforeWire = beforeSkillsWire;
+        if (beforeWire != null) await beforeWire();
         if (rateLimited) {
           return WireResponse(
             EsiResponse(status: 429, headers: const {'retry-after': '45'}),
@@ -229,7 +246,7 @@ void main() {
       sessions: sessions,
       now: () => clock,
       grants: grants,
-      handoff: SsoHandoff(gate: sessions.gate, vault: vault, now: () => clock),
+      handoff: SsoHandoff(sessions: sessions, vault: vault, now: () => clock),
       skills: ServerSsoSkills(
         sessions: sessions,
         grants: grants,
@@ -1300,6 +1317,240 @@ void main() {
     expect((await post('viewer', {}, bearer: retained)).statusCode, 200);
     expect((await signIn())['memberId'], isNot(main['memberId']));
   });
+
+  Future<List<String>> ownCharacters(String bearer, {Object? after}) async {
+    final reply = await browser.post(
+      Uri.parse('${pod.baseUrl}esiCallLog/ownRows'),
+      headers: {...headers(), 'authorization': 'Bearer $bearer'},
+      body: jsonEncode({'after': after}),
+    );
+    final page = jsonDecode(reply.body) as Map<String, Object?>;
+    expect(page['status'], 'ok');
+    return [
+      for (final row in page['rows'] as List<Object?>)
+        (row as Map<String, Object?>)['characterId'] as String,
+    ];
+  }
+
+  Future<void> history(String ownerAccount, int character) async {
+    await pod.pod.withSession(
+      (session) => EsiCallLogRow.db.insertRow(
+        session,
+        EsiCallLogRow(
+          recordedAt: DateTime.now().toUtc(),
+          operation: 'GetCharactersCharacterIdSkills',
+          outcome: 'success',
+          latencyMicros: 1,
+          memberId: int.parse(ownerAccount),
+          characterId: character,
+        ),
+      ),
+      enableLogging: false,
+    );
+  }
+
+  test('a live account reads its linked unblocked characters only', () async {
+    final main = await signIn();
+    final bearer = main['session'] as String;
+    final account = main['memberId'] as String;
+    expect((await linkAlt(bearer, 411)).statusCode, 200);
+    expect((await linkAlt(bearer, 412)).statusCode, 200);
+    final alt = (await signIn())['session'] as String;
+    await pod.pod.withSession(
+      (s) => s.db.unsafeExecute(
+        'UPDATE esi_identity SET blocked = TRUE WHERE "characterId" = 411',
+      ),
+      enableLogging: false,
+    );
+    await history(account, 410);
+    await history(account, 411);
+    await history(account, 412);
+    await history(account, 999);
+    await history('999', 410);
+    expect(await ownCharacters(alt), unorderedEquals(['410', '412']));
+    expect(await ownCharacters(bearer), unorderedEquals(['410', '412']));
+  });
+
+  test(
+    'membership changes neither move receipts nor grant prior-account reads',
+    () async {
+      final main = await signIn();
+      final bearer = main['session'] as String;
+      characterId = 411;
+      final former = await signIn();
+      await history(former['memberId'] as String, 411);
+      expect((await linkAlt(bearer, 411)).statusCode, 200);
+      await history(main['memberId'] as String, 410);
+      expect(await ownCharacters(bearer), ['410']);
+      await history(main['memberId'] as String, 411);
+      expect(await ownCharacters(bearer), unorderedEquals(['410', '411']));
+      final reply = await accountRpc(bearer, 'unlink', {'characterId': '411'});
+      expect(
+        (jsonDecode(reply.body) as Map<String, Object?>)['status'],
+        'unlinked',
+      );
+      expect(await ownCharacters(bearer), ['410']);
+      final detached = await signIn();
+      expect(await ownCharacters(detached['session'] as String), isEmpty);
+    },
+  );
+
+  test(
+    'delayed append keeps its admitted account character and exclusion stamp',
+    () async {
+      final main = await signIn();
+      final bearer = main['session'] as String;
+      persistReceipts = true;
+      await authorize(bearer);
+      expect((await linkAlt(bearer, 411)).statusCode, 200);
+      await accountRpc(bearer, 'unlink', {'characterId': '411'});
+      final wire = Completer<void>();
+      final settle = Completer<void>();
+      beforeSkillsWire = () async {
+        wire.complete();
+        await settle.future;
+      };
+      final read = post('skills', {}, bearer: bearer);
+      try {
+        await Future.any([
+          wire.future,
+          read.then((_) => fail('skills did not reach wire')),
+        ]);
+        expect((await linkAlt(bearer, 411)).statusCode, 200);
+      } finally {
+        beforeSkillsWire = null;
+        settle.complete();
+      }
+      expect((await read).statusCode, 200);
+      await scheduler.drainCallLog();
+      expect(receipts.single.member, int.parse(main['memberId'] as String));
+      expect(receipts.single.character, 410);
+      expect((await post('skills', {}, bearer: bearer)).statusCode, 200);
+      await scheduler.drainCallLog();
+      expect(receipts, hasLength(2));
+      final stamps = await pod.pod.withSession(
+        (s) => s.db.unsafeQuery(
+          'SELECT "accountExcluded" FROM esi_call_log_entry ORDER BY id',
+        ),
+        enableLogging: false,
+      );
+      expect(stamps.map((row) => row.single), [false, true]);
+    },
+  );
+
+  Future<(String, String)> mainAndSkillsAlt() async {
+    characterId = 409;
+    final main = (await signIn())['session'] as String;
+    expect((await linkAlt(main, 410)).statusCode, 200);
+    final alt = (await signIn())['session'] as String;
+    await authorize(alt);
+    return (main, alt);
+  }
+
+  test('character opt-in and holder do not follow the account main', () async {
+    final (main, alt) = await mainAndSkillsAlt();
+    expect((await post('skills', {}, bearer: main)).statusCode, 403);
+    expect((await post('skills', {}, bearer: alt)).statusCode, 200);
+    await accountRpc(main, 'makeMain', {'characterId': '410'});
+    expect((await post('skills', {}, bearer: main)).statusCode, 403);
+    expect((await post('skills', {}, bearer: alt)).statusCode, 200);
+  });
+
+  test('unlisted alt cannot inherit the main administrator access', () async {
+    final (main, alt) = await mainAndSkillsAlt();
+    Future<Object?> scope(String bearer) async {
+      final reply = await post('viewer', {}, bearer: bearer);
+      return (jsonDecode(reply.body) as Map<String, Object?>)['admin'];
+    }
+
+    expect(await scope(main), true);
+    expect(await scope(alt), false);
+    final totals = await browser.post(
+      Uri.parse('${pod.baseUrl}esiCallLog/routeCounts'),
+      headers: {...headers(), 'authorization': 'Bearer $alt'},
+      body: '{}',
+    );
+    expect(
+      (jsonDecode(totals.body) as Map<String, Object?>)['status'],
+      'denied',
+    );
+  });
+
+  test(
+    'admitted skills request finishes with its original attribution',
+    () async {
+      final (main, alt) = await mainAndSkillsAlt();
+      final account =
+          (jsonDecode((await post('viewer', {}, bearer: main)).body)
+                  as Map<String, Object?>)['memberId']
+              as String;
+      final entered = Completer<void>();
+      final finish = Completer<void>();
+      beforeSkillsWire = () async {
+        entered.complete();
+        await finish.future;
+      };
+      final pending = post('skills', {}, bearer: alt);
+      try {
+        await Future.any([
+          entered.future,
+          pending.then((_) => fail('wire skipped')),
+        ]);
+        final unlink = await accountRpc(main, 'unlink', {'characterId': '410'});
+        expect(
+          (jsonDecode(unlink.body) as Map<String, Object?>)['status'],
+          'unlinked',
+        );
+      } finally {
+        finish.complete();
+        beforeSkillsWire = null;
+      }
+      expect((await pending).statusCode, 200);
+      await scheduler.drainCallLog();
+      expect(
+        (receipts.single.member, receipts.single.character),
+        (int.parse(account), 410),
+      );
+      expect((await post('skills', {}, bearer: alt)).statusCode, 401);
+    },
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
+
+  test('delayed signed owner conflict blocks the detached identity without reattaching it', () async {
+    final (main, alt) = await mainAndSkillsAlt();
+    clock = clock.add(const Duration(minutes: 21));
+    final entered = Completer<void>();
+    final finish = Completer<void>();
+    beforeRefresh = () async {
+      entered.complete();
+      await finish.future;
+    };
+    final pending = post('skills', {}, bearer: alt);
+    try {
+      await Future.any([
+        entered.future,
+        pending.then((_) => fail('refresh skipped')),
+      ]);
+      final unlink = await accountRpc(main, 'unlink', {'characterId': '410'});
+      expect(
+        (jsonDecode(unlink.body) as Map<String, Object?>)['status'],
+        'unlinked',
+      );
+      owner = 'RElGRkVSRU5U';
+    } finally {
+      finish.complete();
+    }
+    expect((await pending).statusCode, 403);
+    final status = await pod.pod.withSession(
+      (s) => s.db.unsafeQuery('''
+      SELECT blocked, "accountId", "wasDetached" FROM esi_identity
+      WHERE "characterId" = 410
+    '''),
+      enableLogging: false,
+    );
+    expect(status.single.toList(), [true, null, true]);
+    expect((await post('viewer', {}, bearer: main)).statusCode, 200);
+  }, timeout: const Timeout(Duration(minutes: 3)));
 
   test('Valid identity signs in again', () async {
     final first = await signIn();

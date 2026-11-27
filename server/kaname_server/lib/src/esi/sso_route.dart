@@ -465,7 +465,7 @@ final class SsoRoute {
       final viewer = await _sessions.viewer(session, bearer);
       if (viewer == null) return _failure(403);
       if (input case {'action': 'prepare'} && Map(length: 1)) {
-        final epoch = await handoff.prepareTake(session, viewer.identity);
+        final epoch = await handoff.prepareTake(session, viewer);
         return epoch == null
             ? _failure(403)
             : _json(200, {'sourceEpoch': epoch.toString()});
@@ -485,7 +485,7 @@ final class SsoRoute {
         }
         final result = await handoff.takeIntent(
           session,
-          viewer.identity,
+          viewer,
           proof,
           epoch,
           reconcile: action == 'reconcile',
@@ -524,16 +524,16 @@ final class SsoRoute {
         final viewer = await _sessions.viewer(session, bearer);
         if (viewer == null) return SsoHandoffStatus.blocked;
         return switch ((action, input)) {
-          ('take', _) => handoff.take(session, viewer.identity, proof),
+          ('take', _) => handoff.take(session, viewer, proof),
           ('release', {'generation': final String value}) => handoff.release(
             session,
-            viewer.identity,
+            viewer,
             proof,
             int.tryParse(value) ?? -1,
           ),
           ('join', {'ownerFingerprint': final String hash})
               when _digest.hasMatch(hash) =>
-            handoff.joinStandalone(session, viewer.identity, proof, hash),
+            handoff.joinStandalone(session, viewer, proof, hash),
           _ => SsoHandoffStatus.blocked,
         };
       });

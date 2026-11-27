@@ -21,34 +21,63 @@ const _owner = 'VEVTVCBPTkxZ';
 void main() {
   late InProcessPod pod;
   late Session session;
-  late SsoIdentityRow pilot;
+  late SsoViewer pilot;
   late EsiTokenVault vault;
   late SsoCharacterGate gate;
   late SsoHandoff handoff;
   late DateTime clock;
+
+  Future<SsoViewer> signViewer(int character) async {
+    final identity = await SsoIdentityRow.db.insertRow(
+      session,
+      SsoIdentityRow(
+        characterId: character,
+        characterName: 'Pilot',
+        owner: _owner,
+        blocked: false,
+      ),
+    );
+    final account = await MemberAccountRow.db.insertRow(
+      session,
+      MemberAccountRow(mainIdentityId: identity.id!),
+    );
+    final linked = await SsoIdentityRow.db.updateRow(
+      session,
+      identity.copyWith(accountId: account.id),
+    );
+    final login = await SsoSessionRow.db.insertRow(
+      session,
+      SsoSessionRow(
+        digest: 'fixture-$character',
+        identityId: linked.id!,
+        accountId: account.id!,
+        expiresAt: clock.add(const Duration(days: 1)),
+      ),
+    );
+    return (
+      accountId: account.id!,
+      accountExcluded: null,
+      admin: false,
+      identity: linked,
+      sessionId: login.id!,
+    );
+  }
 
   setUp(() async {
     pod = await InProcessPod.start();
     addTearDown(pod.stop);
     session = await pod.pod.createSession(enableLogging: false);
     addTearDown(session.close);
-    pilot = await SsoIdentityRow.db.insertRow(
-      session,
-      SsoIdentityRow(
-        characterId: _character,
-        characterName: 'Pilot',
-        owner: _owner,
-        blocked: false,
-      ),
-    );
+    clock = DateTime.utc(2026, 11, 25, 10);
+    pilot = await signViewer(_character);
     vault = createServerEsiVault(
       pod.pod,
       readKey: () => base64Encode(List.filled(32, 19)),
       refresh: (_, _) async => fail('handoff must not send refresh'),
     );
-    gate = SsoCharacterGate();
-    clock = DateTime.utc(2026, 11, 25, 10);
-    handoff = SsoHandoff(gate: gate, vault: vault, now: () => clock);
+    final sessions = SsoSessions(now: () => clock);
+    gate = sessions.gate;
+    handoff = SsoHandoff(sessions: sessions, vault: vault, now: () => clock);
   });
 
   Future<VaultAuthorization> holdOnServer({int character = _character}) async {
@@ -88,6 +117,17 @@ void main() {
 
   Future<SsoHandoffResult> reconcile(String proof, int epoch) =>
       handoff.takeIntent(session, pilot, proof, epoch, reconcile: true);
+
+  test('revocation before holder admission starts no holder action', () async {
+    await holdOnServer();
+    await SsoSessionRow.db.deleteWhere(
+      session,
+      where: (t) => t.id.equals(pilot.sessionId),
+    );
+    expect(await handoff.take(session, pilot, _one), SsoHandoffStatus.blocked);
+    expect((await assigned())?.phase, 'serverHeld');
+    expect(await handoff.prepareTake(session, pilot), isNull);
+  });
 
   test('Take a server-held character solo', () async {
     final original = await holdOnServer();
@@ -241,7 +281,7 @@ void main() {
     finish.complete();
     await admitted;
     final reconstructed = SsoHandoff(
-      gate: SsoCharacterGate(),
+      sessions: SsoSessions(now: () => clock),
       vault: vault,
       now: () => clock,
     );
@@ -368,15 +408,7 @@ void main() {
 
   test('Repeated closures stay pending after restart and do not limit another character', () async {
     await holdOnServer();
-    final other = await SsoIdentityRow.db.insertRow(
-      session,
-      SsoIdentityRow(
-        characterId: _other,
-        characterName: 'Other',
-        owner: _owner,
-        blocked: false,
-      ),
-    );
+    final other = await signViewer(_other);
     await holdOnServer(character: _other);
     final start = clock;
     expect(await reconcile(_one, 1), SsoHandoffStatus.notAccepted);
@@ -384,7 +416,7 @@ void main() {
 
     clock = start.add(const Duration(seconds: 30));
     final restarted = SsoHandoff(
-      gate: SsoCharacterGate(),
+      sessions: SsoSessions(now: () => clock),
       vault: vault,
       now: () => clock,
     );

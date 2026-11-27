@@ -41,7 +41,10 @@ final class ServerSsoSkills {
       return await _sessions.gate.runDispatch(
             viewer.identity.characterId,
             () async {
-              final current = await _sessions.viewer(session, bearer);
+              final current = await _sessions.viewerForDispatch(
+                session,
+                bearer,
+              );
               if (current == null) {
                 return (
                   status: 401,
@@ -63,6 +66,7 @@ final class ServerSsoSkills {
                 authorization: authorization,
                 application: _clientId,
                 member: current.accountId,
+                accountExcluded: current.accountExcluded!,
                 client: client,
               );
               if (vaultFailure == VaultFailureReason.reLoginRequired) {
@@ -109,6 +113,7 @@ readScheduledSkills({
   required VaultAuthorization authorization,
   required String application,
   required int member,
+  bool? accountExcluded,
   required EsiClient Function(EsiPrincipal) client,
 }) async {
   if (await vault.bearer(authorization) case VaultFailure(:final reason)) {
@@ -119,6 +124,7 @@ readScheduledSkills({
     character: authorization.character,
     generation: authorization.generation.toString(),
     member: member,
+    accountExcluded: accountExcluded,
     bearer: () async => switch (await vault.readBearer(authorization)) {
       VaultSuccess(:final value) => value.token,
       VaultFailure() => null,

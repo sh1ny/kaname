@@ -1,5 +1,6 @@
 import 'package:serverpod/serverpod.dart';
 
+import '../esi/sso_sessions.dart';
 import '../generated/protocol.dart';
 import 'admin_operation_store.dart';
 import 'auto_update_setting_writer.dart';
@@ -17,8 +18,12 @@ class StaticDataAdminEndpoint extends Endpoint {
   /// Starts an admitted CCP check (D4). The row owns its terminal outcome.
   Future<AdminAnswer> updateNow(Session session, String operationId) {
     if (!_admin(session)) return Future.value(_denied());
-    return StaticDataAccess.forPod(session.serverpod).admission
-        .request(operationId, kind: SdeAdminOperationKind.updateNow);
+    final auth = session.authenticated;
+    return StaticDataAccess.forPod(session.serverpod).admission.request(
+      operationId,
+      kind: SdeAdminOperationKind.updateNow,
+      authorize: (owner) => SsoSessions.liveAdmin(owner, auth),
+    );
   }
 
   /// Restores only the build revision confirmed by the caller (D5, C14).
@@ -28,9 +33,11 @@ class StaticDataAdminEndpoint extends Endpoint {
     int expectedRevision,
   ) {
     if (!_admin(session)) return Future.value(_denied());
+    final auth = session.authenticated;
     return StaticDataAccess.forPod(session.serverpod).admission.request(
       operationId,
       kind: SdeAdminOperationKind.rollback,
+      authorize: (owner) => SsoSessions.liveAdmin(owner, auth),
       revision: expectedRevision,
     );
   }
@@ -44,6 +51,7 @@ class StaticDataAdminEndpoint extends Endpoint {
     String writeId,
   ) async {
     if (!_admin(session)) return _denied();
+    final auth = session.authenticated;
     final access = StaticDataAccess.forPod(session.serverpod);
     try {
       final invalidRevision = switch (expectedRevision) {
@@ -55,9 +63,14 @@ class StaticDataAdminEndpoint extends Endpoint {
         return AdminAnswer(outcome: AdminAnswerOutcome.malformed);
       }
       AutoUpdateSettingResult completed = const SettingNotSaved();
+      var denied = false;
       final pending = access.tokens.tryRun(
         ReadWorkKind.admin,
         (_) => access.withSession((owner) async {
+          if (!await SsoSessions.liveAdmin(owner, auth)) {
+            denied = true;
+            return completed;
+          }
           completed = await const AutoUpdateSettingWriter().write(
             owner,
             value: value,
@@ -75,6 +88,7 @@ class StaticDataAdminEndpoint extends Endpoint {
       } on Object {
         // Session checkout or cleanup does not change transaction evidence.
       }
+      if (denied) return _denied();
       return switch (completed) {
         SettingConfirmed(:final value, :final revision) => AdminAnswer(
           outcome: AdminAnswerOutcome.settingConfirmed,

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_server/src/esi/esi_call_log_store.dart';
+import 'package:kaname_server/src/esi/sso_sessions.dart';
 import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
 
@@ -13,8 +14,9 @@ const assets = 'GetCharactersCharacterIdAssets';
 const other = 'GetCharactersCharacterIdBlueprints';
 const probe = 'GetStatus';
 final day = DateTime.utc(2000, 11, 25);
-const member = EsiCallLogViewer(member: 1, characters: {10});
-const admin = EsiCallLogViewer(member: 1, characters: {10}, admin: true);
+const member = EsiCallLogViewer(member: 1);
+const admin = EsiCallLogViewer(member: 1, admin: true);
+const _actor = (account: 1, session: 1);
 
 Future<void> seed(
   Session session,
@@ -57,9 +59,32 @@ void main() {
       session = builder.build();
       addTearDown(session.close);
       await session.db.unsafeExecute(
-        'TRUNCATE esi_call_log_entry, esi_call_log_seal',
+        'TRUNCATE esi_call_log_entry, esi_call_log_seal, esi_session, '
+        'esi_identity, member_account',
       );
       now = day.add(const Duration(minutes: 2));
+      SsoSessions(
+        now: () => now,
+        adminCharacters: {10},
+      ).bind(session.serverpod);
+      await session.db.transaction((tx) async {
+        await session.db.unsafeExecute('''
+          INSERT INTO esi_identity (id, "characterId", owner, "characterName", blocked)
+          VALUES (1, 10, 'fixture', 'Pilot', false)
+        ''', transaction: tx);
+        await session.db.unsafeExecute(
+          'INSERT INTO member_account (id, "mainIdentityId") VALUES (1, 1)',
+          transaction: tx,
+        );
+        await session.db.unsafeExecute(
+          'UPDATE esi_identity SET "accountId" = 1 WHERE id = 1',
+          transaction: tx,
+        );
+        await session.db.unsafeExecute('''
+          INSERT INTO esi_session (id, "identityId", "accountId", digest, "expiresAt")
+          VALUES (1, 1, 1, 'fixture', '2100-01-01')
+        ''', transaction: tx);
+      });
       store = EsiCallLogStore(now: () => now);
     });
 
@@ -149,7 +174,7 @@ void main() {
       await seed(session, cutoff);
       await seed(session, cutoff.add(const Duration(microseconds: 1)));
       expect(
-        (await store.ownRows(session, member)).single.recordedAt,
+        (await store.ownRows(session, _actor)).single.recordedAt,
         cutoff.add(const Duration(microseconds: 1)),
       );
       expect(await store.prune(session), 1);
@@ -171,9 +196,7 @@ void main() {
       await seed(session, recent, owner: 2);
       await seed(session, recent, character: 11);
       await seed(session, recent, owner: null);
-      for (final viewer in [admin, member]) {
-        expect((await store.ownRows(session, viewer)).single.character, 10);
-      }
+      expect((await store.ownRows(session, _actor)).single.character, 10);
     });
 
     test('missing viewer and member aggregate access denied', () async {
@@ -222,11 +245,10 @@ void main() {
     );
 
     test('transfer does not expose prior member rows', () async {
-      await seed(session, recent);
-      await seed(session, recent, owner: 2, outcome: 'error');
-      const newOwner = EsiCallLogViewer(member: 2, characters: {10});
+      await seed(session, recent, owner: 2);
+      await seed(session, recent, outcome: 'error');
       expect(
-        (await store.ownRows(session, newOwner)).single.outcome,
+        (await store.ownRows(session, _actor)).single.outcome,
         EsiCallLogOutcome.error,
       );
     });
@@ -265,7 +287,7 @@ void main() {
         await seed(session, recent, owner: owner, character: owner * 10);
       }
       await seed(session, recent, owner: null);
-      expect((await store.ownRows(session, member)).single.character, 10);
+      expect((await store.ownRows(session, _actor)).single.character, 10);
       expect(await store.routeCounts(session, admin), isEmpty);
     });
 

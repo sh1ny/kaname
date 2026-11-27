@@ -118,6 +118,8 @@ In connected ESI Settings, sign in and choose **Link character**. Complete
 CCP sign-in with the alt and finish the link in Kaname. You can select a
 different main or unlink any non-main. Unlink ends that character's Kaname
 sessions but leaves its ESI grants, opt-ins and holder assignment in place.
+Switching the main does not grant another character's ESI scopes or
+administrator access. The server checks the character that signed in.
 
 ### Test both sign-in modes locally
 

@@ -23,6 +23,7 @@ final class EsiCallLogEntry {
     this.cost,
     this.member,
     this.character,
+    this.accountExcluded,
   });
 
   /// The pinned catalogue route, never the expanded request target.
@@ -54,4 +55,7 @@ final class EsiCallLogEntry {
 
   /// Authenticated character for a private operation, if known.
   final int? character;
+
+  /// The owning account's exclusion as admitted, never recalculated on write.
+  final bool? accountExcluded;
 }

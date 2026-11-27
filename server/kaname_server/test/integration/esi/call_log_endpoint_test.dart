@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:kaname_server/src/esi/esi_call_log_endpoint.dart';
 import 'package:kaname_server/src/esi/esi_call_log_store.dart';
+import 'package:kaname_server/src/esi/sso_sessions.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
@@ -84,6 +85,10 @@ void main() {
       now = DateTime.now().toUtc();
       session = sessions.build();
       addTearDown(session.close);
+      SsoSessions(
+        now: () => now,
+        adminCharacters: {511, 512},
+      ).bind(session.serverpod);
       await session.db.unsafeExecute('DELETE FROM esi_call_log_seal');
       first = await addPilot(511);
       second = await addPilot(512);
@@ -209,6 +214,33 @@ void main() {
       expect((await reader.own(viewers.last, null)).status, 'ok');
     });
 
+    test(
+      'a sparse page advances on visible rows, not removed characters',
+      () async {
+        final hidden = await addPilot(513);
+        final time = now.subtract(const Duration(hours: 1));
+        await receipt(first, time.subtract(const Duration(seconds: 1000)));
+        for (var index = 0; index < 101; index++) {
+          await receipt(first, time.subtract(Duration(seconds: index)));
+          await receipt((
+            account: first.account,
+            character: hidden.character,
+            session: hidden.session,
+          ), time.add(Duration(seconds: index)));
+        }
+        final auth = signed(first);
+        final page = await endpoints.esiCallLog.ownRows(auth, null);
+        expect(page.rows, hasLength(100));
+        expect(page.rows.map((row) => row.characterId).toSet(), {'511'});
+        final remaining = await endpoints.esiCallLog.ownRows(auth, page.next);
+        expect(remaining.rows.map((row) => row.recordedAt), [
+          time.subtract(const Duration(seconds: 100)),
+          time.subtract(const Duration(seconds: 1000)),
+        ]);
+        expect(remaining.next, isNull);
+      },
+    );
+
     test('Admins read the same released window', () async {
       final at = DateTime.utc(2026, 11, 25, 9);
       var clock = at;
@@ -233,6 +265,31 @@ void main() {
       expect((await reader.totals(other)).rows.single.total, 5);
       clock = at.add(const Duration(days: 1));
       expect((await reader.totals(other)).rows.single.total, 6);
+    });
+
+    test('revoked allowlisted alt cannot use cached route totals', () async {
+      final date = DateTime.utc(2026, 11, 25, 9);
+      final reader = EsiCallLogReads(EsiCallLogStore(now: () => date));
+      final acting = signed(first, admin: true).build();
+      addTearDown(acting.close);
+      await EsiCallLogRow.db.insertRow(
+        session,
+        EsiCallLogRow(
+          recordedAt: date.subtract(const Duration(days: 1)),
+          operation: 'GetStatus',
+          outcome: 'success',
+          latencyMicros: 1,
+          characterId: first.character,
+        ),
+      );
+      expect((await reader.totals(acting)).rows.single.total, 1);
+      await SsoSessionRow.db.deleteWhere(
+        session,
+        where: (t) => t.id.equals(first.session),
+      );
+      final denied = await reader.totals(acting);
+      expect(denied.status, 'denied');
+      expect(denied.rows, isEmpty);
     });
 
     test('newer seal refuses prior results for owners waiters and cache hits before admission', () async {

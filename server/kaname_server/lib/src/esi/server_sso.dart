@@ -116,7 +116,7 @@ final class ServerSso {
       sessions: sessions,
       now: now,
       grants: grants,
-      handoff: SsoHandoff(gate: sessions.gate, vault: vault, now: now),
+      handoff: SsoHandoff(sessions: sessions, vault: vault, now: now),
       skills: ServerSsoSkills(
         sessions: sessions,
         grants: grants,

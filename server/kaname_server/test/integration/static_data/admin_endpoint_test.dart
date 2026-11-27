@@ -326,6 +326,70 @@ void main() {
     });
   }
 
+  test('revocation before admission reserves no static-data job', () async {
+    await start(admin: true);
+    final worker = _ControlledWorker();
+    await runWorker(controlled: worker);
+    final reached = Completer<void>();
+    final continueLookup = Completer<void>();
+    beforeSession = (_) async {
+      if (!reached.isCompleted) reached.complete();
+      await continueLookup.future;
+    };
+    final pending = update(42);
+    try {
+      await Future.any([
+        reached.future,
+        pending.then((_) => fail('lookup skipped')),
+      ]);
+      await server.pod.withSession(
+        (owner) => owner.db.unsafeExecute('DELETE FROM esi_session'),
+        enableLogging: false,
+      );
+    } finally {
+      continueLookup.complete();
+    }
+    expect((await pending).outcome, api.AdminAnswerOutcome.notAuthorized);
+    expect(worker.checks, isEmpty);
+    expect(await operation(42), isNull);
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  test('final gate sample sees a competing reservation', () async {
+    await start(admin: true);
+    final worker = _ControlledWorker();
+    await runWorker(controlled: worker);
+    final reached = Completer<void>();
+    final resume = Completer<void>();
+    var first = true;
+    beforeSession = (_) async {
+      if (!first) return;
+      first = false;
+      reached.complete();
+      await resume.future;
+    };
+    final delayed = update(41);
+    try {
+      await Future.any([
+        reached.future,
+        delayed.then((_) => fail('lookup skipped')),
+      ]);
+      final winner = update(42);
+      final launched = await worker.firstCheck.future;
+      resume.complete();
+      expect((await delayed).outcome, api.AdminAnswerOutcome.importRunning);
+      expect(await operation(41), isNull);
+      worker.reply(
+        BuildCheckFinished(
+          requestId: launched.requestId,
+          result: const BuildCheckFailed('Postgres unreachable'),
+        ),
+      );
+      await winner;
+    } finally {
+      if (!resume.isCompleted) resume.complete();
+    }
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
   test('two pending admin lookups exhaust only their own budget', () async {
     await start(admin: true);
     final worker = _ControlledWorker();
@@ -1246,6 +1310,7 @@ final class _ControlledWorker implements WorkerProcess {
   final _outbox = workerOutboxCodec();
   final checks = <RunBuildCheck>[];
   final rollbacks = <RunRollback>[];
+  final firstCheck = Completer<RunBuildCheck>();
 
   @override
   Stream<Object?> get replies => _replies.stream;
@@ -1258,6 +1323,7 @@ final class _ControlledWorker implements WorkerProcess {
     switch (_inbox.decode(message)) {
       case final RunBuildCheck request:
         checks.add(request);
+        if (!firstCheck.isCompleted) firstCheck.complete(request);
       case final RunRollback request:
         rollbacks.add(request);
       case _:

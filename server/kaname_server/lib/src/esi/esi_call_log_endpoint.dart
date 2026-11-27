@@ -34,29 +34,10 @@ final class EsiCallLogReads {
   final _reading = <int>{};
   ({DateTime window, EsiRouteCountPage page})? _cached;
   ({DateTime window, Future<EsiRouteCountPage> page})? _computing;
-  static final _sessions = SsoSessions(now: DateTime.now);
   static final _number = RegExp(r'^[1-9][0-9]{0,18}$');
 
   static int? _id(String value) =>
       _number.hasMatch(value) ? int.tryParse(value, radix: 10) : null;
-
-  static Future<EsiCallLogViewer?> _viewer(
-    Session session,
-    int member,
-    String authId,
-    bool admin,
-  ) async {
-    final id = _id(authId);
-    if (id == null) return null;
-    final current = await _sessions.viewerById(session, id, member);
-    return current == null
-        ? null
-        : EsiCallLogViewer(
-            member: member,
-            characters: {current.identity.characterId},
-            admin: admin,
-          );
-  }
 
   /// Admits no more than one read per viewer and four per server.
   Future<EsiCallLogPage> own(Session session, EsiCallLogCursor? after) async {
@@ -64,20 +45,15 @@ final class EsiCallLogReads {
         EsiCallLogPage(status: status, rows: []);
     final auth = session.authenticated;
     final member = auth == null ? null : _id(auth.userIdentifier);
-    if (member == null) return failure('denied');
+    final id = auth == null ? null : _id(auth.authId);
+    if (member == null || id == null) return failure('denied');
     final cursorId = after == null ? null : _id(after.id);
     if (after != null && cursorId == null) return failure('denied');
     if (_reading.length >= 4 || !_reading.add(member)) return failure('busy');
     try {
-      final viewer = await _viewer(
-        session,
-        member,
-        auth!.authId,
-        auth.scopes.contains(Scope.admin),
-      );
       final rows = await _store.ownRows(
         session,
-        viewer,
+        (account: member, session: id),
         after: after == null
             ? null
             : (recordedAt: after.recordedAt.toUtc(), id: cursorId!),
@@ -122,11 +98,16 @@ final class EsiCallLogReads {
       return failure('denied');
     }
     final member = _id(auth.userIdentifier);
-    if (member == null) return failure('denied');
+    final id = _id(auth.authId);
+    final authority = SsoSessions.forPod(session.serverpod);
+    if (member == null || id == null || authority == null) {
+      return failure('denied');
+    }
     if (_reading.length >= 4 || !_reading.add(member)) return failure('busy');
     try {
-      final viewer = await _viewer(session, member, auth.authId, true);
-      if (viewer == null) return failure('denied');
+      final live = await authority.viewerById(session, id, member);
+      if (live?.admin != true) return failure('denied');
+      final viewer = EsiCallLogViewer(member: member, admin: true);
       final window = await _store.sealWindow(session);
       final page = await _pageForSeal(session, viewer, window);
       return await _readSeal(session) == window ? page : failure('unavailable');

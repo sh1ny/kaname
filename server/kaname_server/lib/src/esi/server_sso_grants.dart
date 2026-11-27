@@ -31,11 +31,15 @@ final class ServerSsoGrants implements SsoGrantAuthority {
   static const holder = (kind: VaultHolderKind.server, id: 'server');
 
   /// No assignment is assumed active without a matching committed vault row.
-  static Future<SsoHolderRow?> assignment(Session session, int character) =>
-      SsoHolderRow.db.findFirstRow(
-        session,
-        where: (t) => t.characterId.equals(character),
-      );
+  static Future<SsoHolderRow?> assignment(
+    Session session,
+    int character, {
+    Transaction? transaction,
+  }) => SsoHolderRow.db.findFirstRow(
+    session,
+    where: (t) => t.characterId.equals(character),
+    transaction: transaction,
+  );
 
   @override
   Future<SsoRequestedGrant?> request(Session session, SsoViewer viewer) async {
@@ -97,12 +101,13 @@ final class ServerSsoGrants implements SsoGrantAuthority {
       await _gate.run(viewer.identity.characterId, () async {
         final policy = _policy;
         if (policy == null) return false;
-        final identity = await SsoIdentityRow.db.findById(
+        final live = await _sessions.viewerById(
           session,
-          viewer.identity.id!,
+          viewer.sessionId,
+          viewer.accountId,
         );
-        final key = await SsoSessionRow.db.findById(session, viewer.sessionId);
-        if (identity == null || identity.blocked || key == null) return false;
+        if (live == null) return false;
+        final identity = live.identity;
         final characterSkills = ScopeClass.characterSkills.name;
         final signer = identity.id!;
         final existing = await SsoOptInRow.db.findFirstRow(

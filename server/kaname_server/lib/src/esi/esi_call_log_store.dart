@@ -2,7 +2,7 @@ import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:serverpod/serverpod.dart';
 
-import '../generated/protocol.dart';
+import 'sso_sessions.dart';
 
 // Shared by appends and the admin release barrier. This is a different
 // namespace from static-data locks; Postgres releases it with the transaction.
@@ -13,22 +13,18 @@ const _aggregateRange = Duration(days: 5);
 
 /// Viewer resolved by trusted server code, never populated from RPC arguments.
 final class EsiCallLogViewer {
-  /// Binds the current member, currently owned characters and admin grant.
-  const EsiCallLogViewer({
-    required this.member,
-    required this.characters,
-    this.admin = false,
-  });
+  /// Binds a trusted account and its scope for a route aggregate read.
+  const EsiCallLogViewer({required this.member, this.admin = false});
 
   /// Trusted member identity also recorded on that member's calls.
   final int member;
 
-  /// Character IDs the viewer currently owns.
-  final Set<int> characters;
-
   /// Whether this viewer may request route-level aggregates.
   final bool admin;
 }
+
+/// The account and exact session obtained from server authentication.
+typedef EsiCallLogActor = ({int account, int session});
 
 /// A stable denial without caller or character details (ADR 0006).
 final class EsiCallLogDenied implements Exception {
@@ -66,12 +62,10 @@ final class EsiCallLogStore {
   ///
   /// [minimumMembers] can raise, never lower, the ADR 0006 privacy floor.
   EsiCallLogStore({
-    DateTime Function()? now,
+    this._now,
     int minimumMembers = 5,
-    bool waitForReleaseLock = true,
-  }) : _now = now,
-       _minimumMembers = minimumMembers < 5 ? 5 : minimumMembers,
-       _waitForReleaseLock = waitForReleaseLock;
+    this._waitForReleaseLock = true,
+  }) : _minimumMembers = minimumMembers < 5 ? 5 : minimumMembers;
 
   final DateTime Function()? _now;
   final bool _waitForReleaseLock;
@@ -95,10 +89,10 @@ final class EsiCallLogStore {
           '''
           INSERT INTO esi_call_log_entry
             ("recordedAt", operation, outcome, status, cost, "latencyMicros",
-             bucket, "memberId", "characterId")
+             bucket, "memberId", "characterId", "accountExcluded")
           SELECT @recorded::timestamp, @operation::text, @outcome::text,
             @status::bigint, @cost::bigint, @latency::bigint, @bucket::text,
-            @member::bigint, @character::bigint
+            @member::bigint, @character::bigint, @excluded::boolean
           WHERE COALESCE(@clock::timestamp, clock_timestamp() AT TIME ZONE 'UTC')
                   < @recorded::timestamp + interval '10 seconds'
             AND NOT EXISTS (
@@ -116,6 +110,7 @@ final class EsiCallLogStore {
             'bucket': receipt.bucket,
             'member': receipt.member,
             'character': receipt.character,
+            'excluded': receipt.accountExcluded,
             'clock': _now?.call().toUtc(),
           }),
           transaction: tx,
@@ -134,52 +129,75 @@ final class EsiCallLogStore {
   /// replace the viewer predicate. Ownership and age are checked each time.
   Future<List<EsiCallLogItem>> ownRows(
     Session session,
-    EsiCallLogViewer? viewer, {
+    EsiCallLogActor? viewer, {
     EsiCallLogCursor? after,
   }) async {
-    if (viewer == null || viewer.member <= 0) throw const EsiCallLogDenied._();
-    if (viewer.characters.isEmpty) return const [];
+    final authority = SsoSessions.forPod(session.serverpod);
+    if (viewer == null || authority == null) throw const EsiCallLogDenied._();
     final cutoff = (_now?.call() ?? DateTime.now()).toUtc().subtract(
       _retention,
     );
     try {
-      final rows = await session.db.transaction((tx) async {
-        await session.db.unsafeExecute(
-          "SET LOCAL statement_timeout = '10s'",
-          transaction: tx,
-        );
-        return EsiCallLogRow.db.find(
-          session,
-          where: (t) {
-            final own =
-                t.memberId.equals(viewer.member) &
-                t.characterId.inSet(viewer.characters) &
-                (t.recordedAt > cutoff);
-            if (after == null) return own;
-            return own &
-                ((t.recordedAt < after.recordedAt) |
-                    (t.recordedAt.equals(after.recordedAt) &
-                        (t.id < after.id)));
-          },
-          orderByList: (t) => [t.recordedAt.desc(), t.id.desc()],
-          limit: 100,
-          transaction: tx,
-        );
-      });
+      final rows = await session.db.transaction(
+        (tx) async {
+          await session.db.unsafeExecute(
+            "SET LOCAL statement_timeout = '10s'",
+            transaction: tx,
+          );
+          final live = await authority.viewerById(
+            session,
+            viewer.session,
+            viewer.account,
+            transaction: tx,
+          );
+          if (live == null) throw const EsiCallLogDenied._();
+          return session.db.unsafeQuery(
+            '''
+            SELECT r.id, r."recordedAt", r."characterId", r.operation, r.bucket,
+                   r.outcome, r.status, r.cost, r."latencyMicros"
+            FROM esi_call_log_entry AS r
+            WHERE r."memberId" = @account::bigint AND r."recordedAt" > @cutoff::timestamp
+              ${after == null ? '' : 'AND (r."recordedAt", r.id) < (@at::timestamp, @id::bigint)'}
+              AND EXISTS (
+                SELECT 1 FROM esi_identity AS i
+                WHERE i."accountId" = @account::bigint
+                  AND i."characterId" = r."characterId" AND NOT i.blocked
+              )
+            ORDER BY r."recordedAt" DESC, r.id DESC
+            LIMIT 100
+            ''',
+            parameters: QueryParameters.named({
+              'account': viewer.account,
+              'cutoff': cutoff,
+              if (after != null) 'at': after.recordedAt,
+              if (after != null) 'id': after.id,
+            }),
+            transaction: tx,
+          );
+        },
+        settings: const TransactionSettings(
+          isolationLevel: IsolationLevel.repeatableRead,
+        ),
+      );
       return [
         for (final row in rows)
           (
-            cursor: (recordedAt: row.recordedAt.toUtc(), id: row.id!),
-            recordedAt: row.recordedAt.toUtc(),
-            character: row.characterId!,
-            operation: row.operation,
-            bucket: row.bucket,
-            outcome: EsiCallLogOutcome.values.byName(row.outcome),
-            status: row.status,
-            cost: row.cost,
-            latency: Duration(microseconds: row.latencyMicros),
+            cursor: (
+              recordedAt: (row[1] as DateTime).toUtc(),
+              id: row[0] as int,
+            ),
+            recordedAt: (row[1] as DateTime).toUtc(),
+            character: row[2] as int,
+            operation: row[3] as String,
+            bucket: row[4] as String?,
+            outcome: EsiCallLogOutcome.values.byName(row[5] as String),
+            status: row[6] as int?,
+            cost: row[7] as int?,
+            latency: Duration(microseconds: row[8] as int),
           ),
       ];
+    } on EsiCallLogDenied {
+      rethrow;
     } on Exception {
       throw const EsiCallLogUnavailable._();
     }
@@ -332,8 +350,9 @@ final class EsiCallLogStore {
     _requireAdmin(viewer);
     final end = await sealWindow(session);
     final rows = await countsForSeal(session, viewer, end);
-    if (await currentSeal(session) != end)
+    if (await currentSeal(session) != end) {
       throw const EsiCallLogUnavailable._();
+    }
     return (window: end, rows: rows);
   }
 

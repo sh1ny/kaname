@@ -10,6 +10,7 @@ import 'esi_call_log_store.dart';
 /// Live account and signing character. ESI and admin authority follow the signer.
 typedef SsoViewer = ({
   int accountId,
+  bool? accountExcluded,
   SsoIdentityRow identity,
   bool admin,
   int sessionId,
@@ -72,6 +73,19 @@ final class SsoSessions {
   /// Returns the session authority installed for [pod], if sign-in is enabled.
   static SsoSessions? forPod(Serverpod pod) => _bound[pod];
 
+  /// Rechecks the original admin bearer in the caller's admitted DB work.
+  static Future<bool> liveAdmin(
+    Session session,
+    AuthenticationInfo? auth,
+  ) async {
+    if (auth == null || !auth.scopes.contains(Scope.admin)) return false;
+    final authority = forPod(session.serverpod);
+    final account = int.tryParse(auth.userIdentifier, radix: 10);
+    final id = int.tryParse(auth.authId, radix: 10);
+    if (authority == null || account == null || id == null) return false;
+    return (await authority.viewerById(session, id, account))?.admin == true;
+  }
+
   /// The main-isolate gate protects grants, holders and ESI dispatch.
   final gate = SsoCharacterGate();
 
@@ -103,6 +117,12 @@ final class SsoSessions {
     }
   }
 
+  /// Captures account, signer and exclusion for an ESI dispatch in one read.
+  Future<SsoViewer?> viewerForDispatch(Session session, String bearer) {
+    if (!_bearerShape.hasMatch(bearer)) return Future.value();
+    return _live(session, digest: ssoDigest(bearer), includeExclusion: true);
+  }
+
   /// Resolves the bearer for the viewer route without hiding lookup errors.
   ///
   /// Returns `null` only if the bearer or session is invalid. Lookup errors
@@ -132,11 +152,13 @@ final class SsoSessions {
     int? sessionId,
     int? accountId,
     Transaction? transaction,
+    bool includeExclusion = false,
   }) async {
     final rows = await session.db.unsafeQuery(
       '''
       SELECT s.id, s."accountId", i.id, i."characterId", i.owner,
              i."characterName", i."wasDetached"
+             ${includeExclusion ? ', EXISTS (SELECT 1 FROM esi_call_log_exclusion e WHERE e.id = s."accountId")' : ''}
       FROM esi_session AS s JOIN esi_identity AS i ON i.id = s."identityId"
       WHERE ${digest != null ? 's.digest = @digest' : 's.id = @id AND s."accountId" = @account'}
         AND s."expiresAt" > @now::timestamp AND NOT i.blocked
@@ -166,6 +188,7 @@ final class SsoSessions {
         wasDetached: row[6] as bool,
       ),
       admin: _admins.contains(character),
+      accountExcluded: includeExclusion ? row[7] as bool : null,
       sessionId: row[0] as int,
     );
   }

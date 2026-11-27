@@ -20,6 +20,7 @@ final class EsiPrincipal {
     required this.character,
     required this.generation,
     this.member,
+    this.accountExcluded,
     required this.bearer,
   });
 
@@ -31,6 +32,9 @@ final class EsiPrincipal {
 
   /// Trusted owning member, if resolved by the holder; never client input.
   final int? member;
+
+  /// Private-aggregate exclusion at the live admission snapshot, if sampled.
+  final bool? accountExcluded;
 
   /// A non-secret marker for this authorization and role generation.
   final String generation;
@@ -172,6 +176,7 @@ final class EsiScheduler {
       cost: cost,
       member: owner?.member,
       character: owner?.character,
+      accountExcluded: owner?.accountExcluded,
     );
     late final Future<void> pending;
     pending = Future<void>.microtask(() => sink(row))
