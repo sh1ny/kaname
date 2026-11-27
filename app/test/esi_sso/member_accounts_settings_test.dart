@@ -22,6 +22,7 @@ import 'package:kaname_ember_ui/kaname_ember_ui.dart';
 const _next = 'Next characters';
 const _unlink = 'Unlink';
 const _recover = 'Revoke old session';
+const _mainRequired = 'Select a new main before unlinking this character.';
 
 void main() {
   testWidgets('connected Settings shows account main and signing alt', (
@@ -40,6 +41,7 @@ void main() {
       );
       expect(server.rosterRequests.single.followRedirects, isFalse);
       expect(find.text('Main: Main Pilot'), findsOneWidget);
+      expect(find.text(_mainRequired), findsOneWidget);
       expect(find.text('Signed in as: Alt Pilot'), findsOneWidget);
       expect(find.text('Link character'), findsOneWidget);
       expect(find.text('Make main'), findsOneWidget);
@@ -456,20 +458,60 @@ void main() {
           ? 'lost unlink keeps own history empty until fresh sign-in'
           : 'unlink fences a pending old own-history reply',
       (tester) async {
-        final server = _Server(ambiguous: ambiguous);
+        final reply = Completer<void>();
+        final server = _Server(ambiguous: ambiguous)..unlinkReply = reply;
+        if (ambiguous) {
+          server.unlinkCharacter = '450';
+          final first = _page();
+          server.next.complete(
+            MemberRosterPage(
+              status: MemberRosterStatus.ok,
+              accountId: first.accountId,
+              main: first.main,
+              signing: first.signing,
+              characters: [
+                MemberCharacter(
+                  characterId: '450',
+                  name: 'Page-two alt',
+                  blocked: false,
+                ),
+              ],
+            ),
+          );
+        }
         final history = _HistoryRequests();
         await http.runWithClient(() async {
           final scope = await _open(tester, history: history);
           await _signIn(tester);
-          final first = _historyPage('1', 'Old first page', next: true);
+          if (ambiguous) {
+            expect(find.text('Page-two alt'), findsNothing);
+            await _tap(tester, _next);
+            expect(find.text('Page-two alt'), findsOneWidget);
+            expect(find.text('Main Pilot'), findsNothing);
+            expect(find.text('Main: Main Pilot'), findsOneWidget);
+            expect(find.text(_mainRequired), findsOneWidget);
+          }
+          final oldCharacter = ambiguous ? '450' : '411';
+          final first = _historyPage(
+            '1',
+            'Old first page',
+            next: true,
+            character: oldCharacter,
+          );
           await _tap(tester, 'My calls', settle: false);
           history.pages.single.complete(first);
           await tester.pumpAndSettle();
           expect(find.text('Old first page'), findsOneWidget);
           await _tap(tester, 'Older calls', settle: false);
           expect(history.requests.last.after?.toJson(), first.next!.toJson());
-          await _tap(tester, _unlink);
-          history.pages.last.complete(_historyPage('2', 'Old second page'));
+          await _tap(tester, _unlink, settle: false);
+          expect(server.unlinkCalls, 1);
+          expect(find.text('My calls'), findsNothing);
+          reply.complete();
+          await tester.pumpAndSettle();
+          history.pages.last.complete(
+            _historyPage('2', 'Old second page', character: oldCharacter),
+          );
           await tester.pumpAndSettle();
           expect(find.text('Old first page'), findsNothing);
           expect(find.text('Old second page'), findsNothing);
@@ -479,8 +521,13 @@ void main() {
           expect(find.text('My calls'), findsNothing);
           await scope.read(callLogProvider.notifier).own();
           expect(history.requests, hasLength(2));
+          expect(server.revocations, isEmpty);
           await _tap(tester, _recover);
+          expect(server.revocations, ['Bearer ${'b' * 43}']);
+          expect(server.unlinkCalls, 1);
           expect(find.text('My calls'), findsNothing);
+          await scope.read(callLogProvider.notifier).own();
+          expect(history.requests, hasLength(2));
           await _signIn(tester);
           expect(find.text('Older calls'), findsNothing);
           await _tap(tester, 'My calls', settle: false);
@@ -608,7 +655,12 @@ MemberRosterPage _page({
   );
 }
 
-EsiCallLogPage _historyPage(String id, String operation, {bool next = false}) {
+EsiCallLogPage _historyPage(
+  String id,
+  String operation, {
+  bool next = false,
+  String character = '411',
+}) {
   final time = DateTime.utc(2026, 11, 27);
   final cursor = EsiCallLogCursor(recordedAt: time, id: id);
   return EsiCallLogPage(
@@ -618,7 +670,7 @@ EsiCallLogPage _historyPage(String id, String operation, {bool next = false}) {
       EsiCallLogReceipt(
         cursor: cursor,
         recordedAt: time,
-        characterId: '411',
+        characterId: character,
         operation: operation,
         outcome: 'success',
         latencyMicros: 1,
@@ -635,6 +687,7 @@ final class _Server {
   final bool self;
   final selfReply = Completer<void>();
   Completer<void>? unlinkReply;
+  String? unlinkCharacter;
   final next = Completer<MemberRosterPage>();
   final revocations = <String>[];
   final rosterRequests = <http.Request>[];
@@ -678,7 +731,7 @@ final class _Server {
         return _json(_page(removed: unlinkCalls != 0, self: self).toJson());
       case ['api', 'memberAccount', 'unlink']:
         final args = jsonDecode(request.body) as Map<String, Object?>;
-        expect(args['characterId'], self ? '411' : '412');
+        expect(args['characterId'], unlinkCharacter ?? (self ? '411' : '412'));
         unlinkCalls++;
         await unlinkReply?.future;
         if (unlinkDenialStatus case final status?) {

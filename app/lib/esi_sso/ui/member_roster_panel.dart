@@ -36,7 +36,10 @@ final class MemberRosterPanel extends ConsumerWidget {
           header: true,
           child: Text(l10n.esiRosterTitle, style: EmberType.uiHeading),
         ),
-        if (page?.main case final main?) Text(l10n.esiRosterMain(main.name)),
+        if (page?.main case final main?) ...[
+          Text(l10n.esiRosterMain(main.name)),
+          Text(l10n.esiRosterMainRequired),
+        ],
         if (page?.signing case final signing?)
           Text(l10n.esiRosterSigner(signing.name)),
         if (state case MemberRosterFailed(:final status))
