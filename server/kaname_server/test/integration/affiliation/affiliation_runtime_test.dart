@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
-import 'package:kaname_server/server.dart' show configureKanameEsi;
 import 'package:kaname_server/src/affiliation/affiliation_runtime.dart';
 import 'package:kaname_server/src/affiliation/affiliation_store.dart';
 import 'package:kaname_server/src/affiliation/org_tree_config.dart';
@@ -25,7 +24,6 @@ import 'package:serverpod/src/server/serverpod.dart'
 import 'package:test/test.dart';
 
 import '../support/migrated_database.dart';
-import '../support/scratch_database.dart';
 import 'affiliation_fixture.dart';
 
 const _hour = Duration(hours: 1);
@@ -81,7 +79,7 @@ void main() {
         {'character_id': 101, 'corporation_id': 42},
       ]);
     });
-    final pod = await _startComposed(openRuntime: () => runtime);
+    final pod = await startComposedAffiliation(openRuntime: () => runtime);
     expect(ServerSso.of(pod), isNull);
     await pod.withSession((s) async {
       final queued = await FutureCallEntry.db.find(s);
@@ -108,7 +106,10 @@ void main() {
     'missing Redis configuration or service secret does not stop the server',
     () async {
       for (final (redis, secret) in [(false, true), (true, false)]) {
-        final pod = await _startComposed(redis: redis, hasSecret: secret);
+        final pod = await startComposedAffiliation(
+          redis: redis,
+          hasSecret: secret,
+        );
         await pod.withSession((s) async {
           expect(await FutureCallEntry.db.find(s), isEmpty);
           expect((await s.db.unsafeQuery('SELECT 1')).single.single, 1);
@@ -121,7 +122,10 @@ void main() {
     'disabled future calls or execution registers no affiliation work',
     () async {
       for (final (enable, execute) in [(false, true), (true, false)]) {
-        final pod = await _startComposed(futureCalls: enable, execute: execute);
+        final pod = await startComposedAffiliation(
+          futureCalls: enable,
+          execute: execute,
+        );
         await pod.withSession((s) async {
           expect(await FutureCallEntry.db.find(s), isEmpty);
         });
@@ -404,68 +408,6 @@ Future<StreamController<String>> _completionEvents(Session session) async {
   });
   await observer.execute('LISTEN test_affiliation_done');
   return events;
-}
-
-Future<KanameServerpod> _startComposed({
-  bool redis = true,
-  bool hasSecret = true,
-  bool futureCalls = true,
-  bool execute = true,
-  ServerEsiRuntime Function()? openRuntime,
-}) async {
-  final db = await ScratchDatabase.create();
-  addTearDown(db.drop);
-  const scanInterval = Duration(microseconds: 1373);
-  final pod = KanameServerpod(
-    ['--mode', 'test', '--apply-migrations'],
-    environment: const {},
-    configOverride: (config) => config.copyWith(
-      // Keep the embedded test database and passwords; exercise the
-      // production-mode decision on the same resolved config the pod uses.
-      runMode: 'production',
-      database: (config.database! as PostgresDatabaseConfig).withName(db.name),
-      redis: redis
-          ? config.redis
-          : RedisConfig(enabled: false, host: 'localhost', port: 8091),
-      futureCall: FutureCallConfig(
-        enabled: futureCalls,
-        scanInterval: scanInterval,
-      ),
-      futureCallExecutionEnabled: execute,
-    ),
-  );
-  configureKanameEsi(
-    pod,
-    const {},
-    serviceSecret: hasSecret ? pod.getPassword('serviceSecret')! : null,
-    createRuntime: openRuntime,
-  );
-  // Hold only the framework's periodic queue scan, not the product's
-  // registration. Otherwise it can consume the row before this test reads it.
-  await runZoned(
-    () => pod.start(runInGuardedZone: false),
-    zoneSpecification: ZoneSpecification(
-      createPeriodicTimer: (self, parent, zone, duration, callback) =>
-          duration == scanInterval
-          ? _ParkedScan()
-          : parent.createPeriodicTimer(zone, duration, callback),
-    ),
-  );
-  addTearDown(() => pod.shutdown(exitProcess: false));
-  return pod;
-}
-
-final class _ParkedScan implements Timer {
-  bool _cancelled = false;
-
-  @override
-  bool get isActive => !_cancelled;
-
-  @override
-  int get tick => 0;
-
-  @override
-  void cancel() => _cancelled = true;
 }
 
 final class _ControlledRuntime implements ServerEsiRuntime {

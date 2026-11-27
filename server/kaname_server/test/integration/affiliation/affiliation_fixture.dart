@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
+import 'package:kaname_server/server.dart' show configureKanameEsi;
 import 'package:kaname_server/src/affiliation/affiliation_runtime.dart';
 import 'package:kaname_server/src/esi/redis_scheduler_state.dart';
+import 'package:kaname_server/src/esi/server_esi_runtime.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:kaname_server/src/kaname_serverpod.dart';
 import 'package:serverpod/protocol.dart' show FutureCallEntry;
@@ -131,3 +134,67 @@ final class AffiliationFixture {
 WireResponse jsonReply(int status, Object body) => WireResponse(
   EsiResponse(status: status, body: utf8.encode(jsonEncode(body))),
 );
+
+/// Starts the real SSO and affiliation composition with manual queue dispatch.
+Future<KanameServerpod> startComposedAffiliation({
+  Map<String, String> environment = const {},
+  bool redis = true,
+  bool hasSecret = true,
+  bool futureCalls = true,
+  bool execute = true,
+  ServerEsiRuntime Function()? openRuntime,
+}) async {
+  final db = await ScratchDatabase.create();
+  addTearDown(db.drop);
+  const scanInterval = Duration(microseconds: 1373);
+  final pod = KanameServerpod(
+    ['--mode', 'test', '--apply-migrations'],
+    environment: environment,
+    configOverride: (config) => config.copyWith(
+      // Keep the embedded test database and passwords; exercise the
+      // production-mode decision on the same resolved config the pod uses.
+      runMode: 'production',
+      database: (config.database! as PostgresDatabaseConfig).withName(db.name),
+      redis: redis
+          ? config.redis
+          : RedisConfig(enabled: false, host: 'localhost', port: 8091),
+      futureCall: FutureCallConfig(
+        enabled: futureCalls,
+        scanInterval: scanInterval,
+      ),
+      futureCallExecutionEnabled: execute,
+    ),
+  );
+  configureKanameEsi(
+    pod,
+    environment,
+    serviceSecret: hasSecret ? pod.getPassword('serviceSecret')! : null,
+    createRuntime: openRuntime,
+  );
+  // Hold only the framework's periodic queue scan, not the product's
+  // registration. Otherwise it can consume the row before this test reads it.
+  await runZoned(
+    () => pod.start(runInGuardedZone: false),
+    zoneSpecification: ZoneSpecification(
+      createPeriodicTimer: (self, parent, zone, duration, callback) =>
+          duration == scanInterval
+          ? _ParkedScan()
+          : parent.createPeriodicTimer(zone, duration, callback),
+    ),
+  );
+  addTearDown(() => pod.shutdown(exitProcess: false));
+  return pod;
+}
+
+final class _ParkedScan implements Timer {
+  bool _cancelled = false;
+
+  @override
+  bool get isActive => !_cancelled;
+
+  @override
+  int get tick => 0;
+
+  @override
+  void cancel() => _cancelled = true;
+}

@@ -7,9 +7,11 @@ import 'package:kaname_server/src/affiliation/affiliation_runtime.dart';
 import 'package:kaname_server/src/affiliation/affiliation_store.dart';
 import 'package:kaname_server/src/esi/esi_call_log_store.dart';
 import 'package:kaname_server/src/esi/member_accounts.dart';
+import 'package:kaname_server/src/esi/server_sso.dart';
 import 'package:kaname_server/src/esi/sso_sessions.dart';
 import 'package:kaname_server/src/generated/future_calls.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
+import 'package:serverpod/protocol.dart' show FutureCallEntry;
 import 'package:serverpod/serverpod.dart';
 // ignore: implementation_imports
 import 'package:serverpod/src/server/serverpod.dart'
@@ -48,7 +50,7 @@ void main() {
     );
   });
 
-  Future<CcpVerifiedIdentity> claims(int character) async {
+  Future<CcpVerifiedIdentity> claims(int character, {DateTime? expiry}) async {
     final token = JsonWebSignatureBuilder()
       ..stringContent = jsonEncode({
         'iss': 'login.eveonline.com',
@@ -56,7 +58,7 @@ void main() {
         'sub': 'CHARACTER:EVE:$character',
         'name': 'Character $character',
         'owner': 'verified-owner',
-        'exp': deadline.millisecondsSinceEpoch ~/ 1000,
+        'exp': (expiry ?? deadline).millisecondsSinceEpoch ~/ 1000,
       })
       ..addRecipient(
         JsonWebKey.fromJson({...signing.toJson(), 'kid': 'fixture'}),
@@ -80,6 +82,63 @@ void main() {
       character: viewer.identity.characterId,
     );
   }
+
+  test(
+    'configured SSO enqueues first-known work only with execution enabled',
+    () async {
+      final env = {
+        'KANAME_ESI_SSO_CLIENT_ID': 'fixture-app',
+        'KANAME_ESI_SSO_CLIENT_SECRET': 'fixture-confidential',
+        'KANAME_ESI_SSO_REDIRECT_URI': 'https://kaname.test/auth/esi/callback',
+        'KANAME_ESI_VAULT_KEY': base64Encode(List.filled(32, 42)),
+      };
+      // Installed SSO uses the real clock. No deadline in this test can
+      // expire while the test is running, regardless of runner speed.
+      final expiry = DateTime.utc(2100);
+      final main = await claims(101, expiry: expiry);
+      final alt = await claims(102, expiry: expiry);
+      for (final execute in [true, false]) {
+        final pod = await startComposedAffiliation(
+          environment: env,
+          execute: execute,
+        );
+        final sessions = ServerSso.of(pod)!.sessions;
+        await pod.withSession((s) async {
+          final auth = (await sessions.signIn(s, main, expiry))!;
+          expect(await sessions.signIn(s, main, expiry), isNotNull);
+          final member = await actor(sessions, s, auth);
+          final accounts = MemberAccounts(sessions, EsiCallLogStore());
+          expect(
+            await accounts.link(s, member, alt, expiry, () => f.now),
+            isTrue,
+          );
+          expect(
+            await accounts.link(s, member, alt, expiry, () => f.now),
+            isTrue,
+          );
+          final queued = await FutureCallEntry.db.find(
+            s,
+            where: (row) =>
+                row.name.equals('AffiliationCallFirstKnownFutureCall'),
+          );
+          if (execute) {
+            final ids = await SsoIdentityRow.db.find(s);
+            expect(
+              queued.map(
+                (row) =>
+                    (jsonDecode(row.serializedObject!)
+                        as Map<String, Object?>)['identityId'],
+              ),
+              unorderedEquals(ids.map((row) => row.id)),
+            );
+          } else {
+            expect(queued, isEmpty);
+          }
+        });
+      }
+    },
+    timeout: _hangGuard,
+  );
 
   test('first sign-in and link commit before the one-off; auth does not wait for ESI', () async {
     await f.pod.futureCalls.cancel('kaname-affiliation:current:0');

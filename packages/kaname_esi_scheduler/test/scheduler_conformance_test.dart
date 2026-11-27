@@ -836,8 +836,9 @@ void _affiliationOutageCases(SchedulerState Function() state) {
       'with unrelated posts', () async {
     final wire = <String>[];
     final validators = <String?>[];
+    final admissions = <SchedulerRequest>[];
     final scheduler = EsiScheduler(
-      state: state(),
+      state: _ObserveAdmissions(state(), admissions.add),
       key: const [1],
       now: () => DateTime.fromMillisecondsSinceEpoch(1000),
       send: (request, _, validator) async {
@@ -893,5 +894,36 @@ void _affiliationOutageCases(SchedulerState Function() state) {
       probe,
     ]);
     expect(validators.whereType<String>(), isEmpty);
+    expect(
+      admissions
+          .where((input) => input.operation == affiliation)
+          .map((input) => (input.pollKey, input.negativeKey)),
+      everyElement((null, null)),
+    );
+    expect(
+      admissions.firstWhere((input) => input.operation == get).pollKey,
+      isNotNull,
+    );
   });
+}
+
+final class _ObserveAdmissions implements SchedulerState {
+  _ObserveAdmissions(this._delegate, this._observe);
+
+  final SchedulerState _delegate;
+  final void Function(SchedulerRequest) _observe;
+
+  @override
+  FutureOr<Admission> admit(SchedulerRequest request, int nowMs) {
+    _observe(request);
+    return _delegate.admit(request, nowMs);
+  }
+
+  @override
+  FutureOr<Admission> advance(int id, int nowMs) =>
+      _delegate.advance(id, nowMs);
+
+  @override
+  FutureOr<void> complete(int id, int nowMs, Observation observation) =>
+      _delegate.complete(id, nowMs, observation);
 }
