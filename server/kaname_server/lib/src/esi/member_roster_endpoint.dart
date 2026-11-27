@@ -34,7 +34,7 @@ final class MemberRosterEndpoint extends Endpoint {
       return await session.db.transaction(
         (tx) async {
           await session.db.unsafeExecute(
-            "SET LOCAL statement_timeout = '10s'",
+            SsoSessions.rosterStatementBudget,
             transaction: tx,
           );
           final viewer = await sessions.viewerById(

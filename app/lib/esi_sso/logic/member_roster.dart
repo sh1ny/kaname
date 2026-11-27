@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:kaname_client/kaname_client.dart';
 
+import '../data/connected_account.dart';
 import '../data/member_account_client.dart';
 import 'account.dart';
 
@@ -100,6 +101,21 @@ final class MemberRosterNotifier extends Notifier<MemberRosterState> {
   ) async {
     final result = await client.page(after);
     if (!_current(epoch, revision, client)) return;
+    if (result.status == MemberRosterStatus.denied) {
+      // Serverpod can deny before the roster runs, including on a temporary
+      // bearer lookup failure. Only the viewer route confirms invalidity.
+      final viewer = ref.read(connectedAccountSessionProvider);
+      if (viewer != null) {
+        final check = await viewer.refresh();
+        if (!_current(epoch, revision, client)) return;
+        if (check is ViewerRefreshInvalid) {
+          ref.read(accountProvider.notifier).rejectConnected(viewer);
+          return;
+        }
+      }
+      state = const MemberRosterFailed(MemberRosterStatus.unavailable);
+      return;
+    }
     state = result.status == MemberRosterStatus.ok
         ? MemberRosterReady(result)
         : MemberRosterFailed(result.status);

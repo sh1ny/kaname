@@ -99,16 +99,35 @@ final class SsoSessions {
   bool get adminConfigured => _admins.isNotEmpty;
   static final _bearerShape = RegExp(r'^[A-Za-z0-9_-]{43}$');
 
+  /// Applies the same Postgres statement budget before and after roster auth.
+  static const rosterStatementBudget = "SET LOCAL statement_timeout = '10s'";
+
   /// Authenticates a Serverpod bearer and derives scope from the live identity.
   Future<AuthenticationInfo?> authenticate(
     Session session,
     String bearer,
   ) async {
-    final current = await viewer(session, bearer);
-    if (current == null) return null;
-    return AuthenticationInfo(current.accountId.toString(), {
-      if (current.admin) Scope.admin,
-    }, authId: current.sessionId.toString());
+    if (!_bearerShape.hasMatch(bearer)) return null;
+    final digest = ssoDigest(bearer);
+    try {
+      final current = switch (session) {
+        MethodCallSession(endpoint: 'memberRoster') =>
+          await session.db.transaction((tx) async {
+            await session.db.unsafeExecute(
+              rosterStatementBudget,
+              transaction: tx,
+            );
+            return _live(session, digest: digest, transaction: tx);
+          }),
+        _ => await _live(session, digest: digest),
+      };
+      if (current == null) return null;
+      return AuthenticationInfo(current.accountId.toString(), {
+        if (current.admin) Scope.admin,
+      }, authId: current.sessionId.toString());
+    } on Exception {
+      return null;
+    }
   }
 
   /// Finds the live identity for the supplied bearer, never for a claimed ID.

@@ -150,6 +150,49 @@ void main() {
     }, () => MockClient(server.call));
   });
 
+  for (final pendingHistory in [false, true]) {
+    testWidgets(
+      'roster confirms sign-out without treating lookup errors as revocation '
+      'with history pending: $pendingHistory',
+      (tester) async {
+        final server = _Server();
+        final history = _HistoryRequests();
+        await http.runWithClient(() async {
+          await _open(tester, history: history);
+          await _signIn(tester);
+          await _tap(tester, 'My calls', settle: false);
+          history.pages.single.complete(
+            _historyPage('1', 'Original receipt', next: true),
+          );
+          await tester.pumpAndSettle();
+
+          server.rosterDenied = true;
+          server.viewerFailure = 503;
+          await _tap(tester, 'Refresh characters');
+          expect(
+            find.text('The character list is unavailable.'),
+            findsOneWidget,
+          );
+          expect(find.text('Original receipt'), findsOneWidget);
+          expect(find.text('Sign in to server'), findsNothing);
+
+          if (pendingHistory) await _tap(tester, 'Older calls', settle: false);
+          server.viewerFailure = 401;
+          await _tap(tester, 'Refresh characters');
+          if (pendingHistory) {
+            history.pages.last.complete(_historyPage('2', 'Delayed receipt'));
+            await tester.pumpAndSettle();
+          }
+          expect(find.text('Sign in to server'), findsOneWidget);
+          expect(find.text('My calls'), findsNothing);
+          expect(find.text('Original receipt'), findsNothing);
+          expect(find.text('Delayed receipt'), findsNothing);
+          expect(find.text('Linked characters'), findsNothing);
+        }, () => MockClient(server.call));
+      },
+    );
+  }
+
   for (final replyPending in [false, true]) {
     testWidgets('returning to the original server requires recovery '
         'with unlink reply pending: $replyPending', (tester) async {
@@ -453,6 +496,8 @@ final class _Server {
   int signIns = 0;
   int nextPageCalls = 0;
   int unlinkCalls = 0;
+  bool rosterDenied = false;
+  int? viewerFailure;
 
   Future<http.Response> call(http.Request request) async {
     const pilot = {
@@ -464,6 +509,14 @@ final class _Server {
     switch (request.url.pathSegments) {
       case ['api', 'memberRoster', 'page']:
         rosterRequests.add(request);
+        if (rosterDenied) {
+          return _json(
+            MemberRosterPage(
+              status: MemberRosterStatus.denied,
+              characters: [],
+            ).toJson(),
+          );
+        }
         final arguments = jsonDecode(request.body) as Map<String, Object?>;
         if (arguments['after'] != null) {
           nextPageCalls++;
@@ -503,6 +556,11 @@ final class _Server {
         }
         return _json({...pilot, 'session': (++signIns == 1 ? 'b' : 'c') * 43});
       case 'viewer':
+        if (viewerFailure case final status?) {
+          return _json({
+            'status': status == 401 ? 'signInRequired' : 'unavailable',
+          }, status);
+        }
         return _json(pilot);
       case 'sign-out':
         revocations.add(request.headers['authorization']!);

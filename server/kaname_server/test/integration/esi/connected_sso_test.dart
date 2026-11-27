@@ -1318,6 +1318,30 @@ void main() {
   );
 
   test(
+    'the admitted roster bearer lookup has a database statement budget',
+    () async {
+      final bearer = (await signIn())['session'] as String;
+      await pod.pod.withSession(
+        (s) => s.db.transaction((tx) async {
+          await s.db.unsafeExecute(
+            'ALTER TABLE esi_session RENAME TO budgeted_session_fixture',
+            transaction: tx,
+          );
+          await s.db.unsafeExecute('''
+        CREATE VIEW esi_session AS SELECT * FROM budgeted_session_fixture
+        WHERE current_setting('statement_timeout')::interval > interval '0'
+          AND current_setting('statement_timeout')::interval <= interval '10 seconds'
+      ''', transaction: tx);
+        }),
+        enableLogging: false,
+      );
+      final page = await accountRpc(bearer, 'page', {'after': null});
+      expect(page.statusCode, 200);
+      expect(jsonDecode(page.body), containsPair('status', 'ok'));
+    },
+  );
+
+  test(
     'roster streaming is refused before the bearer database lookup',
     () async {
       final key = (await signIn())['session'] as String;
@@ -1403,6 +1427,32 @@ void main() {
     );
     expect(rows.map((row) => row.single), unorderedEquals(founded));
     expect(founded.toSet(), hasLength(5));
+
+    final end = DateTime.utc(2090, 1, 15);
+    final recorded = end.subtract(const Duration(hours: 1));
+    final released = await pod.pod.withSession((s) async {
+      for (var i = 0; i < founded.length; i++) {
+        await EsiCallLogRow.db.insertRow(
+          s,
+          EsiCallLogRow(
+            recordedAt: recorded,
+            operation: 'GetCharactersCharacterIdSkills',
+            outcome: 'success',
+            latencyMicros: 1,
+            memberId: founded[i],
+            characterId: 411 + i,
+          ),
+        );
+      }
+      final accounts = await s.db.unsafeQuery(
+        'SELECT "memberId" FROM esi_call_log_entry',
+      );
+      expect(accounts.map((row) => row.single), unorderedEquals(founded));
+      return EsiCallLogStore(now: () => end.add(const Duration(minutes: 1)))
+          .routeCountsWithWindow(s, EsiCallLogViewer(member: 1, admin: true));
+    }, enableLogging: false);
+    expect(released.window, end);
+    expect(released.rows, isEmpty);
   });
 
   test('detached character excludes the account it joins including after absorption', () async {

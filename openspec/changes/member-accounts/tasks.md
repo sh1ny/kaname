@@ -35,6 +35,7 @@
 | An ambiguous unlink requires session recovery | The app leaves and returns to the affected server | `app/test/esi_sso/member_accounts_settings_test.dart` | `returning to the original server requires recovery with unlink reply pending: false`; `returning to the original server requires recovery with unlink reply pending: true` | green |
 | Roster reads do not queue | A remaining slot admits a roster page | `server/kaname_server/test/integration/esi/member_accounts_roster_test.dart` | `free slots admit the next bounded page` | green |
 | Roster reads do not queue | The global ingress limit refuses before bearer authentication | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `fifth roster RPC makes no bearer lookup on native or proxied web ingress`; `roster streaming is refused before the bearer database lookup` | green |
+| Roster reads do not queue | An admitted bearer lookup uses the roster statement budget | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `the admitted roster bearer lookup has a database statement budget` | green |
 | Roster reads do not queue | The same account cannot occupy multiple page slots | `server/kaname_server/test/integration/esi/member_accounts_roster_test.dart` | `second session of one account gets busy without blocking another account` | green |
 | Accept only validated CCP character identity | Valid identity signs in again | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `Valid identity signs in again` | green |
 | Accept only validated CCP character identity | Invalid signature, key or claims | `packages/kaname_esi_sso/test/ccp_jwt_test.dart` | `Invalid signature, key or claims` | green |
@@ -81,6 +82,7 @@
 | Account changes invalidate affected call-log access | The remaining member reads history again after unlink | `server/kaname_server/test/integration/esi/connected_sso_test.dart` | `membership changes neither move receipts nor grant prior-account reads` | green |
 | Account changes invalidate affected call-log access | A late response cannot restore a locally removed character's history | `app/test/esi_sso/member_accounts_settings_test.dart` | `unlink fences a pending old own-history reply` | green |
 | Account changes invalidate affected call-log access | The app loses an unlink reply | `app/test/esi_sso/member_accounts_settings_test.dart` | `lost unlink keeps own history empty until fresh sign-in` | green |
+| Account changes invalidate affected call-log access | The roster confirms the signing session has ended | `app/test/esi_sso/member_accounts_settings_test.dart` | `roster confirms sign-out without treating lookup errors as revocation with history pending: false`; `roster confirms sign-out without treating lookup errors as revocation with history pending: true` | green |
 | Account changes invalidate affected call-log access | A revoked admin cannot read cached totals | `server/kaname_server/test/integration/esi/call_log_endpoint_test.dart` | `revoked allowlisted alt cannot use cached route totals` | green |
 
 ## 1. Account and authority contract
