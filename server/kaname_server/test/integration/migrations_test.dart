@@ -1,5 +1,8 @@
 import 'dart:io';
 
+import 'package:kaname_server/src/esi/sso_sessions.dart';
+import 'package:kaname_server/src/generated/endpoints.dart';
+import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:path/path.dart' as p;
 import 'package:postgres/postgres.dart' as pg;
 import 'package:serverpod/serverpod.dart';
@@ -21,6 +24,11 @@ const _previousStaticDataMigration = '20261120083015689-sde-bundle';
 // whichever unrelated schema migration was added most recently.
 const _staticDataSettingsMigration = '20261123085740775-static-data-settings';
 const _m2Migration = '20261126115602678-bound-take-closures';
+final _m2Main = 'a' * 43;
+final _m2Alt = 'b' * 43;
+final _m2Blocked = 'c' * 43;
+final _m2Expired = 'd' * 43;
+final _m2Orphan = 'e' * 43;
 
 Future<String> _migrationSql(String version, String file) =>
     File(p.join('migrations', version, file)).readAsString();
@@ -76,11 +84,11 @@ Future<pg.Connection> _seedM2Identities(Session session) async {
            (11, 411, 'shared-owner', 'Alt', false),
            (12, 412, 'other-owner', 'Blocked', true);
     INSERT INTO esi_session (id, digest, "memberId", "expiresAt")
-    VALUES (20, 'main-digest', 10, '2030-01-01'),
-           (21, 'alt-digest', 11, '2030-01-01'),
-           (22, 'blocked-digest', 12, '2030-01-01'),
-           (23, 'expired-digest', 11, '2020-01-01'),
-           (24, 'orphan-digest', 99, '2030-01-01');
+    VALUES (20, '${ssoDigest(_m2Main)}', 10, '2030-01-01'),
+           (21, '${ssoDigest(_m2Alt)}', 11, '2030-01-01'),
+           (22, '${ssoDigest(_m2Blocked)}', 12, '2030-01-01'),
+           (23, '${ssoDigest(_m2Expired)}', 11, '2020-01-01'),
+           (24, '${ssoDigest(_m2Orphan)}', 99, '2030-01-01');
     INSERT INTO esi_scope_opt_in ("memberId", owner, "scopeClass", "policyFingerprint")
     VALUES (11, 'shared-owner', 'characterSkills', 'old-policy');
     INSERT INTO esi_call_log_entry ("recordedAt", operation, outcome,
@@ -88,6 +96,22 @@ Future<pg.Connection> _seedM2Identities(Session session) async {
     VALUES ('2026-11-26', 'GetCharactersCharacterIdSkills', 'success', 1, 11, 411);
   ''', queryMode: pg.QueryMode.simple);
   return db;
+}
+
+Future<Serverpod> _openMigratedM2(pg.Connection db) async {
+  final name =
+      (await db.execute('SELECT current_database()')).single.single as String;
+  final pod = Serverpod(
+    ['--mode', 'test'],
+    Protocol(),
+    Endpoints(),
+    configOverride: (config) => config.copyWith(
+      database: (config.database! as PostgresDatabaseConfig).withName(name),
+    ),
+  );
+  addTearDown(() => pod.shutdown(exitProcess: false));
+  await pod.start(runInGuardedZone: false);
+  return pod;
 }
 
 Future<String> _memberAccountsUpgrade() {
@@ -340,8 +364,8 @@ FOR EACH STATEMENT EXECUTE FUNCTION fail_report_upgrade();
           ORDER BY s.id
         ''')).map((row) => row.toList()),
           [
-            [20, 'main-digest', 10, 10],
-            [21, 'alt-digest', 11, 11],
+            [20, ssoDigest(_m2Main), 10, 10],
+            [21, ssoDigest(_m2Alt), 11, 11],
           ],
         );
         expect(
@@ -364,6 +388,27 @@ FOR EACH STATEMENT EXECUTE FUNCTION fail_report_upgrade();
               as int,
           greaterThan(12),
         );
+        final pod = await _openMigratedM2(db);
+        final authority = SsoSessions(now: () => DateTime.utc(2026, 11, 27));
+        await pod.withSession((session) async {
+          for (final (bearer, account, sessionId, character) in [
+            (_m2Main, 10, 20, 410),
+            (_m2Alt, 11, 21, 411),
+          ]) {
+            final viewer = await authority.viewerForRefresh(session, bearer);
+            expect(
+              (
+                viewer?.accountId,
+                viewer?.sessionId,
+                viewer?.identity.characterId,
+              ),
+              (account, sessionId, character),
+            );
+          }
+          for (final bearer in [_m2Blocked, _m2Expired, _m2Orphan]) {
+            expect(await authority.viewerForRefresh(session, bearer), isNull);
+          }
+        }, enableLogging: false);
       },
     );
 
@@ -378,34 +423,31 @@ FOR EACH STATEMENT EXECUTE FUNCTION fail_report_upgrade();
           WHERE s.id IN (22, 23) ORDER BY s.id
         ''')).map((row) => row.toList()),
           [
-            ['blocked-digest', true, false],
-            ['expired-digest', false, true],
+            [ssoDigest(_m2Blocked), true, false],
+            [ssoDigest(_m2Expired), false, true],
           ],
         );
       },
     );
 
-    test(
-      'M2 upgrade removes an orphan session without restoring access',
-      () async {
-        await migrate();
-        expect(
-          await db.execute(
-            "SELECT id FROM esi_session WHERE digest = 'orphan-digest'",
-          ),
-          isEmpty,
-        );
-        await expectLater(
-          db.execute('''
+    test('M2 upgrade removes an orphan session without restoring access', () async {
+      await migrate();
+      expect(
+        await db.execute(
+          "SELECT id FROM esi_session WHERE digest = '${ssoDigest(_m2Orphan)}'",
+        ),
+        isEmpty,
+      );
+      await expectLater(
+        db.execute('''
           INSERT INTO esi_session (digest, "accountId", "identityId", "expiresAt")
           VALUES ('still-an-orphan', 10, 99, '2030-01-01')
         '''),
-          throwsA(
-            isA<pg.ServerException>().having((e) => e.code, 'code', '23503'),
-          ),
-        );
-      },
-    );
+        throwsA(
+          isA<pg.ServerException>().having((e) => e.code, 'code', '23503'),
+        ),
+      );
+    });
 
     test('interrupted M2 upgrade rolls back schema and backfill', () async {
       await db.execute('''

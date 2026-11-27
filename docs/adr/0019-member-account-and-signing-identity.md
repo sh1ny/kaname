@@ -11,7 +11,7 @@ A Kaname installation gives each member one account with a stable ID and one mai
 
 ## Write order
 
-Postgres owns the account, identity and session records. A membership mutation locks the affected CCP character IDs in ascending order, the affected account IDs in ascending order, then the acting session. Recheck membership and authority under those locks. All identity writers take the same character lock and update only the columns they own. Revoke affected sessions in the same transaction as a membership change. Never hold these locks while calling CCP, the token vault or the scheduler. Already admitted protected work can finish without holding the session lock.
+Postgres owns the account, identity and session records. A short membership transaction locks the affected CCP character IDs in ascending order, the affected account IDs in ascending order, then the acting session. There is no install-wide membership lock. Recheck membership and authority under those locks. All identity writers take the same character lock and update only the columns they own. Revoke affected sessions in the same transaction as a membership change. Do not make external calls within a membership transaction. Already admitted protected work can finish without holding the session lock.
 
 ## Account retirement
 

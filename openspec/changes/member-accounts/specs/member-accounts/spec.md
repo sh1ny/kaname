@@ -137,7 +137,7 @@ A live connected session SHALL be able to unlink a non-main character from its o
 
 ### Requirement: Connected Settings shows the account and its characters
 
-Connected ESI settings on web and native SHALL show the main, signing character and up to 50 linked characters per page. Only a live session SHALL receive account data. Restarting paging after a local change SHALL fence older replies. Invalidation or server change SHALL clear the roster, and late replies SHALL NOT restore it. Kaname SHALL NOT push roster changes to other sessions or show this roster in solo mode.
+Connected ESI settings on web and native SHALL show the main, signing character and up to 50 linked characters per page. The server SHALL recheck the live session on every page request. Paging SHALL NOT use a cross-session roster revision token. Restarting paging after a local change SHALL fence older replies. Invalidation or server change SHALL clear the roster, and late replies SHALL NOT restore it. Kaname SHALL NOT push roster changes to other sessions or show this roster in solo mode.
 
 #### Scenario: A linked alt opens Settings
 

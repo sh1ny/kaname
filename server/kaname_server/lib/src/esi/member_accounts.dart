@@ -11,10 +11,14 @@ typedef MemberActor = ({int account, int session, int character});
 /// The account writes and their short, ordered Postgres transactions.
 final class MemberAccounts {
   /// Shares session validation and the durable privacy fence with SSO.
-  const MemberAccounts(this._sessions, this._callLog);
+  ///
+  /// [afterActorLock] lets integration tests observe an unsettled unlink
+  /// without holding a SQL statement open or depending on its lock timeout.
+  const MemberAccounts(this._sessions, this._callLog, {this._afterActorLock});
 
   final SsoSessions _sessions;
   final EsiCallLogStore _callLog;
+  final Future<void> Function(Session, Transaction)? _afterActorLock;
 
   /// Links only verified claims to the original live actor before expiry.
   Future<bool> link(
@@ -148,6 +152,8 @@ final class MemberAccounts {
       return MemberAccountStatus.mainChanged;
     }
     if (id == main) return MemberAccountStatus.mainRequired;
+    final barrier = _afterActorLock;
+    if (barrier != null) await barrier(session, tx);
     await SsoIdentityRow.db.updateRow(
       session,
       target.copyWith(accountId: null, wasDetached: true),

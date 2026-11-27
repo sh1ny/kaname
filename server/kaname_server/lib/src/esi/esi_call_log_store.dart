@@ -58,17 +58,21 @@ typedef EsiCallLogRouteCount = ({String operation, int total, int errors});
 /// Persists allowlisted receipts and enforces access before returning history.
 final class EsiCallLogStore {
   /// Uses the database UTC clock for release and pruning. Tests can supply
-  /// [now] and request an immediate non-queuing lock attempt.
+  /// [now] and request an immediate non-queuing lock attempt. Set
+  /// [boundReleaseLock] to false only to hold a test reader at a real lock
+  /// barrier without a database timeout.
   ///
   /// [minimumMembers] can raise, never lower, the ADR 0006 privacy floor.
   EsiCallLogStore({
     this._now,
     int minimumMembers = 5,
     this._waitForReleaseLock = true,
+    this._boundReleaseLock = true,
   }) : _minimumMembers = minimumMembers < 5 ? 5 : minimumMembers;
 
   final DateTime Function()? _now;
   final bool _waitForReleaseLock;
+  final bool _boundReleaseLock;
   final int _minimumMembers;
 
   /// Appends exactly the receipt fields in a short, independent transaction.
@@ -298,10 +302,12 @@ final class EsiCallLogStore {
   }
 
   Future<void> _lockRelease(Session session, Transaction tx) async {
-    await session.db.unsafeExecute(
-      "SET LOCAL statement_timeout = '10s'",
-      transaction: tx,
-    );
+    if (_boundReleaseLock) {
+      await session.db.unsafeExecute(
+        "SET LOCAL statement_timeout = '10s'",
+        transaction: tx,
+      );
+    }
     if (!_waitForReleaseLock) {
       final rows = await session.db.unsafeQuery(
         'SELECT pg_try_advisory_xact_lock($_releaseLock)',
@@ -310,10 +316,12 @@ final class EsiCallLogStore {
       if (rows.single.single != true) throw const EsiCallLogUnavailable._();
       return;
     }
-    await session.db.unsafeExecute(
-      "SET LOCAL lock_timeout = '1s'",
-      transaction: tx,
-    );
+    if (_boundReleaseLock) {
+      await session.db.unsafeExecute(
+        "SET LOCAL lock_timeout = '1s'",
+        transaction: tx,
+      );
+    }
     await session.db.unsafeQuery(
       'SELECT pg_advisory_xact_lock($_releaseLock)',
       transaction: tx,

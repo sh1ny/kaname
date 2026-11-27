@@ -3,10 +3,16 @@ import 'dart:async';
 import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_server/src/esi/esi_call_log_store.dart';
+import 'package:kaname_server/src/generated/endpoints.dart';
+import 'package:kaname_server/src/generated/protocol.dart';
+import 'package:postgres/postgres.dart' as pg;
 import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
 
 import 'esi_call_log_test.dart' show admin, assets, other, probe, seed;
+import 'support/migrated_database.dart';
+import 'support/observe_postgres_lock.dart';
+import 'support/tcp_proxy.dart';
 import 'test_tools/serverpod_test_tools.dart';
 
 void main() {
@@ -152,7 +158,7 @@ void main() {
             : 'rolled-back exclusion does not disqualify contributors',
         () async {
           await independent(5);
-          final wrote = Completer<void>();
+          final wrote = Completer<int>();
           final settle = Completer<void>();
           final aborted = StateError('intentional transaction rollback');
           final holding = session.db.transaction((tx) async {
@@ -165,17 +171,34 @@ void main() {
               grace.subtract(const Duration(seconds: 1)),
               transaction: tx,
             );
-            wrote.complete();
+            final pid = await session.db.unsafeQuery(
+              'SELECT pg_backend_pid()',
+              transaction: tx,
+            );
+            wrote.complete(pid.single.single as int);
             await settle.future;
             if (!commit) throw aborted;
           });
           final settled = commit
               ? holding
               : expectLater(holding, throwsA(same(aborted)));
-          await Future.any([wrote.future, holding]);
-          final read = store.routeCounts(session, admin);
-          settle.complete();
-          await settled;
+          final holder = await Future.any<int>([
+            wrote.future,
+            settled.then(
+              (_) =>
+                  fail('The writer settled before holding the exclusion lock.'),
+            ),
+          ]);
+          final read = EsiCallLogStore(
+            now: () => clock,
+            boundReleaseLock: false,
+          ).routeCounts(session, admin);
+          try {
+            await observePostgresLock(session, holder, read);
+          } finally {
+            settle.complete();
+            await settled;
+          }
           final rows = await read;
           if (commit) {
             expect(rows, isEmpty);
@@ -183,6 +206,7 @@ void main() {
             expect(rows.single.total, 5);
           }
         },
+        timeout: const Timeout(Duration(minutes: 3)),
       );
     }
 
@@ -316,6 +340,92 @@ void main() {
         day,
       );
     });
+
+    test('a committed seal with a lost acknowledgment is used only by a later read', () async {
+      await independent(5);
+      final direct = await migratedDatabaseSettings(session);
+      final proxy = direct.isUnixSocket
+          ? await TcpProxy.startToUnixSocket(direct.host)
+          : await TcpProxy.start(direct.host, direct.port);
+      addTearDown(proxy.close);
+      final observer = await pg.Connection.open(
+        pg.Endpoint(
+          host: direct.host,
+          port: direct.port,
+          database: direct.database,
+          username: direct.user,
+          password: direct.password,
+          isUnixSocket: direct.isUnixSocket,
+        ),
+        settings: const pg.ConnectionSettings(sslMode: pg.SslMode.disable),
+      );
+      addTearDown(observer.close);
+      final reader = Serverpod(
+        ['--mode', 'test'],
+        Protocol(),
+        Endpoints(),
+        configOverride: (config) => config.copyWith(
+          healthCheckInterval: Duration.zero,
+          futureCallExecutionEnabled: false,
+          database: PostgresDatabaseConfig(
+            host: '127.0.0.1',
+            port: proxy.port,
+            name: direct.database,
+            user: direct.user,
+            password: direct.password ?? '',
+          ),
+        ),
+      );
+      addTearDown(() => reader.shutdown(exitProcess: false));
+      await reader.start(runInGuardedZone: false);
+      await observer.execute('''
+        CREATE FUNCTION test_seal_ack() RETURNS trigger LANGUAGE plpgsql AS \$\$
+        BEGIN
+          PERFORM pg_advisory_xact_lock(682997614, 1);
+          PERFORM pg_notify('test_seal_ack', NEW."windowEnd"::text);
+          RETURN NEW;
+        END
+        \$\$;
+        CREATE CONSTRAINT TRIGGER test_seal_ack AFTER INSERT ON esi_call_log_seal
+        DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION test_seal_ack()
+      ''', queryMode: pg.QueryMode.simple);
+      addTearDown(
+        () => observer.execute('''
+        DROP TRIGGER test_seal_ack ON esi_call_log_seal;
+        DROP FUNCTION test_seal_ack()
+      ''', queryMode: pg.QueryMode.simple),
+      );
+      final committed = observer.channels['test_seal_ack'].first;
+      await observer.execute('LISTEN test_seal_ack');
+      await observer.execute('SELECT pg_advisory_lock(682997614, 1)');
+      final holder =
+          (await observer.execute('SELECT pg_backend_pid()')).single.single
+              as int;
+      final read = reader.withSession(
+        (s) => EsiCallLogStore(
+          now: () => clock,
+          boundReleaseLock: false,
+        ).routeCountsWithWindow(s, admin),
+        enableLogging: false,
+      );
+      final refused = expectLater(read, throwsA(isA<EsiCallLogUnavailable>()));
+      try {
+        await observePostgresLock(session, holder, read);
+        proxy.holdTargetReads();
+        await observer.execute('SELECT pg_advisory_unlock(682997614, 1)');
+        await committed;
+        expect(await sealedEnd(), day);
+      } finally {
+        proxy.disconnectClients();
+        proxy.releaseTargetReads();
+      }
+      await refused;
+      clock = day;
+      final recovered = await EsiCallLogStore(now: () => clock)
+          .routeCountsWithWindow(session, admin);
+      expect(recovered.window, day);
+      expect(recovered.rows.single.total, 5);
+    }, timeout: const Timeout(Duration(minutes: 3)));
 
     test('prune and replacement seal commit or roll back together', () async {
       await seed(session, day.subtract(const Duration(days: 5)), route: probe);

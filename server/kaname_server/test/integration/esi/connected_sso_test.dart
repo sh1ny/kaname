@@ -10,6 +10,7 @@ import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
 import 'package:kaname_server/src/esi/esi_call_log_store.dart';
+import 'package:kaname_server/src/esi/member_accounts.dart';
 import 'package:kaname_server/src/esi/member_roster_endpoint.dart';
 import 'package:kaname_server/src/esi/server_esi_vault.dart';
 import 'package:kaname_server/src/esi/server_sso_grants.dart';
@@ -23,6 +24,7 @@ import 'package:serverpod/serverpod.dart';
 import 'package:test/test.dart';
 
 import '../support/in_process_pod.dart';
+import '../support/observe_postgres_lock.dart';
 
 const _serverId = 'fake-server';
 const _serverSecret = 'fake-confidential-sentinel';
@@ -337,6 +339,7 @@ void main() {
     bool withCookie = true,
     String? bearer,
     bool link = false,
+    bool scoped = false,
   }) => post(
     'complete',
     {
@@ -344,6 +347,7 @@ void main() {
       'proof': start.proof,
       'code': ?code,
       if (link) 'link': true,
+      if (scoped) 'scoped': true,
     },
     cookie: withCookie ? start.cookie : null,
     bearer: bearer,
@@ -942,6 +946,30 @@ void main() {
     expect((await signIn())['memberId'], isNot(main['memberId']));
   });
 
+  test('conflicting purpose flags cannot consume a pending link', () async {
+    final main = await signIn();
+    final bearer = main['session'] as String;
+    final attempt = await begin(bearer: bearer, link: true);
+    characterId = 411;
+    expect((await callback(attempt)).statusCode, 200);
+    expect(
+      (await complete(
+        attempt,
+        bearer: bearer,
+        link: true,
+        scoped: true,
+      )).statusCode,
+      400,
+    );
+    final unlinked = await signIn();
+    expect(unlinked['memberId'], isNot(main['memberId']));
+    expect(
+      (await complete(attempt, bearer: bearer, link: true)).statusCode,
+      200,
+    );
+    expect((await signIn())['memberId'], main['memberId']);
+  });
+
   test('absorbs an eligible singleton and revokes its sessions', () async {
     final main = await signIn();
     characterId = 411;
@@ -1288,6 +1316,7 @@ void main() {
     final main = await signIn();
     final acting = main['session'] as String;
     final retained = (await signIn())['session'] as String;
+    final keeper = (await signIn())['session'] as String;
     expect((await linkAlt(acting, 411)).statusCode, 200);
     final waiting = Completer<void>();
     final revoked = Completer<void>();
@@ -1313,18 +1342,59 @@ void main() {
     );
     final alt = await signIn();
     expect(alt['memberId'], main['memberId']);
-    final committed = await accountRpc(alt['session'] as String, 'unlink', {
-      'characterId': '411',
-    });
+    final locked = Completer<int>();
+    final settle = Completer<void>();
+    final write = pod.pod.withSession((s) async {
+      final sessions = SsoSessions.forPod(s.serverpod)!;
+      final viewer = (await sessions.viewerForRefresh(s, retained))!;
+      final accounts = MemberAccounts(
+        sessions,
+        EsiCallLogStore(),
+        afterActorLock: (session, tx) async {
+          final pid = await session.db.unsafeQuery(
+            'SELECT pg_backend_pid()',
+            transaction: tx,
+          );
+          locked.complete(pid.single.single as int);
+          await settle.future;
+        },
+      );
+      return accounts.unlink(s, (
+        account: viewer.accountId,
+        session: viewer.sessionId,
+        character: viewer.identity.characterId,
+      ), 411);
+    }, enableLogging: false);
+    Future<http.Response>? revocation;
+    try {
+      final holder = await Future.any<int>([
+        locked.future,
+        write.then(
+          (_) => fail('Unlink settled before taking the acting lock.'),
+        ),
+      ]);
+      final pendingRevocation = revocation = post(
+        'sign-out',
+        {},
+        bearer: retained,
+      );
+      await pod.pod.withSession(
+        (s) => observePostgresLock(s, holder, pendingRevocation),
+        enableLogging: false,
+      );
+    } finally {
+      settle.complete();
+      expect(await write, MemberAccountStatus.unlinked);
+    }
+    expect(jsonDecode((await revocation).body), {'status': 'signedOut'});
+    expect((await post('viewer', {}, bearer: retained)).statusCode, 401);
     expect(
-      (jsonDecode(committed.body) as Map<String, Object?>)['status'],
-      'selfUnlinked',
+      (await post('viewer', {}, bearer: alt['session'] as String)).statusCode,
+      401,
     );
-    final absent = await post('sign-out', {}, bearer: alt['session'] as String);
-    expect(jsonDecode(absent.body), {'status': 'signedOut'});
-    expect((await post('viewer', {}, bearer: retained)).statusCode, 200);
+    expect((await post('viewer', {}, bearer: keeper)).statusCode, 200);
     expect((await signIn())['memberId'], isNot(main['memberId']));
-  });
+  }, timeout: const Timeout(Duration(minutes: 3)));
 
   Future<List<String>> ownCharacters(String bearer, {Object? after}) async {
     final reply = await browser.post(

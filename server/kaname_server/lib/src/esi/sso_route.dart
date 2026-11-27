@@ -346,7 +346,10 @@ final class SsoRoute {
         return _failure(400);
       }
       final link = attempt.link;
-      if ((input['link'] == true) != (link != null)) return _failure(400);
+      final linking = input['link'] == true;
+      if (linking != (link != null) || linking && input['scoped'] == true) {
+        return _failure(400);
+      }
       if (attempt.identity case final identity?) {
         if (attempt.completionDigest case final expected?) {
           if (input case {'code': final String code}) {
