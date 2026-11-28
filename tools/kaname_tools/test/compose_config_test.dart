@@ -18,7 +18,8 @@ const _secrets = {
   'SERVERPOD_SERVICE_SECRET',
 };
 
-const _optionalSso = {
+const _optionalServer = {
+  'KANAME_ORG_TREE': '',
   'KANAME_ESI_SSO_CLIENT_ID': '',
   'KANAME_ESI_SSO_CLIENT_SECRET': '',
   'KANAME_ESI_SSO_REDIRECT_URI': '',
@@ -283,7 +284,7 @@ void main() {
       final used = <String>{};
       for (final reference in references) {
         final variable = reference.group(0)!;
-        if (_optionalSso.entries.any(
+        if (_optionalServer.entries.any(
           (item) => variable == _optionalReference(item.key, item.value),
         )) {
           continue;
@@ -301,13 +302,13 @@ void main() {
       expect(used, containsAll(_secrets));
     });
 
-    test('Opt-in SSO settings reach only the running server', () {
+    test('optional settings reach only the running server', () {
       final services = _compose()['services'] as YamlMap;
       for (final MapEntry(key: name, value: raw) in services.entries) {
         final service = raw as YamlMap;
         final environment = service['environment'] as YamlMap?;
         expect(environment?['SERVERPOD_PASSWORD_adminKey'], isNull);
-        for (final MapEntry(:key, :value) in _optionalSso.entries) {
+        for (final MapEntry(:key, :value) in _optionalServer.entries) {
           expect(
             environment?[key],
             name == 'server' ? _optionalReference(key, value) : null,

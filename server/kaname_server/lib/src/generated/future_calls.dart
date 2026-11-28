@@ -14,8 +14,13 @@
 import 'dart:async' as _ida;
 
 import 'package:clock/clock.dart' as _io0w16m8;
+import 'package:kaname_server/src/generated/affiliation/affiliation_first_known_args.dart'
+    as _id0q6syb;
+import 'package:kaname_server/src/generated/affiliation/affiliation_sweep_args.dart'
+    as _ibelcfu3;
 import 'package:serverpod/serverpod.dart' as _is;
 
+import '../affiliation/affiliation_call.dart' as _i4ka63n8;
 import '../esi/esi_call_log_prune_call.dart' as _iowjp61k;
 import '../esi/sso_session_prune_call.dart' as _isn4qq34;
 import '../static_data/static_data_check_call.dart' as _i66h21ix;
@@ -61,6 +66,9 @@ class FutureCalls extends _is.FutureCallDispatch<_FutureCallRef> {
   @override
   void initialize(_is.FutureCallManager futureCallManager, String serverId) {
     var registeredFutureCalls = <String, _is.InvokableFutureCall>{
+      'AffiliationCallSweepFutureCall': AffiliationCallSweepFutureCall(),
+      'AffiliationCallFirstKnownFutureCall':
+          AffiliationCallFirstKnownFutureCall(),
       'EsiCallLogPruneCallRunFutureCall': EsiCallLogPruneCallRunFutureCall(),
       'SsoSessionPruneCallRunFutureCall': SsoSessionPruneCallRunFutureCall(),
       'StaticDataCheckCallRunFutureCall': StaticDataCheckCallRunFutureCall(),
@@ -167,6 +175,10 @@ class _FutureCallRef {
 
   final _InvokeFutureCall _invokeFutureCall;
 
+  late final affiliationCall = _AffiliationCallFutureCallDispatcher(
+    _invokeFutureCall,
+  );
+
   late final esiCallLogPruneCall = _EsiCallLogPruneCallFutureCallDispatcher(
     _invokeFutureCall,
   );
@@ -178,6 +190,20 @@ class _FutureCallRef {
   late final staticDataCheckCall = _StaticDataCheckCallFutureCallDispatcher(
     _invokeFutureCall,
   );
+}
+
+class _AffiliationCallFutureCallDispatcher {
+  _AffiliationCallFutureCallDispatcher(this._invokeFutureCall);
+
+  final _InvokeFutureCall _invokeFutureCall;
+
+  Future<void> sweep(_ibelcfu3.AffiliationSweepArgs args) {
+    return _invokeFutureCall('AffiliationCallSweepFutureCall', args);
+  }
+
+  Future<void> firstKnown(_id0q6syb.AffiliationFirstKnownArgs args) {
+    return _invokeFutureCall('AffiliationCallFirstKnownFutureCall', args);
+  }
 }
 
 class _EsiCallLogPruneCallFutureCallDispatcher {
@@ -207,6 +233,32 @@ class _StaticDataCheckCallFutureCallDispatcher {
 
   Future<void> run() {
     return _invokeFutureCall('StaticDataCheckCallRunFutureCall', null);
+  }
+}
+
+/// Executes a sweep only if this boot still expects its logical slot.
+class AffiliationCallSweepFutureCall
+    extends _is.FutureCall<_ibelcfu3.AffiliationSweepArgs>
+    implements _is.InvokableFutureCall<_ibelcfu3.AffiliationSweepArgs> {
+  @override
+  _ida.Future<void> invoke(
+    _is.Session session,
+    _ibelcfu3.AffiliationSweepArgs? args,
+  ) async {
+    await _i4ka63n8.AffiliationCall().sweep(session, args!);
+  }
+}
+
+/// Refreshes an identity that committed before this call was registered.
+class AffiliationCallFirstKnownFutureCall
+    extends _is.FutureCall<_id0q6syb.AffiliationFirstKnownArgs>
+    implements _is.InvokableFutureCall<_id0q6syb.AffiliationFirstKnownArgs> {
+  @override
+  _ida.Future<void> invoke(
+    _is.Session session,
+    _id0q6syb.AffiliationFirstKnownArgs? args,
+  ) async {
+    await _i4ka63n8.AffiliationCall().firstKnown(session, args!);
   }
 }
 

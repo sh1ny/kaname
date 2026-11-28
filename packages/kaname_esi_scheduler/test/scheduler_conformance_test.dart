@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:kaname_esi/kaname_esi.dart';
@@ -714,4 +715,215 @@ void schedulerConformance(SchedulerState Function() create) {
       expect(result.refusal.reason, EsiRefusalReason.outage);
     },
   );
+
+  _affiliationOutageCases(() => state);
+}
+
+void _affiliationOutageCases(SchedulerState Function() state) {
+  const affiliation = 'PostCharactersAffiliation';
+  const get = 'GetAlliances';
+  const probe = 'GetStatus';
+  const unrelated = 'PostUniverseNames';
+
+  Matcher outage() => isA<EsiNotSent<Object?>>().having(
+    (result) => result.refusal.reason,
+    'reason',
+    EsiRefusalReason.outage,
+  );
+
+  WireResponse json(int status, [String body = '[]']) =>
+      WireResponse(EsiResponse(status: status, body: utf8.encode(body)));
+
+  test(
+    'a GET and affiliation share one probe without replaying refused calls',
+    () async {
+      final wire = <String>[];
+      final probeEntered = Completer<void>();
+      final releaseProbe = Completer<void>();
+      final scheduler = EsiScheduler(
+        state: state(),
+        key: const [1],
+        now: () => DateTime.fromMillisecondsSinceEpoch(1000),
+        send: (request, _, _) async {
+          wire.add(request.operationId);
+          if (wire.length == 1) {
+            return const WireFailure(connectivityFailure: true);
+          }
+          if (request.operationId == probe) {
+            probeEntered.complete();
+            await releaseProbe.future;
+            return json(
+              200,
+              '{"players":1,"server_version":"1",'
+              '"start_time":"2000-01-01T00:00:00Z","vip":false}',
+            );
+          }
+          return json(200);
+        },
+      );
+      final poll = scheduler.client(EsiPriority.sync, poll: true);
+      expect(await poll.getAlliances(), isA<EsiTransportFailed<List<int>>>());
+
+      final blockedGet = poll.getAlliances();
+      await probeEntered.future;
+      final EsiResult<List<CharactersAffiliationPostItem>> blockedPost;
+      try {
+        blockedPost = await poll.postCharactersAffiliation(body: [101]);
+      } finally {
+        releaseProbe.complete();
+        expect(await blockedGet, outage());
+      }
+      expect(blockedPost, outage());
+      expect(wire, [get, probe]);
+
+      expect(
+        await poll.postCharactersAffiliation(body: [101]),
+        isA<EsiSuccess<List<CharactersAffiliationPostItem>>>(),
+      );
+      expect(wire, [get, probe, affiliation]);
+    },
+  );
+
+  test('affiliation connectivity failure pauses GET polling', () async {
+    final wire = <String>[];
+    final scheduler = EsiScheduler(
+      state: state(),
+      key: const [1],
+      now: () => DateTime.fromMillisecondsSinceEpoch(1000),
+      send: (request, _, _) async {
+        wire.add(request.operationId);
+        return request.operationId == affiliation
+            ? const WireFailure(connectivityFailure: true)
+            : json(503);
+      },
+    );
+    final poll = scheduler.client(EsiPriority.sync, poll: true);
+    expect(
+      await poll.postCharactersAffiliation(body: [101]),
+      isA<EsiTransportFailed<List<CharactersAffiliationPostItem>>>(),
+    );
+    expect(await poll.getAlliances(), outage());
+    expect(wire, [affiliation, probe]);
+  });
+
+  test('affiliation and GET 503s share the outage signal', () async {
+    var now = 1000;
+    final wire = <String>[];
+    final scheduler = EsiScheduler(
+      state: state(),
+      key: const [1],
+      now: () => DateTime.fromMillisecondsSinceEpoch(now),
+      send: (request, _, _) async {
+        wire.add(request.operationId);
+        return json(503);
+      },
+    );
+    final poll = scheduler.client(EsiPriority.sync, poll: true);
+    expect(
+      await poll.postCharactersAffiliation(body: [101]),
+      isA<EsiError<List<CharactersAffiliationPostItem>>>(),
+    );
+    now += 10000;
+    expect(await poll.getAlliances(), isA<EsiError<List<int>>>());
+    now += 1000;
+
+    expect(await poll.getAlliances(), outage());
+    expect(await poll.postCharactersAffiliation(body: [102]), outage());
+    expect(wire, [affiliation, get, probe]);
+  });
+
+  test('affiliation posts share neither GET metadata nor outage behavior '
+      'with unrelated posts', () async {
+    final wire = <String>[];
+    final validators = <String?>[];
+    final admissions = <SchedulerRequest>[];
+    final scheduler = EsiScheduler(
+      state: _ObserveAdmissions(state(), admissions.add),
+      key: const [1],
+      now: () => DateTime.fromMillisecondsSinceEpoch(1000),
+      send: (request, _, validator) async {
+        wire.add(request.operationId);
+        validators.add(validator);
+        if (request.operationId == get) {
+          return const WireFailure(connectivityFailure: true);
+        }
+        if (request.operationId == probe || wire.length == 1) {
+          return json(request.operationId == probe ? 503 : 404);
+        }
+        return WireResponse(
+          EsiResponse(
+            status: 200,
+            headers: const {'expires': 'Thu, 01 Jan 1970 01:00:00 GMT'},
+            body: utf8.encode('[]'),
+          ),
+        );
+      },
+    );
+    final poll = scheduler.client(EsiPriority.sync, poll: true);
+    expect(
+      await poll.postCharactersAffiliation(body: [101]),
+      isA<EsiError<List<CharactersAffiliationPostItem>>>(),
+    );
+    for (final id in [102, 103]) {
+      expect(
+        await poll.postCharactersAffiliation(
+          body: [id],
+          ifNoneMatch: '"old-batch"',
+        ),
+        isA<EsiSuccess<List<CharactersAffiliationPostItem>>>(),
+      );
+    }
+    expect(await poll.getAlliances(), isA<EsiTransportFailed<List<int>>>());
+    expect(
+      await poll.postUniverseNames(body: [104]),
+      isA<EsiSuccess<Object?>>(),
+    );
+    final unmarked = scheduler.client(EsiPriority.sync);
+    expect(
+      await unmarked.postCharactersAffiliation(body: [105]),
+      isA<EsiSuccess<List<CharactersAffiliationPostItem>>>(),
+    );
+    expect(await poll.postCharactersAffiliation(body: [106]), outage());
+    expect(wire, [
+      affiliation,
+      affiliation,
+      affiliation,
+      get,
+      unrelated,
+      affiliation,
+      probe,
+    ]);
+    expect(validators.whereType<String>(), isEmpty);
+    expect(
+      admissions
+          .where((input) => input.operation == affiliation)
+          .map((input) => (input.pollKey, input.negativeKey)),
+      everyElement((null, null)),
+    );
+    expect(
+      admissions.firstWhere((input) => input.operation == get).pollKey,
+      isNotNull,
+    );
+  });
+}
+
+final class _ObserveAdmissions implements SchedulerState {
+  _ObserveAdmissions(this._delegate, this._observe);
+
+  final SchedulerState _delegate;
+  final void Function(SchedulerRequest) _observe;
+
+  @override
+  FutureOr<Admission> admit(SchedulerRequest request, int nowMs) {
+    _observe(request);
+    return _delegate.admit(request, nowMs);
+  }
+
+  @override
+  FutureOr<Admission> advance(int id, int nowMs) =>
+      _delegate.advance(id, nowMs);
+
+  @override
+  FutureOr<void> complete(int id, int nowMs, Observation observation) =>
+      _delegate.complete(id, nowMs, observation);
 }

@@ -33,8 +33,9 @@ final class MemberAccounts {
       return at.isBefore(expires) && at.isBefore(claims.expiresAt);
     }
 
+    int? insertedIdentity;
     try {
-      return await session.db.transaction((tx) async {
+      final linked = await session.db.transaction((tx) async {
         if (!fresh()) return false;
         await _lockCharacters(session, tx, actor.character, claims.characterId);
         final target = await _character(session, tx, claims.characterId);
@@ -83,7 +84,7 @@ final class MemberAccounts {
           return false;
         }
         if (target == null) {
-          await SsoIdentityRow.db.insertRow(
+          final inserted = await SsoIdentityRow.db.insertRow(
             session,
             SsoIdentityRow(
               characterId: claims.characterId,
@@ -94,6 +95,7 @@ final class MemberAccounts {
             ),
             transaction: tx,
           );
+          insertedIdentity = inserted.id!;
         } else {
           await SsoIdentityRow.db.updateRow(
             session,
@@ -121,6 +123,11 @@ final class MemberAccounts {
         if (!fresh()) throw const SsoProofExpired();
         return true;
       });
+      final newIdentity = insertedIdentity;
+      if (linked && newIdentity != null) {
+        await _sessions.identityCommitted(newIdentity);
+      }
+      return linked;
     } on DatabaseForeignKeyViolationException {
       return false;
     } on SsoProofExpired {

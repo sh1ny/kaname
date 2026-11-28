@@ -1,5 +1,3 @@
-import 'dart:io' show stderr;
-
 import 'package:http/http.dart' as http;
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
@@ -39,7 +37,12 @@ final class ServerSso {
   final SsoRoute route;
 
   /// Installs SSO before the API listener starts. Bad config fails closed.
-  static ServerSso? install(Serverpod pod, Map<String, String> env) {
+  static ServerSso? install(
+    Serverpod pod,
+    Map<String, String> env, {
+    required ServerEsiRuntime Function() esiRuntime,
+    Future<void> Function(int identityId)? afterFirstIdentity,
+  }) {
     final id = env['KANAME_ESI_SSO_CLIENT_ID'];
     final secret = env['KANAME_ESI_SSO_CLIENT_SECRET'];
     final redirect = Uri.tryParse(env['KANAME_ESI_SSO_REDIRECT_URI'] ?? '');
@@ -65,6 +68,7 @@ final class ServerSso {
     final now = DateTime.now;
     final sessions = SsoSessions(
       adminCharacters: _admins(env['KANAME_ESI_SSO_ADMIN_CHARACTERS']),
+      afterFirstIdentity: afterFirstIdentity,
     );
     final registration = CcpConfidential(id, redirect, secret);
     final client = http.Client();
@@ -100,12 +104,7 @@ final class ServerSso {
     final esi =
         pod.config.redis?.enabled == true &&
             (pod.getPassword('serviceSecret')?.isNotEmpty ?? false)
-        ? ServerEsiRuntime.forPod(
-            pod,
-            userAgent: 'Kaname/0.0.1 (+https://github.com/sh1ny/kaname)',
-            onStateFailure: () =>
-                stderr.writeln('esi-sso: scheduler state unavailable'),
-          )
+        ? esiRuntime()
         : null;
     final route = SsoRoute(
       registration: registration,

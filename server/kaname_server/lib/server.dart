@@ -1,8 +1,15 @@
 import 'dart:io';
 
+import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart'
+    show EsiPriority;
+
+import 'src/affiliation/affiliation_runtime.dart';
+import 'src/esi/esi_affiliation_lookup.dart';
 import 'src/esi/member_roster_endpoint.dart';
+import 'src/esi/server_esi_runtime.dart';
 import 'src/esi/server_sso.dart';
 import 'src/generated/serverpod.dart';
+import 'src/kaname_serverpod.dart';
 import 'src/network/trusted_proxies.dart';
 import 'src/static_data/bundle_announcement_runtime.dart';
 import 'src/static_data/bundle_announcer_start.dart';
@@ -24,14 +31,68 @@ import 'src/static_data/static_data_start.dart';
 /// before `pod.start()` returns. The bundle and report routes are registered
 /// before the server starts, when the API listener still takes middleware.
 Future<void> run(List<String> args) {
-  ServerSso? sso;
-  final pod = Serverpod(
+  final environment = Platform.environment;
+  final pod = KanameServerpod(
     args,
+    environment: environment,
     authenticationHandler: (session, bearer) async =>
-        sso?.authenticate(session, bearer),
+        ServerSso.of(session.serverpod)?.authenticate(session, bearer),
   );
-  sso = ServerSso.install(pod, Platform.environment);
+  configureKanameEsi(
+    pod,
+    environment,
+    serviceSecret: pod.getPassword('serviceSecret'),
+  );
   return serve(pod);
+}
+
+/// Binds SSO and affiliation before listening, sharing one ESI scheduler.
+///
+/// [serviceSecret] is the resolved Serverpod password. Without a usable
+/// scheduler, affiliation does not register work; SSO keeps its own gate.
+/// [createRuntime] replaces the exchange port in integration tests without
+/// changing the startup gates, scheduler context, or shutdown ordering.
+void configureKanameEsi(
+  Serverpod pod,
+  Map<String, String> environment, {
+  required String? serviceSecret,
+  ServerEsiRuntime Function()? createRuntime,
+}) {
+  ServerEsiRuntime? esi;
+  ServerEsiRuntime openEsi() => esi ??=
+      createRuntime?.call() ??
+      ServerEsiRuntime.forPod(
+        pod,
+        userAgent: 'Kaname/0.0.1 (+https://github.com/sh1ny/kaname)',
+        onStateFailure: () =>
+            stderr.writeln('esi: scheduler state unavailable'),
+      );
+  final AffiliationRuntime? affiliation;
+  switch (affiliationAvailability(pod.config, pod.runMode, serviceSecret)) {
+    case AffiliationAvailability.inactive:
+      affiliation = null;
+    case AffiliationAvailability.missingScheduler:
+      stderr.writeln(
+        'affiliation: Redis or service secret not configured; refresh disabled',
+      );
+      affiliation = null;
+    case AffiliationAvailability.enabled:
+      final client = openEsi().client(EsiPriority.sync, poll: true);
+      affiliation = AffiliationRuntime.bind(
+        pod,
+        lookup: (ids) => lookupAffiliation(client, ids),
+        report: stderr.writeln,
+      );
+  }
+  ServerSso.install(
+    pod,
+    environment,
+    esiRuntime: openEsi,
+    afterFirstIdentity: affiliation?.enqueueFirstKnown,
+  );
+  if (esi case final runtime?) {
+    pod.experimental.shutdownTasks.addTask('esi-runtime', runtime.close);
+  }
 }
 
 /// Wires the bundle route and announcer into [pod], starts it, then starts

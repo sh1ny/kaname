@@ -5,6 +5,7 @@
 /// in `app_packages/` instead.
 library;
 
+export 'src/affiliation_job.dart';
 export 'src/job.dart';
 export 'src/realtime_bus.dart';
 export 'src/sde_json.dart';

@@ -15,6 +15,9 @@ import 'package:kaname_core/kaname_core.dart' as _idp9h2tz;
 import 'package:serverpod/protocol.dart' as _isp;
 import 'package:serverpod/serverpod.dart' as _is;
 
+import 'affiliation/affiliation_first_known_args.dart' as _iwdn9x44;
+import 'affiliation/affiliation_sweep_args.dart' as _i8vb6afp;
+import 'affiliation/character_affiliation_row.dart' as _ir16nlj1;
 import 'esi/esi_call_log_cursor.dart' as _iqs4md3s;
 import 'esi/esi_call_log_entry.dart' as _ifsmg7bk;
 import 'esi/esi_call_log_exclusion_row.dart' as _ilr2byja;
@@ -92,6 +95,9 @@ import 'static_data/tables/sde_region.dart' as _ioiqjh1t;
 import 'static_data/tables/sde_solar_system.dart' as _iataywh8;
 import 'static_data/tables/sde_type.dart' as _i19vm38w;
 import 'static_data/tables/sde_type_dogma.dart' as _ib14m8bx;
+export 'affiliation/affiliation_first_known_args.dart';
+export 'affiliation/affiliation_sweep_args.dart';
+export 'affiliation/character_affiliation_row.dart';
 export 'esi/esi_call_log_cursor.dart';
 export 'esi/esi_call_log_entry.dart';
 export 'esi/esi_call_log_exclusion_row.dart';
@@ -183,6 +189,9 @@ class Protocol extends _is.DatabaseSerializationManager
       _is.ProtocolDeserialization.cached(
         this,
         types: const [
+          _is.getType<_iwdn9x44.AffiliationFirstKnownArgs>,
+          _is.getType<_i8vb6afp.AffiliationSweepArgs>,
+          _is.getType<_ir16nlj1.CharacterAffiliationRow>,
           _is.getType<_iqs4md3s.EsiCallLogCursor>,
           _is.getType<_ifsmg7bk.EsiCallLogRow>,
           _is.getType<_ilr2byja.EsiCallLogExclusionRow>,
@@ -262,6 +271,9 @@ class Protocol extends _is.DatabaseSerializationManager
           _is.getType<_iataywh8.SdeSolarSystem>,
           _is.getType<_i19vm38w.SdeType>,
           _is.getType<_ib14m8bx.SdeTypeDogma>,
+          _is.getType<_iwdn9x44.AffiliationFirstKnownArgs?>,
+          _is.getType<_i8vb6afp.AffiliationSweepArgs?>,
+          _is.getType<_ir16nlj1.CharacterAffiliationRow?>,
           _is.getType<_iqs4md3s.EsiCallLogCursor?>,
           _is.getType<_ifsmg7bk.EsiCallLogRow?>,
           _is.getType<_ilr2byja.EsiCallLogExclusionRow?>,
@@ -357,6 +369,9 @@ class Protocol extends _is.DatabaseSerializationManager
         modules: const [_isp.Protocol.new],
         classNames: const [
           'SdeJson',
+          'AffiliationFirstKnownArgs',
+          'AffiliationSweepArgs',
+          'CharacterAffiliationRow',
           'EsiCallLogCursor',
           'EsiCallLogRow',
           'EsiCallLogExclusionRow',
@@ -445,6 +460,79 @@ class Protocol extends _is.DatabaseSerializationManager
   ];
 
   static List<_isp.TableDefinition> get _ownTableDefinitions => [
+    _isp.TableDefinition(
+      name: 'character_affiliation',
+      dartName: 'CharacterAffiliationRow',
+      schema: 'public',
+      module: 'kaname',
+      columns: [
+        _isp.ColumnDefinition(
+          name: 'id',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int?',
+          columnDefault: 'serial',
+        ),
+        _isp.ColumnDefinition(
+          name: 'identityId',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'corporationId',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+        _isp.ColumnDefinition(
+          name: 'allianceId',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: true,
+          dartType: 'int?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'observedAt',
+          columnType: _isp.ColumnType.timestampWithoutTimeZone,
+          isNullable: false,
+          dartType: 'DateTime',
+        ),
+        _isp.ColumnDefinition(
+          name: 'lookupOrder',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+        ),
+      ],
+      foreignKeys: [
+        _isp.ForeignKeyDefinition(
+          constraintName: 'character_affiliation_fk_0',
+          columns: ['identityId'],
+          referenceTable: 'esi_identity',
+          referenceTableSchema: 'public',
+          referenceColumns: ['id'],
+          onUpdate: _isp.ForeignKeyAction.noAction,
+          onDelete: _isp.ForeignKeyAction.cascade,
+          matchType: null,
+        ),
+      ],
+      indexes: [
+        _isp.IndexDefinition(
+          indexName: 'character_affiliation_identity_idx',
+          tableSpace: null,
+          elements: [
+            _isp.IndexElementDefinition(
+              type: _isp.IndexElementDefinitionType.column,
+              definition: 'identityId',
+            ),
+          ],
+          type: 'btree',
+          isUnique: true,
+          isPrimary: false,
+        ),
+      ],
+      managed: true,
+    ),
     _isp.TableDefinition(
       name: 'esi_call_log_entry',
       dartName: 'EsiCallLogRow',
@@ -2902,6 +2990,15 @@ class Protocol extends _is.DatabaseSerializationManager
       }
     }
 
+    if (t == _iwdn9x44.AffiliationFirstKnownArgs) {
+      return _iwdn9x44.AffiliationFirstKnownArgs.fromJson(data) as T;
+    }
+    if (t == _i8vb6afp.AffiliationSweepArgs) {
+      return _i8vb6afp.AffiliationSweepArgs.fromJson(data) as T;
+    }
+    if (t == _ir16nlj1.CharacterAffiliationRow) {
+      return _ir16nlj1.CharacterAffiliationRow.fromJson(data) as T;
+    }
     if (t == _iqs4md3s.EsiCallLogCursor) {
       return _iqs4md3s.EsiCallLogCursor.fromJson(data) as T;
     }
@@ -3138,6 +3235,24 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (t == _ib14m8bx.SdeTypeDogma) {
       return _ib14m8bx.SdeTypeDogma.fromJson(data) as T;
+    }
+    if (t == _is.getType<_iwdn9x44.AffiliationFirstKnownArgs?>()) {
+      return (data != null
+              ? _iwdn9x44.AffiliationFirstKnownArgs.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_i8vb6afp.AffiliationSweepArgs?>()) {
+      return (data != null
+              ? _i8vb6afp.AffiliationSweepArgs.fromJson(data)
+              : null)
+          as T;
+    }
+    if (t == _is.getType<_ir16nlj1.CharacterAffiliationRow?>()) {
+      return (data != null
+              ? _ir16nlj1.CharacterAffiliationRow.fromJson(data)
+              : null)
+          as T;
     }
     if (t == _is.getType<_iqs4md3s.EsiCallLogCursor?>()) {
       return (data != null ? _iqs4md3s.EsiCallLogCursor.fromJson(data) : null)
@@ -3561,6 +3676,9 @@ class Protocol extends _is.DatabaseSerializationManager
   static String? getClassNameForType(Type type) {
     return switch (type) {
       _idp9h2tz.SdeJson => 'SdeJson',
+      _iwdn9x44.AffiliationFirstKnownArgs => 'AffiliationFirstKnownArgs',
+      _i8vb6afp.AffiliationSweepArgs => 'AffiliationSweepArgs',
+      _ir16nlj1.CharacterAffiliationRow => 'CharacterAffiliationRow',
       _iqs4md3s.EsiCallLogCursor => 'EsiCallLogCursor',
       _ifsmg7bk.EsiCallLogRow => 'EsiCallLogRow',
       _ilr2byja.EsiCallLogExclusionRow => 'EsiCallLogExclusionRow',
@@ -3656,6 +3774,12 @@ class Protocol extends _is.DatabaseSerializationManager
     switch (data) {
       case _idp9h2tz.SdeJson():
         return 'SdeJson';
+      case _iwdn9x44.AffiliationFirstKnownArgs():
+        return 'AffiliationFirstKnownArgs';
+      case _i8vb6afp.AffiliationSweepArgs():
+        return 'AffiliationSweepArgs';
+      case _ir16nlj1.CharacterAffiliationRow():
+        return 'CharacterAffiliationRow';
       case _iqs4md3s.EsiCallLogCursor():
         return 'EsiCallLogCursor';
       case _ifsmg7bk.EsiCallLogRow():
@@ -3830,6 +3954,15 @@ class Protocol extends _is.DatabaseSerializationManager
     }
     if (dataClassName == 'SdeJson') {
       return deserialize<_idp9h2tz.SdeJson>(data['data']);
+    }
+    if (dataClassName == 'AffiliationFirstKnownArgs') {
+      return deserialize<_iwdn9x44.AffiliationFirstKnownArgs>(data['data']);
+    }
+    if (dataClassName == 'AffiliationSweepArgs') {
+      return deserialize<_i8vb6afp.AffiliationSweepArgs>(data['data']);
+    }
+    if (dataClassName == 'CharacterAffiliationRow') {
+      return deserialize<_ir16nlj1.CharacterAffiliationRow>(data['data']);
     }
     if (dataClassName == 'EsiCallLogCursor') {
       return deserialize<_iqs4md3s.EsiCallLogCursor>(data['data']);
@@ -4086,6 +4219,8 @@ class Protocol extends _is.DatabaseSerializationManager
       }
     }
     switch (t) {
+      case _ir16nlj1.CharacterAffiliationRow:
+        return _ir16nlj1.CharacterAffiliationRow.t;
       case _ifsmg7bk.EsiCallLogRow:
         return _ifsmg7bk.EsiCallLogRow.t;
       case _ilr2byja.EsiCallLogExclusionRow:

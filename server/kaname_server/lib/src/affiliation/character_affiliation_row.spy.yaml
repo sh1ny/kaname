@@ -1,0 +1,14 @@
+### Last valid public ESI affiliation for a verified identity.
+class: CharacterAffiliationRow
+table: character_affiliation
+serverOnly: true
+fields:
+  identityId: int, relation(parent=esi_identity, onDelete=Cascade)
+  corporationId: int
+  allianceId: int?
+  observedAt: DateTime
+  lookupOrder: int
+indexes:
+  character_affiliation_identity_idx:
+    fields: identityId
+    unique: true

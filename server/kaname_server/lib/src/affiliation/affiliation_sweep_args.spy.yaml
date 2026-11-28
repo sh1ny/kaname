@@ -1,0 +1,6 @@
+### One durable full-sweep dispatch for a logical slot in the issuing boot.
+class: AffiliationSweepArgs
+serverOnly: true
+fields:
+  boot: String
+  slot: int

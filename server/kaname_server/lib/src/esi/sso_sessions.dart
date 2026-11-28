@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show stderr;
 
 import 'package:crypto/crypto.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
@@ -70,11 +71,16 @@ final class SsoSessions {
   /// Without a test clock, live reads check expiry against the database clock.
   /// [afterCharacterLock] and [callLog] let integration tests advance proof
   /// time at the character or release lock without waiting for a deadline.
+  /// [afterFirstIdentity] queues public work after an identity commits.
+  /// [reportFirstIdentity] reports an unconfirmed enqueue without using the
+  /// auth session's disabled logging.
   SsoSessions({
     this._now,
     Set<int> adminCharacters = const {},
     EsiCallLogStore? callLog,
     this._afterCharacterLock,
+    this._afterFirstIdentity,
+    this._reportFirstIdentity,
   }) : _admins = Set.unmodifiable(adminCharacters),
        _callLog = callLog ?? _defaultCallLog;
 
@@ -82,6 +88,9 @@ final class SsoSessions {
   static final _defaultCallLog = EsiCallLogStore();
   final EsiCallLogStore _callLog;
   final Future<void> Function(int character)? _afterCharacterLock;
+  final Future<void> Function(int identityId)? _afterFirstIdentity;
+  final void Function(String message)? _reportFirstIdentity;
+  static const _firstIdentityBudget = Duration(seconds: 1);
 
   /// Associates generated RPCs with this install's exact session authority.
   void bind(Serverpod pod) => _bound[pod] = this;
@@ -320,15 +329,35 @@ final class SsoSessions {
     DateTime proofDeadline,
   ) async {
     try {
-      return await session.db.transaction(
+      final signedIn = await session.db.transaction(
         (tx) => _signIn(session, tx, claims, proofDeadline),
       );
+      if (signedIn?.insertedIdentity case final id?) {
+        await identityCommitted(id);
+      }
+      return signedIn?.reply;
     } on SsoProofExpired {
       return null;
     }
   }
 
-  Future<Map<String, Object?>?> _signIn(
+  /// Waits briefly for the one-off enqueue without changing the auth result.
+  ///
+  /// A timeout leaves the insert unconfirmed, not cancelled. There is no retry:
+  /// it may finish, and the next sweep covers identities not yet refreshed.
+  Future<void> identityCommitted(int identityId) async {
+    final enqueue = _afterFirstIdentity;
+    if (enqueue == null) return;
+    try {
+      await enqueue(identityId).timeout(_firstIdentityBudget);
+    } on Object {
+      (_reportFirstIdentity ?? stderr.writeln)(
+        'affiliation: could not confirm first-known enqueue',
+      );
+    }
+  }
+
+  Future<({Map<String, Object?> reply, int? insertedIdentity})?> _signIn(
     Session session,
     Transaction transaction,
     CcpVerifiedIdentity claims,
@@ -430,13 +459,16 @@ final class SsoSessions {
       transaction: transaction,
     );
     if (!admit()) throw const SsoProofExpired();
-    return {
-      'session': bearer,
-      'memberId': member.toString(),
-      'characterId': identity.characterId.toString(),
-      'characterName': identity.characterName,
-      'admin': _admins.contains(identity.characterId),
-    };
+    return (
+      reply: {
+        'session': bearer,
+        'memberId': member.toString(),
+        'characterId': identity.characterId.toString(),
+        'characterName': identity.characterName,
+        'admin': _admins.contains(identity.characterId),
+      },
+      insertedIdentity: stored == null ? signer : null,
+    );
   }
 
   /// Removes a current session; an unknown token has no effect.

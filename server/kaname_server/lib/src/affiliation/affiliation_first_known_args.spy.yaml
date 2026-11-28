@@ -1,0 +1,5 @@
+### Registry key for one public lookup after an identity commits.
+class: AffiliationFirstKnownArgs
+serverOnly: true
+fields:
+  identityId: int
