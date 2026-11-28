@@ -62,7 +62,7 @@ void main() {
       addTearDown(session.close);
       await session.db.unsafeExecute(
         'TRUNCATE esi_call_log_entry, esi_call_log_seal, esi_session, '
-        'esi_identity, member_account',
+        'character_affiliation, esi_identity, member_account',
       );
       now = day.add(const Duration(minutes: 2));
       SsoSessions(
