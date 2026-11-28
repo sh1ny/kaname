@@ -6,7 +6,7 @@ import 'package:kaname_core/kaname_core.dart';
 import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_server/src/affiliation/affiliation_store.dart';
-import 'package:kaname_server/src/affiliation/esi_affiliation_lookup.dart';
+import 'package:kaname_server/src/esi/esi_affiliation_lookup.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
 import 'package:path/path.dart' as p;
 import 'package:postgres/postgres.dart' as pg;

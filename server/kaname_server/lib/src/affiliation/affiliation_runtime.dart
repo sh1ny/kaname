@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:kaname_core/kaname_core.dart';
-import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart' show newOAuthProof;
 import 'package:serverpod/protocol.dart' show FutureCallEntry;
 import 'package:serverpod/serverpod.dart';
@@ -9,7 +8,6 @@ import 'package:serverpod/serverpod.dart';
 import '../generated/future_calls.dart';
 import '../generated/protocol.dart';
 import 'affiliation_store.dart';
-import 'esi_affiliation_lookup.dart';
 import 'sweep_registrar.dart';
 
 /// Whether this server should register and execute affiliation work.
@@ -66,7 +64,7 @@ enum AffiliationDispatch {
 final class AffiliationRuntime {
   AffiliationRuntime._(
     this._pod,
-    this._client,
+    this._lookup,
     this._report,
     this._now,
     this._clock,
@@ -77,11 +75,11 @@ final class AffiliationRuntime {
 
   /// Binds an enabled runtime before the server listens.
   ///
-  /// [client] must be the anonymous polling client from the shared scheduler.
+  /// [lookup] must submit through the shared scheduler with no character token.
   /// The registrar owns the timer; the caller owns and closes the scheduler.
   static AffiliationRuntime bind(
     Serverpod pod, {
-    required EsiClient client,
+    required Future<AffiliationLookupResult> Function(List<int>) lookup,
     required void Function(String) report,
     String? boot,
     Duration Function()? elapsed,
@@ -102,7 +100,7 @@ final class AffiliationRuntime {
     );
     return _bound[pod] = AffiliationRuntime._(
       pod,
-      client,
+      lookup,
       report,
       now ?? DateTime.now,
       clock,
@@ -130,18 +128,22 @@ final class AffiliationRuntime {
       AffiliationDispatch.inactive;
 
   final Serverpod _pod;
-  final EsiClient _client;
+  final Future<AffiliationLookupResult> Function(List<int>) _lookup;
   final void Function(String) _report;
   final DateTime Function() _now;
   final Stopwatch _clock;
   final SweepRegistrar _registrar;
   bool _stopping = false;
   bool _sweeping = false;
+  Future<void>? _startupRegistration;
 
   /// Starts boot-relative registration after the listener starts.
+  ///
+  /// Repeated calls wait for the same first registration attempt.
   Future<void> start() {
+    if (_startupRegistration case final pending?) return pending;
     if (!_stopping) _clock.start();
-    return _registrar.start();
+    return _startupRegistration = _registrar.start();
   }
 
   /// Prevents new registrations and batch submissions before Serverpod drains.
@@ -185,7 +187,7 @@ final class AffiliationRuntime {
     try {
       final result = await AffiliationJob(
         registry: AffiliationStore(session),
-        lookup: (ids) => lookupAffiliation(_client, ids),
+        lookup: _lookup,
         now: _now,
         isStopping: () => _stopping,
         identityId: identityId,

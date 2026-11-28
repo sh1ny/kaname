@@ -1,8 +1,10 @@
 import 'dart:io';
 
-import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
+import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart'
+    show EsiPriority;
 
 import 'src/affiliation/affiliation_runtime.dart';
+import 'src/esi/esi_affiliation_lookup.dart';
 import 'src/esi/member_roster_endpoint.dart';
 import 'src/esi/server_esi_runtime.dart';
 import 'src/esi/server_sso.dart';
@@ -75,9 +77,10 @@ void configureKanameEsi(
       );
       affiliation = null;
     case AffiliationAvailability.enabled:
+      final client = openEsi().client(EsiPriority.sync, poll: true);
       affiliation = AffiliationRuntime.bind(
         pod,
-        client: openEsi().client(EsiPriority.sync, poll: true),
+        lookup: (ids) => lookupAffiliation(client, ids),
         report: stderr.writeln,
       );
   }

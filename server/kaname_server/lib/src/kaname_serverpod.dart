@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'affiliation/affiliation_runtime.dart';
 import 'affiliation/org_tree_config.dart';
 import 'generated/serverpod.dart';
@@ -19,7 +21,7 @@ final class KanameServerpod extends Serverpod {
   @override
   Future<void> start({bool runInGuardedZone = true}) async {
     await super.start(runInGuardedZone: runInGuardedZone);
-    await AffiliationRuntime.of(this)?.start();
+    unawaited(AffiliationRuntime.of(this)?.start());
   }
 
   @override

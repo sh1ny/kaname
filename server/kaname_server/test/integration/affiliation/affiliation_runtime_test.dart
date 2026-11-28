@@ -72,6 +72,21 @@ void main() {
     });
   });
 
+  test(
+    'the listener starts without waiting for affiliation registration',
+    () async {
+      final fixture = await AffiliationFixture.open(
+        onListenerStarted: (clock) => expect(clock.due, isNull),
+      );
+      await fixture.pod.withSession((s) async {
+        expect(
+          (await fixture.queue(s)).single.identifier,
+          'kaname-affiliation:current:0',
+        );
+      });
+    },
+  );
+
   test('refreshes known identities without a valid SSO registration', () async {
     final sent = <String>[];
     final runtime = _ControlledRuntime((request, bearer, _) async {

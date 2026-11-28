@@ -5,6 +5,7 @@ import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
 import 'package:kaname_server/server.dart' show configureKanameEsi;
 import 'package:kaname_server/src/affiliation/affiliation_runtime.dart';
+import 'package:kaname_server/src/esi/esi_affiliation_lookup.dart';
 import 'package:kaname_server/src/esi/redis_scheduler_state.dart';
 import 'package:kaname_server/src/esi/server_esi_runtime.dart';
 import 'package:kaname_server/src/generated/protocol.dart';
@@ -37,6 +38,7 @@ final class AffiliationFixture {
   static Future<AffiliationFixture> open({
     bool active = true,
     bool persistentLogs = false,
+    void Function(ManualSweepClock)? onListenerStarted,
   }) async {
     final db = await ScratchDatabase.create();
     addTearDown(db.drop);
@@ -78,7 +80,7 @@ final class AffiliationFixture {
     if (active) {
       fixture.runtime = AffiliationRuntime.bind(
         pod,
-        client: fixture.client,
+        lookup: (ids) => lookupAffiliation(fixture.client, ids),
         report: fixture.log.add,
         boot: 'current',
         elapsed: () => fixture.clock.elapsed,
@@ -88,6 +90,8 @@ final class AffiliationFixture {
     }
     await pod.start(runInGuardedZone: false);
     addTearDown(fixture.shutdown);
+    onListenerStarted?.call(fixture.clock);
+    await fixture.runtime?.start();
     return fixture;
   }
 
@@ -184,6 +188,7 @@ Future<KanameServerpod> startComposedAffiliation({
     ),
   );
   addTearDown(() => pod.shutdown(exitProcess: false));
+  await AffiliationRuntime.of(pod)?.start();
   return pod;
 }
 
