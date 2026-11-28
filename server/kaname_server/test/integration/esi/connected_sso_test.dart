@@ -2828,6 +2828,12 @@ void main() {
         final key = signed['session'] as String;
         expect((await linkAlt(key, 411)).statusCode, 200);
         expect((await linkAlt(key, 412)).statusCode, 200);
+        final account = int.parse(signed['memberId'] as String);
+        Future<Object?> mainCharacter() async => (await rows('''
+          SELECT i."characterId" FROM member_account a
+          JOIN esi_identity i ON i.id = a."mainIdentityId" WHERE a.id = $account
+        ''')).single.single;
+
         final atAuth = Completer<void>();
         final settle = Completer<void>();
         afterRpcAuth = () async {
@@ -2840,7 +2846,7 @@ void main() {
             atAuth.future,
             selection.then((_) => fail('RPC auth skipped')),
           ]);
-          characterId = 410;
+          characterId = 412;
           owner = _newOwner;
           if (transferFirst) await signIn();
         } finally {
@@ -2849,15 +2855,18 @@ void main() {
         }
         expect(
           jsonDecode((await selection).body),
-          containsPair('status', transferFirst ? 'denied' : 'mainChanged'),
+          containsPair('status', transferFirst ? 'refused' : 'mainChanged'),
         );
-        if (!transferFirst) await signIn();
+        if (!transferFirst) {
+          expect(await mainCharacter(), 412);
+          await signIn();
+        }
+        expect(await mainCharacter(), 410);
+        final surviving = await post('viewer', {}, bearer: key);
+        expect(surviving.statusCode, 200);
         expect(
-          (await rows('''
-        SELECT i."characterId" FROM member_account a
-        JOIN esi_identity i ON i.id = a."mainIdentityId" WHERE i."characterId" <> 410
-      ''')).single.single,
-          transferFirst ? 411 : 412,
+          jsonDecode(surviving.body),
+          containsPair('memberId', '$account'),
         );
       },
       timeout: const Timeout(Duration(minutes: 3)),
@@ -2897,6 +2906,30 @@ void main() {
     );
   }
 
+  test(
+    'a delayed link with a live signer cannot reverse the target transfer',
+    () async {
+      final former = (await signIn())['session'] as String;
+      await authorize(former);
+      characterId = 411;
+      final actor = (await signIn())['session'] as String;
+      final delayed = await begin(bearer: actor, link: true);
+      characterId = 410;
+      expect((await callback(delayed)).statusCode, 200);
+
+      owner = _newOwner;
+      final current = (await signIn())['session'] as String;
+      await authorize(current);
+      final before = await authoritySnapshot();
+      expect(
+        (await complete(delayed, bearer: actor, link: true)).statusCode,
+        403,
+      );
+      expect(await authoritySnapshot(), before);
+      expect((await post('viewer', {}, bearer: actor)).statusCode, 200);
+      expect((await post('skills', {}, bearer: current)).statusCode, 200);
+    },
+  );
   test(
     'a later signed return to a prior owner starts another account',
     () async {
