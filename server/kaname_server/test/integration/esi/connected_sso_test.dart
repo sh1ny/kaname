@@ -61,6 +61,7 @@ void main() {
   late Future<void> Function(String bearer)? beforeRpcAuth;
   late Future<void> Function()? afterRpcAuth;
   late Future<void> Function()? beforeSkillsWire;
+  Future<void> Function()? beforeSkillsAdmission;
   late Future<void> Function()? beforeRefresh;
   late Future<void> Function()? beforeLinkProofRecheck;
   Future<void> Function(int)? afterCharacterLock;
@@ -97,6 +98,7 @@ void main() {
     beforeRpcAuth = null;
     afterRpcAuth = null;
     beforeSkillsWire = null;
+    beforeSkillsAdmission = null;
     beforeRefresh = null;
     beforeLinkProofRecheck = null;
     afterCharacterLock = null;
@@ -283,7 +285,7 @@ void main() {
       registration: registration,
     );
     scheduler = EsiScheduler(
-      state: MemorySchedulerState(),
+      state: _AdmissionBarrier(() => beforeSkillsAdmission?.call()),
       key: List.filled(32, 11),
       now: () => clock,
       callLog: (receipt) async {
@@ -2461,6 +2463,42 @@ void main() {
     },
   );
 
+  test('transfer before scheduler dispatch refuses an already admitted skills read', () async {
+    final old = (await signIn())['session'] as String;
+    await authorize(old);
+    final waiting = Completer<void>();
+    final resume = Completer<void>();
+    var sent = false;
+    beforeSkillsWire = () async {
+      sent = true;
+    };
+    beforeSkillsAdmission = () {
+      waiting.complete();
+      return resume.future;
+    };
+    final read = post('skills', {}, bearer: old);
+    try {
+      await Future.any([
+        waiting.future,
+        read.then((_) => fail('Skills settled without reaching admission.')),
+      ]);
+      owner = _newOwner;
+      await signIn();
+    } finally {
+      beforeSkillsAdmission = null;
+      resume.complete();
+      await read;
+    }
+    final denied = await read;
+    expect(denied.statusCode, 503);
+    expect(jsonDecode(denied.body), {
+      'status': 'refused',
+      'reason': 'invalidContext',
+    });
+    expect(sent, isFalse);
+    expect((await post('viewer', {}, bearer: old)).statusCode, 401);
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
   test('Valid identity signs in again', () async {
     final first = await signIn();
     final second = await signIn();
@@ -3913,4 +3951,26 @@ void main() {
       });
     }, enableLogging: false);
   }, timeout: const Timeout(Duration(minutes: 3)));
+}
+
+final class _AdmissionBarrier implements SchedulerState {
+  _AdmissionBarrier(this.before);
+
+  final Future<void>? Function() before;
+  final _state = MemorySchedulerState();
+
+  @override
+  FutureOr<Admission> admit(SchedulerRequest request, int nowMs) {
+    final wait = before();
+    return wait == null
+        ? _state.admit(request, nowMs)
+        : wait.then((_) => _state.admit(request, nowMs));
+  }
+
+  @override
+  FutureOr<Admission> advance(int id, int nowMs) => _state.advance(id, nowMs);
+
+  @override
+  void complete(int id, int nowMs, Observation observation) =>
+      _state.complete(id, nowMs, observation);
 }

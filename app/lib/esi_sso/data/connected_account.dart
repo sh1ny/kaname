@@ -124,7 +124,12 @@ final class ConnectedSession implements HolderRemote {
 
   /// Requests the viewer's scheduled skills read, with no caller-chosen ID.
   Future<SkillsRead> skills() async {
-    final result = await _api._request('skills', const {}, bearer: _bearer);
+    final result = await _api._request(
+      'skills',
+      const {},
+      bearer: _bearer,
+      keepAuthStatus: true,
+    );
     if ((result.code, result.body) case (403, {'status': 'esiReauthorize'})) {
       return (AccountNotice.reauthorize, null, null);
     }
@@ -384,12 +389,17 @@ final class ConnectedAccount {
     String? code,
     ConnectedSession? session,
   }) async {
-    final reply = await _request('complete', {
-      'attemptId': attempt._id,
-      'proof': attempt._proof,
-      'code': ?code,
-      if (attempt.linking) 'link': true,
-    }, bearer: session?.bearerFor(_base));
+    final reply = await _request(
+      'complete',
+      {
+        'attemptId': attempt._id,
+        'proof': attempt._proof,
+        'code': ?code,
+        if (attempt.linking) 'link': true,
+      },
+      bearer: session?.bearerFor(_base),
+      keepAuthStatus: attempt.scoped,
+    );
     if (attempt.scoped) {
       if (reply.code != 200 && reply.code != 401 && reply.code != 403) {
         return (_notice(reply), null);
@@ -433,10 +443,12 @@ final class ConnectedAccount {
     String action,
     Map<String, Object?> body, {
     String? bearer,
+    bool keepAuthStatus = false,
   }) async {
     if (!secure) return (code: 0, body: null);
     final abort = Completer<void>();
     final timer = Timer(const Duration(seconds: 10), abort.complete);
+    var refusalCode = 0;
     try {
       final request =
           http.AbortableRequest(
@@ -449,13 +461,19 @@ final class ConnectedAccount {
             ..body = jsonEncode(body);
       if (bearer != null) request.headers['authorization'] = 'Bearer $bearer';
       final response = await _http.send(request);
+      if (keepAuthStatus &&
+          (response.statusCode == 401 || response.statusCode == 403)) {
+        refusalCode = response.statusCode;
+      }
       if (response.statusCode >= 300 && response.statusCode < 400) {
         await response.stream.listen(null).cancel();
         return (code: 0, body: null);
       }
       final bytes = <int>[];
       await for (final chunk in response.stream) {
-        if (chunk.length > 8192 - bytes.length) return (code: 0, body: null);
+        if (chunk.length > 8192 - bytes.length) {
+          return (code: refusalCode, body: null);
+        }
         bytes.addAll(chunk);
       }
       return (
@@ -463,7 +481,7 @@ final class ConnectedAccount {
         body: bytes.isEmpty ? null : jsonDecode(utf8.decode(bytes)),
       );
     } on Object {
-      return (code: 0, body: null);
+      return (code: refusalCode, body: null);
     } finally {
       timer.cancel();
       if (!abort.isCompleted) abort.complete();

@@ -400,12 +400,37 @@ void main() {
     }
   }
 
-  for (final (label, route, code, reply) in [
-    ('scoped completion', 'complete', 403, 'notAuthorized'),
-    ('skills refresh', 'skills', 403, 'esiReauthorize'),
-    ('skills holder check', 'skills', 403, 'holderOrScopeRequired'),
-    ('scoped proxy denial', 'complete', 401, 'unexpectedAuth'),
-    ('skills proxy denial', 'skills', 401, 'unexpectedAuth'),
+  for (final (label, route, response) in [
+    (
+      'scoped completion',
+      'complete',
+      () => _json({'status': 'notAuthorized'}, 403),
+    ),
+    (
+      'skills refresh',
+      'skills',
+      () => _json({'status': 'esiReauthorize'}, 403),
+    ),
+    (
+      'skills holder check',
+      'skills',
+      () => _json({'status': 'holderOrScopeRequired'}, 403),
+    ),
+    (
+      'scoped proxy denial',
+      'complete',
+      () => http.Response('Proxy needs sign-in', 401),
+    ),
+    (
+      'skills proxy denial',
+      'skills',
+      () => http.Response('<p>Not authorized</p>', 403),
+    ),
+    (
+      'skills invalid context',
+      'skills',
+      () => _json({'status': 'refused', 'reason': 'invalidContext'}, 503),
+    ),
   ]) {
     for (final status in [401, 200, 503]) {
       testWidgets('$label refusal checks the captured viewer: HTTP $status', (
@@ -427,7 +452,7 @@ void main() {
             ..viewerBearers.clear()
             ..viewerFailure = status == 200 ? null : status
             ..refusedRoute = route
-            ..refusedStatus = (code, reply);
+            ..refusedResponse = response;
           await _tap(
             tester,
             route == 'complete'
@@ -789,7 +814,7 @@ final class _Server {
   final viewerBearers = <String>[];
   int? viewerFailure;
   String? refusedRoute;
-  (int, String)? refusedStatus;
+  http.Response Function()? refusedResponse;
 
   Future<http.Response> call(http.Request request) async {
     const pilot = {
@@ -849,9 +874,9 @@ final class _Server {
               .toJson(),
         );
     }
-    if (refusedStatus case (final code, final status)
+    if (refusedResponse case final refuse?
         when request.url.pathSegments.last == refusedRoute) {
-      return _json({'status': status}, code);
+      return refuse();
     }
     switch (request.url.pathSegments.last) {
       case 'begin':

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:kaname_client/kaname_client.dart';
+import 'package:kaname_esi/kaname_esi.dart' show EsiRefusalReason;
 
 import '../../server/data/server_address.dart';
 import '../../server/logic/server_status.dart';
@@ -474,10 +475,11 @@ final class AccountNotifier extends Notifier<AccountState> {
     if (connected != null &&
         (result.$1 == AccountNotice.blocked ||
             result.$1 == AccountNotice.reauthorize ||
-            result.$1 == AccountNotice.signedOut)) {
+            result.$1 == AccountNotice.signedOut ||
+            result.$3?.reason == EsiRefusalReason.invalidContext)) {
       final notice = await _checkViewerAfterRefusal(connected, result.$1);
       if (!_current(epoch)) return;
-      result = (notice, null, null);
+      if (notice != result.$1) result = (notice, null, null);
     }
     state = _skillsState(connected, result, solo: false);
   }
