@@ -120,6 +120,31 @@ Each page or cursor SHALL be scheduled independently. Callers own traversal and 
 - **WHEN** two distinct explicitly polled operations return 503 within the outage observation window and the status probe also fails
 - **THEN** subsequent ordinary polls are not sent until a recovery probe succeeds
 
+### Requirement: Affiliation outage polling
+
+The public `POST /characters/affiliation`, when marked as scheduled lookup work, SHALL share the outage pause and recovery probes with GET polls. It SHALL NOT create GET validator, freshness, or negative-cache metadata. No other POST is added to the outage policy. A recovery probe SHALL NOT replay the refused request.
+
+Verify the shared affiliation outage and two-route `503` scenarios against both Redis and in-process scheduler state.
+
+#### Scenario: Affiliation uses the shared outage pause
+- **GIVEN** an outage is recorded and its recovery probe is due and otherwise admissible
+- **WHEN** a scheduled affiliation POST and a GET poll both receive an atomic refusal while the recovery probe is held open
+- **THEN** the scheduler sends exactly one status exchange and no ordinary exchange for the refused requests
+- **AND** releasing the healthy probe does not replay either refusal but lets a later scheduled affiliation POST send
+
+#### Scenario: An affiliation connection failure pauses other polls
+- **WHEN** an admitted scheduled affiliation POST reports a connectivity failure
+- **THEN** the scheduler pauses ordinary polls through the existing shared outage state
+
+#### Scenario: An affiliation 503 contributes to the shared outage
+- **WHEN** a scheduled affiliation POST and a distinct GET poll return `503` inside the shared observation window and the status probe fails
+- **THEN** subsequent ordinary polls remain paused
+
+#### Scenario: POSTs do not share GET metadata
+- **WHEN** the scheduler submits scheduled affiliation batches with different character IDs
+- **THEN** one batch's freshness or negative status does not suppress the other through GET metadata
+- **AND** an unrelated POST is not marked as subject to the polling outage policy
+
 ### Requirement: Equivalent corporation polls
 
 Corporation recipes SHALL keep their shared representation independent of the selected role holder's identity.
