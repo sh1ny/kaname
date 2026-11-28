@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:kaname_esi/kaname_esi.dart';
 import 'package:kaname_esi_scheduler/kaname_esi_scheduler.dart';
@@ -189,13 +190,15 @@ void main() {
             lastHeartbeatTime: DateTime.utc(2000),
           ),
         );
+        await f.clock.advance(const Duration(minutes: 1));
+        expect((await f.queue(s)).single.id, abandoned.id);
         final manager = f.pod.futureCallManager!;
         final finished = await _completionEvents(s);
         final startupDone = finished.stream.first;
         await manager.start();
         expect(await startupDone, 'kaname-affiliation:current:0');
         final hourDone = finished.stream.first;
-        await f.clock.advance(_hour);
+        await f.clock.advance(_hour - f.clock.elapsed);
         expect(await hourDone, 'kaname-affiliation:current:1');
         await manager.stop(unregisterAll: false);
         expect(await f.queue(s), isEmpty);
@@ -259,30 +262,43 @@ void main() {
   );
 
   test('shutdown saves the active batch and closes the runtime without another send', () async {
-    final f = await AffiliationFixture.open();
     final entered = Completer<void>();
     final release = Completer<void>();
-    AffiliationObservation? saved;
-    f.respond = (ids) async {
-      if (!entered.isCompleted) entered.complete();
-      await release.future;
-      return jsonReply(200, [
-        {'character_id': ids.first, 'corporation_id': 42},
-      ]);
-    };
-    await f.pod.withSession(_seedRegistry);
-    f.pod.experimental.shutdownTasks.addTask('observe-save', () async {
-      saved = await f.pod.withSession((s) => AffiliationStore(s).read(101));
+    late final KanameServerpod pod;
+    final batches = <List<int>>[];
+    AffiliationObservation? atClose;
+    final runtime = _ControlledRuntime(
+      (request, _, _) async {
+        final ids = (jsonDecode(utf8.decode(request.body!)) as List<Object?>)
+            .cast<int>();
+        batches.add(ids);
+        if (!entered.isCompleted) entered.complete();
+        await release.future;
+        return jsonReply(200, [
+          {'character_id': ids.first, 'corporation_id': 42},
+        ]);
+      },
+      onClose: () async {
+        atClose = await pod.withSession((s) => AffiliationStore(s).read(101));
+      },
+    );
+    late final void Function() scan;
+    pod = await startComposedAffiliation(
+      openRuntime: () => runtime,
+      onScan: (fire) => scan = fire,
+    );
+    addTearDown(() {
+      if (!release.isCompleted) release.complete();
     });
-    await f.pod.futureCallManager!.start();
+    await pod.withSession(_seedRegistry);
+    scan();
     await entered.future;
-    final drain = f.shutdown();
+    final drain = pod.shutdown(exitProcess: false);
     release.complete();
     await drain;
-    expect(saved?.corporationId, 42);
-    expect(f.wire.single.ids, hasLength(1000));
-    expect(f.closes, 1);
-    expect(f.clock.due, isNull);
+    expect(atClose?.corporationId, 42);
+    expect(batches.single, hasLength(1000));
+    expect(runtime.closes, 1);
   }, timeout: const Timeout(Duration(minutes: 3)));
 
   test('startup and hourly calls send bounded anonymous batches for the whole registry', () async {
@@ -425,7 +441,7 @@ Future<StreamController<String>> _completionEvents(Session session) async {
 }
 
 final class _ControlledRuntime implements ServerEsiRuntime {
-  _ControlledRuntime(EsiWireSend send)
+  _ControlledRuntime(EsiWireSend send, {this._onClose})
     : _scheduler = EsiScheduler(
         state: MemorySchedulerState(),
         key: const [1],
@@ -433,6 +449,7 @@ final class _ControlledRuntime implements ServerEsiRuntime {
       );
 
   final EsiScheduler _scheduler;
+  final Future<void> Function()? _onClose;
   int closes = 0;
 
   @override
@@ -449,5 +466,8 @@ final class _ControlledRuntime implements ServerEsiRuntime {
   );
 
   @override
-  Future<void> close() async => closes++;
+  Future<void> close() async {
+    closes++;
+    await _onClose?.call();
+  }
 }

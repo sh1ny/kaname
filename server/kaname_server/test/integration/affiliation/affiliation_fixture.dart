@@ -27,7 +27,6 @@ final class AffiliationFixture {
   late final EsiClient client;
   AffiliationRuntime? runtime;
   DateTime now = DateTime.utc(2026, 11, 27);
-  int closes = 0;
   bool stopped = false;
 
   Future<WireOutcome> Function(List<int>) respond = (ids) async =>
@@ -75,10 +74,7 @@ final class AffiliationFixture {
       now: () => fixture.now,
       send: fixture._send,
     ).client(EsiPriority.sync, poll: true);
-    pod.experimental.shutdownTasks.addTask('esi-runtime', () async {
-      fixture.closes++;
-      await state.close();
-    });
+    pod.experimental.shutdownTasks.addTask('esi-runtime', state.close);
     if (active) {
       fixture.runtime = AffiliationRuntime.bind(
         pod,
@@ -143,6 +139,7 @@ Future<KanameServerpod> startComposedAffiliation({
   bool futureCalls = true,
   bool execute = true,
   ServerEsiRuntime Function()? openRuntime,
+  void Function(void Function() scan)? onScan,
 }) async {
   final db = await ScratchDatabase.create();
   addTearDown(db.drop);
@@ -176,10 +173,14 @@ Future<KanameServerpod> startComposedAffiliation({
   await runZoned(
     () => pod.start(runInGuardedZone: false),
     zoneSpecification: ZoneSpecification(
-      createPeriodicTimer: (self, parent, zone, duration, callback) =>
-          duration == scanInterval
-          ? _ParkedScan()
-          : parent.createPeriodicTimer(zone, duration, callback),
+      createPeriodicTimer: (self, parent, zone, duration, callback) {
+        if (duration != scanInterval) {
+          return parent.createPeriodicTimer(zone, duration, callback);
+        }
+        final scanner = _ParkedScan(callback);
+        onScan?.call(scanner.fire);
+        return scanner;
+      },
     ),
   );
   addTearDown(() => pod.shutdown(exitProcess: false));
@@ -187,6 +188,9 @@ Future<KanameServerpod> startComposedAffiliation({
 }
 
 final class _ParkedScan implements Timer {
+  _ParkedScan(this._scan);
+
+  final void Function(Timer) _scan;
   bool _cancelled = false;
 
   @override
@@ -197,4 +201,8 @@ final class _ParkedScan implements Timer {
 
   @override
   void cancel() => _cancelled = true;
+
+  void fire() {
+    if (!_cancelled) _scan(this);
+  }
 }
