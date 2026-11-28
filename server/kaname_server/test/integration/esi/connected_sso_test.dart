@@ -1028,19 +1028,33 @@ void main() {
         expect((await callback(attempt)).statusCode, 200);
         starts.add(attempt);
       }
-      final entered = Completer<void>();
-      final settle = Completer<void>();
-      var completions = 0;
+      final firstEntered = Completer<void>();
+      final restEntered = Completer<void>();
+      final firstRelease = Completer<void>();
+      final restRelease = Completer<void>();
       beforeSession = () async {
-        if (++completions == starts.length) entered.complete();
-        await settle.future;
+        firstEntered.complete();
+        await firstRelease.future;
       };
-      final pending = Future.wait(starts.map((start) => complete(start)));
+      final first = complete(starts.first);
+      Future<List<http.Response>>? rest;
       final beginBody = {'proofDigest': 'a' * 64, 'native': true};
       try {
         await Future.any([
-          entered.future,
-          pending.then((_) => fail('A completion settled before admission.')),
+          firstEntered.future,
+          first.then((_) => fail('The first completion skipped admission.')),
+        ]);
+        var waiting = 0;
+        beforeSession = () async {
+          if (++waiting == starts.length - 1) restEntered.complete();
+          await restRelease.future;
+        };
+        final pending = rest = Future.wait(starts.skip(1).map(complete));
+        await Future.any([
+          restEntered.future,
+          pending.then(
+            (_) => fail('The remaining completions skipped admission.'),
+          ),
         ]);
         expect((await complete(starts.first)).statusCode, 400);
         final blockedIp = global ? '192.0.2.200' : '192.0.2.1';
@@ -1053,16 +1067,20 @@ void main() {
         }
         clock = clock.add(const Duration(minutes: 5));
         expect((await post('begin', beginBody, ip: blockedIp)).statusCode, 429);
+
+        firstRelease.complete();
+        expect((await first).statusCode, 403);
+        expect((await post('begin', beginBody, ip: blockedIp)).statusCode, 200);
+        expect((await post('begin', beginBody, ip: blockedIp)).statusCode, 429);
       } finally {
         beforeSession = null;
         clock = clock.add(const Duration(minutes: 5));
-        settle.complete();
-        await pending;
+        if (!firstRelease.isCompleted) firstRelease.complete();
+        restRelease.complete();
+        await first;
+        await rest;
       }
-      expect(
-        (await pending).map((reply) => reply.statusCode),
-        everyElement(403),
-      );
+      expect((await rest).map((reply) => reply.statusCode), everyElement(403));
       expect((await post('begin', beginBody)).statusCode, 200);
     }, timeout: const Timeout(Duration(minutes: 4)));
   }
