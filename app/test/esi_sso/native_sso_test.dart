@@ -945,6 +945,33 @@ END
     testEsiOrigin: esi,
   );
 
+  test(
+    'an owner mismatch cannot make a completed Return returnable again',
+    () async {
+      await _withConnectedDesktop((container, server, device) async {
+        final account = container.read(accountProvider.notifier);
+        await saveTake(account, server, device);
+        await account.returnDesktop();
+        expect(device.store.character(123)?.phase, DevicePhase.returned);
+
+        owner = 'TkVXIE9XTkVS';
+        await account.identifyDesktop();
+        expect(
+          (container.read(accountProvider) as AccountIdle).notice,
+          AccountNotice.blocked,
+        );
+        expect(device.store.character(123)?.phase, DevicePhase.returned);
+        expect(
+          device.account.ownsReservationFor('${server.origin}', '123'),
+          isFalse,
+        );
+        expect(device.account.permitsServerGrant('123'), isTrue);
+        await account.returnDesktop();
+        expect(server.releaseRequests, hasLength(1));
+      }, createAccount: nativeForConfirmation);
+    },
+  );
+
   test('fresh native grant checks the saved Take after CCP proof', () async {
     var clock = _now;
     final esi = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

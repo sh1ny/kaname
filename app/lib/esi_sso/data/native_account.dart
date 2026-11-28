@@ -164,6 +164,8 @@ final class NativeAccount implements DesktopAccount {
       return AccountNotice.blocked;
     }
     final row = _store.character(identity.characterId);
+    // A denied identity check must not reopen a completed Return.
+    if (row?.phase == DevicePhase.returned) return AccountNotice.blocked;
     if (row?.phase == DevicePhase.deviceReserved &&
         (row!.ownerFingerprint !=
                 _owner(identity.characterId, identity.owner) ||
