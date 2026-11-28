@@ -120,7 +120,7 @@ Connected admissions SHALL require a live signing session. Expired, revoked, blo
 
 - **WHEN** scoped completion or a connected skills read returns a refusal that can follow a verified transfer
 - **THEN** the app checks the captured viewer and drops it and its private views only on confirmed revocation
-- **AND** a live or temporarily unavailable viewer check leaves the session in place
+- **AND** a live or temporarily unavailable viewer check keeps the same session and mounted private views, even if it reports a different holder
 
 ### Requirement: Handoff parks the source before activating the destination
 

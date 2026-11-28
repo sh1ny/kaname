@@ -107,6 +107,14 @@ See [proposal.md](proposal.md) for scope. Source citations describe the baseline
 - Important: yes (fresh authorization and desktop availability).
 - Chosen by: user. "Yes, check with the server first."
 
+### D11: Confirm revocation without replacing a live viewer
+
+- Choice: On a transfer-sensitive refusal, Settings asks the server about the session that made the request. Only a confirmed revocation clears the session and its private views. A live or unavailable reply leaves the same session and views in place. Take, Return and successful scoped authorization still apply verified holder updates as before.
+- Rejected: Refresh holder metadata on refusal. Replacing the session would clear private views without revocation. Separating those states is outside this change.
+- Reversal cost: Low.
+- Important: yes (private view lifetime).
+- Chosen by: user. "Yes, only on confirmed revocation".
+
 ### Decision summary
 
 | # | Decision | Choice | Rejected | Reversal cost | Important | Chosen by |
@@ -123,6 +131,7 @@ See [proposal.md](proposal.md) for scope. Source citations describe the baseline
 | D8 | Refresh trust | A signed mismatch with current generations can transfer | Require browser confirmation | Medium | yes | user |
 | D9 | Completion admission | Retain the existing attempt slot until settlement | Add a separate completion cap | Low | yes | Ormy under owner's delegation |
 | D10 | Native activation from a saved Take | Confirm with the originating server | Activate offline from the owner hash alone | Medium | yes | user |
+| D11 | Settings refusal check | Clear only on confirmed revocation | Refresh holder metadata on refusal | Low | yes | user |
 
 ## Assumptions
 

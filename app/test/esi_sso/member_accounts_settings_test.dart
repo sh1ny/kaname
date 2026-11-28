@@ -474,40 +474,49 @@ void main() {
   }
 
   for (final route in ['complete', 'skills']) {
-    testWidgets('$route refusal applies the verified holder change', (
-      tester,
-    ) async {
-      final server = _Server()..viewerHolder = 'serverHeld';
-      await http.runWithClient(() async {
-        await _open(tester, desktop: _Solo());
-        await _signIn(tester);
-        expect(
-          find.textContaining('The server is assigned to read skills'),
-          findsOneWidget,
-        );
-        if (route == 'complete') {
-          await _tap(tester, 'Authorize server skills access');
-        }
-        server
-          ..viewerHolder = 'deviceReserved'
-          ..refusedRoute = route
-          ..refusedResponse = () => _json({'status': 'notAuthorized'}, 403);
-        await _tap(
-          tester,
-          route == 'complete'
-              ? 'Finish authorization'
-              : 'Read skills on server',
-        );
-        expect(
-          find.textContaining('The original device must park'),
-          findsOneWidget,
-        );
-        expect(
-          find.textContaining('The server is assigned to read skills'),
-          findsNothing,
-        );
-      }, () => MockClient(server.call));
-    });
+    testWidgets(
+      '$route refusal keeps private history for the same live session',
+      (tester) async {
+        final server = _Server()..viewerHolder = 'serverHeld';
+        final history = _HistoryRequests();
+        await http.runWithClient(() async {
+          await _open(tester, desktop: _Solo(), history: history);
+          await _signIn(tester);
+          await _tap(tester, 'My calls', settle: false);
+          history.pages.single.complete(_historyPage('1', 'Original receipt'));
+          await tester.pumpAndSettle();
+          expect(find.text('Original receipt'), findsOneWidget);
+          server.viewerBearers.clear();
+          expect(
+            find.textContaining('The server is assigned to read skills'),
+            findsOneWidget,
+          );
+          if (route == 'complete') {
+            await _tap(tester, 'Authorize server skills access');
+          }
+          server
+            ..viewerHolder = 'deviceReserved'
+            ..refusedRoute = route
+            ..refusedResponse = () => _json({'status': 'notAuthorized'}, 403);
+          await _tap(
+            tester,
+            route == 'complete'
+                ? 'Finish authorization'
+                : 'Read skills on server',
+          );
+          expect(server.viewerBearers, ['Bearer ${'b' * 43}']);
+          expect(find.text('Original receipt'), findsOneWidget);
+          expect(
+            find.textContaining('The original device must park'),
+            findsNothing,
+          );
+          expect(
+            find.textContaining('The server is assigned to read skills'),
+            findsOneWidget,
+          );
+        }, () => MockClient(server.call));
+      },
+    );
   }
 
   for (final viewerStatus in [503, 401]) {

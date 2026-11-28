@@ -226,7 +226,7 @@ final class AccountNotifier extends Notifier<AccountState> {
     _nextComplete = null;
     var notice = outcome;
     if (link && attempt == null && connected != null && _linkRefused(outcome)) {
-      notice = (await _checkViewerAfterRefusal(connected, outcome)).$1;
+      notice = await _checkViewerAfterRefusal(connected, outcome);
       if (!_current(epoch)) return;
     }
     state = attempt == null
@@ -242,19 +242,14 @@ final class AccountNotifier extends Notifier<AccountState> {
   static bool _linkRefused(AccountNotice notice) =>
       notice == AccountNotice.blocked || notice == AccountNotice.signedOut;
 
-  static Future<(AccountNotice, ConnectedSession?)> _checkViewerAfterRefusal(
+  static Future<AccountNotice> _checkViewerAfterRefusal(
     ConnectedSession session,
     AccountNotice outcome,
-  ) async {
-    final notice = outcome == AccountNotice.signedOut
-        ? AccountNotice.unavailable
-        : outcome;
-    return switch (await session.refresh()) {
-      ViewerRefreshInvalid() => (AccountNotice.signedOut, null),
-      ViewerRefreshUpdated(session: final updated) => (notice, updated),
-      ViewerRefreshUnavailable() => (notice, session),
-    };
-  }
+  ) async => switch (await session.refresh()) {
+    ViewerRefreshInvalid() => AccountNotice.signedOut,
+    _ when outcome == AccountNotice.signedOut => AccountNotice.unavailable,
+    _ => outcome,
+  };
 
   /// Completes the active browser attempt. Early requests never start a poll loop.
   Future<void> complete({String? code}) async {
@@ -274,7 +269,7 @@ final class AccountNotifier extends Notifier<AccountState> {
     var notice = outcome;
     final session = before.connected;
     if (session != null && before.attempt.linking && _linkRefused(outcome)) {
-      notice = (await _checkViewerAfterRefusal(session, outcome)).$1;
+      notice = await _checkViewerAfterRefusal(session, outcome);
       if (!_current(epoch)) return;
     }
     if (notice == AccountNotice.memberLinked) {
@@ -471,7 +466,7 @@ final class AccountNotifier extends Notifier<AccountState> {
       );
     }
     if (state is! AccountIdle) return;
-    var connected = state.connected;
+    final connected = state.connected;
     final epoch = ++_epoch;
     state = AccountWorking(connected);
     var result =
@@ -482,12 +477,8 @@ final class AccountNotifier extends Notifier<AccountState> {
             result.$1 == AccountNotice.reauthorize ||
             result.$1 == AccountNotice.signedOut ||
             result.$3?.reason == EsiRefusalReason.invalidContext)) {
-      final (notice, current) = await _checkViewerAfterRefusal(
-        connected,
-        result.$1,
-      );
+      final notice = await _checkViewerAfterRefusal(connected, result.$1);
       if (!_current(epoch)) return;
-      connected = current;
       if (notice != result.$1) result = (notice, null, null);
     }
     state = _skillsState(connected, result, solo: false);

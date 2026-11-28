@@ -89,11 +89,7 @@ final class ConnectedSession implements HolderRemote {
             (!body.containsKey('holder') ||
                 current.holder?.isNotEmpty == true)) {
           return ViewerRefreshUpdated(
-            current.name == pilot.name &&
-                    current.admin == pilot.admin &&
-                    current.holder == pilot.holder
-                ? this
-                : ConnectedSession._(_api, current, _bearer),
+            ConnectedSession._(_api, current, _bearer),
           );
         }
       default:
@@ -413,11 +409,11 @@ final class ConnectedAccount {
           : AccountNotice.unavailable;
       return switch (await session?.refresh()) {
         ViewerRefreshInvalid() || null => (AccountNotice.signedOut, null),
-        ViewerRefreshUpdated(session: final updated) => (
-          reply.code == 200 ? AccountNotice.none : refusal,
+        ViewerRefreshUpdated(session: final updated) when reply.code == 200 => (
+          AccountNotice.none,
           updated,
         ),
-        ViewerRefreshUnavailable() => (refusal, null),
+        ViewerRefreshUpdated() || ViewerRefreshUnavailable() => (refusal, null),
       };
     }
     if (reply.code != 200) return (_notice(reply), null);
