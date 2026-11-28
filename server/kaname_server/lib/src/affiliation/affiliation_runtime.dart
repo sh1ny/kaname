@@ -196,6 +196,8 @@ final class AffiliationRuntime {
             'affiliation: invalid batch reply ($count requested)',
           AffiliationIssue.omitted =>
             'affiliation: reply omitted $count characters',
+          AffiliationIssue.writeFailed =>
+            'affiliation: could not write observations ($count)',
         }),
       ).run();
       return switch (result) {

@@ -136,6 +136,37 @@ void main() {
     },
   );
 
+  test('a failed observation write rolls back only its batch', () async {
+    final original = await identity(101);
+    await job(identityId: original.id).run();
+    final previous = await store.read(101);
+    sent.clear();
+    await session.db.unsafeExecute('''
+      INSERT INTO esi_identity ("characterId", owner, "characterName", blocked)
+      SELECT number, 'verified-owner', 'Character ' || number, false
+      FROM generate_series(102, 1101) AS number
+      ''');
+    await session.db.unsafeExecute('''
+      ALTER TABLE character_affiliation ADD CONSTRAINT test_reject_first_page
+      CHECK ("corporationId" <> 41)
+      ''');
+    addTearDown(
+      () => session.db.unsafeExecute('''
+      ALTER TABLE character_affiliation DROP CONSTRAINT test_reject_first_page
+      '''),
+    );
+    reply = (ids) =>
+        _ok([for (final id in ids) _row(id, id == 102 ? 41 : 42, 50)]);
+
+    expect(await job().run(), AffiliationJobResult.completed);
+    expect(sent.map((page) => page.length), [1000, 1]);
+    expect(sent.last, [1101]);
+    expect(await store.read(101), previous);
+    expect(await store.read(103), isNull);
+    expect((await store.read(1101))?.corporationId, 42);
+    expect(issues, [(AffiliationIssue.writeFailed, 1000)]);
+  });
+
   test(
     'a scheduler refusal leaves the batch unchanged without a retry',
     () async {

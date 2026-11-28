@@ -84,7 +84,7 @@ final class AffiliationStore implements AffiliationRegistry {
   }
 
   @override
-  Future<void> save(
+  Future<bool> save(
     int order,
     DateTime observedAt,
     List<AffiliationWrite> rows,
@@ -95,9 +95,10 @@ final class AffiliationStore implements AffiliationRegistry {
       for (final row in rows)
         {'i': row.identityId, 'c': row.corporationId, 'a': row.allianceId},
     ]);
-    await _limited(
-      (tx) => _session.db.unsafeExecute(
-        '''
+    try {
+      await _limited(
+        (tx) => _session.db.unsafeExecute(
+          '''
       INSERT INTO character_affiliation
         ("identityId", "corporationId", "allianceId", "observedAt", "lookupOrder")
       SELECT r.i, r.c, r.a, @at::timestamp, @lookup::bigint
@@ -111,14 +112,18 @@ final class AffiliationStore implements AffiliationRegistry {
         "lookupOrder" = EXCLUDED."lookupOrder"
       WHERE character_affiliation."lookupOrder" < EXCLUDED."lookupOrder"
       ''',
-        parameters: QueryParameters.named({
-          'rows': records,
-          'at': observedAt.toUtc(),
-          'lookup': order,
-        }),
-        transaction: tx,
-      ),
-    );
+          parameters: QueryParameters.named({
+            'rows': records,
+            'at': observedAt.toUtc(),
+            'lookup': order,
+          }),
+          transaction: tx,
+        ),
+      );
+      return true;
+    } on DatabaseQueryException {
+      return false;
+    }
   }
 
   Future<DatabaseResult> _query(

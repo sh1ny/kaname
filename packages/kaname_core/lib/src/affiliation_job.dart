@@ -51,6 +51,9 @@ enum AffiliationIssue {
 
   /// A valid response did not include all requested characters.
   omitted,
+
+  /// The valid observations could not be written; the batch was unchanged.
+  writeFailed,
 }
 
 /// The verified registry and observation store used by [AffiliationJob].
@@ -74,7 +77,9 @@ abstract interface class AffiliationRegistry {
   Future<int> allocateOrder();
 
   /// Writes observations for still-present identities when [order] is newer.
-  Future<void> save(
+  ///
+  /// Returns false if the statement failed and no observation was written.
+  Future<bool> save(
     int order,
     DateTime observedAt,
     List<AffiliationWrite> rows,
@@ -180,7 +185,9 @@ final class AffiliationJob implements Job<AffiliationJobResult> {
             allianceId: row.allianceId,
           ));
         }
-        if (writes.isNotEmpty) await _registry.save(order, at, writes);
+        if (writes.isNotEmpty && !await _registry.save(order, at, writes)) {
+          _onIssue(AffiliationIssue.writeFailed, writes.length);
+        }
         if (requested.isNotEmpty) {
           _onIssue(AffiliationIssue.omitted, requested.length);
         }
