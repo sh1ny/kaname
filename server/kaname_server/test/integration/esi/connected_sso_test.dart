@@ -73,6 +73,7 @@ void main() {
   DateTime Function()? exclusionClock;
   Future<void> Function(Session, Transaction)? beforeViewerRead;
   Future<void> Function()? beforeViewerHolder;
+  Future<void> Function(Session, Transaction)? afterAccountLock;
   Future<void> Function()? beforeViewerReply;
   late bool persistReceipts;
   late JsonWebKey signing;
@@ -110,6 +111,7 @@ void main() {
     exclusionClock = null;
     beforeViewerRead = null;
     beforeViewerHolder = null;
+    afterAccountLock = null;
     beforeViewerReply = null;
     beforeSession = null;
     beforeReservation = null;
@@ -238,10 +240,14 @@ void main() {
           await beforeSession?.call();
           final probe = beforeViewerRead;
           final holder = beforeViewerHolder;
+          final accountLock = afterAccountLock;
           final unbounded = unboundedCharacterLock;
           final driverWait = extendDriverWait;
           extendDriverWait = false;
-          if (probe == null && holder == null && !unbounded) {
+          if (probe == null &&
+              holder == null &&
+              !unbounded &&
+              accountLock == null) {
             return driverWait
                 ? withPostgresWaitBarrier(() => action(session))
                 : action(session);
@@ -249,14 +255,20 @@ void main() {
           beforeViewerRead = null;
           beforeViewerHolder = null;
           unboundedCharacterLock = false;
+          afterAccountLock = null;
           final observed = ObservedDatabaseSession(
             session,
             afterBegin: probe == null ? null : (tx) => probe(session, tx),
             beforeFirstFind: holder,
+            afterAccountLock: accountLock == null
+                ? null
+                : (tx) => accountLock(session, tx),
             unboundedFirstLock: unbounded,
           );
           try {
-            return await action(observed);
+            return driverWait
+                ? await withPostgresWaitBarrier(() => action(observed))
+                : await action(observed);
           } finally {
             await observed.close();
           }
@@ -2875,6 +2887,118 @@ void main() {
           jsonDecode(surviving.body),
           containsPair('memberId', '$account'),
         );
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+  }
+
+  for (final transferFirst in [false, true]) {
+    test(
+      'writes for different characters serialize at the account row: transfer first=$transferFirst',
+      () async {
+        final initial = await signIn();
+        final former = initial['session'] as String;
+        expect((await linkAlt(former, 411)).statusCode, 200);
+        final survivor = (await signIn())['session'] as String;
+        expect((await linkAlt(survivor, 412)).statusCode, 200);
+        characterId = 410;
+        owner = _newOwner;
+        final proof = await begin();
+        expect((await callback(proof)).statusCode, 200);
+
+        final held = Completer<int>();
+        final release = Completer<void>();
+        Future<void> hold(Session session, Transaction tx) async {
+          final result = await session.db.unsafeQuery(
+            'SELECT pg_backend_pid()',
+            transaction: tx,
+          );
+          held.complete(result.single.single as int);
+          await release.future;
+        }
+
+        Future<http.Response> transfer({required bool first}) {
+          unboundedCharacterLock = true;
+          extendDriverWait = true;
+          if (first) afterAccountLock = hold;
+          return complete(proof);
+        }
+
+        Future<MemberAccountStatus> select({required bool first}) =>
+            withPostgresWaitBarrier(
+              () => pod.pod.withSession((s) async {
+                final sessions = SsoSessions.forPod(s.serverpod)!;
+                final live = (await sessions.viewer(s, survivor))!;
+                final observed = ObservedDatabaseSession(
+                  s,
+                  unboundedFirstLock: true,
+                  afterAccountLock: first ? (tx) => hold(s, tx) : null,
+                );
+                try {
+                  return await MemberAccounts(
+                    sessions,
+                    EsiCallLogStore(),
+                  ).makeMain(observed, (
+                    account: live.accountId,
+                    character: live.identity.characterId,
+                    session: live.sessionId,
+                  ), 412);
+                } finally {
+                  await observed.close();
+                }
+              }, enableLogging: false),
+            );
+
+        final first = transferFirst
+            ? transfer(first: true)
+            : select(first: true);
+        Future<Object>? second;
+        late Object firstResult;
+        Object? secondResult;
+        try {
+          final blocker = await Future.any([
+            held.future,
+            first.then(
+              (_) => fail('The first writer did not lock the account.'),
+            ),
+          ]);
+          final waiting = second = transferFirst
+              ? select(first: false)
+              : transfer(first: false);
+          await pod.pod.withSession((observer) async {
+            await observePostgresLock(observer, blocker, waiting);
+            final waits = await observer.db.unsafeQuery('''
+            SELECT query FROM pg_stat_activity
+            WHERE @blocker::int = ANY(pg_blocking_pids(pid))
+          ''', parameters: QueryParameters.named({'blocker': blocker}));
+            expect(
+              waits.single.single,
+              allOf(contains('FROM member_account'), contains('FOR UPDATE')),
+            );
+          }, enableLogging: false);
+        } finally {
+          release.complete();
+          firstResult = await first;
+          secondResult = await second;
+        }
+        final transferReply =
+            (transferFirst ? firstResult : secondResult) as http.Response;
+        expect(transferReply.statusCode, 200);
+        expect(
+          transferFirst ? secondResult : firstResult,
+          MemberAccountStatus.mainChanged,
+        );
+        final oldAccount = int.parse(initial['memberId'] as String);
+        expect(
+          (await rows('''
+        SELECT i."characterId" FROM member_account a
+        JOIN esi_identity i ON i.id = a."mainIdentityId"
+        WHERE a.id = $oldAccount AND i."accountId" = a.id
+      ''')).single.single,
+          412,
+        );
+        expect((await post('viewer', {}, bearer: survivor)).statusCode, 200);
+        expect((await post('viewer', {}, bearer: former)).statusCode, 401);
       },
       timeout: const Timeout(Duration(minutes: 3)),
     );
