@@ -267,9 +267,7 @@ final class AccountNotifier extends Notifier<AccountState> {
     if (!_current(epoch)) return;
     var notice = outcome;
     final session = before.connected;
-    if (session != null &&
-        (before.attempt.linking && _linkRefused(outcome) ||
-            before.attempt.scoped && outcome == AccountNotice.blocked)) {
+    if (session != null && before.attempt.linking && _linkRefused(outcome)) {
       notice = await _checkViewerAfterRefusal(session, outcome);
       if (!_current(epoch)) return;
     }
@@ -475,7 +473,8 @@ final class AccountNotifier extends Notifier<AccountState> {
     if (!_current(epoch)) return;
     if (connected != null &&
         (result.$1 == AccountNotice.blocked ||
-            result.$1 == AccountNotice.reauthorize)) {
+            result.$1 == AccountNotice.reauthorize ||
+            result.$1 == AccountNotice.signedOut)) {
       final notice = await _checkViewerAfterRefusal(connected, result.$1);
       if (!_current(epoch)) return;
       result = (notice, null, null);

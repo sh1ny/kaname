@@ -390,6 +390,23 @@ final class ConnectedAccount {
       'code': ?code,
       if (attempt.linking) 'link': true,
     }, bearer: session?.bearerFor(_base));
+    if (attempt.scoped) {
+      if (reply.code != 200 && reply.code != 401 && reply.code != 403) {
+        return (_notice(reply), null);
+      }
+      final viewer = await session?.refresh();
+      return switch (viewer) {
+        ViewerRefreshInvalid() || null => (AccountNotice.signedOut, null),
+        ViewerRefreshUpdated(session: final updated) when reply.code == 200 => (
+          AccountNotice.none,
+          updated,
+        ),
+        _ => (
+          reply.code == 403 ? AccountNotice.blocked : AccountNotice.unavailable,
+          null,
+        ),
+      };
+    }
     if (reply.code != 200) return (_notice(reply), null);
     if (attempt.linking) {
       return switch (reply.body) {
@@ -398,16 +415,6 @@ final class ConnectedAccount {
           null,
         ),
         _ => (AccountNotice.unavailable, null),
-      };
-    }
-    if (attempt.scoped) {
-      return switch (await session?.refresh()) {
-        ViewerRefreshUpdated(session: final updated) => (
-          AccountNotice.none,
-          updated,
-        ),
-        ViewerRefreshInvalid() || null => (AccountNotice.signedOut, null),
-        ViewerRefreshUnavailable() => (AccountNotice.unavailable, null),
       };
     }
     final pilot = AccountPilot.parse(reply.body);

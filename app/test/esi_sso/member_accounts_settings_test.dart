@@ -400,10 +400,12 @@ void main() {
     }
   }
 
-  for (final (label, route, reply) in [
-    ('scoped completion', 'complete', 'notAuthorized'),
-    ('skills refresh', 'skills', 'esiReauthorize'),
-    ('skills holder check', 'skills', 'holderOrScopeRequired'),
+  for (final (label, route, code, reply) in [
+    ('scoped completion', 'complete', 403, 'notAuthorized'),
+    ('skills refresh', 'skills', 403, 'esiReauthorize'),
+    ('skills holder check', 'skills', 403, 'holderOrScopeRequired'),
+    ('scoped proxy denial', 'complete', 401, 'unexpectedAuth'),
+    ('skills proxy denial', 'skills', 401, 'unexpectedAuth'),
   ]) {
     for (final status in [401, 200, 503]) {
       testWidgets('$label refusal checks the captured viewer: HTTP $status', (
@@ -425,7 +427,7 @@ void main() {
             ..viewerBearers.clear()
             ..viewerFailure = status == 200 ? null : status
             ..refusedRoute = route
-            ..refusedStatus = reply;
+            ..refusedStatus = (code, reply);
           await _tap(
             tester,
             route == 'complete'
@@ -787,7 +789,7 @@ final class _Server {
   final viewerBearers = <String>[];
   int? viewerFailure;
   String? refusedRoute;
-  String? refusedStatus;
+  (int, String)? refusedStatus;
 
   Future<http.Response> call(http.Request request) async {
     const pilot = {
@@ -847,8 +849,9 @@ final class _Server {
               .toJson(),
         );
     }
-    if (request.url.pathSegments.last == refusedRoute) {
-      return _json({'status': refusedStatus}, 403);
+    if (refusedStatus case (final code, final status)
+        when request.url.pathSegments.last == refusedRoute) {
+      return _json({'status': status}, code);
     }
     switch (request.url.pathSegments.last) {
       case 'begin':
