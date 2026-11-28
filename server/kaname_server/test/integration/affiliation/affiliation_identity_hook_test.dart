@@ -83,64 +83,65 @@ void main() {
     );
   }
 
-  test(
-    'configured SSO enqueues first-known work only with execution enabled',
-    () async {
-      final env = {
-        'KANAME_ESI_SSO_CLIENT_ID': 'fixture-app',
-        'KANAME_ESI_SSO_CLIENT_SECRET': 'fixture-confidential',
-        'KANAME_ESI_SSO_REDIRECT_URI': 'https://kaname.test/auth/esi/callback',
-        'KANAME_ESI_VAULT_KEY': base64Encode(List.filled(32, 42)),
-      };
-      // Installed SSO uses the real clock. No deadline in this test can
-      // expire while the test is running, regardless of runner speed.
-      final expiry = DateTime.utc(2100);
-      final main = await claims(101, expiry: expiry);
-      final alt = await claims(102, expiry: expiry);
-      for (final execute in [true, false]) {
-        final pod = await startComposedAffiliation(
-          environment: env,
-          execute: execute,
-        );
-        final sessions = ServerSso.of(pod)!.sessions;
-        await _holdEnqueueBudget(
-          () => pod.withSession((s) async {
-            final auth = (await sessions.signIn(s, main, expiry))!;
-            expect(await sessions.signIn(s, main, expiry), isNotNull);
-            final member = await actor(sessions, s, auth);
-            final accounts = MemberAccounts(sessions, EsiCallLogStore());
+  test('configured SSO enqueues first-known work only with future calls and execution enabled', () async {
+    final env = {
+      'KANAME_ESI_SSO_CLIENT_ID': 'fixture-app',
+      'KANAME_ESI_SSO_CLIENT_SECRET': 'fixture-confidential',
+      'KANAME_ESI_SSO_REDIRECT_URI': 'https://kaname.test/auth/esi/callback',
+      'KANAME_ESI_VAULT_KEY': base64Encode(List.filled(32, 42)),
+    };
+    // Installed SSO uses the real clock. No deadline in this test can
+    // expire while the test is running, regardless of runner speed.
+    final expiry = DateTime.utc(2100);
+    final main = await claims(101, expiry: expiry);
+    final alt = await claims(102, expiry: expiry);
+    for (final (enabled, execute) in [
+      (true, true),
+      (true, false),
+      (false, true),
+    ]) {
+      final pod = await startComposedAffiliation(
+        environment: env,
+        futureCalls: enabled,
+        execute: execute,
+      );
+      final sessions = ServerSso.of(pod)!.sessions;
+      await _holdEnqueueBudget(
+        () => pod.withSession((s) async {
+          final auth = (await sessions.signIn(s, main, expiry))!;
+          expect(await sessions.signIn(s, main, expiry), isNotNull);
+          final member = await actor(sessions, s, auth);
+          final accounts = MemberAccounts(sessions, EsiCallLogStore());
+          expect(
+            await accounts.link(s, member, alt, expiry, () => f.now),
+            isTrue,
+          );
+          expect(
+            await accounts.link(s, member, alt, expiry, () => f.now),
+            isTrue,
+          );
+          final queued = await FutureCallEntry.db.find(
+            s,
+            where: (row) =>
+                row.name.equals('AffiliationCallFirstKnownFutureCall'),
+          );
+          if (enabled && execute) {
+            final ids = await SsoIdentityRow.db.find(s);
             expect(
-              await accounts.link(s, member, alt, expiry, () => f.now),
-              isTrue,
+              queued.map(
+                (row) =>
+                    (jsonDecode(row.serializedObject!)
+                        as Map<String, Object?>)['identityId'],
+              ),
+              unorderedEquals(ids.map((row) => row.id)),
             );
-            expect(
-              await accounts.link(s, member, alt, expiry, () => f.now),
-              isTrue,
-            );
-            final queued = await FutureCallEntry.db.find(
-              s,
-              where: (row) =>
-                  row.name.equals('AffiliationCallFirstKnownFutureCall'),
-            );
-            if (execute) {
-              final ids = await SsoIdentityRow.db.find(s);
-              expect(
-                queued.map(
-                  (row) =>
-                      (jsonDecode(row.serializedObject!)
-                          as Map<String, Object?>)['identityId'],
-                ),
-                unorderedEquals(ids.map((row) => row.id)),
-              );
-            } else {
-              expect(queued, isEmpty);
-            }
-          }),
-        );
-      }
-    },
-    timeout: _hangGuard,
-  );
+          } else {
+            expect(queued, isEmpty);
+          }
+        }),
+      );
+    }
+  }, timeout: _hangGuard);
 
   test('first sign-in and link commit before the one-off; auth does not wait for ESI', () async {
     await f.pod.futureCalls.cancel('kaname-affiliation:current:0');
@@ -227,6 +228,38 @@ void main() {
             () => f.now,
           ),
           isTrue,
+        );
+        // A deferred constraint rejects the new identity only at commit,
+        // after the link transaction body has returned successfully.
+        await s.db.unsafeExecute('''
+          CREATE FUNCTION test_reject_new_link() RETURNS trigger LANGUAGE plpgsql AS \$\$
+          BEGIN
+            RAISE foreign_key_violation;
+          END
+          \$\$
+          ''');
+        await s.db.unsafeExecute('''
+          CREATE CONSTRAINT TRIGGER test_reject_new_link
+          AFTER INSERT ON esi_identity DEFERRABLE INITIALLY DEFERRED
+          FOR EACH ROW WHEN (NEW."characterId" = 103)
+          EXECUTE FUNCTION test_reject_new_link()
+          ''');
+        expect(
+          await MemberAccounts(sessions, EsiCallLogStore()).link(
+            s,
+            await actor(sessions, s, auth),
+            await claims(103),
+            deadline,
+            () => f.now,
+          ),
+          isFalse,
+        );
+        expect(
+          await SsoIdentityRow.db.findFirstRow(
+            s,
+            where: (row) => row.characterId.equals(103),
+          ),
+          isNull,
         );
         // The existing signup path inserts the identity and account before it
         // inserts the session. Force the latter statement to roll back all three.
