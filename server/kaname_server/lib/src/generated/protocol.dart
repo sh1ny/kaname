@@ -518,6 +518,13 @@ class Protocol extends _is.DatabaseSerializationManager
           isNullable: true,
           dartType: 'bool?',
         ),
+        _isp.ColumnDefinition(
+          name: 'ownershipGeneration',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+          columnDefault: '0',
+        ),
       ],
       foreignKeys: [],
       indexes: [
@@ -677,6 +684,13 @@ class Protocol extends _is.DatabaseSerializationManager
           isNullable: true,
           dartType: 'DateTime?',
         ),
+        _isp.ColumnDefinition(
+          name: 'takeOwnershipGeneration',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+          columnDefault: '0',
+        ),
       ],
       foreignKeys: [],
       indexes: [
@@ -745,6 +759,32 @@ class Protocol extends _is.DatabaseSerializationManager
           isNullable: false,
           dartType: 'bool',
           columnDefault: 'false',
+        ),
+        _isp.ColumnDefinition(
+          name: 'ownershipGeneration',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: false,
+          dartType: 'int',
+          columnDefault: '0',
+        ),
+        _isp.ColumnDefinition(
+          name: 'awaitingSignIn',
+          columnType: _isp.ColumnType.boolean,
+          isNullable: false,
+          dartType: 'bool',
+          columnDefault: 'false',
+        ),
+        _isp.ColumnDefinition(
+          name: 'transferRuntime',
+          columnType: _isp.ColumnType.text,
+          isNullable: true,
+          dartType: 'String?',
+        ),
+        _isp.ColumnDefinition(
+          name: 'transferAttempt',
+          columnType: _isp.ColumnType.bigint,
+          isNullable: true,
+          dartType: 'int?',
         ),
       ],
       foreignKeys: [
@@ -1077,8 +1117,8 @@ class Protocol extends _is.DatabaseSerializationManager
         _isp.ColumnDefinition(
           name: 'mainIdentityId',
           columnType: _isp.ColumnType.bigint,
-          isNullable: false,
-          dartType: 'int',
+          isNullable: true,
+          dartType: 'int?',
         ),
       ],
       foreignKeys: [

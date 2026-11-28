@@ -179,6 +179,11 @@ final class DeviceTakeUnprepared extends DeviceTakePreparation {
   final AccountNotice notice;
 }
 
+/// Active connected session for confirming a saved Take.
+///
+/// `isCurrent` stops accepting the session when it is lost or replaced.
+typedef SavedTakeSource = ({HolderRemote remote, bool Function() isCurrent});
+
 /// The parts of a connected session needed by the original desktop device.
 abstract interface class HolderRemote {
   /// Canonical origin of the authenticated server.
@@ -206,6 +211,13 @@ abstract interface class HolderRemote {
     required bool reconcile,
   });
 
+  /// Confirms the exact saved Take without changing the assignment.
+  Future<AccountNotice> confirmTake(
+    String proof,
+    String generation,
+    String ownerFingerprint,
+  );
+
   /// Returns a parked reservation to the server.
   Future<AccountNotice> release(String proof, String generation);
 
@@ -221,7 +233,8 @@ abstract interface class DesktopAccount {
   /// Whether this app can request a new server grant without a local overlap.
   bool permitsServerGrant(String characterId);
 
-  /// Whether the original device holds a confirmed reservation or grant.
+  /// Whether this device has a confirmed reservation for this server.
+  /// A blocked credential may still have a reservation it can return.
   bool ownsReservationFor(String origin, String characterId);
 
   /// The current native identity and visible journal state.
@@ -234,7 +247,8 @@ abstract interface class DesktopAccount {
   Future<AccountNotice> identify();
 
   /// Records local permission and performs a new, scoped PKCE authorization.
-  Future<AccountNotice> authorizeSkills();
+  /// A server-backed Take requires [source] before the native grant can start.
+  Future<AccountNotice> authorizeSkills({SavedTakeSource? source});
 
   /// Revokes local scope without releasing a linked holder.
   Future<AccountNotice> disableSkills();

@@ -29,7 +29,8 @@ abstract class SsoHolderRow
     this.requestedScopes,
     this.takeClosures,
     this.lastTakeClosureAt,
-  });
+    int? takeOwnershipGeneration,
+  }) : takeOwnershipGeneration = takeOwnershipGeneration ?? 0;
 
   factory SsoHolderRow({
     int? id,
@@ -42,6 +43,7 @@ abstract class SsoHolderRow
     List<String>? requestedScopes,
     int? takeClosures,
     DateTime? lastTakeClosureAt,
+    int? takeOwnershipGeneration,
   }) = _SsoHolderRowImpl;
 
   factory SsoHolderRow.fromJson(Map<String, dynamic> jsonSerialization) {
@@ -64,6 +66,8 @@ abstract class SsoHolderRow
           : _is.DateTimeJsonExtension.fromJson(
               jsonSerialization['lastTakeClosureAt'],
             ),
+      takeOwnershipGeneration:
+          jsonSerialization['takeOwnershipGeneration'] as int?,
     );
   }
 
@@ -97,6 +101,9 @@ abstract class SsoHolderRow
   /// holder write preserves it.
   DateTime? lastTakeClosureAt;
 
+  /// Ownership generation of the last Take acceptance or closure.
+  int takeOwnershipGeneration;
+
   @override
   _is.Table<int?> get table => t;
 
@@ -114,6 +121,7 @@ abstract class SsoHolderRow
     List<String>? requestedScopes = const _is.$UndefinedList<String>(),
     int? takeClosures,
     DateTime? lastTakeClosureAt = const _is.$UndefinedDateTime(),
+    int? takeOwnershipGeneration,
   });
   @override
   Map<String, dynamic> toJson() {
@@ -130,6 +138,7 @@ abstract class SsoHolderRow
       if (takeClosures != null) 'takeClosures': takeClosures,
       if (lastTakeClosureAt != null)
         'lastTakeClosureAt': lastTakeClosureAt?.toJson(),
+      'takeOwnershipGeneration': takeOwnershipGeneration,
     };
   }
 
@@ -180,6 +189,7 @@ class _SsoHolderRowImpl extends SsoHolderRow {
     List<String>? requestedScopes,
     int? takeClosures,
     DateTime? lastTakeClosureAt,
+    int? takeOwnershipGeneration,
   }) : super._(
          id: id,
          characterId: characterId,
@@ -191,6 +201,7 @@ class _SsoHolderRowImpl extends SsoHolderRow {
          requestedScopes: requestedScopes,
          takeClosures: takeClosures,
          lastTakeClosureAt: lastTakeClosureAt,
+         takeOwnershipGeneration: takeOwnershipGeneration,
        );
 
   /// Returns a shallow copy of this [SsoHolderRow]
@@ -208,6 +219,7 @@ class _SsoHolderRowImpl extends SsoHolderRow {
     List<String>? requestedScopes = const _is.$UndefinedList<String>(),
     Object? takeClosures = _Undefined,
     DateTime? lastTakeClosureAt = const _is.$UndefinedDateTime(),
+    int? takeOwnershipGeneration,
   }) {
     return SsoHolderRow(
       id: id is int? ? id : this.id,
@@ -228,6 +240,8 @@ class _SsoHolderRowImpl extends SsoHolderRow {
       lastTakeClosureAt: lastTakeClosureAt is _is.UndefinedSentinel
           ? this.lastTakeClosureAt
           : lastTakeClosureAt,
+      takeOwnershipGeneration:
+          takeOwnershipGeneration ?? this.takeOwnershipGeneration,
     );
   }
 }
@@ -262,6 +276,9 @@ class SsoHolderRowUpdateTable extends _is.UpdateTable<SsoHolderRowTable> {
 
   _is.ColumnValue<DateTime, DateTime> lastTakeClosureAt(DateTime? value) =>
       _is.ColumnValue(table.lastTakeClosureAt, value);
+
+  _is.ColumnValue<int, int> takeOwnershipGeneration(int value) =>
+      _is.ColumnValue(table.takeOwnershipGeneration, value);
 }
 
 class SsoHolderRowTable extends _is.Table<int?> {
@@ -280,6 +297,11 @@ class SsoHolderRowTable extends _is.Table<int?> {
     );
     takeClosures = _is.ColumnInt('takeClosures', this);
     lastTakeClosureAt = _is.ColumnDateTime('lastTakeClosureAt', this);
+    takeOwnershipGeneration = _is.ColumnInt(
+      'takeOwnershipGeneration',
+      this,
+      hasDefault: true,
+    );
   }
 
   late final SsoHolderRowUpdateTable updateTable;
@@ -307,6 +329,9 @@ class SsoHolderRowTable extends _is.Table<int?> {
   /// holder write preserves it.
   late final _is.ColumnDateTime lastTakeClosureAt;
 
+  /// Ownership generation of the last Take acceptance or closure.
+  late final _is.ColumnInt takeOwnershipGeneration;
+
   @override
   List<_is.Column> get columns => [
     id,
@@ -319,6 +344,7 @@ class SsoHolderRowTable extends _is.Table<int?> {
     requestedScopes,
     takeClosures,
     lastTakeClosureAt,
+    takeOwnershipGeneration,
   ];
 }
 

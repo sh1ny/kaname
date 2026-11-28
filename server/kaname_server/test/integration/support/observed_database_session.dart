@@ -8,6 +8,7 @@ final class ObservedDatabaseSession extends Session {
     this.beforeTransaction,
     this.afterBegin,
     this.beforeFirstFind,
+    this.afterAccountLock,
     this.unboundedFirstLock = false,
   }) : super(server: source.server, enableLogging: false, endpoint: 'Test') {
     updateAuthenticated(source.authenticated);
@@ -22,6 +23,10 @@ final class ObservedDatabaseSession extends Session {
   /// Pauses the first model lookup immediately before it reaches Postgres.
   final Future<void> Function()? beforeFirstFind;
   var _firstFindStarted = false;
+
+  /// Runs after the account row is locked and before the caller can write.
+  final Future<void> Function(Transaction)? afterAccountLock;
+  var _accountLockObserved = false;
 
   /// Runs the initial SQL lock request without wall-clock deadlines.
   ///
@@ -40,7 +45,8 @@ final class ObservedDatabaseSession extends Session {
     final probe = opening && (beforeTransaction != null || afterBegin != null);
     final unbounded = unboundedFirstLock && !_firstQuerySent;
     final find = _firstFindStarted ? null : beforeFirstFind;
-    return probe || unbounded || find != null
+    final accountLock = _accountLockObserved ? null : afterAccountLock;
+    return probe || unbounded || find != null || accountLock != null
         ? _ObservedTransaction(
             real,
             opening ? beforeTransaction : null,
@@ -51,6 +57,12 @@ final class ObservedDatabaseSession extends Session {
                 : () {
                     _firstFindStarted = true;
                     return find();
+                  },
+            accountLock == null
+                ? null
+                : (tx) {
+                    _accountLockObserved = true;
+                    return accountLock(tx);
                   },
           )
         : real;
@@ -64,6 +76,7 @@ final class _ObservedTransaction implements Database {
     this._after,
     this._onQuery,
     this._beforeFind,
+    this._afterAccountLock,
   );
 
   final Database _real;
@@ -71,6 +84,7 @@ final class _ObservedTransaction implements Database {
   final Future<void> Function(Transaction)? _after;
   final void Function()? _onQuery;
   final Future<void> Function()? _beforeFind;
+  final Future<void> Function(Transaction)? _afterAccountLock;
 
   @override
   Future<R> transaction<R>(
@@ -141,16 +155,24 @@ final class _ObservedTransaction implements Database {
     int? timeoutInSeconds,
     Transaction? transaction,
     QueryParameters? parameters,
-  }) {
+  }) async {
     final startedLock = transaction == null ? null : _onQuery;
     startedLock?.call();
-    return _real.unsafeQuery(
+    final rows = await _real.unsafeQuery(
       query,
       // The driver's mandatory timer must outlast the outer test hang guard.
       timeoutInSeconds: startedLock == null ? timeoutInSeconds : 600,
       transaction: transaction,
       parameters: parameters,
     );
+    final afterLock = _afterAccountLock;
+    if (afterLock != null &&
+        transaction != null &&
+        query.contains('FROM member_account') &&
+        query.contains('FOR UPDATE')) {
+      await afterLock(transaction);
+    }
+    return rows;
   }
 
   @override

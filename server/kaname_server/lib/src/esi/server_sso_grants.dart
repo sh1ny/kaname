@@ -44,16 +44,34 @@ final class ServerSsoGrants implements SsoGrantAuthority {
 
   @override
   Future<SsoRequestedGrant?> request(Session session, SsoViewer viewer) async {
+    if (_policy == null) return null;
+    return _request(
+      session,
+      viewer,
+      await assignment(session, viewer.identity.characterId),
+    );
+  }
+
+  Future<SsoRequestedGrant?> _request(
+    Session session,
+    SsoViewer viewer,
+    SsoHolderRow? row, {
+    Transaction? transaction,
+  }) async {
     final policy = _policy;
     if (policy == null) return null;
     final identity = viewer.identity;
-    final row = await assignment(session, identity.characterId);
     if (row != null &&
         row.phase != 'serverHeld' &&
         row.phase != 'serverReserved') {
       return null;
     }
-    final permitted = await _permitted(session, identity, policy);
+    final permitted = await _permitted(
+      session,
+      identity,
+      policy,
+      transaction: transaction,
+    );
     if (permitted == null) return null;
     return (
       sessionId: viewer.sessionId,
@@ -69,8 +87,9 @@ final class ServerSsoGrants implements SsoGrantAuthority {
   Future<({String fingerprint, Set<String> scopes})?> _permitted(
     Session session,
     SsoIdentityRow identity,
-    ScopePolicy policy,
-  ) async {
+    ScopePolicy policy, {
+    Transaction? transaction,
+  }) async {
     final required = policy.scopesFor(identity.characterId, identity.owner);
     if (required.isNotEmpty) {
       return (fingerprint: policy.fingerprint, scopes: required);
@@ -80,6 +99,7 @@ final class ServerSsoGrants implements SsoGrantAuthority {
       where: (t) =>
           t.identityId.equals(identity.id!) &
           t.scopeClass.equals(ScopeClass.characterSkills.name),
+      transaction: transaction,
     );
     if (row == null) return null;
     final scopes = policy.scopesFor(
@@ -99,50 +119,65 @@ final class ServerSsoGrants implements SsoGrantAuthority {
 
   @override
   Future<bool> optIn(Session session, SsoViewer viewer, bool enabled) async =>
-      await _gate.run(viewer.identity.characterId, () async {
+      await _gate.run(viewer.identity.characterId, () {
         final policy = _policy;
-        if (policy == null) return false;
-        final live = await _sessions.viewerById(
-          session,
-          viewer.sessionId,
-          viewer.accountId,
-        );
-        if (live == null) return false;
-        final identity = live.identity;
-        final characterSkills = ScopeClass.characterSkills.name;
-        final signer = identity.id!;
-        final existing = await SsoOptInRow.db.findFirstRow(
-          session,
-          where: (t) =>
-              t.identityId.equals(signer) &
-              t.scopeClass.equals(characterSkills),
-        );
-        if (!enabled) {
-          if (existing != null) {
-            await SsoOptInRow.db.deleteRow(session, existing);
+        if (policy == null) return Future.value(false);
+        return session.db.transaction((tx) async {
+          await _sessions.lockIdentityWrite(
+            session,
+            tx,
+            viewer.identity.characterId,
+          );
+          final live = await _sessions.viewerById(
+            session,
+            viewer.sessionId,
+            viewer.accountId,
+            transaction: tx,
+          );
+          if (live == null) return false;
+          final identity = live.identity;
+          final characterSkills = ScopeClass.characterSkills.name;
+          final signer = identity.id!;
+          final existing = await SsoOptInRow.db.findFirstRow(
+            session,
+            where: (t) =>
+                t.identityId.equals(signer) &
+                t.scopeClass.equals(characterSkills),
+            transaction: tx,
+          );
+          if (!enabled) {
+            if (existing != null) {
+              await SsoOptInRow.db.deleteRow(
+                session,
+                existing,
+                transaction: tx,
+              );
+            }
+            return true;
+          }
+          if (existing == null) {
+            await SsoOptInRow.db.insertRow(
+              session,
+              SsoOptInRow(
+                identityId: signer,
+                owner: identity.owner,
+                scopeClass: characterSkills,
+                policyFingerprint: policy.fingerprint,
+              ),
+              transaction: tx,
+            );
+          } else {
+            await SsoOptInRow.db.updateRow(
+              session,
+              existing.copyWith(
+                owner: identity.owner,
+                policyFingerprint: policy.fingerprint,
+              ),
+              transaction: tx,
+            );
           }
           return true;
-        }
-        if (existing == null) {
-          await SsoOptInRow.db.insertRow(
-            session,
-            SsoOptInRow(
-              identityId: signer,
-              owner: identity.owner,
-              scopeClass: characterSkills,
-              policyFingerprint: policy.fingerprint,
-            ),
-          );
-        } else {
-          await SsoOptInRow.db.updateRow(
-            session,
-            existing.copyWith(
-              owner: identity.owner,
-              policyFingerprint: policy.fingerprint,
-            ),
-          );
-        }
-        return true;
+        });
       }) ??
       false;
 
@@ -154,68 +189,116 @@ final class ServerSsoGrants implements SsoGrantAuthority {
     CcpVerifiedIdentity identity,
     CcpGrant grant,
     DateTime proofDeadline,
-  ) async =>
-      await _gate.run(expected.characterId, () async {
-        final current = await _sessions.viewer(session, bearer);
-        if (current == null ||
-            current.sessionId != expected.sessionId ||
-            identity.characterId != expected.characterId ||
-            current.identity.characterId != expected.characterId ||
-            current.identity.owner != expected.owner) {
-          return false;
-        }
-        if (identity.owner != expected.owner) {
-          await _sessions.block(
-            session,
-            identity.characterId,
-            expected.owner,
-            proofDeadline: proofDeadline,
-          );
-          return false;
-        }
-        final permitted = await request(session, current);
-        if (permitted == null ||
-            expected.fingerprint != permitted.fingerprint ||
-            expected.assignmentGeneration != permitted.assignmentGeneration ||
-            expected.assignmentPhase != permitted.assignmentPhase ||
-            !matchesGrantedScopes(permitted.scopes, identity.scopes) ||
-            !matchesGrantedScopes(permitted.scopes, expected.scopes)) {
-          return false;
-        }
-        final observed = await assignment(session, identity.characterId);
-        final vaultStatus = await _vault.vault.inspect(identity.characterId);
-        if (vaultStatus
-            is! VaultSuccess<
-              ({VaultAuthorization authorization, VaultStatus status})?
-            >) {
-          return false;
-        }
-        final former = vaultStatus.value;
-        if (former != null &&
-            former.authorization.holder != holder &&
-            former.status != VaultStatus.parked) {
-          return false;
-        }
-        if (!_sessions.proofIsFresh(proofDeadline)) return false;
-        return _vault.activateScoped(
-          session,
-          character: identity.characterId,
-          holder: holder,
-          expectedGeneration: former?.authorization.generation ?? 0,
-          refreshToken: grant.refreshToken,
-          bearer: VaultBearer(grant.accessToken, identity.expiresAt),
-          admit: () => _sessions.proofIsFresh(proofDeadline),
-          writeHolder: (tx, authorization) => _writeHolder(
-            session,
-            tx,
-            identity,
-            authorization,
-            permitted.fingerprint,
-            observed,
-          ),
-        );
-      }) ??
-      false;
+    int browserAttempt,
+  ) async {
+    if (identity.characterId != expected.characterId) return false;
+    bool admit() => _sessions.proofIsFresh(proofDeadline);
+
+    try {
+      return await _gate.run(
+            expected.characterId,
+            () => session.db.transaction((tx) async {
+              if (!admit()) return false;
+              await _sessions.lockIdentityWrite(
+                session,
+                tx,
+                expected.characterId,
+              );
+              final current = await _sessions.viewerForRefresh(
+                session,
+                bearer,
+                transaction: tx,
+                browserAttempt: browserAttempt,
+              );
+              if (current == null ||
+                  current.sessionId != expected.sessionId ||
+                  current.identity.characterId != expected.characterId ||
+                  current.identity.owner != expected.owner ||
+                  !admit()) {
+                return false;
+              }
+              if (identity.owner != expected.owner) {
+                final mains = await SsoSessions.lockAccountMains(
+                  session,
+                  tx,
+                  current.accountId,
+                );
+                if (mains.actor == null ||
+                    !await SsoSessions.lockSession(
+                      session,
+                      tx,
+                      current.sessionId,
+                    ) ||
+                    await _sessions.viewerById(
+                          session,
+                          current.sessionId,
+                          current.accountId,
+                          transaction: tx,
+                        ) ==
+                        null ||
+                    !admit()) {
+                  return false;
+                }
+                final moved = (await SsoSessions.transferLocked(
+                  session,
+                  tx,
+                  current.identity,
+                  identity,
+                  mains.actor,
+                  admit: admit,
+                ))!;
+                await _sessions.recordTransferFence(
+                  session,
+                  tx,
+                  moved.id!,
+                  admit: admit,
+                );
+                return false;
+              }
+              final observed = await assignment(
+                session,
+                identity.characterId,
+                transaction: tx,
+              );
+              final permitted = await _request(
+                session,
+                current,
+                observed,
+                transaction: tx,
+              );
+              if (permitted == null ||
+                  expected.fingerprint != permitted.fingerprint ||
+                  expected.assignmentGeneration !=
+                      permitted.assignmentGeneration ||
+                  expected.assignmentPhase != permitted.assignmentPhase ||
+                  !matchesGrantedScopes(permitted.scopes, identity.scopes) ||
+                  !matchesGrantedScopes(permitted.scopes, expected.scopes)) {
+                return false;
+              }
+              return _vault.activateScoped(
+                session,
+                tx,
+                character: identity.characterId,
+                holder: holder,
+                refreshToken: grant.refreshToken,
+                bearer: VaultBearer(grant.accessToken, identity.expiresAt),
+                admit: admit,
+                writeHolder: (authorization) => _writeHolder(
+                  session,
+                  tx,
+                  identity,
+                  authorization,
+                  permitted.fingerprint,
+                  observed,
+                ),
+              );
+            }),
+          ) ??
+          false;
+    } on SsoProofExpired {
+      return false;
+    }
+  }
 
   static Future<void> _writeHolder(
     Session session,
@@ -282,7 +365,7 @@ final class ServerSsoGrants implements SsoGrantAuthority {
     );
   }
 
-  /// Classifies an upstream refresh without accepting a new owner or scope.
+  /// Verifies refresh scope and retires only a still-current mismatched grant.
   Future<VaultRefreshReply> refresh(
     Session session,
     VaultAuthorization authorization,
@@ -316,15 +399,15 @@ final class ServerSsoGrants implements SsoGrantAuthority {
             if (result.characterId == pinned.characterId &&
                 result.owner != pinned.owner) {
               try {
-                await _sessions.block(
+                await _sessions.transferRefresh(
                   session,
-                  pinned.characterId,
-                  pinned.owner,
-                  proofDeadline: result.expiresAt,
+                  pinned,
+                  authorization,
+                  result,
                 );
               } on Object {
-                // Failure to persist the identity block does not make this
-                // credential retryable. The vault must retire it either way.
+                // A transfer that cannot commit does not make this grant
+                // retryable. The vault still rejects the returned credential.
               }
               return const VaultRefreshUnverifiedGrant();
             }

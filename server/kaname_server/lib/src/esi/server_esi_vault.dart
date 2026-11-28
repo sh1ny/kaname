@@ -52,64 +52,116 @@ final class ServerEsiVault {
   /// Holder and dispatch operations that do not install a browser grant.
   final EsiTokenVault vault;
 
-  /// Installs a scoped grant and its holder row in one Postgres transaction.
+  /// Installs a scoped grant under the caller's character write transaction.
   ///
-  /// [admit] must confirm proof freshness. Expiry at checkout, under the lock,
-  /// or during either write rolls both rows back and returns false.
+  /// Expiry at checkout, under the vault lock, or during either write aborts
+  /// that transaction. A conflicting holder or vault operation is refused.
   Future<bool> activateScoped(
-    Session session, {
+    Session session,
+    Transaction tx, {
     required int character,
     required VaultHolder holder,
-    required int expectedGeneration,
     required String refreshToken,
     required VaultBearer bearer,
     required bool Function() admit,
-    required Future<void> Function(Transaction, VaultAuthorization) writeHolder,
+    required Future<void> Function(VaultAuthorization) writeHolder,
   }) async {
-    final update = vault.prepareActivation(
-      character: character,
-      holder: holder,
-      expectedGeneration: expectedGeneration,
-      refreshToken: refreshToken,
-      bearer: bearer,
-    );
-    if (update == null) return false;
     void requireFresh() {
       if (!admit()) throw const SsoProofExpired();
     }
 
-    try {
-      return await session.db.transaction((tx) async {
-        requireFresh();
-        await session.db.unsafeExecute(
-          "SET LOCAL lock_timeout = '1s'",
-          transaction: tx,
-        );
-        await session.db.unsafeExecute(
-          "SET LOCAL statement_timeout = '10s'",
-          transaction: tx,
-        );
-        requireFresh();
-        final result = await _store._write(
-          session,
-          tx,
-          character,
-          wait: false,
-          update: update,
-          requireFresh: requireFresh,
-        );
-        if (result case VaultSuccess(:final value)) {
-          requireFresh();
-          await writeHolder(tx, value);
-          if (_beforeGrantCommit case final probe?) await probe();
-          requireFresh();
-          return true;
+    requireFresh();
+    final result = await _store._write<VaultResult<VaultAuthorization>>(
+      session,
+      tx,
+      character,
+      wait: false,
+      requireFresh: requireFresh,
+      update: (former) async {
+        if (former != null &&
+            former.authorization.holder != holder &&
+            former.status != VaultStatus.parked) {
+          return (
+            value: const VaultFailure<VaultAuthorization>(
+              VaultFailureReason.notHolder,
+            ),
+            next: null,
+          );
         }
-        return false;
-      });
-    } on SsoProofExpired {
+        final update = vault.prepareActivation(
+          character: character,
+          holder: holder,
+          expectedGeneration: former?.authorization.generation ?? 0,
+          refreshToken: refreshToken,
+          bearer: bearer,
+        );
+        return update == null
+            ? (
+                value: const VaultFailure<VaultAuthorization>(
+                  VaultFailureReason.unavailable,
+                ),
+                next: null,
+              )
+            : await update(former);
+      },
+    );
+    if (result case VaultSuccess(:final value)) {
+      requireFresh();
+      await writeHolder(value);
+      if (_beforeGrantCommit case final probe?) await probe();
+      requireFresh();
+      return true;
+    }
+    return false;
+  }
+
+  /// Retires the server's vault row without consulting or changing the holder.
+  ///
+  /// The caller holds the character lock. A refresh must still match [grant]
+  /// under the vault lock; a stale refresh does not write any row.
+  static Future<bool> retireForTransfer(
+    Session session,
+    Transaction tx,
+    int character, {
+    VaultAuthorization? grant,
+  }) async {
+    await _lockVault(session, tx, character);
+    final row = await _PostgresVaultStore._find(
+      session,
+      character,
+      transaction: tx,
+    );
+    if (grant != null &&
+        (row == null ||
+            row.status != VaultStatus.active.name ||
+            row.generation != grant.generation ||
+            row.holderKind != grant.holder.kind.name ||
+            row.holderId != grant.holder.id)) {
       return false;
     }
+    if (row == null || row.status == VaultStatus.parked.name) return true;
+    if (row.generation == 0x7fffffffffffffff) {
+      throw StateError('Server vault authorization generation exhausted.');
+    }
+    await EsiTokenVaultRow.db.updateRow(
+      session,
+      row.copyWith(
+        status: VaultStatus.parked.name,
+        generation: row.generation + 1,
+        sealedCredential: null,
+        leaseUntil: null,
+        fence: 0,
+      ),
+      columns: (t) => [
+        t.status,
+        t.generation,
+        t.sealedCredential,
+        t.leaseUntil,
+        t.fence,
+      ],
+      transaction: tx,
+    );
+    return true;
   }
 }
 
@@ -146,22 +198,17 @@ final class _PostgresVaultStore implements VaultStore {
     required Future<VaultWrite<T>> Function(VaultRecord?) update,
     void Function()? requireFresh,
   }) async {
-    final (high, low) = _vaultLockKey(character);
-    final params = QueryParameters.named({'high': high, 'low': low});
     if (wait) {
       await session.db.unsafeExecute(
         "SET LOCAL lock_timeout = '5s'",
         transaction: transaction,
       );
-      await session.db.unsafeQuery(
-        'SELECT pg_advisory_xact_lock(@high::int4, @low::int4)',
-        parameters: params,
-        transaction: transaction,
-      );
+      await _lockVault(session, transaction, character);
     } else {
+      final (high, low) = _vaultLockKey(character);
       final locked = await session.db.unsafeQuery(
         'SELECT pg_try_advisory_xact_lock(@high::int4, @low::int4)',
-        parameters: params,
+        parameters: QueryParameters.named({'high': high, 'low': low}),
         transaction: transaction,
       );
       if (locked.single.single != true) return null;
@@ -235,6 +282,15 @@ final class _PostgresVaultStore implements VaultStore {
           fence: row.fence,
           leaseUntil: row.leaseUntil,
         );
+}
+
+Future<void> _lockVault(Session session, Transaction tx, int character) async {
+  final (high, low) = _vaultLockKey(character);
+  await session.db.unsafeQuery(
+    'SELECT pg_advisory_xact_lock(@high::int4, @low::int4)',
+    parameters: QueryParameters.named({'high': high, 'low': low}),
+    transaction: tx,
+  );
 }
 
 /// Reserves two-`int4` advisory keys with a negative first key for the vault.

@@ -400,6 +400,125 @@ void main() {
     }
   }
 
+  for (final (label, route, response) in [
+    (
+      'scoped completion',
+      'complete',
+      () => _json({'status': 'notAuthorized'}, 403),
+    ),
+    (
+      'skills refresh',
+      'skills',
+      () => _json({'status': 'esiReauthorize'}, 403),
+    ),
+    (
+      'skills holder check',
+      'skills',
+      () => _json({'status': 'holderOrScopeRequired'}, 403),
+    ),
+    (
+      'scoped proxy denial',
+      'complete',
+      () => http.Response('Proxy needs sign-in', 401),
+    ),
+    (
+      'skills proxy denial',
+      'skills',
+      () => http.Response('<p>Not authorized</p>', 403),
+    ),
+    (
+      'skills invalid context',
+      'skills',
+      () => _json({'status': 'refused', 'reason': 'invalidContext'}, 503),
+    ),
+  ]) {
+    for (final status in [401, 200, 503]) {
+      testWidgets('$label refusal checks the captured viewer: HTTP $status', (
+        tester,
+      ) async {
+        final history = _HistoryRequests();
+        final server = _Server();
+        await http.runWithClient(() async {
+          await _open(tester, history: history, desktop: _Solo());
+          await _signIn(tester);
+          await _tap(tester, 'My calls', settle: false);
+          history.pages.single.complete(_historyPage('1', 'Original receipt'));
+          await tester.pumpAndSettle();
+          expect(find.text('Original receipt'), findsOneWidget);
+          if (route == 'complete') {
+            await _tap(tester, 'Authorize server skills access');
+          }
+          server
+            ..viewerBearers.clear()
+            ..viewerFailure = status == 200 ? null : status
+            ..refusedRoute = route
+            ..refusedResponse = response;
+          await _tap(
+            tester,
+            route == 'complete'
+                ? 'Finish authorization'
+                : 'Read skills on server',
+          );
+          expect(server.viewerBearers, ['Bearer ${'b' * 43}']);
+          if (status == 401) {
+            expect(find.text('Sign in to server'), findsOneWidget);
+            expect(find.text('Original receipt'), findsNothing);
+            expect(find.text('Linked characters'), findsNothing);
+          } else {
+            expect(find.text('Sign in to server'), findsNothing);
+            expect(find.text('Original receipt'), findsOneWidget);
+          }
+        }, () => MockClient(server.call));
+      });
+    }
+  }
+
+  for (final route in ['complete', 'skills']) {
+    testWidgets(
+      '$route refusal keeps private history for the same live session',
+      (tester) async {
+        final server = _Server()..viewerHolder = 'serverHeld';
+        final history = _HistoryRequests();
+        await http.runWithClient(() async {
+          await _open(tester, desktop: _Solo(), history: history);
+          await _signIn(tester);
+          await _tap(tester, 'My calls', settle: false);
+          history.pages.single.complete(_historyPage('1', 'Original receipt'));
+          await tester.pumpAndSettle();
+          expect(find.text('Original receipt'), findsOneWidget);
+          server.viewerBearers.clear();
+          expect(
+            find.textContaining('The server is assigned to read skills'),
+            findsOneWidget,
+          );
+          if (route == 'complete') {
+            await _tap(tester, 'Authorize server skills access');
+          }
+          server
+            ..viewerHolder = 'deviceReserved'
+            ..refusedRoute = route
+            ..refusedResponse = () => _json({'status': 'notAuthorized'}, 403);
+          await _tap(
+            tester,
+            route == 'complete'
+                ? 'Finish authorization'
+                : 'Read skills on server',
+          );
+          expect(server.viewerBearers, ['Bearer ${'b' * 43}']);
+          expect(find.text('Original receipt'), findsOneWidget);
+          expect(
+            find.textContaining('The original device must park'),
+            findsNothing,
+          );
+          expect(
+            find.textContaining('The server is assigned to read skills'),
+            findsOneWidget,
+          );
+        }, () => MockClient(server.call));
+      },
+    );
+  }
+
   for (final viewerStatus in [503, 401]) {
     testWidgets(
       'Make main confirms session end before signing out ($viewerStatus)',
@@ -740,6 +859,9 @@ final class _Server {
   Completer<void>? viewerReply;
   final viewerBearers = <String>[];
   int? viewerFailure;
+  String? viewerHolder;
+  String? refusedRoute;
+  http.Response Function()? refusedResponse;
 
   Future<http.Response> call(http.Request request) async {
     const pilot = {
@@ -799,6 +921,10 @@ final class _Server {
               .toJson(),
         );
     }
+    if (refusedResponse case final refuse?
+        when request.url.pathSegments.last == refusedRoute) {
+      return refuse();
+    }
     switch (request.url.pathSegments.last) {
       case 'begin':
         if ((jsonDecode(request.body) as Map<String, Object?>)['link'] ==
@@ -826,7 +952,7 @@ final class _Server {
             'status': status == 401 ? 'signInRequired' : 'unavailable',
           }, status);
         }
-        return _json(pilot);
+        return _json({...pilot, 'holder': ?viewerHolder});
       case 'sign-out':
         revocations.add(request.headers['authorization']!);
         if (loseRevoke && revocations.length == 1) {
@@ -898,7 +1024,8 @@ final class _Solo implements DesktopAccount {
   Future<AccountNotice> identify() => fail('unexpected identify');
 
   @override
-  Future<AccountNotice> authorizeSkills() => fail('unexpected authorize');
+  Future<AccountNotice> authorizeSkills({SavedTakeSource? source}) =>
+      fail('unexpected authorize');
 
   @override
   Future<AccountNotice> disableSkills() => fail('unexpected disable');

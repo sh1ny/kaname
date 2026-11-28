@@ -129,6 +129,26 @@ sessions but leaves its ESI grants, opt-ins and holder assignment in place.
 Switching the main does not grant another character's ESI scopes or
 administrator access. The server checks the character that signed in.
 
+When a verified CCP proof shows a different owner, Kaname ends that
+character's old sessions and removes its server ESI grant and opt-ins. The
+new owner must use ordinary connected sign-in first. Kaname creates a new
+account without moving or revealing the former owner's private history.
+If no desktop holder remains, the new owner can authorize server skills
+after sign-in under the existing scope policy. If a desktop still holds a
+completed reservation, server ESI stays blocked until that desktop completes
+ordinary Return with its saved proof and generation. The new owner must then
+authorize a fresh grant. An unfinished Take cannot complete ordinary Return.
+If the desktop cannot return the holder, there is no operator reset in this
+release.
+
+Upgrade the server before the desktop. To authorize native skills from a
+completed Take, sign in to the originating server so the desktop can confirm
+the saved reservation. An older or unreachable server cannot confirm it. If
+the original device can park and reach the server, ordinary Return still works
+with the saved proof. Standalone authorization and native token refresh do not
+need a Kaname server connection. Older desktop builds do not enforce the new
+check before activation.
+
 ### Test both sign-in modes locally
 
 1. In the [EVE developers portal](https://developers.eveonline.com/), register
@@ -192,9 +212,10 @@ export or a general-purpose solo store. Do not copy either to another device.
 
 After taking a server-held character to a desktop, the original device must
 park before the server can take the holder back. Use the same device to
-resume an interrupted transfer or park and return it. A timeout, an empty
-replacement keyring or a lost device does not release the assignment.
-Kaname has no lost-device reclaim in M2.
+resume an interrupted Take while ownership is unchanged. After a character
+transfer, only a device that saved the completed reservation can park and
+return it. A lost reply, an empty replacement keyring or a lost device
+does not release the assignment. Verified reclaim is planned for M7.
 
 Before restoring a server backup, stop dispatch on linked devices and resolve
 their holder assignments. A restored database cannot prove that another

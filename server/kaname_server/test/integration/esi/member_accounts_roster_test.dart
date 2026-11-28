@@ -52,7 +52,7 @@ void main() {
           db,
           SsoSessionRow(
             digest: digest,
-            identityId: row.mainIdentityId,
+            identityId: row.mainIdentityId!,
             accountId: account,
             expiresAt: now.add(const Duration(hours: 1)),
           ),

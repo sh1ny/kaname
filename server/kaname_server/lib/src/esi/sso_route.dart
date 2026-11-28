@@ -19,6 +19,7 @@ final class _Attempt {
     required this.client,
     required this.id,
     required this.state,
+    required this.order,
     required this.proofDigest,
     required this.browserDigest,
     required this.expires,
@@ -28,12 +29,14 @@ final class _Attempt {
   final ClientKey client;
   final String id;
   final String state;
+  final int order;
   final String proofDigest;
   final String? browserDigest;
   final DateTime expires;
   final SsoRequestedGrant? scoped;
   final MemberActor? link;
   bool claimed = false;
+  bool completing = false;
   String? completionDigest;
   CcpVerifiedIdentity? identity;
   CcpGrant? scopedGrant;
@@ -63,6 +66,7 @@ abstract interface class SsoGrantAuthority {
     CcpVerifiedIdentity identity,
     CcpGrant grant,
     DateTime proofDeadline,
+    int browserAttempt,
   );
 
   /// Records or cancels the optional personal class for the current policy.
@@ -194,7 +198,9 @@ final class SsoRoute {
       }
       final now = _now();
       for (final attempt
-          in _attempts.values.where((a) => !now.isBefore(a.expires)).toList()) {
+          in _attempts.values
+              .where((a) => !a.completing && !now.isBefore(a.expires))
+              .toList()) {
         _remove(attempt);
       }
       final key = clientKeyFor(
@@ -214,6 +220,7 @@ final class SsoRoute {
       final attempt = _Attempt(
         client: key,
         id: newOAuthProof(),
+        order: _sessions.registerBrowserAttempt(),
         state: newOAuthProof(),
         proofDigest: digest,
         browserDigest: browser == null ? null : ssoDigest(browser),
@@ -250,6 +257,7 @@ final class SsoRoute {
           active = _Attempt(
             client: key,
             id: attempt.id,
+            order: attempt.order,
             state: attempt.state,
             proofDigest: digest,
             browserDigest: attempt.browserDigest,
@@ -347,6 +355,7 @@ final class SsoRoute {
         when _proof.hasMatch(id) && _proof.hasMatch(proof)) {
       final attempt = _attempts[id];
       if (attempt == null ||
+          attempt.completing ||
           !_isLive(attempt) ||
           !_browserMatches(request, attempt) ||
           !ssoDigestMatches(ssoDigest(proof), attempt.proofDigest)) {
@@ -377,46 +386,57 @@ final class SsoRoute {
         if ((scoped != null || link != null) && bearer == null) {
           return _failure(403);
         }
-        _remove(attempt);
-        if (link != null) {
-          final linked = await _withSession((session) async {
-            final actor = await _sessions.viewer(session, bearer!);
-            if (actor?.sessionId != link.session ||
-                actor?.accountId != link.account) {
-              return false;
-            }
-            return _memberAccounts.link(
-              session,
-              link,
-              identity,
-              attempt.expires,
-              _now,
+        attempt.completing = true;
+        try {
+          if (link != null) {
+            final linked = await _withSession((session) async {
+              final actor = await _sessions.viewer(session, bearer!);
+              if (actor?.sessionId != link.session ||
+                  actor?.accountId != link.account) {
+                return false;
+              }
+              return _memberAccounts.link(
+                session,
+                link,
+                identity,
+                attempt.expires,
+                _now,
+                attempt.order,
+              );
+            });
+            return linked ? _json(200, {'status': 'linked'}) : _failure(403);
+          }
+          final proofDeadline = identity.expiresAt.isBefore(attempt.expires)
+              ? identity.expiresAt
+              : attempt.expires;
+          if (scoped != null) {
+            final activated = await _withSession(
+              (session) => _grants!.activate(
+                session,
+                bearer!,
+                scoped,
+                identity,
+                attempt.scopedGrant!,
+                proofDeadline,
+                attempt.order,
+              ),
             );
-          });
-          return linked ? _json(200, {'status': 'linked'}) : _failure(403);
-        }
-        final proofDeadline = identity.expiresAt.isBefore(attempt.expires)
-            ? identity.expiresAt
-            : attempt.expires;
-        if (scoped != null) {
-          final activated = await _withSession(
-            (session) => _grants!.activate(
+            return activated
+                ? _json(200, {'status': 'authorized'})
+                : _failure(403);
+          }
+          final result = await _withSession(
+            (session) => _sessions.signIn(
               session,
-              bearer!,
-              scoped,
               identity,
-              attempt.scopedGrant!,
               proofDeadline,
+              attempt.order,
             ),
           );
-          return activated
-              ? _json(200, {'status': 'authorized'})
-              : _failure(403);
+          return result == null ? _failure(403) : _json(200, result);
+        } finally {
+          _remove(attempt);
         }
-        final result = await _withSession(
-          (session) => _sessions.signIn(session, identity, proofDeadline),
-        );
-        return result == null ? _failure(403) : _json(200, result);
       }
       return _json(202, {'status': 'pending'});
     }
@@ -493,6 +513,30 @@ final class SsoRoute {
     final handoff = _handoff;
     if (bearer == null) return _failure(401);
     if (handoff == null) return _failure(503);
+    if (input
+        case {
+              'action': 'confirm',
+              'generation': final String encoded,
+              'proof': final String proof,
+              'ownerFingerprint': final String fingerprint,
+            } &&
+            Map(length: 4)
+        when _proof.hasMatch(proof) && _digest.hasMatch(fingerprint)) {
+      final generation = int.tryParse(encoded, radix: 10);
+      if (generation == null || generation <= 0 || '$generation' != encoded) {
+        return _failure(400);
+      }
+      final confirmed = await _withSession(
+        (session) => handoff.confirmTake(
+          session,
+          bearer,
+          proof,
+          generation,
+          fingerprint,
+        ),
+      );
+      return confirmed ? _json(200, {'status': 'confirmed'}) : _failure(403);
+    }
     return _withSession((session) async {
       final viewer = await _sessions.viewer(session, bearer);
       if (viewer == null) return _failure(403);

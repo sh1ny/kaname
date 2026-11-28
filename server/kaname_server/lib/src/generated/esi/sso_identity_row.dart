@@ -25,7 +25,13 @@ abstract class SsoIdentityRow
     required this.blocked,
     this.accountId,
     bool? wasDetached,
-  }) : wasDetached = wasDetached ?? false;
+    int? ownershipGeneration,
+    bool? awaitingSignIn,
+    this.transferRuntime,
+    this.transferAttempt,
+  }) : wasDetached = wasDetached ?? false,
+       ownershipGeneration = ownershipGeneration ?? 0,
+       awaitingSignIn = awaitingSignIn ?? false;
 
   factory SsoIdentityRow({
     int? id,
@@ -35,6 +41,10 @@ abstract class SsoIdentityRow
     required bool blocked,
     int? accountId,
     bool? wasDetached,
+    int? ownershipGeneration,
+    bool? awaitingSignIn,
+    String? transferRuntime,
+    int? transferAttempt,
   }) = _SsoIdentityRowImpl;
 
   factory SsoIdentityRow.fromJson(Map<String, dynamic> jsonSerialization) {
@@ -48,6 +58,12 @@ abstract class SsoIdentityRow
       wasDetached: jsonSerialization['wasDetached'] == null
           ? null
           : _is.BoolJsonExtension.fromJson(jsonSerialization['wasDetached']),
+      ownershipGeneration: jsonSerialization['ownershipGeneration'] as int?,
+      awaitingSignIn: jsonSerialization['awaitingSignIn'] == null
+          ? null
+          : _is.BoolJsonExtension.fromJson(jsonSerialization['awaitingSignIn']),
+      transferRuntime: jsonSerialization['transferRuntime'] as String?,
+      transferAttempt: jsonSerialization['transferAttempt'] as int?,
     );
   }
 
@@ -70,6 +86,17 @@ abstract class SsoIdentityRow
 
   bool wasDetached;
 
+  /// Advances only on a verified change of CCP owner.
+  int ownershipGeneration;
+
+  /// Only ordinary connected sign-in can attach this identity after transfer.
+  bool awaitingSignIn;
+
+  /// Runtime and high-water mark of browser attempts at the last transfer.
+  String? transferRuntime;
+
+  int? transferAttempt;
+
   @override
   _is.Table<int?> get table => t;
 
@@ -84,6 +111,10 @@ abstract class SsoIdentityRow
     bool? blocked,
     int? accountId,
     bool? wasDetached,
+    int? ownershipGeneration,
+    bool? awaitingSignIn,
+    String? transferRuntime,
+    int? transferAttempt,
   });
   @override
   Map<String, dynamic> toJson() {
@@ -96,6 +127,10 @@ abstract class SsoIdentityRow
       'blocked': blocked,
       if (accountId != null) 'accountId': accountId,
       'wasDetached': wasDetached,
+      'ownershipGeneration': ownershipGeneration,
+      'awaitingSignIn': awaitingSignIn,
+      if (transferRuntime != null) 'transferRuntime': transferRuntime,
+      if (transferAttempt != null) 'transferAttempt': transferAttempt,
     };
   }
 
@@ -143,6 +178,10 @@ class _SsoIdentityRowImpl extends SsoIdentityRow {
     required bool blocked,
     int? accountId,
     bool? wasDetached,
+    int? ownershipGeneration,
+    bool? awaitingSignIn,
+    String? transferRuntime,
+    int? transferAttempt,
   }) : super._(
          id: id,
          characterId: characterId,
@@ -151,6 +190,10 @@ class _SsoIdentityRowImpl extends SsoIdentityRow {
          blocked: blocked,
          accountId: accountId,
          wasDetached: wasDetached,
+         ownershipGeneration: ownershipGeneration,
+         awaitingSignIn: awaitingSignIn,
+         transferRuntime: transferRuntime,
+         transferAttempt: transferAttempt,
        );
 
   /// Returns a shallow copy of this [SsoIdentityRow]
@@ -165,6 +208,10 @@ class _SsoIdentityRowImpl extends SsoIdentityRow {
     bool? blocked,
     Object? accountId = _Undefined,
     bool? wasDetached,
+    int? ownershipGeneration,
+    bool? awaitingSignIn,
+    Object? transferRuntime = _Undefined,
+    Object? transferAttempt = _Undefined,
   }) {
     return SsoIdentityRow(
       id: id is int? ? id : this.id,
@@ -174,6 +221,14 @@ class _SsoIdentityRowImpl extends SsoIdentityRow {
       blocked: blocked ?? this.blocked,
       accountId: accountId is int? ? accountId : this.accountId,
       wasDetached: wasDetached ?? this.wasDetached,
+      ownershipGeneration: ownershipGeneration ?? this.ownershipGeneration,
+      awaitingSignIn: awaitingSignIn ?? this.awaitingSignIn,
+      transferRuntime: transferRuntime is String?
+          ? transferRuntime
+          : this.transferRuntime,
+      transferAttempt: transferAttempt is int?
+          ? transferAttempt
+          : this.transferAttempt,
     );
   }
 }
@@ -198,6 +253,18 @@ class SsoIdentityRowUpdateTable extends _is.UpdateTable<SsoIdentityRowTable> {
 
   _is.ColumnValue<bool, bool> wasDetached(bool value) =>
       _is.ColumnValue(table.wasDetached, value);
+
+  _is.ColumnValue<int, int> ownershipGeneration(int value) =>
+      _is.ColumnValue(table.ownershipGeneration, value);
+
+  _is.ColumnValue<bool, bool> awaitingSignIn(bool value) =>
+      _is.ColumnValue(table.awaitingSignIn, value);
+
+  _is.ColumnValue<String, String> transferRuntime(String? value) =>
+      _is.ColumnValue(table.transferRuntime, value);
+
+  _is.ColumnValue<int, int> transferAttempt(int? value) =>
+      _is.ColumnValue(table.transferAttempt, value);
 }
 
 class SsoIdentityRowTable extends _is.Table<int?> {
@@ -210,6 +277,14 @@ class SsoIdentityRowTable extends _is.Table<int?> {
     blocked = _is.ColumnBool('blocked', this);
     accountId = _is.ColumnInt('accountId', this);
     wasDetached = _is.ColumnBool('wasDetached', this, hasDefault: true);
+    ownershipGeneration = _is.ColumnInt(
+      'ownershipGeneration',
+      this,
+      hasDefault: true,
+    );
+    awaitingSignIn = _is.ColumnBool('awaitingSignIn', this, hasDefault: true);
+    transferRuntime = _is.ColumnString('transferRuntime', this);
+    transferAttempt = _is.ColumnInt('transferAttempt', this);
   }
 
   late final SsoIdentityRowUpdateTable updateTable;
@@ -226,6 +301,17 @@ class SsoIdentityRowTable extends _is.Table<int?> {
 
   late final _is.ColumnBool wasDetached;
 
+  /// Advances only on a verified change of CCP owner.
+  late final _is.ColumnInt ownershipGeneration;
+
+  /// Only ordinary connected sign-in can attach this identity after transfer.
+  late final _is.ColumnBool awaitingSignIn;
+
+  /// Runtime and high-water mark of browser attempts at the last transfer.
+  late final _is.ColumnString transferRuntime;
+
+  late final _is.ColumnInt transferAttempt;
+
   @override
   List<_is.Column> get columns => [
     id,
@@ -235,6 +321,10 @@ class SsoIdentityRowTable extends _is.Table<int?> {
     blocked,
     accountId,
     wasDetached,
+    ownershipGeneration,
+    awaitingSignIn,
+    transferRuntime,
+    transferAttempt,
   ];
 }
 

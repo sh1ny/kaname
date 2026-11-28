@@ -74,16 +74,26 @@ void main() {
       expect(_buttonLabels(tester), before);
     }, _viewerClient);
   }, skip: !hasDesktopHolder);
+
+  testWidgets('Settings offers Return for a blocked saved reservation', (
+    tester,
+  ) async {
+    final desktop = _RecoveringDesktop(AccountNotice.blocked, reserved: true);
+    await http.runWithClient(() async {
+      await _openSettings(tester, desktop);
+      expect(find.text(_return), findsOneWidget);
+    }, () => _viewerClient(holder: 'deviceReserved'));
+  }, skip: !hasDesktopHolder);
 }
 
 /// Serves sign-in and viewer refreshes for a server-held pilot.
-http.Client _viewerClient() {
-  const pilot = {
+http.Client _viewerClient({String holder = 'serverHeld'}) {
+  final pilot = {
     'characterId': '410',
     'characterName': 'Pilot',
     'memberId': '1',
     'admin': false,
-    'holder': 'serverHeld',
+    'holder': holder,
   };
   final client = MockClient((request) async {
     if (request.url.pathSegments case [..., 'memberRoster', 'page']) {
@@ -160,9 +170,10 @@ bool _liveRegionHolds(String text) => find
 
 /// A desktop account whose take returns one fixed recovery notice.
 final class _RecoveringDesktop implements DesktopAccount {
-  _RecoveringDesktop(this._notice);
+  _RecoveringDesktop(this._notice, {this.reserved = false});
 
   final AccountNotice _notice;
+  final bool reserved;
   var takes = 0;
 
   /// The local take the user retries, left by an earlier attempt.
@@ -176,13 +187,16 @@ final class _RecoveringDesktop implements DesktopAccount {
   String? get clientId => 'fixture-native';
 
   @override
-  AccountPilot? get pilot => _pilot;
+  AccountPilot? get pilot => reserved
+      ? const AccountPilot(characterId: '410', name: 'Pilot', holder: 'blocked')
+      : _pilot;
 
   @override
   bool permitsServerGrant(String characterId) => true;
 
   @override
-  bool ownsReservationFor(String origin, String characterId) => false;
+  bool ownsReservationFor(String origin, String characterId) =>
+      reserved && origin == 'https://kaname.test' && characterId == '410';
 
   @override
   Future<AccountNotice> take(HolderRemote remote) async {
@@ -204,7 +218,8 @@ final class _RecoveringDesktop implements DesktopAccount {
   Future<AccountNotice> identify() => fail('unexpected identify');
 
   @override
-  Future<AccountNotice> authorizeSkills() => fail('unexpected authorize');
+  Future<AccountNotice> authorizeSkills({SavedTakeSource? source}) =>
+      fail('unexpected authorize');
 
   @override
   Future<AccountNotice> disableSkills() => fail('unexpected disable');

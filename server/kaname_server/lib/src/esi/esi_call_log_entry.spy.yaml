@@ -13,6 +13,8 @@ fields:
   memberId: int?
   characterId: int?
   accountExcluded: bool?
+  ### The character's ownership generation at admission, not at append.
+  ownershipGeneration: int, default=0
 indexes:
   esi_call_log_retention_idx:
     fields: recordedAt, id

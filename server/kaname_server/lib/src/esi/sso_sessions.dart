@@ -2,10 +2,12 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:kaname_esi_sso/kaname_esi_sso.dart';
+import 'package:kaname_esi_vault/kaname_esi_vault.dart';
 import 'package:serverpod/serverpod.dart';
 
 import '../generated/protocol.dart';
 import 'esi_call_log_store.dart';
+import 'server_esi_vault.dart';
 
 /// Live account and signing character. ESI and admin authority follow the signer.
 typedef SsoViewer = ({
@@ -82,6 +84,25 @@ final class SsoSessions {
   static final _defaultCallLog = EsiCallLogStore();
   final EsiCallLogStore _callLog;
   final Future<void> Function(int character)? _afterCharacterLock;
+  static const _maxGeneration = 0x7fffffffffffffff;
+  late final String _ownershipRuntime = newOAuthProof();
+  var _lastBrowserAttempt = 0;
+
+  /// Numbers an attempt before the browser can start CCP authorization.
+  int registerBrowserAttempt() {
+    if (_lastBrowserAttempt == _maxGeneration) {
+      throw StateError('Browser attempt order exhausted.');
+    }
+    return ++_lastBrowserAttempt;
+  }
+
+  /// Called under the character write lock, before any proof-authorized write.
+  bool browserProofIsCurrent(SsoIdentityRow identity, int attempt) =>
+      switch (identity.transferAttempt) {
+        final fence? when identity.transferRuntime == _ownershipRuntime =>
+          attempt > fence,
+        _ => true,
+      };
 
   /// Associates generated RPCs with this install's exact session authority.
   void bind(Serverpod pod) => _bound[pod] = this;
@@ -174,9 +195,15 @@ final class SsoSessions {
     Session session,
     String bearer, {
     Transaction? transaction,
+    int? browserAttempt,
   }) async {
     if (!_bearerShape.hasMatch(bearer)) return null;
-    return _live(session, digest: ssoDigest(bearer), transaction: transaction);
+    return _live(
+      session,
+      digest: ssoDigest(bearer),
+      transaction: transaction,
+      browserAttempt: browserAttempt,
+    );
   }
 
   /// Rechecks the exact session and account selected by Serverpod authentication.
@@ -200,22 +227,30 @@ final class SsoSessions {
     int? accountId,
     Transaction? transaction,
     bool includeExclusion = false,
+    int? browserAttempt,
   }) async {
     final rows = await session.db.unsafeQuery(
       '''
       SELECT s.id, s."accountId", i.id, i."characterId", i.owner,
-             i."characterName", i."wasDetached", s."expiresAt" <= $_databaseUtc
+             i."characterName", i."wasDetached", s."expiresAt" <= $_databaseUtc,
+             i."ownershipGeneration"
              ${includeExclusion ? ', EXISTS (SELECT 1 FROM esi_call_log_exclusion e WHERE e.id = s."accountId")' : ''}
       FROM esi_session AS s JOIN esi_identity AS i ON i.id = s."identityId"
       WHERE ${digest != null ? 's.digest = @digest' : 's.id = @id AND s."accountId" = @account'}
         AND NOT i.blocked
         AND i."accountId" = s."accountId"
+        ${browserAttempt == null ? '' : '''
+        AND (i."transferRuntime" IS DISTINCT FROM @runtime::text
+             OR i."transferAttempt" < @attempt::bigint)
+        '''}
       ''',
       parameters: QueryParameters.named({
         'digest': ?digest,
         'id': ?sessionId,
         'account': ?accountId,
         'clock': _now?.call().toUtc(),
+        if (browserAttempt != null) 'runtime': _ownershipRuntime,
+        'attempt': ?browserAttempt,
       }),
       transaction: transaction,
     );
@@ -238,9 +273,10 @@ final class SsoSessions {
         blocked: false,
         accountId: account,
         wasDetached: row[6] as bool,
+        ownershipGeneration: row[8] as int,
       ),
       admin: _admins.contains(character),
-      accountExcluded: includeExclusion ? row[8] as bool : null,
+      accountExcluded: includeExclusion ? row[9] as bool : null,
       sessionId: exactId,
     );
   }
@@ -299,7 +335,8 @@ final class SsoSessions {
     );
   }
 
-  Future<void> _lockIdentityWrite(
+  /// Takes the bounded per-character write lock used by transfer and grants.
+  Future<void> lockIdentityWrite(
     Session session,
     Transaction transaction,
     int character,
@@ -313,15 +350,16 @@ final class SsoSessions {
   bool proofIsFresh(DateTime deadline) => _wallNow().isBefore(deadline);
 
   /// Creates a session only after the caller proves browser and app possession.
-  /// Returns null for expiry or a signed owner conflict.
+  /// A fresh owner change claims a new account; a stale proof cannot sign in.
   Future<Map<String, Object?>?> signIn(
     Session session,
     CcpVerifiedIdentity claims,
     DateTime proofDeadline,
+    int browserAttempt,
   ) async {
     try {
       return await session.db.transaction(
-        (tx) => _signIn(session, tx, claims, proofDeadline),
+        (tx) => _signIn(session, tx, claims, proofDeadline, browserAttempt),
       );
     } on SsoProofExpired {
       return null;
@@ -333,23 +371,22 @@ final class SsoSessions {
     Transaction transaction,
     CcpVerifiedIdentity claims,
     DateTime proofDeadline,
+    int browserAttempt,
   ) async {
     bool admit() => proofIsFresh(proofDeadline);
 
     if (!admit()) return null;
-    await _lockIdentityWrite(session, transaction, claims.characterId);
+    await lockIdentityWrite(session, transaction, claims.characterId);
     if (!admit()) return null;
     final stored = await SsoIdentityRow.db.findFirstRow(
       session,
       where: (t) => t.characterId.equals(claims.characterId),
       transaction: transaction,
     );
-    if (stored != null && (stored.blocked || stored.owner != claims.owner)) {
-      if (!stored.blocked) {
-        await blockIdentity(session, transaction, stored, admit: admit);
-      }
+    if (stored != null && !browserProofIsCurrent(stored, browserAttempt)) {
       return null;
     }
+    final transferring = stored != null && stored.owner != claims.owner;
     final SsoIdentityRow identity;
     if (stored == null) {
       identity = await SsoIdentityRow.db.insertRow(
@@ -362,6 +399,22 @@ final class SsoSessions {
         ),
         transaction: transaction,
       );
+    } else if (transferring) {
+      final mains = await lockAccountMains(
+        session,
+        transaction,
+        stored.accountId,
+      );
+      identity = (await transferLocked(
+        session,
+        transaction,
+        stored,
+        claims,
+        mains.actor,
+        admit: admit,
+      ))!;
+    } else if (stored.blocked) {
+      return null;
     } else if (stored.characterName != claims.name) {
       identity = await SsoIdentityRow.db.updateRow(
         session,
@@ -383,8 +436,8 @@ final class SsoSessions {
       member = account.id!;
       await SsoIdentityRow.db.updateRow(
         session,
-        identity.copyWith(accountId: member),
-        columns: (t) => [t.accountId],
+        identity.copyWith(accountId: member, awaitingSignIn: false),
+        columns: (t) => [t.accountId, t.awaitingSignIn],
         transaction: transaction,
       );
       if (identity.wasDetached &&
@@ -429,6 +482,9 @@ final class SsoSessions {
       ),
       transaction: transaction,
     );
+    if (transferring) {
+      await recordTransferFence(session, transaction, signer, admit: admit);
+    }
     if (!admit()) throw const SsoProofExpired();
     return {
       'session': bearer,
@@ -448,51 +504,194 @@ final class SsoSessions {
     );
   }
 
-  /// Blocks a verified owner conflict without allowing it to relink a member.
-  Future<void> block(
+  /// Locks account rows in ID order, then reports their current mains.
+  static Future<({int? actor, int? previous})> lockAccountMains(
     Session session,
-    int characterId,
-    String previousOwner, {
-    required DateTime proofDeadline,
+    Transaction tx,
+    int? account, {
+    int? previous,
   }) async {
-    bool admit() => proofIsFresh(proofDeadline);
-    try {
-      await session.db.transaction((transaction) async {
-        if (!admit()) return;
-        await _lockIdentityWrite(session, transaction, characterId);
-        final stored = await SsoIdentityRow.db.findFirstRow(
-          session,
-          where: (t) =>
-              t.characterId.equals(characterId) & t.owner.equals(previousOwner),
-          transaction: transaction,
-        );
-        if (stored == null || stored.blocked) return;
-        await blockIdentity(session, transaction, stored, admit: admit);
-      });
-    } on SsoProofExpired {
-      return;
+    if (account == null && previous == null) {
+      return (actor: null, previous: null);
     }
+    final rows = await session.db.unsafeQuery(
+      '''
+      SELECT id, "mainIdentityId" FROM member_account
+      WHERE id IN (@account::bigint, @previous::bigint) ORDER BY id FOR UPDATE
+      ''',
+      parameters: QueryParameters.named({
+        'account': account,
+        'previous': previous,
+      }),
+      transaction: tx,
+    );
+    int? actorMain;
+    int? previousMain;
+    for (final row in rows) {
+      if (row[0] == account) actorMain = row[1] as int?;
+      if (row[0] == previous) previousMain = row[1] as int?;
+    }
+    return (actor: actorMain, previous: previousMain);
   }
 
-  /// Blocks a verified conflict under the caller's character transaction lock.
-  /// Rolls back if [admit] fails before or after any write wait.
-  static Future<void> blockIdentity(
+  /// Locks the exact session before a membership write. Recheck it afterward.
+  static Future<bool> lockSession(
     Session session,
-    Transaction transaction,
-    SsoIdentityRow identity, {
+    Transaction tx,
+    int id,
+  ) async {
+    final rows = await session.db.unsafeQuery(
+      'SELECT id FROM esi_session WHERE id = @id::bigint FOR UPDATE',
+      parameters: QueryParameters.named({'id': id}),
+      transaction: tx,
+    );
+    return rows.isNotEmpty;
+  }
+
+  /// Applies a signed refresh mismatch only to its still-current generations.
+  Future<void> transferRefresh(
+    Session session,
+    SsoIdentityRow pinned,
+    VaultAuthorization grant,
+    CcpVerifiedIdentity claims,
+  ) async {
+    bool admit() => proofIsFresh(claims.expiresAt);
+    await session.db.transaction((tx) async {
+      if (!admit()) return;
+      await lockIdentityWrite(session, tx, pinned.characterId);
+      final stored = await SsoIdentityRow.db.findById(
+        session,
+        pinned.id!,
+        transaction: tx,
+      );
+      if (stored == null ||
+          stored.ownershipGeneration != pinned.ownershipGeneration ||
+          stored.owner != pinned.owner ||
+          !admit()) {
+        return;
+      }
+      final mains = await lockAccountMains(session, tx, stored.accountId);
+      final moved = await transferLocked(
+        session,
+        tx,
+        stored,
+        claims,
+        mains.actor,
+        admit: admit,
+        grant: grant,
+      );
+      if (moved != null) {
+        await recordTransferFence(session, tx, moved.id!, admit: admit);
+      }
+    });
+  }
+
+  /// Detaches a verified mismatch under the caller's character and account locks.
+  ///
+  /// A pinned refresh can return null if its grant is no longer current. The
+  /// caller must record the attempt fence before committing a successful move.
+  static Future<SsoIdentityRow?> transferLocked(
+    Session session,
+    Transaction tx,
+    SsoIdentityRow identity,
+    CcpVerifiedIdentity claims,
+    int? oldMain, {
+    required bool Function() admit,
+    VaultAuthorization? grant,
+  }) async {
+    if (!admit()) throw const SsoProofExpired();
+    if (identity.ownershipGeneration == _maxGeneration) {
+      throw StateError('Character ownership generation exhausted.');
+    }
+    if (!await ServerEsiVault.retireForTransfer(
+      session,
+      tx,
+      identity.characterId,
+      grant: grant,
+    )) {
+      return null;
+    }
+    if (!admit()) throw const SsoProofExpired();
+    final id = identity.id!;
+    final moved = await SsoIdentityRow.db.updateRow(
+      session,
+      identity.copyWith(
+        owner: claims.owner,
+        characterName: claims.name,
+        blocked: false,
+        accountId: null,
+        wasDetached: true,
+        awaitingSignIn: true,
+        ownershipGeneration: identity.ownershipGeneration + 1,
+      ),
+      columns: (t) => [
+        t.owner,
+        t.characterName,
+        t.blocked,
+        t.accountId,
+        t.wasDetached,
+        t.awaitingSignIn,
+        t.ownershipGeneration,
+      ],
+      transaction: tx,
+    );
+    if (identity.accountId case final account? when id == oldMain) {
+      Future<int?> firstRemaining({required bool unblocked}) async {
+        final rows = await session.db.unsafeQuery(
+          '''
+          SELECT id FROM esi_identity WHERE "accountId" = @account::bigint
+            ${unblocked ? 'AND NOT blocked' : ''}
+          ORDER BY "characterId" LIMIT 1
+          ''',
+          parameters: QueryParameters.named({'account': account}),
+          transaction: tx,
+        );
+        return rows.isEmpty ? null : rows.single.single as int;
+      }
+
+      final main =
+          await firstRemaining(unblocked: true) ??
+          await firstRemaining(unblocked: false);
+      await MemberAccountRow.db.updateRow(
+        session,
+        MemberAccountRow(id: account, mainIdentityId: main),
+        columns: (t) => [t.mainIdentityId],
+        transaction: tx,
+      );
+    }
+    await SsoSessionRow.db.deleteWhere(
+      session,
+      where: (t) => t.identityId.equals(id),
+      transaction: tx,
+    );
+    await SsoOptInRow.db.deleteWhere(
+      session,
+      where: (t) => t.identityId.equals(id),
+      transaction: tx,
+    );
+    if (!admit()) throw const SsoProofExpired();
+    return moved;
+  }
+
+  /// Records the runtime's high-water mark as the final transfer admission.
+  Future<void> recordTransferFence(
+    Session session,
+    Transaction tx,
+    int identity, {
     required bool Function() admit,
   }) async {
     if (!admit()) throw const SsoProofExpired();
-    await SsoIdentityRow.db.updateRow(
-      session,
-      identity.copyWith(blocked: true),
-      columns: (t) => [t.blocked],
-      transaction: transaction,
-    );
-    await SsoSessionRow.db.deleteWhere(
-      session,
-      where: (t) => t.identityId.equals(identity.id!),
-      transaction: transaction,
+    await session.db.unsafeExecute(
+      '''
+      UPDATE esi_identity SET "transferRuntime" = @runtime, "transferAttempt" = @attempt
+      WHERE id = @identity
+      ''',
+      parameters: QueryParameters.named({
+        'runtime': _ownershipRuntime,
+        'attempt': _lastBrowserAttempt,
+        'identity': identity,
+      }),
+      transaction: tx,
     );
     if (!admit()) throw const SsoProofExpired();
   }

@@ -17,3 +17,5 @@ fields:
   ### means no closure is recorded. Only a closure writes it; every other
   ### holder write preserves it.
   lastTakeClosureAt: DateTime?
+  ### Ownership generation of the last Take acceptance or closure.
+  takeOwnershipGeneration: int, default=0

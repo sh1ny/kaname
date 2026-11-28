@@ -3,4 +3,5 @@ class: MemberAccountRow
 table: member_account
 serverOnly: true
 fields:
-  mainIdentityId: int, relation(parent=esi_identity, onDelete=Restrict)
+  ### Null only when transfer leaves no characters in the account.
+  mainIdentityId: int?, relation(parent=esi_identity, onDelete=Restrict)

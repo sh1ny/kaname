@@ -44,7 +44,8 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
         ? ref.watch(desktopAccountProvider)
         : null;
     final desktop = desktopState?.value;
-    final connected = state.connected?.pilot;
+    final connection = state.connected;
+    final connected = connection?.pilot;
     final local = desktop?.pilot;
     final nativeReady = desktop?.clientId != null;
     final idle = state is AccountIdle;
@@ -52,14 +53,21 @@ final class _EsiAccountSectionState extends ConsumerState<EsiAccountSection> {
     final canUseDesktop = action is AccountIdle;
     final mayReturn =
         local != null &&
+        connection != null &&
         connected?.characterId == local.characterId &&
-        const {
-          'taking',
-          'deviceReserved',
-          'solo',
-          'returning',
-          'joining',
-        }.contains(local.holder);
+        (const {
+              'taking',
+              'deviceReserved',
+              'solo',
+              'returning',
+              'joining',
+            }.contains(local.holder) ||
+            local.holder == 'blocked' &&
+                desktop?.ownsReservationFor(
+                      connection.origin,
+                      local.characterId,
+                    ) ==
+                    true);
     final serverHolder = switch (connected?.holder) {
       'serverHeld' => l10n.esiServerHolder,
       'deviceReserved' => l10n.esiOriginalHolder,

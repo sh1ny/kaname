@@ -29,7 +29,8 @@ abstract class EsiCallLogRow
     this.memberId,
     this.characterId,
     this.accountExcluded,
-  });
+    int? ownershipGeneration,
+  }) : ownershipGeneration = ownershipGeneration ?? 0;
 
   factory EsiCallLogRow({
     int? id,
@@ -43,6 +44,7 @@ abstract class EsiCallLogRow
     int? memberId,
     int? characterId,
     bool? accountExcluded,
+    int? ownershipGeneration,
   }) = _EsiCallLogRowImpl;
 
   factory EsiCallLogRow.fromJson(Map<String, dynamic> jsonSerialization) {
@@ -64,6 +66,7 @@ abstract class EsiCallLogRow
           : _is.BoolJsonExtension.fromJson(
               jsonSerialization['accountExcluded'],
             ),
+      ownershipGeneration: jsonSerialization['ownershipGeneration'] as int?,
     );
   }
 
@@ -94,6 +97,9 @@ abstract class EsiCallLogRow
 
   bool? accountExcluded;
 
+  /// The character's ownership generation at admission, not at append.
+  int ownershipGeneration;
+
   @override
   _is.Table<int?> get table => t;
 
@@ -112,6 +118,7 @@ abstract class EsiCallLogRow
     int? memberId,
     int? characterId,
     bool? accountExcluded,
+    int? ownershipGeneration,
   });
   @override
   Map<String, dynamic> toJson() {
@@ -128,6 +135,7 @@ abstract class EsiCallLogRow
       if (memberId != null) 'memberId': memberId,
       if (characterId != null) 'characterId': characterId,
       if (accountExcluded != null) 'accountExcluded': accountExcluded,
+      'ownershipGeneration': ownershipGeneration,
     };
   }
 
@@ -179,6 +187,7 @@ class _EsiCallLogRowImpl extends EsiCallLogRow {
     int? memberId,
     int? characterId,
     bool? accountExcluded,
+    int? ownershipGeneration,
   }) : super._(
          id: id,
          recordedAt: recordedAt,
@@ -191,6 +200,7 @@ class _EsiCallLogRowImpl extends EsiCallLogRow {
          memberId: memberId,
          characterId: characterId,
          accountExcluded: accountExcluded,
+         ownershipGeneration: ownershipGeneration,
        );
 
   /// Returns a shallow copy of this [EsiCallLogRow]
@@ -209,6 +219,7 @@ class _EsiCallLogRowImpl extends EsiCallLogRow {
     Object? memberId = _Undefined,
     Object? characterId = _Undefined,
     Object? accountExcluded = _Undefined,
+    int? ownershipGeneration,
   }) {
     return EsiCallLogRow(
       id: id is int? ? id : this.id,
@@ -224,6 +235,7 @@ class _EsiCallLogRowImpl extends EsiCallLogRow {
       accountExcluded: accountExcluded is bool?
           ? accountExcluded
           : this.accountExcluded,
+      ownershipGeneration: ownershipGeneration ?? this.ownershipGeneration,
     );
   }
 }
@@ -260,6 +272,9 @@ class EsiCallLogRowUpdateTable extends _is.UpdateTable<EsiCallLogRowTable> {
 
   _is.ColumnValue<bool, bool> accountExcluded(bool? value) =>
       _is.ColumnValue(table.accountExcluded, value);
+
+  _is.ColumnValue<int, int> ownershipGeneration(int value) =>
+      _is.ColumnValue(table.ownershipGeneration, value);
 }
 
 class EsiCallLogRowTable extends _is.Table<int?> {
@@ -276,6 +291,11 @@ class EsiCallLogRowTable extends _is.Table<int?> {
     memberId = _is.ColumnInt('memberId', this);
     characterId = _is.ColumnInt('characterId', this);
     accountExcluded = _is.ColumnBool('accountExcluded', this);
+    ownershipGeneration = _is.ColumnInt(
+      'ownershipGeneration',
+      this,
+      hasDefault: true,
+    );
   }
 
   late final EsiCallLogRowUpdateTable updateTable;
@@ -300,6 +320,9 @@ class EsiCallLogRowTable extends _is.Table<int?> {
 
   late final _is.ColumnBool accountExcluded;
 
+  /// The character's ownership generation at admission, not at append.
+  late final _is.ColumnInt ownershipGeneration;
+
   @override
   List<_is.Column> get columns => [
     id,
@@ -313,6 +336,7 @@ class EsiCallLogRowTable extends _is.Table<int?> {
     memberId,
     characterId,
     accountExcluded,
+    ownershipGeneration,
   ];
 }
 

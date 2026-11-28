@@ -66,6 +66,7 @@ final class ServerSsoSkills {
                 authorization: authorization,
                 application: _clientId,
                 member: current.accountId,
+                ownershipGeneration: current.identity.ownershipGeneration,
                 accountExcluded: current.accountExcluded!,
                 client: client,
               );
@@ -73,6 +74,12 @@ final class ServerSsoSkills {
                 return (
                   status: 403,
                   body: <String, Object?>{'status': 'esiReauthorize'},
+                );
+              }
+              if (vaultFailure == VaultFailureReason.notHolder) {
+                return (
+                  status: 403,
+                  body: <String, Object?>{'status': 'holderOrScopeRequired'},
                 );
               }
               return switch (result) {
@@ -113,6 +120,7 @@ readScheduledSkills({
   required VaultAuthorization authorization,
   required String application,
   required int member,
+  required int ownershipGeneration,
   bool? accountExcluded,
   required EsiClient Function(EsiPrincipal) client,
 }) async {
@@ -124,6 +132,7 @@ readScheduledSkills({
     character: authorization.character,
     generation: authorization.generation.toString(),
     member: member,
+    ownershipGeneration: ownershipGeneration,
     accountExcluded: accountExcluded,
     bearer: () async => switch (await vault.readBearer(authorization)) {
       VaultSuccess(:final value) => value.token,
