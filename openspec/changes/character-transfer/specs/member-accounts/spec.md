@@ -1,5 +1,29 @@
 ## MODIFIED Requirements
 
+### Requirement: Any linked character signs in to the same account
+
+Connected sign-in SHALL resolve a linked character's account only for a verified claim matching its stored owner and if the character is not blocked. A blocked character SHALL still refuse a matching proof. A fresh verified transfer follows the first-sign-in rule for a new account. A character without an account SHALL start a new account with itself as main after successful sign-in. A character SHALL belong to at most one account. A matching owner hash alone SHALL NOT establish linkage.
+
+#### Scenario: First sign-in makes the signing character main
+
+- **WHEN** a previously unknown character completes connected sign-in
+- **THEN** the session reaches a new account with that character as its only member and main
+
+#### Scenario: Main and alt resolve one account
+
+- **WHEN** a main and an alt linked to the same account complete separate connected sign-ins with proofs matching their stored owners
+- **THEN** both sessions identify the same Kaname account and each identifies its own signing character
+
+#### Scenario: Matching owner hash does not link another character
+
+- **WHEN** a different character with the same verified owner hash signs in without a link attempt
+- **THEN** it does not gain access to the existing account and receives its own account if it has none
+
+#### Scenario: Concurrent first sign-ins converge
+
+- **WHEN** two valid attempts complete sign-in for the same previously unknown character with the same owner hash
+- **THEN** every successful result reaches the same account and there is only one membership for that character
+
 ### Requirement: Linking requires fresh CCP proof and a live source session
 
 Kaname SHALL start a link only for a live connected session. Completion SHALL require the same live session, the app and browser proofs, and fresh verified CCP authorization for the alt. A matching owner hash alone SHALL NOT link a character. A successful link SHALL keep the source session and character and request no ESI scopes. Linking SHALL NOT first claim a transferred character, issue a bearer, install an ESI grant, or change holder authorization.
