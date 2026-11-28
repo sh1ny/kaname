@@ -29,6 +29,8 @@ class AffiliationCall extends FutureCall {
   static void _logSkip(Session session, AffiliationDispatch result) {
     if (result == AffiliationDispatch.inactive) {
       session.log('affiliation: no active runtime; skipped queued work');
+    } else if (result == AffiliationDispatch.stopped) {
+      session.log('affiliation: shutdown interrupted queued work');
     }
   }
 }

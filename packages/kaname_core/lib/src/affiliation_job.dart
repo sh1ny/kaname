@@ -81,10 +81,19 @@ abstract interface class AffiliationRegistry {
   );
 }
 
+/// Whether a refresh finished its traversal before shutdown.
+enum AffiliationJobResult {
+  /// Every selected batch was attempted; individual batches may have failed.
+  completed,
+
+  /// Shutdown prevented one or more batches from being attempted.
+  stopped,
+}
+
 /// Refreshes public affiliation for the verified registry or one known identity.
 ///
 /// No transaction spans ESI, and a failed lookup never changes an observation.
-final class AffiliationJob implements Job<void> {
+final class AffiliationJob implements Job<AffiliationJobResult> {
   /// Binds the job to storage, a scheduled public lookup, and a shutdown flag.
   ///
   /// Omit [identityId] for a full sweep. A submitted batch may finish after
@@ -110,33 +119,37 @@ final class AffiliationJob implements Job<void> {
   String get name => 'character-affiliation';
 
   @override
-  Future<void> run() async {
-    if (_isStopping()) return;
+  Future<AffiliationJobResult> run() async {
+    if (_isStopping()) return AffiliationJobResult.stopped;
     if (_identityId case final id?) {
       if (await _registry.identity(id) case final identity?) {
-        await _refresh([identity]);
+        return _refresh([identity]);
       }
-      return;
+      return AffiliationJobResult.completed;
     }
     final through = await _registry.highWater();
-    if (through == null) return;
+    if (through == null) return AffiliationJobResult.completed;
     var after = 0;
-    while (after < through && !_isStopping()) {
+    while (after < through) {
+      if (_isStopping()) return AffiliationJobResult.stopped;
       final page = await _registry.pageAfter(after, through, _batchLimit);
-      if (page.isEmpty || _isStopping()) return;
-      await _refresh(page);
+      if (page.isEmpty) break;
+      if (await _refresh(page) == AffiliationJobResult.stopped) {
+        return AffiliationJobResult.stopped;
+      }
       after = page.last.identityId;
     }
+    return AffiliationJobResult.completed;
   }
 
-  Future<void> _refresh(List<AffiliationIdentity> page) async {
-    if (_isStopping()) return;
+  Future<AffiliationJobResult> _refresh(List<AffiliationIdentity> page) async {
+    if (_isStopping()) return AffiliationJobResult.stopped;
     final requested = {
       for (final pair in page) pair.characterId: pair.identityId,
     };
     final ids = requested.keys.toList(growable: false);
     final order = await _registry.allocateOrder();
-    if (_isStopping()) return;
+    if (_isStopping()) return AffiliationJobResult.stopped;
     switch (await _lookup(ids)) {
       case AffiliationLookupFailed(:final malformed):
         _onIssue(
@@ -147,7 +160,7 @@ final class AffiliationJob implements Job<void> {
         final at = _now().toUtc();
         if (rows.length > page.length) {
           _onIssue(AffiliationIssue.malformed, page.length);
-          return;
+          return AffiliationJobResult.completed;
         }
         final writes = <AffiliationWrite>[];
         for (final row in rows) {
@@ -159,7 +172,7 @@ final class AffiliationJob implements Job<void> {
               (row.allianceId ?? 1) <= 0 ||
               (row.factionId ?? 1) <= 0) {
             _onIssue(AffiliationIssue.malformed, page.length);
-            return;
+            return AffiliationJobResult.completed;
           }
           writes.add((
             identityId: identityId,
@@ -172,5 +185,6 @@ final class AffiliationJob implements Job<void> {
           _onIssue(AffiliationIssue.omitted, requested.length);
         }
     }
+    return AffiliationJobResult.completed;
   }
 }

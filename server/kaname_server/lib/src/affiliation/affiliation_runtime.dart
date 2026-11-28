@@ -55,6 +55,9 @@ enum AffiliationDispatch {
   /// The job ran. Individual batches may still have been refused or failed.
   completed,
 
+  /// Shutdown cut traversal short; a batch already sent may have been saved.
+  stopped,
+
   /// The job could not finish its database work; the next sweep starts over.
   failed,
 }
@@ -180,7 +183,7 @@ final class AffiliationRuntime {
   Future<AffiliationDispatch> _run(Session session, {int? identityId}) async {
     if (_stopping) return AffiliationDispatch.inactive;
     try {
-      await AffiliationJob(
+      final result = await AffiliationJob(
         registry: AffiliationStore(session),
         lookup: (ids) => lookupAffiliation(_client, ids),
         now: _now,
@@ -195,7 +198,10 @@ final class AffiliationRuntime {
             'affiliation: reply omitted $count characters',
         }),
       ).run();
-      return AffiliationDispatch.completed;
+      return switch (result) {
+        AffiliationJobResult.completed => AffiliationDispatch.completed,
+        AffiliationJobResult.stopped => AffiliationDispatch.stopped,
+      };
     } on Exception {
       _report('affiliation: job could not finish');
       return AffiliationDispatch.failed;

@@ -261,6 +261,44 @@ void main() {
     timeout: const Timeout(Duration(minutes: 3)),
   );
 
+  for (final hasNextPage in [false, true]) {
+    test(
+      'shutdown ${hasNextPage ? 'interrupts traversal' : 'after the last send completes traversal'}',
+      () async {
+        final f = await AffiliationFixture.open();
+        final entered = Completer<void>();
+        final release = Completer<void>();
+        f.respond = (ids) async {
+          entered.complete();
+          await release.future;
+          return jsonReply(200, [
+            {'character_id': ids.first, 'corporation_id': 42},
+          ]);
+        };
+        await f.pod.withSession((s) async {
+          if (hasNextPage) {
+            await _seedRegistry(s);
+          } else {
+            await f.addIdentity(s, 101);
+          }
+          final active = AffiliationRuntime.dispatchSweep(s, _startup);
+          await entered.future;
+          AffiliationRuntime.of(f.pod)!.stop();
+          release.complete();
+          expect(
+            await active,
+            hasNextPage
+                ? AffiliationDispatch.stopped
+                : AffiliationDispatch.completed,
+          );
+          expect((await AffiliationStore(s).read(101))?.corporationId, 42);
+          expect(f.wire, hasLength(1));
+        });
+      },
+      timeout: const Timeout(Duration(minutes: 3)),
+    );
+  }
+
   test('shutdown saves the active batch and closes the runtime without another send', () async {
     final entered = Completer<void>();
     final release = Completer<void>();
