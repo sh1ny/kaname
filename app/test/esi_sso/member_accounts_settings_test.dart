@@ -400,6 +400,52 @@ void main() {
     }
   }
 
+  for (final (label, route, reply) in [
+    ('scoped completion', 'complete', 'notAuthorized'),
+    ('skills refresh', 'skills', 'esiReauthorize'),
+    ('skills holder check', 'skills', 'holderOrScopeRequired'),
+  ]) {
+    for (final status in [401, 200, 503]) {
+      testWidgets('$label refusal checks the captured viewer: HTTP $status', (
+        tester,
+      ) async {
+        final history = _HistoryRequests();
+        final server = _Server();
+        await http.runWithClient(() async {
+          await _open(tester, history: history, desktop: _Solo());
+          await _signIn(tester);
+          await _tap(tester, 'My calls', settle: false);
+          history.pages.single.complete(_historyPage('1', 'Original receipt'));
+          await tester.pumpAndSettle();
+          expect(find.text('Original receipt'), findsOneWidget);
+          if (route == 'complete') {
+            await _tap(tester, 'Authorize server skills access');
+          }
+          server
+            ..viewerBearers.clear()
+            ..viewerFailure = status == 200 ? null : status
+            ..refusedRoute = route
+            ..refusedStatus = reply;
+          await _tap(
+            tester,
+            route == 'complete'
+                ? 'Finish authorization'
+                : 'Read skills on server',
+          );
+          expect(server.viewerBearers, ['Bearer ${'b' * 43}']);
+          if (status == 401) {
+            expect(find.text('Sign in to server'), findsOneWidget);
+            expect(find.text('Original receipt'), findsNothing);
+            expect(find.text('Linked characters'), findsNothing);
+          } else {
+            expect(find.text('Sign in to server'), findsNothing);
+            expect(find.text('Original receipt'), findsOneWidget);
+          }
+        }, () => MockClient(server.call));
+      });
+    }
+  }
+
   for (final viewerStatus in [503, 401]) {
     testWidgets(
       'Make main confirms session end before signing out ($viewerStatus)',
@@ -740,6 +786,8 @@ final class _Server {
   Completer<void>? viewerReply;
   final viewerBearers = <String>[];
   int? viewerFailure;
+  String? refusedRoute;
+  String? refusedStatus;
 
   Future<http.Response> call(http.Request request) async {
     const pilot = {
@@ -798,6 +846,9 @@ final class _Server {
           MemberAccountMutation(status: MemberAccountStatus.mainChanged)
               .toJson(),
         );
+    }
+    if (request.url.pathSegments.last == refusedRoute) {
+      return _json({'status': refusedStatus}, 403);
     }
     switch (request.url.pathSegments.last) {
       case 'begin':

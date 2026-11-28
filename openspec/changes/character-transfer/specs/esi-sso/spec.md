@@ -116,6 +116,12 @@ Connected admissions SHALL require a live signing session. Expired, revoked, blo
 - **WHEN** a refresh begun before unlink later returns verified claims for a different owner, its pinned ownership and vault grant generations are still current, and the proof is fresh at transfer admission to commit
 - **THEN** the server rejects the grant and applies the transfer without restoring membership or changing the holder assignment
 
+#### Scenario: Scoped completion or a skills read refuses after transfer
+
+- **WHEN** scoped completion or a connected skills read returns a refusal that can follow a verified transfer
+- **THEN** the app checks the captured viewer and drops it and its private views only on confirmed revocation
+- **AND** a live or temporarily unavailable viewer check leaves the session in place
+
 ### Requirement: Handoff parks the source before activating the destination
 
 Kaname SHALL require explicit handoff and confirmed source parking before the destination can activate. Take SHALL require fresh CCP authorization for the same character and ownership generation. After transfer, ordinary Return of a completed reservation can record parking without proving the former owner still owns the character. To activate server ESI, the current owner SHALL separately authorize a fresh grant. Handoff SHALL NOT transfer CCP credentials or bypass a known assignment.

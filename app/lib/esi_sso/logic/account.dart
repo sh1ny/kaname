@@ -225,7 +225,7 @@ final class AccountNotifier extends Notifier<AccountState> {
     _nextComplete = null;
     var notice = outcome;
     if (link && attempt == null && connected != null && _linkRefused(outcome)) {
-      notice = await _checkLinkViewer(connected, outcome);
+      notice = await _checkViewerAfterRefusal(connected, outcome);
       if (!_current(epoch)) return;
     }
     state = attempt == null
@@ -241,7 +241,7 @@ final class AccountNotifier extends Notifier<AccountState> {
   static bool _linkRefused(AccountNotice notice) =>
       notice == AccountNotice.blocked || notice == AccountNotice.signedOut;
 
-  static Future<AccountNotice> _checkLinkViewer(
+  static Future<AccountNotice> _checkViewerAfterRefusal(
     ConnectedSession session,
     AccountNotice outcome,
   ) async => switch (await session.refresh()) {
@@ -267,8 +267,10 @@ final class AccountNotifier extends Notifier<AccountState> {
     if (!_current(epoch)) return;
     var notice = outcome;
     final session = before.connected;
-    if (before.attempt.linking && session != null && _linkRefused(outcome)) {
-      notice = await _checkLinkViewer(session, outcome);
+    if (session != null &&
+        (before.attempt.linking && _linkRefused(outcome) ||
+            before.attempt.scoped && outcome == AccountNotice.blocked)) {
+      notice = await _checkViewerAfterRefusal(session, outcome);
       if (!_current(epoch)) return;
     }
     if (notice == AccountNotice.memberLinked) {
@@ -468,9 +470,16 @@ final class AccountNotifier extends Notifier<AccountState> {
     final connected = state.connected;
     final epoch = ++_epoch;
     state = AccountWorking(connected);
-    final result =
+    var result =
         await connected?.skills() ?? (AccountNotice.signedOut, null, null);
     if (!_current(epoch)) return;
+    if (connected != null &&
+        (result.$1 == AccountNotice.blocked ||
+            result.$1 == AccountNotice.reauthorize)) {
+      final notice = await _checkViewerAfterRefusal(connected, result.$1);
+      if (!_current(epoch)) return;
+      result = (notice, null, null);
+    }
     state = _skillsState(connected, result, solo: false);
   }
 
