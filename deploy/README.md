@@ -212,9 +212,10 @@ export or a general-purpose solo store. Do not copy either to another device.
 
 After taking a server-held character to a desktop, the original device must
 park before the server can take the holder back. Use the same device to
-resume an interrupted transfer or park and return it. A timeout, an empty
-replacement keyring or a lost device does not release the assignment.
-Kaname has no lost-device reclaim in M2.
+resume an interrupted Take while ownership is unchanged. After a character
+transfer, only a device that saved the completed reservation can park and
+return it. A lost reply, an empty replacement keyring or a lost device
+does not release the assignment. Verified reclaim is planned for M7.
 
 Before restoring a server backup, stop dispatch on linked devices and resolve
 their holder assignments. A restored database cannot prove that another

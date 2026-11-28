@@ -863,6 +863,7 @@ END
         }),
         200,
       );
+    server.confirmReply = _confirmedTake;
     expect(
       await device.account.take(await server.signIn()),
       AccountNotice.none,
@@ -879,23 +880,34 @@ END
       ),
     );
     expect(await device.account.identify(), AccountNotice.none);
-    owner = 'TkVXIE9XTkVS';
-    final current = await server.signIn();
+    final oldSession = await server.signIn();
     expect(
       await device.account.authorizeSkills(
-        source: (remote: current, isCurrent: () => true),
+        source: (remote: oldSession, isCurrent: () => true),
       ),
-      AccountNotice.blocked,
+      AccountNotice.none,
     );
+    final active = await device.store.read(123);
+    expect(active?.status, VaultStatus.active);
+    expect(active?.sealedCredential, isNotNull);
+
+    owner = 'TkVXIE9XTkVS';
+    expect(await device.account.identify(), AccountNotice.blocked);
+    expect((await device.store.read(123))?.status, VaultStatus.active);
     expect(device.account.pilot?.holder, 'blocked');
     expect((await device.account.skills()).$1, AccountNotice.blocked);
-    expect(posts, hasLength(2));
+    expect(posts, hasLength(3));
     server.memberId = 'new-owner';
     await device.reopen();
     expect(
       device.account.ownsReservationFor('${server.origin}', '123'),
       isTrue,
     );
+    server.beforeRelease = () async {
+      final parked = await device.store.read(123);
+      expect(parked?.status, VaultStatus.parked);
+      expect(parked?.sealedCredential, isNull);
+    };
     expect(
       await device.account.returnTo(await server.signIn()),
       AccountNotice.none,
@@ -1488,6 +1500,7 @@ final class _TakeServer {
   var reconciles = 0;
   String memberId = 'fixture-member';
   final releaseRequests = <Map<String, Object?>>[];
+  Future<void> Function()? beforeRelease;
   FutureOr<http.Response> Function()? confirmReply;
   final confirmRequests = <Map<String, Object?>>[];
 
@@ -1531,6 +1544,7 @@ final class _TakeServer {
       case 'release':
         final body = jsonDecode(request.body) as Map<String, Object?>;
         _observeProof(body['proof']);
+        await beforeRelease?.call();
         releaseRequests.add(body);
         return http.Response('{"status":"released"}', 200);
       case 'take':
