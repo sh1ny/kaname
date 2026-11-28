@@ -231,6 +231,12 @@ void main() {
         final pilot = await identity(101);
         final earlierEntered = Completer<void>();
         final earlierReply = Completer<WireOutcome>();
+        // Read without advancing the generated BIGSERIAL sequence.
+        Future<int> latestOrder() async =>
+            (await session.db.unsafeQuery(
+                  'SELECT last_value FROM character_affiliation_id_seq',
+                )).single.single
+                as int;
         reply = (_) {
           if (sent.length == 1) {
             earlierEntered.complete();
@@ -241,7 +247,19 @@ void main() {
         final earlier = job().run();
         await earlierEntered.future;
         try {
+          final earlierOrder = await latestOrder();
           await job(identityId: pilot.id).run();
+          expect(sent, [
+            [101],
+            [101],
+          ]);
+          expect(await latestOrder(), greaterThan(earlierOrder));
+          if (laterValid) {
+            expect((await store.read(101))?.corporationId, 42);
+          } else {
+            expect(issues, [(AffiliationIssue.unavailable, 1)]);
+            expect(await store.read(101), isNull);
+          }
           now = now.add(const Duration(minutes: 1));
         } finally {
           earlierReply.complete(_ok([_row(101, 41, 50)]));
