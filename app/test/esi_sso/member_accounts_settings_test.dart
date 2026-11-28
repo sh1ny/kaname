@@ -473,6 +473,43 @@ void main() {
     }
   }
 
+  for (final route in ['complete', 'skills']) {
+    testWidgets('$route refusal applies the verified holder change', (
+      tester,
+    ) async {
+      final server = _Server()..viewerHolder = 'serverHeld';
+      await http.runWithClient(() async {
+        await _open(tester, desktop: _Solo());
+        await _signIn(tester);
+        expect(
+          find.textContaining('The server is assigned to read skills'),
+          findsOneWidget,
+        );
+        if (route == 'complete') {
+          await _tap(tester, 'Authorize server skills access');
+        }
+        server
+          ..viewerHolder = 'deviceReserved'
+          ..refusedRoute = route
+          ..refusedResponse = () => _json({'status': 'notAuthorized'}, 403);
+        await _tap(
+          tester,
+          route == 'complete'
+              ? 'Finish authorization'
+              : 'Read skills on server',
+        );
+        expect(
+          find.textContaining('The original device must park'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('The server is assigned to read skills'),
+          findsNothing,
+        );
+      }, () => MockClient(server.call));
+    });
+  }
+
   for (final viewerStatus in [503, 401]) {
     testWidgets(
       'Make main confirms session end before signing out ($viewerStatus)',
@@ -813,6 +850,7 @@ final class _Server {
   Completer<void>? viewerReply;
   final viewerBearers = <String>[];
   int? viewerFailure;
+  String? viewerHolder;
   String? refusedRoute;
   http.Response Function()? refusedResponse;
 
@@ -905,7 +943,7 @@ final class _Server {
             'status': status == 401 ? 'signInRequired' : 'unavailable',
           }, status);
         }
-        return _json(pilot);
+        return _json({...pilot, 'holder': ?viewerHolder});
       case 'sign-out':
         revocations.add(request.headers['authorization']!);
         if (loseRevoke && revocations.length == 1) {

@@ -2174,19 +2174,26 @@ void main() {
     expect((await signIn())['memberId'], isNot(main['memberId']));
   }, timeout: const Timeout(Duration(minutes: 3)));
 
-  Future<List<String>> ownCharacters(String bearer, {Object? after}) async {
+  Future<List<EsiCallLogReceipt>> ownReceipts(
+    String bearer, {
+    Object? after,
+  }) async {
     final reply = await browser.post(
       Uri.parse('${pod.baseUrl}esiCallLog/ownRows'),
       headers: {...headers(), 'authorization': 'Bearer $bearer'},
       body: jsonEncode({'after': after}),
     );
-    final page = jsonDecode(reply.body) as Map<String, Object?>;
-    expect(page['status'], 'ok');
-    return [
-      for (final row in page['rows'] as List<Object?>)
-        (row as Map<String, Object?>)['characterId'] as String,
-    ];
+    final page = EsiCallLogPage.fromJson(
+      jsonDecode(reply.body) as Map<String, Object?>,
+    );
+    expect(page.status, 'ok');
+    return page.rows;
   }
+
+  Future<List<String>> ownCharacters(String bearer, {Object? after}) async => [
+    for (final receipt in await ownReceipts(bearer, after: after))
+      receipt.characterId,
+  ];
 
   Future<void> history(String ownerAccount, int character) async {
     await pod.pod.withSession(
@@ -3702,6 +3709,40 @@ void main() {
       ]),
     );
   });
+
+  test(
+    'after transfer away and back own history excludes the first ownership',
+    () async {
+      final (main, alt) = await mainAndSkillsAlt();
+      final originalOwner = owner;
+      persistReceipts = true;
+      expect((await post('skills', {}, bearer: alt)).statusCode, 200);
+      await scheduler.drainCallLog();
+      final original = (await ownReceipts(main)).single;
+
+      owner = _newOwner;
+      await signIn();
+      owner = originalOwner;
+      await signIn();
+      expect((await linkAlt(main, 410)).statusCode, 200);
+      final returned = (await signIn())['session'] as String;
+      expect(await ownReceipts(main), isEmpty);
+      await authorize(returned);
+      clock = clock.add(const Duration(seconds: 1));
+      expect((await post('skills', {}, bearer: returned)).statusCode, 200);
+      await scheduler.drainCallLog();
+
+      final byGeneration = await rows('''
+      SELECT id, "ownershipGeneration" FROM esi_call_log_entry ORDER BY id
+    ''');
+      expect(byGeneration.map((row) => row[1]), [0, 2]);
+      expect('${byGeneration.first[0]}', original.cursor.id);
+      expect(
+        (await ownReceipts(main)).single.cursor.id,
+        '${byGeneration.last[0]}',
+      );
+    },
+  );
 
   test('expiry stays permanent after a lost reply and restart', () async {
     final first = clock;
